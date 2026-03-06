@@ -45,10 +45,10 @@ class AuthService:
 
     @staticmethod
     def login(
-        *, email: str, password: str, ip_address: str, user_agent: str
+        *, email: str, password: str, ip_address: str, user_agent: str, request=None
     ) -> dict:
         """Authenticate user and return JWT token pair."""
-        user = authenticate(email=email, password=password)
+        user = authenticate(request=request, email=email, password=password)
 
         if user is None:
             LoginAttempt.objects.create(

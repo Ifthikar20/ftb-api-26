@@ -54,6 +54,17 @@ def custom_exception_handler(exc, context):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
+    # Handle domain ValueError (raised by services for business logic errors)
+    if isinstance(exc, ValueError):
+        return Response(
+            {
+                "success": False,
+                "error": {"code": "validation_error", "message": str(exc)},
+                "request_id": request_id,
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
     # Let DRF handle its own exceptions
     response = exception_handler(exc, context)
 
