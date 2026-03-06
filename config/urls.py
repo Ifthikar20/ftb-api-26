@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.contrib import admin
 from django.urls import path, include
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView
@@ -27,3 +28,11 @@ urlpatterns = [
     path("api/schema/swagger/", SpectacularSwaggerView.as_view(url_name="schema"), name="swagger-ui"),
     path("api/schema/redoc/", SpectacularRedocView.as_view(url_name="schema"), name="redoc"),
 ]
+
+# Add debug toolbar URLs in dev
+if settings.DEBUG:
+    try:
+        import debug_toolbar  # noqa: F401
+        urlpatterns += [path("__debug__/", include("debug_toolbar.urls"))]
+    except ImportError:
+        pass

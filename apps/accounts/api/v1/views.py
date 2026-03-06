@@ -58,6 +58,7 @@ class LoginView(APIView):
             **serializer.validated_data,
             ip_address=request.META.get("REMOTE_ADDR", ""),
             user_agent=request.META.get("HTTP_USER_AGENT", ""),
+            request=request,
         )
 
         response = Response(
