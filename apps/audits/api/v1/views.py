@@ -22,7 +22,20 @@ class AuditRunView(APIView):
         audit = Audit.objects.create(website=website, triggered_by=request.user)
 
         from apps.audits.tasks import run_website_audit
-        run_website_audit.delay(str(website.id), str(audit.id))
+        from django.conf import settings
+
+        # In dev mode or when no Celery broker is configured, run in a thread
+        broker = getattr(settings, "CELERY_BROKER_URL", "")
+        if not broker or broker.startswith("memory://"):
+            import threading
+            t = threading.Thread(
+                target=run_website_audit,
+                args=(str(website.id), str(audit.id)),
+                daemon=True,
+            )
+            t.start()
+        else:
+            run_website_audit.delay(str(website.id), str(audit.id))
 
         return Response({"audit_id": str(audit.id), "status": "pending"}, status=status.HTTP_202_ACCEPTED)
 

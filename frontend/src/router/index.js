@@ -76,6 +76,18 @@ const routes = [
                 props: true
             },
             {
+                path: 'heatmap/:websiteId',
+                name: 'heatmap',
+                component: () => import('@/pages/HeatmapPage.vue'),
+                props: true
+            },
+            {
+                path: 'keywords/:websiteId',
+                name: 'keywords',
+                component: () => import('@/pages/KeywordsPage.vue'),
+                props: true
+            },
+            {
                 path: 'strategy/:websiteId',
                 name: 'strategy',
                 component: () => import('@/pages/StrategyPage.vue'),

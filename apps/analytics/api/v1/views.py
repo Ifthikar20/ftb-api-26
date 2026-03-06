@@ -80,3 +80,63 @@ class RealtimeView(APIView):
         WebsiteService.get_for_user(user=request.user, website_id=website_id)
         data = AnalyticsService.get_realtime_snapshot(website_id=website_id)
         return Response(data)
+
+
+class HeatmapView(APIView):
+    """Aggregated click coordinate data for heatmap visualization."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, website_id):
+        from apps.analytics.models import PageEvent
+        from django.db.models import Count
+        from collections import defaultdict
+
+        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        page_url = request.query_params.get("page", None)
+
+        clicks_qs = PageEvent.objects.filter(
+            website_id=website_id, event_type="click"
+        )
+
+        # Top pages by click count
+        top_pages = list(
+            clicks_qs.values("url")
+            .annotate(click_count=Count("id"))
+            .order_by("-click_count")[:10]
+        )
+
+        # If a specific page is selected, get click coordinates
+        points = []
+        if page_url:
+            page_clicks = clicks_qs.filter(url=page_url)
+        elif top_pages:
+            page_url = top_pages[0]["url"]
+            page_clicks = clicks_qs.filter(url=page_url)
+        else:
+            page_clicks = clicks_qs.none()
+
+        # Aggregate click points — group nearby coordinates
+        grid = defaultdict(int)
+        total = 0
+        for click in page_clicks.values_list("properties", flat=True):
+            if isinstance(click, dict) and "x_pct" in click and "y_pct" in click:
+                # Round to nearest 2% for grouping
+                gx = round(click["x_pct"] / 2) * 2
+                gy = round(click["y_pct"] / 2) * 2
+                grid[(gx, gy)] += 1
+                total += 1
+
+        max_count = max(grid.values()) if grid else 1
+        for (gx, gy), count in grid.items():
+            points.append({
+                "x": gx, "y": gy,
+                "count": count,
+                "intensity": round(count / max_count, 2),
+            })
+
+        return Response({
+            "pages": top_pages,
+            "selected_page": page_url,
+            "total_clicks": total,
+            "points": sorted(points, key=lambda p: -p["count"]),
+        })

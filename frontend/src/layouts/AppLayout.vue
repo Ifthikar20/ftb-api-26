@@ -51,6 +51,14 @@
           <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="11" y1="11" x2="14" y2="14" stroke="currentColor" stroke-width="1.5"/></svg></span>
           <span v-if="!appStore.sidebarCollapsed" class="nav-text">Audits</span>
         </router-link>
+        <router-link :to="heatmapRoute" class="nav-link" active-class="active">
+          <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="1" width="14" height="14" rx="2"/><circle cx="6" cy="6" r="2" fill="currentColor" opacity="0.6"/><circle cx="10" cy="5" r="1.5" fill="currentColor" opacity="0.4"/><circle cx="8" cy="10" r="2.5" fill="currentColor" opacity="0.8"/></svg></span>
+          <span v-if="!appStore.sidebarCollapsed" class="nav-text">Heatmaps</span>
+        </router-link>
+        <router-link :to="keywordsRoute" class="nav-link" active-class="active">
+          <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 12l4-4 3 3 5-7"/><circle cx="14" cy="4" r="1.5" fill="currentColor"/></svg></span>
+          <span v-if="!appStore.sidebarCollapsed" class="nav-text">Keywords</span>
+        </router-link>
         <router-link :to="strategyRoute" class="nav-link" active-class="active">
           <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1l2 4h4l-3 3 1 4-4-2-4 2 1-4-3-3h4z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg></span>
           <span v-if="!appStore.sidebarCollapsed" class="nav-text">Strategy</span>
@@ -174,6 +182,8 @@ const analyticsRoute = computed(() => websiteId.value ? `/analytics/${websiteId.
 const leadsRoute = computed(() => websiteId.value ? `/leads/${websiteId.value}` : '/websites')
 const competitorsRoute = computed(() => websiteId.value ? `/competitors/${websiteId.value}` : '/websites')
 const auditsRoute = computed(() => websiteId.value ? `/audits/${websiteId.value}` : '/websites')
+const heatmapRoute = computed(() => websiteId.value ? `/heatmap/${websiteId.value}` : '/websites')
+const keywordsRoute = computed(() => websiteId.value ? `/keywords/${websiteId.value}` : '/websites')
 const strategyRoute = computed(() => websiteId.value ? `/strategy/${websiteId.value}` : '/websites')
 
 // Dynamic page background tint based on current route
@@ -184,6 +194,8 @@ const pageTint = computed(() => {
   if (path.startsWith('/leads')) return 'var(--tint-leads)'
   if (path.startsWith('/competitors')) return 'var(--tint-competitors)'
   if (path.startsWith('/audits')) return 'var(--tint-audits)'
+  if (path.startsWith('/heatmap')) return 'var(--tint-analytics)'
+  if (path.startsWith('/keywords')) return 'var(--tint-leads)'
   if (path.startsWith('/strategy')) return 'var(--tint-strategy)'
   if (path.startsWith('/billing')) return 'var(--tint-billing)'
   if (path.startsWith('/settings')) return 'var(--tint-settings)'
@@ -203,6 +215,8 @@ function switchWebsite(id) {
     { prefix: '/leads/', target: `/leads/${id}` },
     { prefix: '/competitors/', target: `/competitors/${id}` },
     { prefix: '/audits/', target: `/audits/${id}` },
+    { prefix: '/heatmap/', target: `/heatmap/${id}` },
+    { prefix: '/keywords/', target: `/keywords/${id}` },
     { prefix: '/strategy/', target: `/strategy/${id}` },
     { prefix: '/websites/', target: `/websites/${id}` },
   ]

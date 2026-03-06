@@ -11,4 +11,8 @@ export default {
     devices: (wid, params) => api.get(`/analytics/${wid}/devices/`, { params }),
     trends: (wid, params) => api.get(`/analytics/${wid}/trends/`, { params }),
     realtime: (wid) => api.get(`/analytics/${wid}/realtime/`),
+    heatmap: (wid, params) => api.get(`/analytics/${wid}/heatmap/`, { params }),
+    keywords: (wid) => api.get(`/analytics/${wid}/keywords/`),
+    addKeyword: (wid, data) => api.post(`/analytics/${wid}/keywords/`, data),
+    keywordHistory: (wid, kid) => api.get(`/analytics/${wid}/keywords/${kid}/history/`),
 }
