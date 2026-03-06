@@ -1,0 +1,4 @@
+-r base.txt
+
+# Staging-specific
+sentry-sdk[django]==2.*

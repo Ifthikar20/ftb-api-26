@@ -1,0 +1,14 @@
+Generate a concise morning brief for {website_name} ({website_url}).
+
+Yesterday's metrics:
+- Visitors: {visitors}
+- Hot leads: {hot_leads}
+- Top page: {top_page}
+- Growth vs last week: {growth_pct}%
+
+Provide:
+1. **Yesterday's Key Insight** — One data-driven observation
+2. **Today's Priority** — The single most important action to take
+3. **Quick Win** — One thing that can be done in under 30 minutes
+
+Keep it under 150 words. Be direct and actionable. No fluff.

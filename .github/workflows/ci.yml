@@ -1,0 +1,111 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [main, develop, "claude/**"]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  test:
+    name: Test & Lint
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: growthpilot_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DJANGO_SETTINGS_MODULE: config.settings.test
+      DJANGO_SECRET_KEY: test-secret-key-not-for-production
+      JWT_SIGNING_KEY: test-jwt-signing-key-not-for-production
+      FIELD_ENCRYPTION_KEY: YJGq9tGE_J3DT8L-Gg9KBgBBqChfPg1UYGU1cWTc_zI=
+      DB_NAME: growthpilot_test
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_HOST: localhost
+      DB_PORT: 5432
+      REDIS_URL: redis://localhost:6379/0
+      CELERY_BROKER_URL: redis://localhost:6379/1
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements/dev.txt
+
+      - name: Run migrations
+        run: python manage.py migrate --settings=config.settings.test
+
+      - name: Run tests
+        run: pytest --cov=apps --cov-report=xml -v --tb=short
+
+      - name: Lint (Ruff)
+        run: ruff check .
+
+      - name: Type check (mypy)
+        run: mypy apps/ config/ core/ --ignore-missing-imports
+        continue-on-error: true
+
+      - name: Security scan (Bandit)
+        run: bandit -r apps/ core/ -ll -x apps/*/tests/
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage.xml
+          fail_ci_if_error: false
+
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements/dev.txt
+
+      - name: Dependency vulnerability check (Safety)
+        run: safety check --full-report
+        continue-on-error: true
+
+      - name: SAST (Semgrep)
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: auto
+        continue-on-error: true
