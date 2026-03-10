@@ -111,6 +111,7 @@ services:
       - "443:443"
     volumes:
       - ./nginx/nginx.prod.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/pixel:/etc/nginx/pixel:ro
       - static_files:/static:ro
       - frontend_dist:/usr/share/nginx/html:ro
       - /opt/fetchbot/ssl:/etc/nginx/ssl:ro

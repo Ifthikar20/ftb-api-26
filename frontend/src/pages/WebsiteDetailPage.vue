@@ -23,7 +23,7 @@
         Add this script to your website's <code>&lt;head&gt;</code> tag to start tracking visitors.
       </p>
       <div class="code-block">
-        <code>&lt;script src="https://cdn.fetchbot.io/pixel/growthpilot.min.js" data-key="{{ website?.pixel_key || 'your-pixel-key' }}"&gt;&lt;/script&gt;</code>
+        <code>&lt;script src="https://fetchbot.ai/pixel/growthpilot.min.js" data-key="{{ website?.pixel_key || 'your-pixel-key' }}"&gt;&lt;/script&gt;</code>
       </div>
       <button class="btn btn-secondary btn-sm" style="margin-top:12px" @click="copyPixel">
         {{ copied ? 'Copied!' : 'Copy Snippet' }}
@@ -96,7 +96,7 @@ onMounted(async () => {
 })
 
 function copyPixel() {
-  const snippet = `<script src="https://cdn.fetchbot.io/pixel/growthpilot.min.js" data-key="${website.value?.pixel_key || ''}">\<\/script>`
+  const snippet = `<script src="https://fetchbot.ai/pixel/growthpilot.min.js" data-key="${website.value?.pixel_key || ''}">\<\/script>`
   navigator.clipboard.writeText(snippet)
   copied.value = true
   setTimeout(() => copied.value = false, 2000)
