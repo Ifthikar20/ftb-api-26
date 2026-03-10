@@ -19,52 +19,52 @@
    Light Mode (default)
    ════════════════════════════════════════ */
 :root {
-  /* Surfaces — soft peach/salmon foundation */
-  --bg-root: #eee5df;
-  --bg-sidebar: #fbf9f7;
-  --bg-surface: #f4efeb;
+  /* Surfaces — clean neutral foundation */
+  --bg-root: #f0f2f5;
+  --bg-sidebar: #ffffff;
+  --bg-surface: #f5f6f8;
   --bg-card: #ffffff;
-  --bg-card-hover: #f8f5f2;
+  --bg-card-hover: #f8f9fb;
   --bg-input: #ffffff;
-  --bg-overlay: rgba(20, 18, 16, 0.45);
-  --bg-page-tint: #e8dfd8;
+  --bg-overlay: rgba(15, 23, 42, 0.45);
+  --bg-page-tint: #eef1f5;
 
-  /* Brand — dark pill buttons + terracotta accent */
-  --brand-primary: #1e1e1e;
-  --brand-primary-hover: #333333;
-  --brand-primary-glow: rgba(30, 30, 30, 0.06);
-  --brand-accent: #d4956a;
-  --brand-accent-hover: #c28455;
-  --brand-accent-glow: rgba(212, 149, 106, 0.12);
-  --brand-gradient: linear-gradient(135deg, #1e1e1e 0%, #2d2d2d 100%);
-  --brand-highlight: #f0c89a;
+  /* Brand — dark primary + blue accent */
+  --brand-primary: #1e293b;
+  --brand-primary-hover: #334155;
+  --brand-primary-glow: rgba(30, 41, 59, 0.06);
+  --brand-accent: #5B8DEF;
+  --brand-accent-hover: #4A7DE0;
+  --brand-accent-glow: rgba(91, 141, 239, 0.12);
+  --brand-gradient: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+  --brand-highlight: #93b4f5;
 
   /* Status */
-  --color-success: #3d9970;
-  --color-success-bg: rgba(61, 153, 112, 0.1);
-  --color-warning: #d4813a;
-  --color-warning-bg: rgba(212, 129, 58, 0.1);
-  --color-danger: #c44d4d;
-  --color-danger-bg: rgba(196, 77, 77, 0.1);
-  --color-info: #4a8ec2;
-  --color-info-bg: rgba(74, 142, 194, 0.1);
+  --color-success: #22c55e;
+  --color-success-bg: rgba(34, 197, 94, 0.1);
+  --color-warning: #f59e0b;
+  --color-warning-bg: rgba(245, 158, 11, 0.1);
+  --color-danger: #ef4444;
+  --color-danger-bg: rgba(239, 68, 68, 0.1);
+  --color-info: #3b82f6;
+  --color-info-bg: rgba(59, 130, 246, 0.1);
 
   /* Text */
-  --text-primary: #1e1e1e;
-  --text-secondary: #6e6a65;
-  --text-muted: #a09a93;
+  --text-primary: #0f172a;
+  --text-secondary: #64748b;
+  --text-muted: #94a3b8;
   --text-inverse: #ffffff;
 
   /* Borders */
-  --border-color: rgba(0, 0, 0, 0.07);
-  --border-hover: rgba(0, 0, 0, 0.14);
-  --border-focus: var(--brand-primary);
+  --border-color: rgba(15, 23, 42, 0.08);
+  --border-hover: rgba(15, 23, 42, 0.16);
+  --border-focus: var(--brand-accent);
 
   /* Shadows */
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.03);
-  --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.07);
-  --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.1);
-  --shadow-glow: 0 0 0 3px rgba(30, 30, 30, 0.06);
+  --shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.04), 0 1px 2px rgba(15, 23, 42, 0.03);
+  --shadow-md: 0 4px 14px rgba(15, 23, 42, 0.06);
+  --shadow-lg: 0 12px 40px rgba(15, 23, 42, 0.08);
+  --shadow-glow: 0 0 0 3px rgba(91, 141, 239, 0.15);
 
   /* Radius */
   --radius-sm: 8px;
@@ -96,15 +96,15 @@
   --font-3xl: 2rem;
   --font-4xl: 2.5rem;
 
-  /* Page tints — unique pastel per page (peach, blue, sage, sand) */
-  --tint-dashboard: #ecddd4;
-  --tint-analytics: #d9e3ec;
-  --tint-leads: #dce8e2;
-  --tint-competitors: #e5ddd5;
-  --tint-audits: #d8dfe9;
-  --tint-strategy: #e8e0d6;
-  --tint-billing: #e2dad2;
-  --tint-settings: #e0ddd8;
+  /* Page tints — subtle cool grays per page */
+  --tint-dashboard: #eef1f5;
+  --tint-analytics: #e8edf4;
+  --tint-leads: #e8f4ee;
+  --tint-competitors: #eef1f5;
+  --tint-audits: #e8ecf4;
+  --tint-strategy: #eef0f5;
+  --tint-billing: #eef1f5;
+  --tint-settings: #eef0f3;
 
   /* Color mode marker */
   color-scheme: light;
@@ -114,36 +114,36 @@
    Dark Mode
    ════════════════════════════════════════ */
 [data-theme="dark"] {
-  --bg-root: #111113;
-  --bg-sidebar: #161618;
-  --bg-surface: #1c1c1f;
-  --bg-card: #222225;
-  --bg-card-hover: #2a2a2e;
-  --bg-input: #1c1c1f;
+  --bg-root: #0f1117;
+  --bg-sidebar: #141620;
+  --bg-surface: #1a1d2b;
+  --bg-card: #1e2132;
+  --bg-card-hover: #252840;
+  --bg-input: #1a1d2b;
   --bg-overlay: rgba(0, 0, 0, 0.7);
-  --bg-page-tint: #18181b;
+  --bg-page-tint: #12141e;
 
-  --brand-primary: #d4c5b5;
-  --brand-primary-hover: #e0d4c6;
-  --brand-primary-glow: rgba(212, 197, 181, 0.08);
-  --brand-accent: #d4956a;
-  --brand-accent-hover: #e0a67d;
-  --brand-gradient: linear-gradient(135deg, #d4c5b5 0%, #e0d4c6 100%);
-  --brand-highlight: rgba(212, 149, 106, 0.15);
+  --brand-primary: #e2e8f0;
+  --brand-primary-hover: #f1f5f9;
+  --brand-primary-glow: rgba(226, 232, 240, 0.08);
+  --brand-accent: #6B9EFF;
+  --brand-accent-hover: #85B0FF;
+  --brand-gradient: linear-gradient(135deg, #e2e8f0 0%, #f1f5f9 100%);
+  --brand-highlight: rgba(107, 158, 255, 0.15);
 
-  --color-success: #4ec99b;
-  --color-success-bg: rgba(78, 201, 155, 0.12);
-  --color-warning: #e0a04a;
-  --color-warning-bg: rgba(224, 160, 74, 0.12);
-  --color-danger: #e06060;
-  --color-danger-bg: rgba(224, 96, 96, 0.12);
-  --color-info: #5da4d6;
-  --color-info-bg: rgba(93, 164, 214, 0.12);
+  --color-success: #4ade80;
+  --color-success-bg: rgba(74, 222, 128, 0.12);
+  --color-warning: #fbbf24;
+  --color-warning-bg: rgba(251, 191, 36, 0.12);
+  --color-danger: #f87171;
+  --color-danger-bg: rgba(248, 113, 113, 0.12);
+  --color-info: #60a5fa;
+  --color-info-bg: rgba(96, 165, 250, 0.12);
 
-  --text-primary: #e8e4e0;
-  --text-secondary: #958f88;
-  --text-muted: #5e5a55;
-  --text-inverse: #111113;
+  --text-primary: #e2e8f0;
+  --text-secondary: #94a3b8;
+  --text-muted: #475569;
+  --text-inverse: #0f1117;
 
   --border-color: rgba(255, 255, 255, 0.07);
   --border-hover: rgba(255, 255, 255, 0.14);
@@ -151,16 +151,16 @@
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
   --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.4);
   --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.5);
-  --shadow-glow: 0 0 0 3px rgba(212, 197, 181, 0.08);
+  --shadow-glow: 0 0 0 3px rgba(107, 158, 255, 0.15);
 
-  --tint-dashboard: #111113;
-  --tint-analytics: #111113;
-  --tint-leads: #111113;
-  --tint-competitors: #111113;
-  --tint-audits: #111113;
-  --tint-strategy: #111113;
-  --tint-billing: #111113;
-  --tint-settings: #111113;
+  --tint-dashboard: #12141e;
+  --tint-analytics: #12141e;
+  --tint-leads: #12141e;
+  --tint-competitors: #12141e;
+  --tint-audits: #12141e;
+  --tint-strategy: #12141e;
+  --tint-billing: #12141e;
+  --tint-settings: #12141e;
 
   color-scheme: dark;
 }
@@ -264,7 +264,7 @@ a:hover {
 .btn-accent:hover:not(:disabled) {
   background: var(--brand-accent-hover);
   transform: translateY(-1px);
-  box-shadow: 0 4px 16px rgba(212, 149, 106, 0.3);
+  box-shadow: 0 4px 16px rgba(91, 141, 239, 0.25);
 }
 
 .btn-secondary {

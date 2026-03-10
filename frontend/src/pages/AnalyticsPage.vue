@@ -125,11 +125,102 @@
           </div>
         </div>
 
-        <!-- Realtime -->
-        <div class="card realtime-card" v-if="realtimeVisitors > 0">
-          <div class="realtime-dot"></div>
-          <span class="font-semibold">{{ realtimeVisitors }} active users</span>
-          <span class="text-muted text-sm"> right now</span>
+        <!-- Browsers + Live Events Row -->
+        <div class="analytics-row">
+          <div class="card">
+            <div class="card-header"><h3 class="card-title">Browsers</h3></div>
+            <div v-if="browserData.length" class="browser-list">
+              <div v-for="(b, i) in browserData" :key="i" class="browser-item">
+                <div class="browser-info">
+                  <svg class="browser-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M2 8h12M8 2c-2 2-2 10 0 12M8 2c2 2 2 10 0 12"/></svg>
+                  <span class="browser-name">{{ b.name }}</span>
+                </div>
+                <div class="browser-bar-wrap"><div class="browser-bar" :style="{ width: b.pct + '%', background: browserColors[i % browserColors.length] }"></div></div>
+                <span class="browser-pct">{{ b.pct }}%</span>
+              </div>
+            </div>
+            <div v-else class="empty-inline">No browser data yet</div>
+          </div>
+          <div class="card">
+            <div class="card-header">
+              <h3 class="card-title">Live Events</h3>
+              <div v-if="realtimeVisitors > 0" class="realtime-badge">
+                <span class="realtime-dot"></span>
+                <span>{{ realtimeVisitors }} active</span>
+              </div>
+            </div>
+            <div v-if="liveEvents.length" class="live-feed">
+              <div v-for="(ev, i) in liveEvents.slice(0, 8)" :key="i" class="live-event">
+                <span class="live-event-type" :class="eventBadge(ev.event_type)">{{ ev.event_type }}</span>
+                <span class="live-event-url">{{ ev.page || ev.url || '--' }}</span>
+                <span class="live-event-time">{{ formatTime(ev.timestamp) }}</span>
+              </div>
+            </div>
+            <div v-else class="empty-inline">No live events yet — data will appear as visitors browse your site</div>
+          </div>
+        </div>
+
+        <!-- Session Quality Row -->
+        <div class="analytics-row">
+          <div class="card">
+            <div class="card-header"><h3 class="card-title">Engagement Summary</h3></div>
+            <div class="engagement-grid">
+              <div class="engagement-item">
+                <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="var(--brand-accent)" stroke-width="1.5"><path d="M8 1v14M1 8h14"/></svg>
+                <div>
+                  <div class="engagement-label">New Visitors</div>
+                  <div class="engagement-value">{{ newVisitorPct }}%</div>
+                </div>
+              </div>
+              <div class="engagement-item">
+                <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="var(--color-success)" stroke-width="1.5"><path d="M1 8a7 7 0 0114 0M12 5l3 3-3 3"/></svg>
+                <div>
+                  <div class="engagement-label">Returning</div>
+                  <div class="engagement-value">{{ 100 - newVisitorPct }}%</div>
+                </div>
+              </div>
+              <div class="engagement-item">
+                <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="var(--color-info)" stroke-width="1.5"><rect x="2" y="2" width="12" height="12" rx="2"/><path d="M2 6h12"/></svg>
+                <div>
+                  <div class="engagement-label">Pages / Session</div>
+                  <div class="engagement-value">{{ pagesPerSession }}</div>
+                </div>
+              </div>
+              <div class="engagement-item">
+                <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="var(--color-warning)" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 4v4l3 2"/></svg>
+                <div>
+                  <div class="engagement-label">Avg. Time on Page</div>
+                  <div class="engagement-value">{{ avgTimeOnPage }}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header"><h3 class="card-title">Performance</h3></div>
+            <div class="perf-grid">
+              <div class="perf-item">
+                <div class="perf-label">Bounce Rate</div>
+                <div class="perf-bar-wrap">
+                  <div class="perf-bar" :style="{ width: bounceRate + '%' }" :class="bounceRate > 70 ? 'perf-bad' : bounceRate > 40 ? 'perf-ok' : 'perf-good'"></div>
+                </div>
+                <div class="perf-value">{{ bounceRate }}%</div>
+              </div>
+              <div class="perf-item">
+                <div class="perf-label">Conversion Rate</div>
+                <div class="perf-bar-wrap">
+                  <div class="perf-bar perf-good" :style="{ width: Math.min(conversionRate * 10, 100) + '%' }"></div>
+                </div>
+                <div class="perf-value">{{ conversionRate }}%</div>
+              </div>
+              <div class="perf-item">
+                <div class="perf-label">Avg. Load Time</div>
+                <div class="perf-bar-wrap">
+                  <div class="perf-bar" :style="{ width: Math.min(avgLoadTime * 20, 100) + '%' }" :class="avgLoadTime > 3 ? 'perf-bad' : avgLoadTime > 1.5 ? 'perf-ok' : 'perf-good'"></div>
+                </div>
+                <div class="perf-value">{{ avgLoadTime }}s</div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -412,6 +503,35 @@ const insightsData = computed(() => cached.value.insightsData || {})
 const visitorList = computed(() => cached.value.visitorList || [])
 const timelineEvents = computed(() => cached.value.timelineEvents || [])
 
+// ── Extended analytics data ──
+const browserData = computed(() => cached.value.browserData || cached.value.browsers || [])
+const liveEvents = computed(() => cached.value.liveEvents || [])
+const browserColors = ['#5B8DEF', '#34D399', '#A78BFA', '#F59E0B', '#6B7280', '#EC4899']
+
+// Engagement metrics (derived from stats)
+const newVisitorPct = computed(() => {
+  const s = stats.value.find(s => s.label?.toLowerCase()?.includes('new'))
+  return s ? parseInt(s.value) || 65 : 65
+})
+const pagesPerSession = computed(() => {
+  const s = stats.value.find(s => s.label?.toLowerCase()?.includes('page'))
+  const visitors = stats.value.find(s => s.label?.toLowerCase()?.includes('visitor'))
+  if (s && visitors && parseInt(visitors.value) > 0) {
+    return (parseInt(s.value) / parseInt(visitors.value)).toFixed(1)
+  }
+  return '1.0'
+})
+const avgTimeOnPage = computed(() => {
+  const s = stats.value.find(s => s.label?.toLowerCase()?.includes('session') || s.label?.toLowerCase()?.includes('time'))
+  return s ? s.value : '0:00'
+})
+const bounceRate = computed(() => {
+  const s = stats.value.find(s => s.label?.toLowerCase()?.includes('bounce'))
+  return s ? parseInt(s.value) || 0 : 0
+})
+const conversionRate = computed(() => cached.value.conversionRate || 0)
+const avgLoadTime = computed(() => cached.value.avgLoadTime || 0)
+
 // Local UI state
 const showCreateFunnel = ref(false)
 const newFunnel = ref({ name: '', steps: [{ name: '', type: 'url', value: '' }, { name: '', type: 'url', value: '' }] })
@@ -651,7 +771,7 @@ onBeforeUnmount(() => {
 .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
 .kpi-card { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 20px; transition: all var(--transition-base); }
 .kpi-card:hover { border-color: var(--border-hover); box-shadow: var(--shadow-sm); }
-.kpi-highlight { border-color: var(--brand-accent); background: linear-gradient(135deg, var(--bg-card) 0%, rgba(201, 160, 80, 0.04) 100%); }
+.kpi-highlight { border-color: var(--brand-accent); background: linear-gradient(135deg, var(--bg-card) 0%, rgba(91, 141, 239, 0.04) 100%); }
 .kpi-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
 .kpi-label { font-size: var(--font-xs); font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.06em; }
 .kpi-trend { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: var(--radius-full); }
@@ -719,8 +839,8 @@ onBeforeUnmount(() => {
 .funnel-item:hover { background: var(--bg-card); border: 1px solid var(--border-hover); }
 .funnel-viz { display: flex; gap: 4px; align-items: flex-end; padding: 20px 0; height: 200px; }
 .funnel-step { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 8px; height: 100%; }
-.funnel-bar { width: 100%; background: rgba(201,160,80,0.08); border-radius: var(--radius-md) var(--radius-md) 0 0; position: relative; min-height: 20px; transition: height 0.5s; display: flex; align-items: flex-end; }
-.funnel-bar-fill { width: 100%; height: 100%; background: linear-gradient(180deg, var(--brand-accent), rgba(201,160,80,0.3)); border-radius: var(--radius-md) var(--radius-md) 0 0; }
+.funnel-bar { width: 100%; background: rgba(91,141,239,0.08); border-radius: var(--radius-md) var(--radius-md) 0 0; position: relative; min-height: 20px; transition: height 0.5s; display: flex; align-items: flex-end; }
+.funnel-bar-fill { width: 100%; height: 100%; background: linear-gradient(180deg, var(--brand-accent), rgba(91,141,239,0.3)); border-radius: var(--radius-md) var(--radius-md) 0 0; }
 .funnel-step-info { text-align: center; }
 .text-danger { color: var(--color-danger); }
 
@@ -800,7 +920,43 @@ onBeforeUnmount(() => {
 .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; z-index: 200; }
 .modal-card { background: var(--bg-card); padding: 28px; border-radius: var(--radius-lg); width: 100%; box-shadow: var(--shadow-lg); }
 
+/* ── Browser List ── */
+.browser-list { display: flex; flex-direction: column; gap: 12px; }
+.browser-item { display: flex; align-items: center; gap: 12px; }
+.browser-info { display: flex; align-items: center; gap: 8px; min-width: 100px; }
+.browser-icon { color: var(--text-muted); flex-shrink: 0; }
+.browser-name { font-size: var(--font-sm); font-weight: 600; color: var(--text-primary); }
+.browser-bar-wrap { flex: 1; height: 6px; background: var(--bg-surface); border-radius: var(--radius-full); overflow: hidden; }
+.browser-bar { height: 100%; border-radius: var(--radius-full); transition: width var(--transition-slow); }
+.browser-pct { font-size: var(--font-sm); font-weight: 700; color: var(--text-primary); min-width: 36px; text-align: right; }
+
+/* ── Live Events ── */
+.realtime-badge { display: flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: var(--radius-full); background: rgba(34, 197, 94, 0.1); color: var(--color-success); font-size: var(--font-xs); font-weight: 600; }
+.live-feed { display: flex; flex-direction: column; gap: 0; max-height: 300px; overflow-y: auto; }
+.live-event { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border-color); font-size: var(--font-sm); }
+.live-event:last-child { border-bottom: none; }
+.live-event-type { font-size: 10px; font-weight: 700; text-transform: uppercase; padding: 2px 8px; border-radius: var(--radius-full); flex-shrink: 0; }
+.live-event-url { flex: 1; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.live-event-time { color: var(--text-muted); font-size: var(--font-xs); flex-shrink: 0; }
+
+/* ── Engagement ── */
+.engagement-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.engagement-item { display: flex; align-items: center; gap: 12px; padding: 12px; background: var(--bg-surface); border-radius: var(--radius-md); }
+.engagement-label { font-size: var(--font-xs); color: var(--text-secondary); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+.engagement-value { font-size: var(--font-xl); font-weight: 700; color: var(--text-primary); margin-top: 2px; }
+
+/* ── Performance ── */
+.perf-grid { display: flex; flex-direction: column; gap: 18px; }
+.perf-item { display: flex; align-items: center; gap: 14px; }
+.perf-label { font-size: var(--font-sm); font-weight: 600; color: var(--text-secondary); min-width: 120px; }
+.perf-bar-wrap { flex: 1; height: 8px; background: var(--bg-surface); border-radius: var(--radius-full); overflow: hidden; }
+.perf-bar { height: 100%; border-radius: var(--radius-full); transition: width var(--transition-slow); }
+.perf-good { background: var(--color-success); }
+.perf-ok { background: var(--color-warning); }
+.perf-bad { background: var(--color-danger); }
+.perf-value { font-size: var(--font-sm); font-weight: 700; color: var(--text-primary); min-width: 40px; text-align: right; }
+
 /* ── Responsive ── */
-@media (max-width: 900px) { .kpi-grid { grid-template-columns: repeat(2, 1fr); } .analytics-row { grid-template-columns: 1fr; } .analytics-tabs { flex-wrap: wrap; } }
+@media (max-width: 900px) { .kpi-grid { grid-template-columns: repeat(2, 1fr); } .analytics-row { grid-template-columns: 1fr; } .analytics-tabs { flex-wrap: wrap; } .engagement-grid { grid-template-columns: 1fr; } }
 @media (max-width: 600px) { .kpi-grid { grid-template-columns: 1fr; } .insights-grid { grid-template-columns: 1fr; } }
 </style>
