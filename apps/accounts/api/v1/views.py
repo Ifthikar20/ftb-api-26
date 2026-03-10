@@ -83,6 +83,7 @@ class LogoutView(APIView):
 
 class TokenRefreshView(APIView):
     permission_classes = [AllowAny]
+    throttle_classes = []  # No throttling — called on every page load for session restore
 
     def post(self, request):
         refresh_token = request.COOKIES.get("refresh_token")

@@ -51,7 +51,7 @@ export const useAuthStore = defineStore('auth', () => {
 
     async function fetchMe() {
         try {
-            const { data } = await api.get('/auth/me/')
+            const { data } = await api.get('/auth/me/', { _silentError: true })
             user.value = data.data || data
             return user.value
         } catch {
@@ -61,7 +61,7 @@ export const useAuthStore = defineStore('auth', () => {
 
     async function refreshToken() {
         try {
-            const { data } = await api.post('/auth/refresh/')
+            const { data } = await api.post('/auth/refresh/', {}, { _silentError: true })
             const result = data.data || data
             accessToken.value = result.access
             return result.access

@@ -99,9 +99,9 @@ REST_FRAMEWORK = {
         "core.interceptors.throttling.SustainedRateThrottle",
     ],
     "DEFAULT_THROTTLE_RATES": {
-        "burst": "60/min",
-        "sustained": "1000/hour",
-        "auth": "5/min",
+        "burst": "200/min",
+        "sustained": "5000/hour",
+        "auth": "20/min",
         "password_reset": "3/hour",
         "ai_generation": "10/hour",
         "pixel_ingest": "10000/min",
