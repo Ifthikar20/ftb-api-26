@@ -16,7 +16,7 @@
     <!-- Tabs -->
     <div class="analytics-tabs">
       <button v-for="tab in tabs" :key="tab.id" class="atab" :class="{ active: activeTab === tab.id }" @click="switchTab(tab.id)">
-        <span class="atab-icon">{{ tab.icon }}</span>
+        <svg class="atab-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" v-html="tab.svg"></svg>
         <span class="atab-label">{{ tab.label }}</span>
       </button>
     </div>
@@ -62,44 +62,17 @@
           </div>
         </div>
 
-        <!-- Area Chart -->
+        <!-- Traffic Chart (Chart.js) -->
         <div class="card chart-card">
           <div class="card-header">
             <div>
               <h3 class="card-title">Traffic Overview</h3>
               <p class="card-subtitle">Visitor sessions over time</p>
             </div>
-            <div class="chart-legend">
-              <span class="legend-item"><span class="legend-dot" style="background: var(--brand-accent)"></span> Visitors</span>
-              <span class="legend-item"><span class="legend-dot" style="background: var(--color-info)"></span> Page Views</span>
-            </div>
           </div>
-          <div class="area-chart-wrap" @mousemove="handleChartHover" @mouseleave="localChartHover = null">
-            <svg class="area-chart-svg" :viewBox="'0 0 ' + chartWidth + ' ' + chartHeight" preserveAspectRatio="none">
-              <defs>
-                <linearGradient id="visitorsGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stop-color="var(--brand-accent)" stop-opacity="0.25"/>
-                  <stop offset="100%" stop-color="var(--brand-accent)" stop-opacity="0.02"/>
-                </linearGradient>
-                <linearGradient id="viewsGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stop-color="var(--color-info)" stop-opacity="0.15"/>
-                  <stop offset="100%" stop-color="var(--color-info)" stop-opacity="0.02"/>
-                </linearGradient>
-              </defs>
-              <line v-for="i in 4" :key="'g'+i" :x1="0" :y1="chartHeight * i / 5" :x2="chartWidth" :y2="chartHeight * i / 5" stroke="var(--border-color)" stroke-width="0.5"/>
-              <path :d="viewsAreaPath" fill="url(#viewsGrad)" />
-              <path :d="viewsLinePath" fill="none" stroke="var(--color-info)" stroke-width="2" stroke-linejoin="round"/>
-              <path :d="visitorsAreaPath" fill="url(#visitorsGrad)" />
-              <path :d="visitorsLinePath" fill="none" stroke="var(--brand-accent)" stroke-width="2.5" stroke-linejoin="round"/>
-              <line v-if="localChartHover" :x1="localChartHover.x" :y1="0" :x2="localChartHover.x" :y2="chartHeight" stroke="var(--text-muted)" stroke-width="0.5" stroke-dasharray="4"/>
-            </svg>
-            <div v-if="localChartHover" class="chart-tooltip" :style="{ left: localChartHover.pctX + '%' }">
-              <strong>{{ localChartHover.label }}</strong>
-              <div>{{ localChartHover.visitors }} visitors · {{ localChartHover.pageviews }} views</div>
-            </div>
-            <div class="area-chart-labels">
-              <span v-for="(d, i) in chartData" :key="i" :class="{ highlighted: i % Math.ceil(chartData.length / 7) === 0 }">{{ d.label }}</span>
-            </div>
+          <div class="chart-container" style="height:280px;position:relative">
+            <Line v-if="chartData.length" :data="trafficChartData" :options="trafficChartOptions" />
+            <div v-else class="empty-inline">No chart data yet</div>
           </div>
         </div>
 
@@ -107,17 +80,10 @@
         <div class="analytics-row">
           <div class="card">
             <div class="card-header"><h3 class="card-title">Top Sources</h3></div>
-            <div class="channel-list">
-              <div v-for="source in sources" :key="source.name" class="channel-item">
-                <div class="channel-info">
-                  <span class="channel-name">{{ source.name }}</span>
-                  <span class="text-xs text-muted">{{ source.sessions }} sessions</span>
-                </div>
-                <div class="channel-bar-wrap"><div class="channel-bar" :style="{ width: source.pct + '%', background: source.color }"></div></div>
-                <span class="channel-pct">{{ source.pct }}%</span>
-              </div>
-              <div v-if="!sources.length" class="empty-inline">No source data yet</div>
+            <div class="chart-container" style="height:220px;position:relative" v-if="sources.length">
+              <Bar :data="sourcesChartData" :options="sourcesChartOptions" />
             </div>
+            <div v-else class="empty-inline">No source data yet</div>
           </div>
           <div class="card">
             <div class="card-header"><h3 class="card-title">Top Pages</h3></div>
@@ -138,20 +104,8 @@
         <div class="analytics-row">
           <div class="card">
             <div class="card-header"><h3 class="card-title">Devices</h3></div>
-            <div class="device-breakdown" v-if="devices.length">
-              <div class="donut-chart">
-                <svg viewBox="0 0 120 120">
-                  <circle cx="60" cy="60" r="50" fill="none" stroke="var(--bg-surface)" stroke-width="12"/>
-                  <circle v-for="(d, i) in deviceArcs" :key="i" cx="60" cy="60" r="50" fill="none" :stroke="d.color" stroke-width="12" :stroke-dasharray="d.dash" :stroke-dashoffset="d.offset" stroke-linecap="round"/>
-                </svg>
-              </div>
-              <div class="device-legend">
-                <div v-for="device in devices" :key="device.name" class="device-legend-item">
-                  <span class="legend-dot" :style="{ background: device.color }"></span>
-                  <span class="device-name">{{ device.name }}</span>
-                  <span class="device-value font-semibold">{{ device.pct }}%</span>
-                </div>
-              </div>
+            <div class="chart-container" style="height:200px;position:relative" v-if="devices.length">
+              <Doughnut :data="devicesChartData" :options="devicesChartOptions" />
             </div>
             <div v-else class="empty-inline">No device data yet</div>
           </div>
@@ -304,7 +258,7 @@
         <div class="insights-grid">
           <div v-for="(insight, i) in insightsData.insights || []" :key="i" class="insight-card" :class="'insight-' + insight.type">
             <div class="insight-header">
-              <span class="insight-icon">{{ insight.icon }}</span>
+              <svg class="insight-type-icon" width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 5v3M8 10v1"/></svg>
               <span class="insight-badge" :class="'ibadge-' + insight.type">{{ insight.type }}</span>
               <span v-if="insight.metric" class="insight-metric">{{ insight.metric }}</span>
             </div>
@@ -317,7 +271,7 @@
           </div>
         </div>
         <div v-if="!insightsData.insights || !insightsData.insights.length" class="empty-state-card">
-          <div style="font-size:48px;margin-bottom:16px">🧠</div>
+          <svg width="48" height="48" viewBox="0 0 48 48" fill="none" stroke="var(--text-muted)" stroke-width="1.5" style="margin-bottom:16px"><circle cx="24" cy="24" r="16"/><path d="M18 28c2-4 4-8 6-8s4 4 6 8"/><circle cx="24" cy="18" r="3"/></svg>
           <h3 class="empty-title">AI Insights need more data</h3>
           <p class="empty-desc">Once you have enough traffic data, FetchBot AI will detect anomalies, spot trends, and suggest actionable improvements.</p>
         </div>
@@ -387,22 +341,39 @@
 </template>
 
 <script setup>
-import { computed, onMounted, onBeforeUnmount, watch } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAnalyticsStore } from '@/stores/analytics'
+import { Line, Bar, Doughnut } from 'vue-chartjs'
+import {
+  Chart as ChartJS,
+  CategoryScale, LinearScale, PointElement, LineElement,
+  BarElement, ArcElement,
+  Filler, Tooltip, Legend,
+} from 'chart.js'
+
+ChartJS.register(
+  CategoryScale, LinearScale, PointElement, LineElement,
+  BarElement, ArcElement,
+  Filler, Tooltip, Legend,
+)
+
+// Global Chart.js defaults for dark/professional look
+ChartJS.defaults.color = '#8a8a9a'
+ChartJS.defaults.font.family = "'Inter', 'SF Pro Display', system-ui, sans-serif"
+ChartJS.defaults.font.size = 11
 
 const route = useRoute()
 const store = useAnalyticsStore()
-
 const websiteId = route.params.websiteId
 
 const tabs = [
-  { id: 'overview', icon: '📈', label: 'Overview' },
-  { id: 'funnels', icon: '🔄', label: 'Funnels' },
-  { id: 'retention', icon: '🔁', label: 'Retention' },
-  { id: 'flows', icon: '🌊', label: 'Flows' },
-  { id: 'insights', icon: '🧠', label: 'AI Insights' },
-  { id: 'visitors', icon: '👤', label: 'Visitors' },
+  { id: 'overview', svg: '<path d="M2 14V6l4-4 4 4 4-4v12" stroke-linejoin="round"/>', label: 'Overview' },
+  { id: 'funnels', svg: '<path d="M2 2h12l-3 5v5l-2 2V7z"/>', label: 'Funnels' },
+  { id: 'retention', svg: '<path d="M1 8a7 7 0 0114 0M12 5l3 3-3 3"/><circle cx="8" cy="8" r="2"/>', label: 'Retention' },
+  { id: 'flows', svg: '<path d="M1 4h4l3 4-3 4H1M15 4h-4l-3 4 3 4h4"/>', label: 'Flows' },
+  { id: 'insights', svg: '<circle cx="8" cy="6" r="4"/><path d="M5 10v1a3 3 0 006 0v-1"/><line x1="8" y1="14" x2="8" y2="15"/>', label: 'AI Insights' },
+  { id: 'visitors', svg: '<circle cx="8" cy="5" r="3"/><path d="M2 14c0-3 3-5 6-5s6 2 6 5"/>', label: 'Visitors' },
 ]
 
 const periods = [
@@ -418,7 +389,6 @@ const period = computed(() => store.activePeriod)
 const loading = computed(() => store.initialLoading)
 const refreshing = computed(() => store.refreshing)
 
-// Read from the per-website cache (reactive via computed)
 const cached = computed(() => store.data)
 const stats = computed(() => cached.value.stats || [])
 const chartData = computed(() => cached.value.chartData || [])
@@ -437,65 +407,157 @@ const insightsData = computed(() => cached.value.insightsData || {})
 const visitorList = computed(() => cached.value.visitorList || [])
 const timelineEvents = computed(() => cached.value.timelineEvents || [])
 
-// Local UI state (no need to cache)
-import { ref } from 'vue'
-const localChartHover = ref(null)
+// Local UI state
 const showCreateFunnel = ref(false)
 const newFunnel = ref({ name: '', steps: [{ name: '', type: 'url', value: '' }, { name: '', type: 'url', value: '' }] })
 
-// Chart
-const chartWidth = 600
-const chartHeight = 200
+// ════════════ CHART.JS CONFIGURATIONS ════════════
 
-function buildLinePath(data, key, maxVal) {
-  if (!data.length) return ''
-  const step = chartWidth / Math.max(data.length - 1, 1)
-  return data.map((d, i) => {
-    const x = i * step
-    const y = chartHeight - (d[key] / maxVal) * (chartHeight * 0.85) - chartHeight * 0.05
-    return `${i === 0 ? 'M' : 'L'}${x},${y}`
-  }).join(' ')
+// Traffic Overview — Line chart with gradient fill
+const trafficChartData = computed(() => ({
+  labels: chartData.value.map(d => d.label),
+  datasets: [
+    {
+      label: 'Visitors',
+      data: chartData.value.map(d => d.visitors || 0),
+      borderColor: '#c9a050',
+      backgroundColor: 'rgba(201, 160, 80, 0.08)',
+      fill: true,
+      tension: 0.4,
+      borderWidth: 2.5,
+      pointRadius: 0,
+      pointHoverRadius: 5,
+      pointHoverBackgroundColor: '#c9a050',
+      pointHoverBorderColor: '#fff',
+      pointHoverBorderWidth: 2,
+    },
+    {
+      label: 'Page Views',
+      data: chartData.value.map(d => d.pageviews || 0),
+      borderColor: '#3498db',
+      backgroundColor: 'rgba(52, 152, 219, 0.05)',
+      fill: true,
+      tension: 0.4,
+      borderWidth: 2,
+      pointRadius: 0,
+      pointHoverRadius: 4,
+      pointHoverBackgroundColor: '#3498db',
+      pointHoverBorderColor: '#fff',
+      pointHoverBorderWidth: 2,
+    },
+  ],
+}))
+
+const trafficChartOptions = {
+  responsive: true,
+  maintainAspectRatio: false,
+  interaction: { mode: 'index', intersect: false },
+  plugins: {
+    legend: { display: true, position: 'top', align: 'end', labels: { usePointStyle: true, pointStyle: 'circle', padding: 20, boxWidth: 6 } },
+    tooltip: {
+      backgroundColor: 'rgba(26, 26, 46, 0.95)',
+      titleColor: '#fff',
+      bodyColor: '#ccc',
+      borderColor: 'rgba(201, 160, 80, 0.3)',
+      borderWidth: 1,
+      padding: 12,
+      cornerRadius: 8,
+      displayColors: true,
+      boxWidth: 8,
+      boxHeight: 8,
+      usePointStyle: true,
+    },
+  },
+  scales: {
+    x: {
+      grid: { display: false },
+      border: { display: false },
+      ticks: { maxTicksLimit: 8, padding: 8 },
+    },
+    y: {
+      grid: { color: 'rgba(138, 138, 154, 0.08)', drawTicks: false },
+      border: { display: false },
+      ticks: { padding: 12 },
+      beginAtZero: true,
+    },
+  },
 }
 
-function buildAreaPath(data, key, maxVal) {
-  const line = buildLinePath(data, key, maxVal)
-  if (!line) return ''
-  const step = chartWidth / Math.max(data.length - 1, 1)
-  return line + ` L${(data.length - 1) * step},${chartHeight} L0,${chartHeight} Z`
+// Sources — Horizontal Bar chart
+const sourcesChartData = computed(() => ({
+  labels: sources.value.map(s => s.name),
+  datasets: [{
+    label: 'Sessions',
+    data: sources.value.map(s => s.sessions || 0),
+    backgroundColor: ['#c9a050', '#3498db', '#27ae60', '#e67e22', '#e74c3c', '#9b59b6'],
+    borderRadius: 4,
+    barThickness: 22,
+  }],
+}))
+
+const sourcesChartOptions = {
+  responsive: true,
+  maintainAspectRatio: false,
+  indexAxis: 'y',
+  plugins: {
+    legend: { display: false },
+    tooltip: {
+      backgroundColor: 'rgba(26, 26, 46, 0.95)',
+      titleColor: '#fff',
+      bodyColor: '#ccc',
+      borderColor: 'rgba(201, 160, 80, 0.3)',
+      borderWidth: 1,
+      padding: 12,
+      cornerRadius: 8,
+    },
+  },
+  scales: {
+    x: {
+      grid: { color: 'rgba(138, 138, 154, 0.08)', drawTicks: false },
+      border: { display: false },
+      ticks: { padding: 8 },
+      beginAtZero: true,
+    },
+    y: {
+      grid: { display: false },
+      border: { display: false },
+      ticks: { padding: 8 },
+    },
+  },
 }
 
-const maxChartVal = computed(() => {
-  if (!chartData.value.length) return 1
-  return Math.max(...chartData.value.map(d => Math.max(d.visitors || 0, d.pageviews || 0))) * 1.1 || 1
-})
+// Devices — Doughnut chart
+const deviceColors = ['#c9a050', '#3498db', '#8a8a9a', '#27ae60', '#e74c3c']
+const devicesChartData = computed(() => ({
+  labels: devices.value.map(d => d.name),
+  datasets: [{
+    data: devices.value.map(d => d.pct || 0),
+    backgroundColor: deviceColors.slice(0, devices.value.length),
+    borderWidth: 0,
+    hoverOffset: 6,
+  }],
+}))
 
-const visitorsLinePath = computed(() => buildLinePath(chartData.value, 'visitors', maxChartVal.value))
-const visitorsAreaPath = computed(() => buildAreaPath(chartData.value, 'visitors', maxChartVal.value))
-const viewsLinePath = computed(() => buildLinePath(chartData.value, 'pageviews', maxChartVal.value))
-const viewsAreaPath = computed(() => buildAreaPath(chartData.value, 'pageviews', maxChartVal.value))
-
-function handleChartHover(e) {
-  const rect = e.currentTarget.getBoundingClientRect()
-  const pctX = ((e.clientX - rect.left) / rect.width) * 100
-  const idx = Math.round(((e.clientX - rect.left) / rect.width) * Math.max(chartData.value.length - 1, 0))
-  const d = chartData.value[Math.max(0, Math.min(idx, chartData.value.length - 1))]
-  if (!d) return
-  const step = chartWidth / Math.max(chartData.value.length - 1, 1)
-  const x = idx * step
-  localChartHover.value = { x, pctX, label: d.label, visitors: d.visitors, pageviews: d.pageviews }
+const devicesChartOptions = {
+  responsive: true,
+  maintainAspectRatio: false,
+  cutout: '65%',
+  plugins: {
+    legend: { display: true, position: 'right', labels: { usePointStyle: true, pointStyle: 'circle', padding: 14, boxWidth: 8, font: { size: 12 } } },
+    tooltip: {
+      backgroundColor: 'rgba(26, 26, 46, 0.95)',
+      titleColor: '#fff',
+      bodyColor: '#ccc',
+      borderColor: 'rgba(201, 160, 80, 0.3)',
+      borderWidth: 1,
+      padding: 12,
+      cornerRadius: 8,
+      callbacks: { label: (ctx) => `${ctx.label}: ${ctx.parsed}%` },
+    },
+  },
 }
 
-const deviceColors = ['var(--brand-accent)', 'var(--text-primary)', 'var(--text-muted)']
-const deviceArcs = computed(() => {
-  const circ = 2 * Math.PI * 50
-  let acc = 0
-  return devices.value.map((d, i) => {
-    const len = (d.pct / 100) * circ
-    const arc = { color: d.color || deviceColors[i], dash: `${len - 4} ${circ - len + 4}`, offset: -acc + circ / 4 }
-    acc += len
-    return arc
-  })
-})
+// ════════════ UTILITY FUNCTIONS ════════════
 
 const maxRetentionWeeks = computed(() => {
   if (!retentionData.value.rows?.length) return 0
@@ -559,7 +621,6 @@ watch(() => store.cache, () => {
 // ── Init ──
 onMounted(async () => {
   store.init(websiteId, period.value)
-  // Fetch overview (store handles caching — shows cached, refreshes if stale)
   await store.fetchOverview(websiteId, period.value)
 })
 
@@ -578,7 +639,8 @@ onBeforeUnmount(() => {
 .atab { display: flex; align-items: center; gap: 6px; padding: 10px 16px; border: none; background: transparent; border-radius: var(--radius-md); font-size: var(--font-sm); font-weight: 600; color: var(--text-muted); cursor: pointer; transition: all 0.15s; white-space: nowrap; font-family: var(--font-family); }
 .atab:hover { color: var(--text-primary); background: var(--bg-surface); }
 .atab.active { background: var(--text-primary); color: var(--text-inverse); }
-.atab-icon { font-size: 16px; }
+.atab-icon { width: 16px; height: 16px; flex-shrink: 0; }
+.chart-container canvas { width: 100% !important; }
 
 /* ── KPI Grid ── */
 .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
