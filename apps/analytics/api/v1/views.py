@@ -1,7 +1,9 @@
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.parsers import JSONParser, FormParser
 from rest_framework import status
+import json
 
 from apps.analytics.services.event_ingestion_service import EventIngestionService
 from apps.analytics.services.analytics_service import AnalyticsService
@@ -9,10 +11,22 @@ from apps.websites.services.website_service import WebsiteService
 from core.interceptors.throttling import PixelIngestThrottle
 
 
+class PlainTextJSONParser:
+    """Parse JSON sent as text/plain (navigator.sendBeacon default)."""
+    media_type = 'text/plain'
+
+    def parse(self, stream, media_type=None, parser_context=None):
+        try:
+            return json.loads(stream.read())
+        except (json.JSONDecodeError, Exception):
+            return {}
+
+
 class EventIngestView(APIView):
     """Public pixel ingestion endpoint."""
     permission_classes = [AllowAny]
     throttle_classes = [PixelIngestThrottle]
+    parser_classes = [JSONParser, PlainTextJSONParser, FormParser]
 
     def post(self, request):
         pixel_key = request.data.get("pixel_key")
@@ -32,6 +46,7 @@ class EventIngestView(APIView):
 class BatchEventIngestView(APIView):
     permission_classes = [AllowAny]
     throttle_classes = [PixelIngestThrottle]
+    parser_classes = [JSONParser, PlainTextJSONParser, FormParser]
 
     def post(self, request):
         pixel_key = request.data.get("pixel_key")
