@@ -29,26 +29,26 @@ class WebsiteListCreateView(APIView):
         return Response(serializer.data)
 
     def post(self, request):
-        # Enforce plan-based project limit
-        current_count = Website.objects.filter(user=request.user).count()
-        plan_id = "starter"
-        try:
-            plan_id = request.user.subscription.plan
-        except Exception:
-            pass
-        plan_config = next((p for p in PLANS if p["id"] == plan_id), PLANS[0])
-        max_projects = plan_config["limits"].get("websites", 1)
-        if max_projects != -1 and current_count >= max_projects:
-            return Response(
-                {
-                    "error": "project_limit_reached",
-                    "message": f"Your {plan_config['name']} plan allows up to {max_projects} project(s). Upgrade to add more.",
-                    "current": current_count,
-                    "limit": max_projects,
-                    "plan": plan_id,
-                },
-                status=status.HTTP_403_FORBIDDEN,
-            )
+        # Plan limit check disabled for testing — re-enable for production
+        # current_count = Website.objects.filter(user=request.user).count()
+        # plan_id = "starter"
+        # try:
+        #     plan_id = request.user.subscription.plan
+        # except Exception:
+        #     pass
+        # plan_config = next((p for p in PLANS if p["id"] == plan_id), PLANS[0])
+        # max_projects = plan_config["limits"].get("websites", 1)
+        # if max_projects != -1 and current_count >= max_projects:
+        #     return Response(
+        #         {
+        #             "error": "project_limit_reached",
+        #             "message": f"Your {plan_config['name']} plan allows up to {max_projects} project(s). Upgrade to add more.",
+        #             "current": current_count,
+        #             "limit": max_projects,
+        #             "plan": plan_id,
+        #         },
+        #         status=status.HTTP_403_FORBIDDEN,
+        #     )
         serializer = WebsiteCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         website = WebsiteService.create(user=request.user, **serializer.validated_data)

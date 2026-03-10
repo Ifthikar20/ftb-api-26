@@ -3,8 +3,14 @@ import os
 
 DEBUG = False
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
-ADMINS = [("Ops Team", env("OPS_EMAIL", default="ops@growthpilot.io"))]  # noqa: F405
-SERVER_EMAIL = env("SERVER_EMAIL", default="noreply@growthpilot.io")  # noqa: F405
+ADMINS = [("Ops Team", env("OPS_EMAIL", default="ops@fetchbot.ai"))]  # noqa: F405
+SERVER_EMAIL = env("SERVER_EMAIL", default="noreply@fetchbot.ai")  # noqa: F405
+
+# ── Trusted Origins (Cloudflare → Nginx → Django) ──
+CSRF_TRUSTED_ORIGINS = [
+    "https://fetchbot.ai",
+    "https://www.fetchbot.ai",
+]
 
 # Enforce SSL for DB
 DATABASES["default"]["OPTIONS"] = {  # noqa: F405

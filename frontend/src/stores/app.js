@@ -10,7 +10,7 @@ export const useAppStore = defineStore('app', () => {
 
     // Plan state
     const userPlan = ref('starter')
-    const projectLimit = ref(1)
+    const projectLimit = ref(-1) // -1 = unlimited (testing mode)
 
     const canCreateProject = computed(() => {
         if (projectLimit.value === -1) return true

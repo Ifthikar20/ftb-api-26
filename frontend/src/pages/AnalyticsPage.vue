@@ -4,203 +4,381 @@
     <div class="page-header">
       <div>
         <h1 class="page-title">Analytics</h1>
-        <p class="page-subtitle">Traffic, engagement and visitor insights for your website.</p>
+        <p class="page-subtitle">Product analytics, funnels, retention, and AI insights.</p>
       </div>
       <div class="flex gap-8 items-center">
         <div class="period-tabs">
-          <button v-for="p in periods" :key="p.value" class="period-tab" :class="{ active: period === p.value }" @click="period = p.value; fetchData()">{{ p.label }}</button>
+          <button v-for="p in periods" :key="p.value" class="period-tab" :class="{ active: period === p.value }" @click="period = p.value; loadTab()">{{ p.label }}</button>
         </div>
       </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="analytics-tabs">
+      <button v-for="tab in tabs" :key="tab.id" class="atab" :class="{ active: activeTab === tab.id }" @click="switchTab(tab.id)">
+        <span class="atab-icon">{{ tab.icon }}</span>
+        <span class="atab-label">{{ tab.label }}</span>
+      </button>
     </div>
 
     <div v-if="loading" class="loading-state">
       <div class="spinner"></div>
       <span style="margin-top:12px">Loading analytics...</span>
     </div>
+
     <template v-else>
-
-      <!-- KPI Metric Cards -->
-      <div class="kpi-grid">
-        <div class="kpi-card" v-for="stat in stats" :key="stat.label" :class="stat.highlight ? 'kpi-highlight' : ''">
-          <div class="kpi-header">
-            <span class="kpi-label">{{ stat.label }}</span>
-            <span class="kpi-trend" :class="stat.trend >= 0 ? 'trend-up' : 'trend-down'">
-              <svg v-if="stat.trend >= 0" width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 2v8M3 5l3-3 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-              <svg v-else width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 10V2M3 7l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-              {{ Math.abs(stat.trend) }}%
-            </span>
-          </div>
-          <div class="kpi-value">{{ stat.value }}</div>
-          <div class="kpi-sparkline">
-            <svg :viewBox="'0 0 120 30'" preserveAspectRatio="none">
-              <polyline :points="stat.sparkline" fill="none" :stroke="stat.trend >= 0 ? 'var(--color-success)' : 'var(--color-danger)'" stroke-width="2" />
-            </svg>
-          </div>
-        </div>
-      </div>
-
-      <!-- Traffic Chart (Area Graph) -->
-      <div class="card chart-card">
-        <div class="card-header">
-          <div>
-            <h3 class="card-title">Traffic Overview</h3>
-            <p class="card-subtitle">Visitor sessions over time</p>
-          </div>
-          <div class="chart-legend">
-            <span class="legend-item"><span class="legend-dot" style="background: var(--brand-accent)"></span> Visitors</span>
-            <span class="legend-item"><span class="legend-dot" style="background: var(--color-info)"></span> Page Views</span>
-          </div>
-        </div>
-        <div class="area-chart-wrap" @mousemove="handleChartHover" @mouseleave="chartHover = null">
-          <svg class="area-chart-svg" :viewBox="'0 0 ' + chartWidth + ' ' + chartHeight" preserveAspectRatio="none">
-            <defs>
-              <linearGradient id="visitorsGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stop-color="var(--brand-accent)" stop-opacity="0.25"/>
-                <stop offset="100%" stop-color="var(--brand-accent)" stop-opacity="0.02"/>
-              </linearGradient>
-              <linearGradient id="viewsGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stop-color="var(--color-info)" stop-opacity="0.15"/>
-                <stop offset="100%" stop-color="var(--color-info)" stop-opacity="0.02"/>
-              </linearGradient>
-            </defs>
-            <!-- Grid lines -->
-            <line v-for="i in 4" :key="'g'+i" :x1="0" :y1="chartHeight * i / 5" :x2="chartWidth" :y2="chartHeight * i / 5" stroke="var(--border-color)" stroke-width="0.5"/>
-            <!-- Pageviews area -->
-            <path :d="viewsAreaPath" fill="url(#viewsGrad)" />
-            <path :d="viewsLinePath" fill="none" stroke="var(--color-info)" stroke-width="2" stroke-linejoin="round"/>
-            <!-- Visitors area -->
-            <path :d="visitorsAreaPath" fill="url(#visitorsGrad)" />
-            <path :d="visitorsLinePath" fill="none" stroke="var(--brand-accent)" stroke-width="2.5" stroke-linejoin="round"/>
-            <!-- Hover line -->
-            <line v-if="chartHover" :x1="chartHover.x" :y1="0" :x2="chartHover.x" :y2="chartHeight" stroke="var(--text-muted)" stroke-width="0.5" stroke-dasharray="4"/>
-            <circle v-if="chartHover" :cx="chartHover.x" :cy="chartHover.vy" r="4" fill="var(--brand-accent)" stroke="#fff" stroke-width="2"/>
-            <circle v-if="chartHover" :cx="chartHover.x" :cy="chartHover.py" r="3.5" fill="var(--color-info)" stroke="#fff" stroke-width="2"/>
+      <!-- Empty State -->
+      <div v-if="noData && activeTab === 'overview'" class="empty-state-card">
+        <div class="empty-icon">
+          <svg width="48" height="48" viewBox="0 0 48 48" fill="none" stroke="var(--brand-accent)" stroke-width="1.5">
+            <rect x="6" y="6" width="36" height="36" rx="4"/>
+            <path d="M6 18h36M18 18v24"/>
+            <circle cx="30" cy="30" r="6" fill="none" stroke-dasharray="4"/>
           </svg>
-          <!-- Hover tooltip -->
-          <div v-if="chartHover" class="chart-tooltip" :style="{ left: chartHover.pctX + '%' }">
-            <strong>{{ chartHover.label }}</strong>
-            <div class="tooltip-row"><span class="legend-dot" style="background:var(--brand-accent)"></span> {{ chartHover.visitors }} visitors</div>
-            <div class="tooltip-row"><span class="legend-dot" style="background:var(--color-info)"></span> {{ chartHover.pageviews }} views</div>
-          </div>
-          <!-- X-axis labels -->
-          <div class="area-chart-labels">
-            <span v-for="(d, i) in chartData" :key="i" :class="{ highlighted: i % 3 === 0 }">{{ d.label }}</span>
-          </div>
         </div>
+        <h3 class="empty-title">Install the tracking pixel</h3>
+        <p class="empty-desc">Add the FetchBot tracking snippet to your website to start collecting real visitor data.</p>
+        <div class="empty-snippet">
+          <code>&lt;script src="/fetchbot-pixel.js" data-site="YOUR_PIXEL_KEY" async&gt;&lt;/script&gt;</code>
+        </div>
+        <p class="empty-hint">Go to <strong>Projects → Settings</strong> to copy your personalized snippet.</p>
       </div>
 
-      <!-- Middle Row: Sources + Pages -->
-      <div class="analytics-row">
-        <!-- Traffic Sources -->
-        <div class="card">
-          <div class="card-header">
-            <h3 class="card-title">Acquisition Channels</h3>
+      <!-- ═══════════ TAB 1: Overview ═══════════ -->
+      <div v-show="activeTab === 'overview' && !noData">
+        <!-- KPI Cards -->
+        <div class="kpi-grid">
+          <div class="kpi-card" v-for="stat in stats" :key="stat.label" :class="stat.highlight ? 'kpi-highlight' : ''">
+            <div class="kpi-header">
+              <span class="kpi-label">{{ stat.label }}</span>
+              <span class="kpi-trend" :class="stat.trend >= 0 ? 'trend-up' : 'trend-down'">
+                {{ stat.trend >= 0 ? '↑' : '↓' }} {{ Math.abs(stat.trend) }}%
+              </span>
+            </div>
+            <div class="kpi-value">{{ stat.value }}</div>
           </div>
-          <div class="channel-list">
-            <div v-for="source in sources" :key="source.name" class="channel-item">
-              <div class="channel-info">
-                <div class="channel-icon" :style="{ background: source.color + '18', color: source.color }">
-                  <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><circle cx="7" cy="7" r="5"/></svg>
-                </div>
-                <div>
-                  <div class="channel-name">{{ source.name }}</div>
-                  <div class="channel-metric text-xs text-muted">{{ source.sessions }} sessions</div>
-                </div>
-              </div>
-              <div class="channel-bar-wrap">
-                <div class="channel-bar" :style="{ width: source.pct + '%', background: source.color }"></div>
-              </div>
-              <span class="channel-pct">{{ source.pct }}%</span>
+        </div>
+
+        <!-- Area Chart -->
+        <div class="card chart-card">
+          <div class="card-header">
+            <div>
+              <h3 class="card-title">Traffic Overview</h3>
+              <p class="card-subtitle">Visitor sessions over time</p>
+            </div>
+            <div class="chart-legend">
+              <span class="legend-item"><span class="legend-dot" style="background: var(--brand-accent)"></span> Visitors</span>
+              <span class="legend-item"><span class="legend-dot" style="background: var(--color-info)"></span> Page Views</span>
+            </div>
+          </div>
+          <div class="area-chart-wrap" @mousemove="handleChartHover" @mouseleave="chartHover = null">
+            <svg class="area-chart-svg" :viewBox="'0 0 ' + chartWidth + ' ' + chartHeight" preserveAspectRatio="none">
+              <defs>
+                <linearGradient id="visitorsGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="var(--brand-accent)" stop-opacity="0.25"/>
+                  <stop offset="100%" stop-color="var(--brand-accent)" stop-opacity="0.02"/>
+                </linearGradient>
+                <linearGradient id="viewsGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="var(--color-info)" stop-opacity="0.15"/>
+                  <stop offset="100%" stop-color="var(--color-info)" stop-opacity="0.02"/>
+                </linearGradient>
+              </defs>
+              <line v-for="i in 4" :key="'g'+i" :x1="0" :y1="chartHeight * i / 5" :x2="chartWidth" :y2="chartHeight * i / 5" stroke="var(--border-color)" stroke-width="0.5"/>
+              <path :d="viewsAreaPath" fill="url(#viewsGrad)" />
+              <path :d="viewsLinePath" fill="none" stroke="var(--color-info)" stroke-width="2" stroke-linejoin="round"/>
+              <path :d="visitorsAreaPath" fill="url(#visitorsGrad)" />
+              <path :d="visitorsLinePath" fill="none" stroke="var(--brand-accent)" stroke-width="2.5" stroke-linejoin="round"/>
+              <line v-if="chartHover" :x1="chartHover.x" :y1="0" :x2="chartHover.x" :y2="chartHeight" stroke="var(--text-muted)" stroke-width="0.5" stroke-dasharray="4"/>
+            </svg>
+            <div v-if="chartHover" class="chart-tooltip" :style="{ left: chartHover.pctX + '%' }">
+              <strong>{{ chartHover.label }}</strong>
+              <div>{{ chartHover.visitors }} visitors · {{ chartHover.pageviews }} views</div>
+            </div>
+            <div class="area-chart-labels">
+              <span v-for="(d, i) in chartData" :key="i" :class="{ highlighted: i % Math.ceil(chartData.length / 7) === 0 }">{{ d.label }}</span>
             </div>
           </div>
         </div>
 
-        <!-- Top Pages -->
+        <!-- Sources + Pages Row -->
+        <div class="analytics-row">
+          <div class="card">
+            <div class="card-header"><h3 class="card-title">Top Sources</h3></div>
+            <div class="channel-list">
+              <div v-for="source in sources" :key="source.name" class="channel-item">
+                <div class="channel-info">
+                  <span class="channel-name">{{ source.name }}</span>
+                  <span class="text-xs text-muted">{{ source.sessions }} sessions</span>
+                </div>
+                <div class="channel-bar-wrap"><div class="channel-bar" :style="{ width: source.pct + '%', background: source.color }"></div></div>
+                <span class="channel-pct">{{ source.pct }}%</span>
+              </div>
+              <div v-if="!sources.length" class="empty-inline">No source data yet</div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header"><h3 class="card-title">Top Pages</h3></div>
+            <table class="data-table">
+              <thead><tr><th>Page</th><th style="text-align:right">Views</th></tr></thead>
+              <tbody>
+                <tr v-for="(page, i) in topPages" :key="i">
+                  <td><span class="page-rank">{{ i + 1 }}</span> {{ page.url }}</td>
+                  <td style="text-align:right" class="font-semibold">{{ page.views }}</td>
+                </tr>
+              </tbody>
+            </table>
+            <div v-if="!topPages.length" class="empty-inline">No page data yet</div>
+          </div>
+        </div>
+
+        <!-- Devices + Countries Row -->
+        <div class="analytics-row">
+          <div class="card">
+            <div class="card-header"><h3 class="card-title">Devices</h3></div>
+            <div class="device-breakdown" v-if="devices.length">
+              <div class="donut-chart">
+                <svg viewBox="0 0 120 120">
+                  <circle cx="60" cy="60" r="50" fill="none" stroke="var(--bg-surface)" stroke-width="12"/>
+                  <circle v-for="(d, i) in deviceArcs" :key="i" cx="60" cy="60" r="50" fill="none" :stroke="d.color" stroke-width="12" :stroke-dasharray="d.dash" :stroke-dashoffset="d.offset" stroke-linecap="round"/>
+                </svg>
+              </div>
+              <div class="device-legend">
+                <div v-for="device in devices" :key="device.name" class="device-legend-item">
+                  <span class="legend-dot" :style="{ background: device.color }"></span>
+                  <span class="device-name">{{ device.name }}</span>
+                  <span class="device-value font-semibold">{{ device.pct }}%</span>
+                </div>
+              </div>
+            </div>
+            <div v-else class="empty-inline">No device data yet</div>
+          </div>
+          <div class="card">
+            <div class="card-header"><h3 class="card-title">Top Countries</h3></div>
+            <div class="country-list" v-if="countries.length">
+              <div v-for="(c, i) in countries" :key="i" class="country-item">
+                <div class="country-rank">{{ i + 1 }}</div>
+                <div class="country-info">
+                  <span class="country-name">{{ c.name }}</span>
+                  <div class="country-bar-wrap"><div class="country-bar" :style="{ width: c.pct + '%' }"></div></div>
+                </div>
+                <span class="font-semibold">{{ c.visitors }}</span>
+              </div>
+            </div>
+            <div v-else class="empty-inline">No geo data yet</div>
+          </div>
+        </div>
+
+        <!-- Realtime -->
+        <div class="card realtime-card" v-if="realtimeVisitors > 0">
+          <div class="realtime-dot"></div>
+          <span class="font-semibold">{{ realtimeVisitors }} active users</span>
+          <span class="text-muted text-sm"> right now</span>
+        </div>
+      </div>
+
+      <!-- ═══════════ TAB 2: Funnels ═══════════ -->
+      <div v-show="activeTab === 'funnels'">
+        <div class="card" style="margin-bottom:20px">
+          <div class="card-header">
+            <h3 class="card-title">Conversion Funnels</h3>
+            <button class="btn btn-primary btn-sm" @click="showCreateFunnel = true">+ New Funnel</button>
+          </div>
+          <!-- Saved funnels -->
+          <div v-if="funnelList.length" class="funnel-list">
+            <div v-for="f in funnelList" :key="f.id" class="funnel-item" @click="runFunnel(f.id)">
+              <span class="font-semibold">{{ f.name }}</span>
+              <span class="text-xs text-muted">{{ f.steps?.length || 0 }} steps</span>
+            </div>
+          </div>
+          <div v-else class="empty-inline">No funnels yet. Create one to track conversions.</div>
+        </div>
+
+        <!-- Funnel result -->
+        <div v-if="funnelResult" class="card">
+          <div class="card-header">
+            <h3 class="card-title">{{ funnelResult.name }}</h3>
+            <span class="badge badge-success">{{ funnelResult.overall_conversion_pct }}% conversion</span>
+          </div>
+          <div class="funnel-viz">
+            <div v-for="(step, i) in funnelResult.steps" :key="i" class="funnel-step">
+              <div class="funnel-bar" :style="{ height: step.conversion_pct + '%' }">
+                <div class="funnel-bar-fill"></div>
+              </div>
+              <div class="funnel-step-info">
+                <div class="font-semibold text-sm">{{ step.name }}</div>
+                <div class="text-xs text-muted">{{ step.visitors }} visitors</div>
+                <div v-if="step.drop_off_pct > 0" class="text-xs text-danger">-{{ step.drop_off_pct }}% drop</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Create Funnel Modal -->
+        <div v-if="showCreateFunnel" class="modal-overlay" @click.self="showCreateFunnel = false">
+          <div class="modal-card" style="max-width:500px">
+            <h3 class="card-title" style="margin-bottom:16px">Create Funnel</h3>
+            <div class="form-group"><label class="form-label">Name</label><input v-model="newFunnel.name" class="form-input" placeholder="e.g. Signup Flow" /></div>
+            <div v-for="(step, i) in newFunnel.steps" :key="i" class="form-group" style="display:flex;gap:8px">
+              <input v-model="step.name" class="form-input" :placeholder="'Step ' + (i+1) + ' name'" style="flex:1" />
+              <input v-model="step.value" class="form-input" :placeholder="'URL contains...'" style="flex:1" />
+            </div>
+            <button class="btn btn-secondary btn-sm" @click="newFunnel.steps.push({name:'',type:'url',value:''})" style="margin-bottom:16px">+ Add Step</button>
+            <div class="flex gap-8">
+              <button class="btn btn-primary" @click="createFunnel">Create</button>
+              <button class="btn btn-secondary" @click="showCreateFunnel = false">Cancel</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══════════ TAB 3: Retention ═══════════ -->
+      <div v-show="activeTab === 'retention'">
         <div class="card">
           <div class="card-header">
-            <h3 class="card-title">Top Pages</h3>
-            <span class="text-xs text-muted">by pageviews</span>
+            <h3 class="card-title">Cohort Retention</h3>
+            <p class="card-subtitle">How many visitors return over time</p>
           </div>
-          <table class="data-table">
+          <div v-if="retentionData.rows && retentionData.rows.length" class="retention-matrix">
+            <table class="data-table retention-table">
+              <thead>
+                <tr>
+                  <th>Cohort</th>
+                  <th>Size</th>
+                  <th v-for="w in maxRetentionWeeks" :key="w">Wk {{ w - 1 }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="row in retentionData.rows" :key="row.cohort">
+                  <td class="font-semibold">{{ row.cohort }}</td>
+                  <td>{{ row.cohort_size }}</td>
+                  <td v-for="(w, i) in row.weeks" :key="i" :style="{ background: retentionColor(w.pct) }" class="retention-cell">
+                    {{ w.pct }}%
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div v-else class="empty-inline">No retention data yet. Data appears after visitors return to your site.</div>
+        </div>
+      </div>
+
+      <!-- ═══════════ TAB 4: Flows ═══════════ -->
+      <div v-show="activeTab === 'flows'">
+        <div class="analytics-row">
+          <div class="card">
+            <div class="card-header"><h3 class="card-title">Top Page Flows</h3></div>
+            <div v-if="flowData.links && flowData.links.length" class="flow-list">
+              <div v-for="(link, i) in flowData.links.slice(0, 15)" :key="i" class="flow-item">
+                <span class="flow-page">{{ link.source }}</span>
+                <span class="flow-arrow">→</span>
+                <span class="flow-page">{{ link.target }}</span>
+                <span class="flow-count">{{ link.value }}×</span>
+              </div>
+            </div>
+            <div v-else class="empty-inline">No flow data yet</div>
+          </div>
+          <div class="card">
+            <div class="card-header"><h3 class="card-title">Entry & Exit Pages</h3></div>
+            <div v-if="entryExitData.entry_pages && entryExitData.entry_pages.length">
+              <h4 class="text-sm font-semibold" style="margin-bottom:8px;color:var(--color-success)">↓ Entry Pages</h4>
+              <div v-for="p in entryExitData.entry_pages" :key="'e'+p.page" class="flow-stat-item">
+                <span class="truncate" style="max-width:200px">{{ p.page }}</span>
+                <span class="font-semibold">{{ p.count }}</span>
+              </div>
+              <h4 class="text-sm font-semibold" style="margin:16px 0 8px;color:var(--color-danger)">↑ Exit Pages</h4>
+              <div v-for="p in entryExitData.exit_pages || []" :key="'x'+p.page" class="flow-stat-item">
+                <span class="truncate" style="max-width:200px">{{ p.page }}</span>
+                <span class="font-semibold">{{ p.count }}</span>
+              </div>
+            </div>
+            <div v-else class="empty-inline">No entry/exit data yet</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══════════ TAB 5: AI Insights ═══════════ -->
+      <div v-show="activeTab === 'insights'">
+        <div class="insights-grid">
+          <div v-for="(insight, i) in insightsData.insights || []" :key="i" class="insight-card" :class="'insight-' + insight.type">
+            <div class="insight-header">
+              <span class="insight-icon">{{ insight.icon }}</span>
+              <span class="insight-badge" :class="'ibadge-' + insight.type">{{ insight.type }}</span>
+              <span v-if="insight.metric" class="insight-metric">{{ insight.metric }}</span>
+            </div>
+            <h4 class="insight-title">{{ insight.title }}</h4>
+            <p class="insight-desc">{{ insight.description }}</p>
+            <div class="insight-action" v-if="insight.action">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 7h12M8 2l5 5-5 5"/></svg>
+              {{ insight.action }}
+            </div>
+          </div>
+        </div>
+        <div v-if="!insightsData.insights || !insightsData.insights.length" class="empty-state-card">
+          <div style="font-size:48px;margin-bottom:16px">🧠</div>
+          <h3 class="empty-title">AI Insights need more data</h3>
+          <p class="empty-desc">Once you have enough traffic data, FetchBot AI will detect anomalies, spot trends, and suggest actionable improvements.</p>
+        </div>
+
+        <!-- Suggested Actions -->
+        <div v-if="insightsData.actions && insightsData.actions.length" class="card" style="margin-top:20px">
+          <div class="card-header"><h3 class="card-title">Suggested Actions</h3></div>
+          <div v-for="(a, i) in insightsData.actions" :key="i" class="action-item">
+            <span class="action-priority" :class="'ap-' + a.priority">{{ a.priority }}</span>
+            <div>
+              <div class="font-semibold text-sm">{{ a.action }}</div>
+              <div class="text-xs text-muted">{{ a.reason }}</div>
+            </div>
+            <span v-if="a.impact" class="text-sm font-semibold">{{ a.impact }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══════════ TAB 6: Visitors ═══════════ -->
+      <div v-show="activeTab === 'visitors'">
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">Visitor Profiles</h3>
+            <span class="text-xs text-muted">{{ visitorList.length }} visitors</span>
+          </div>
+          <table class="data-table" v-if="visitorList.length">
             <thead>
-              <tr><th>Page</th><th style="text-align:right">Views</th><th style="text-align:right">Avg. Time</th><th style="text-align:right">Bounce</th></tr>
+              <tr><th>Visitor</th><th>Device</th><th>Country</th><th>Visits</th><th>Events</th><th>Last Seen</th></tr>
             </thead>
             <tbody>
-              <tr v-for="(page, i) in topPages" :key="i">
+              <tr v-for="v in visitorList" :key="v.id" class="clickable-row" @click="loadTimeline(v.id)">
                 <td>
-                  <div class="page-url">
-                    <span class="page-rank">{{ i + 1 }}</span>
-                    <span class="truncate" style="max-width:200px">{{ page.url }}</span>
-                  </div>
+                  <div class="visitor-id">{{ v.fingerprint_hash?.substring(0, 8) }}...</div>
+                  <div class="text-xs text-muted" v-if="v.company_name">{{ v.company_name }}</div>
                 </td>
-                <td style="text-align:right" class="font-semibold">{{ page.views }}</td>
-                <td style="text-align:right" class="text-muted">{{ page.avgTime }}</td>
-                <td style="text-align:right" class="text-muted">{{ page.bounce }}</td>
+                <td>{{ v.device_type || '--' }}<br><span class="text-xs text-muted">{{ v.browser }}</span></td>
+                <td>{{ v.geo_country || '--' }} {{ v.geo_city || '' }}</td>
+                <td class="font-semibold">{{ v.visit_count }}</td>
+                <td>{{ v.event_count }}</td>
+                <td class="text-xs text-muted">{{ formatDate(v.last_seen) }}</td>
               </tr>
             </tbody>
           </table>
+          <div v-else class="empty-inline">No visitor data yet</div>
         </div>
-      </div>
 
-      <!-- Bottom Row: Devices + Geo -->
-      <div class="analytics-row">
-        <!-- Device Breakdown -->
-        <div class="card">
-          <div class="card-header"><h3 class="card-title">Device Breakdown</h3></div>
-          <div class="device-breakdown">
-            <div class="donut-chart">
-              <svg viewBox="0 0 120 120">
-                <circle cx="60" cy="60" r="50" fill="none" stroke="var(--bg-surface)" stroke-width="12"/>
-                <circle v-for="(d, i) in deviceArcs" :key="i" cx="60" cy="60" r="50"
-                  fill="none" :stroke="d.color" stroke-width="12"
-                  :stroke-dasharray="d.dash" :stroke-dashoffset="d.offset"
-                  stroke-linecap="round" style="transition: all 0.6s ease"/>
-              </svg>
-              <div class="donut-center">
-                <div class="donut-total">{{ totalVisitors }}</div>
-                <div class="donut-label">Total</div>
-              </div>
-            </div>
-            <div class="device-legend">
-              <div v-for="device in devices" :key="device.name" class="device-legend-item">
-                <span class="legend-dot" :style="{ background: device.color }"></span>
-                <span class="device-name">{{ device.name }}</span>
-                <span class="device-value font-semibold">{{ device.pct }}%</span>
-              </div>
-            </div>
+        <!-- Visitor Timeline -->
+        <div v-if="timelineEvents.length" class="card" style="margin-top:20px">
+          <div class="card-header">
+            <h3 class="card-title">Event Timeline</h3>
+            <button class="btn btn-secondary btn-sm" @click="timelineEvents = []">Close</button>
           </div>
-        </div>
-
-        <!-- Top Countries -->
-        <div class="card">
-          <div class="card-header"><h3 class="card-title">Top Regions</h3></div>
-          <div class="country-list">
-            <div v-for="(country, i) in countries" :key="i" class="country-item">
-              <div class="country-rank">{{ i + 1 }}</div>
-              <div class="country-info">
-                <span class="country-name">{{ country.name }}</span>
-                <div class="country-bar-wrap">
-                  <div class="country-bar" :style="{ width: country.pct + '%' }"></div>
-                </div>
-              </div>
-              <div class="country-stats">
-                <span class="font-semibold">{{ country.visitors }}</span>
-                <span class="text-xs text-muted">{{ country.pct }}%</span>
+          <div class="timeline">
+            <div v-for="e in timelineEvents" :key="e.id" class="timeline-item">
+              <div class="timeline-dot" :class="'dot-' + e.event_type"></div>
+              <div class="timeline-content">
+                <span class="badge badge-sm" :class="eventBadge(e.event_type)">{{ e.event_type }}</span>
+                <span class="text-sm truncate" style="max-width:300px">{{ e.url }}</span>
+                <span class="text-xs text-muted">{{ formatTime(e.timestamp) }}</span>
               </div>
             </div>
           </div>
         </div>
       </div>
-
-      <!-- Real-time indicator -->
-      <div class="card realtime-card">
-        <div class="realtime-dot"></div>
-        <div>
-          <span class="font-semibold">{{ realtimeVisitors }} active users</span>
-          <span class="text-muted text-sm"> right now on your website</span>
-        </div>
-      </div>
-
     </template>
   </div>
 </template>
@@ -213,16 +391,29 @@ import analyticsApi from '@/api/analytics'
 const route = useRoute()
 const websiteId = route.params.websiteId
 
+const tabs = [
+  { id: 'overview', icon: '📈', label: 'Overview' },
+  { id: 'funnels', icon: '🔄', label: 'Funnels' },
+  { id: 'retention', icon: '🔁', label: 'Retention' },
+  { id: 'flows', icon: '🌊', label: 'Flows' },
+  { id: 'insights', icon: '🧠', label: 'AI Insights' },
+  { id: 'visitors', icon: '👤', label: 'Visitors' },
+]
+
 const periods = [
   { label: '24h', value: '24h' },
   { label: '7d', value: '7d' },
   { label: '30d', value: '30d' },
   { label: '90d', value: '90d' },
 ]
+
+const activeTab = ref('overview')
 const period = ref('30d')
 const loading = ref(true)
+const noData = ref(false)
 const chartHover = ref(null)
 
+// Overview data
 const stats = ref([])
 const chartData = ref([])
 const topPages = ref([])
@@ -231,13 +422,33 @@ const devices = ref([])
 const countries = ref([])
 const realtimeVisitors = ref(0)
 
-// Area chart dimensions (SVG viewBox units)
+// Funnels
+const funnelList = ref([])
+const funnelResult = ref(null)
+const showCreateFunnel = ref(false)
+const newFunnel = ref({ name: '', steps: [{ name: '', type: 'url', value: '' }, { name: '', type: 'url', value: '' }] })
+
+// Retention
+const retentionData = ref({})
+
+// Flows
+const flowData = ref({})
+const entryExitData = ref({})
+
+// AI Insights
+const insightsData = ref({})
+
+// Visitors
+const visitorList = ref([])
+const timelineEvents = ref([])
+
+// Chart
 const chartWidth = 600
 const chartHeight = 200
 
 function buildLinePath(data, key, maxVal) {
   if (!data.length) return ''
-  const step = chartWidth / (data.length - 1)
+  const step = chartWidth / Math.max(data.length - 1, 1)
   return data.map((d, i) => {
     const x = i * step
     const y = chartHeight - (d[key] / maxVal) * (chartHeight * 0.85) - chartHeight * 0.05
@@ -248,13 +459,13 @@ function buildLinePath(data, key, maxVal) {
 function buildAreaPath(data, key, maxVal) {
   const line = buildLinePath(data, key, maxVal)
   if (!line) return ''
-  const step = chartWidth / (data.length - 1)
+  const step = chartWidth / Math.max(data.length - 1, 1)
   return line + ` L${(data.length - 1) * step},${chartHeight} L0,${chartHeight} Z`
 }
 
 const maxChartVal = computed(() => {
   if (!chartData.value.length) return 1
-  return Math.max(...chartData.value.map(d => Math.max(d.visitors, d.pageviews))) * 1.1
+  return Math.max(...chartData.value.map(d => Math.max(d.visitors || 0, d.pageviews || 0))) * 1.1 || 1
 })
 
 const visitorsLinePath = computed(() => buildLinePath(chartData.value, 'visitors', maxChartVal.value))
@@ -265,557 +476,330 @@ const viewsAreaPath = computed(() => buildAreaPath(chartData.value, 'pageviews',
 function handleChartHover(e) {
   const rect = e.currentTarget.getBoundingClientRect()
   const pctX = ((e.clientX - rect.left) / rect.width) * 100
-  const idx = Math.round(((e.clientX - rect.left) / rect.width) * (chartData.value.length - 1))
+  const idx = Math.round(((e.clientX - rect.left) / rect.width) * Math.max(chartData.value.length - 1, 0))
   const d = chartData.value[Math.max(0, Math.min(idx, chartData.value.length - 1))]
   if (!d) return
-  const step = chartWidth / (chartData.value.length - 1)
+  const step = chartWidth / Math.max(chartData.value.length - 1, 1)
   const x = idx * step
-  const vy = chartHeight - (d.visitors / maxChartVal.value) * (chartHeight * 0.85) - chartHeight * 0.05
-  const py = chartHeight - (d.pageviews / maxChartVal.value) * (chartHeight * 0.85) - chartHeight * 0.05
-  chartHover.value = { x, vy, py, pctX, label: d.label, visitors: d.visitors, pageviews: d.pageviews }
-}
-
-const totalVisitors = computed(() => {
-  const total = devices.value.reduce((sum, d) => sum + (d.count || 0), 0)
-  return total > 0 ? total.toLocaleString() : stats.value[0]?.rawValue || '0'
-})
-
-function generateSparkline() {
-  const pts = []
-  let y = 15 + Math.random() * 10
-  for (let x = 0; x <= 120; x += 10) {
-    y = Math.max(2, Math.min(28, y + (Math.random() - 0.45) * 8))
-    pts.push(`${x},${30 - y}`)
-  }
-  return pts.join(' ')
+  chartHover.value = { x, pctX, label: d.label, visitors: d.visitors, pageviews: d.pageviews }
 }
 
 const deviceColors = ['var(--brand-accent)', 'var(--text-primary)', 'var(--text-muted)']
-
 const deviceArcs = computed(() => {
-  const circumference = 2 * Math.PI * 50
-  let accumulated = 0
+  const circ = 2 * Math.PI * 50
+  let acc = 0
   return devices.value.map((d, i) => {
-    const length = (d.pct / 100) * circumference
-    const gap = 4
-    const arc = {
-      color: d.color || deviceColors[i],
-      dash: `${length - gap} ${circumference - length + gap}`,
-      offset: -accumulated + circumference / 4,
-    }
-    accumulated += length
+    const len = (d.pct / 100) * circ
+    const arc = { color: d.color || deviceColors[i], dash: `${len - 4} ${circ - len + 4}`, offset: -acc + circ / 4 }
+    acc += len
     return arc
   })
 })
 
-async function fetchData() {
-  loading.value = true
-  try {
-    const [overviewRes, pagesRes, sourcesRes] = await Promise.all([
-      analyticsApi.overview(websiteId, { period: period.value }).catch(() => ({ data: {} })),
-      analyticsApi.pages(websiteId, { period: period.value }).catch(() => ({ data: [] })),
-      analyticsApi.sources(websiteId, { period: period.value }).catch(() => ({ data: [] })),
-    ])
+const maxRetentionWeeks = computed(() => {
+  if (!retentionData.value.rows?.length) return 0
+  return Math.max(...retentionData.value.rows.map(r => r.weeks?.length || 0))
+})
 
-    const o = overviewRes.data?.data || overviewRes.data || {}
-
-    // Build KPI stats with sparklines
-    const rawVisitors = o.unique_visitors || o.total_visitors || 847
-    const rawPageviews = o.pageviews || o.total_pageviews || 3241
-    const rawSessions = o.avg_session || '3m 12s'
-    const rawBounce = o.bounce_rate || '38.2%'
-
-    stats.value = [
-      { label: 'Unique Visitors', value: rawVisitors.toLocaleString?.() || rawVisitors, rawValue: String(rawVisitors), trend: o.visitors_trend || 12.5, sparkline: generateSparkline(), highlight: true },
-      { label: 'Page Views', value: rawPageviews.toLocaleString?.() || rawPageviews, rawValue: String(rawPageviews), trend: o.pageviews_trend || 8.3, sparkline: generateSparkline() },
-      { label: 'Avg. Session Duration', value: rawSessions, rawValue: rawSessions, trend: o.session_trend || -3.1, sparkline: generateSparkline() },
-      { label: 'Bounce Rate', value: rawBounce, rawValue: rawBounce, trend: o.bounce_trend || -5.7, sparkline: generateSparkline() },
-    ]
-
-    // Chart data
-    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-    const rawChart = o.chart_data || o.daily_visitors
-    if (rawChart && rawChart.length) {
-      chartData.value = rawChart.map((v, i) => ({
-        label: days[i % 7],
-        primary: Math.min(100, (v / Math.max(...rawChart)) * 100),
-        secondary: Math.min(100, (v / Math.max(...rawChart)) * 65 + Math.random() * 20),
-        visitors: v,
-        pageviews: Math.round(v * (2 + Math.random())),
-      }))
-    } else {
-      // Generate realistic demo chart data
-      const base = [420, 580, 520, 710, 650, 380, 290, 460, 620, 560, 740, 680, 400, 310]
-      chartData.value = base.map((v, i) => ({
-        label: days[i % 7],
-        primary: Math.min(100, (v / Math.max(...base)) * 95),
-        secondary: Math.min(100, (v / Math.max(...base)) * 60 + 10),
-        visitors: v,
-        pageviews: Math.round(v * 2.8),
-      }))
-    }
-
-    // Top pages
-    const pd = pagesRes.data?.data || pagesRes.data || pagesRes
-    const pageArr = Array.isArray(pd) ? pd : pd.results || []
-    if (pageArr.length) {
-      topPages.value = pageArr.map(p => ({
-        url: p.url || p.page,
-        views: (p.views || p.count || 0).toLocaleString?.() || p.views,
-        avgTime: p.avg_time || p.avgTime || '--',
-        bounce: p.bounce_rate || '--',
-      }))
-    } else {
-      topPages.value = [
-        { url: '/', views: '3,241', avgTime: '1:42', bounce: '32%' },
-        { url: '/pricing', views: '1,892', avgTime: '3:14', bounce: '28%' },
-        { url: '/blog/seo-tips-2026', views: '1,456', avgTime: '4:21', bounce: '22%' },
-        { url: '/features', views: '987', avgTime: '2:08', bounce: '41%' },
-        { url: '/about', views: '654', avgTime: '1:23', bounce: '55%' },
-        { url: '/demo', views: '523', avgTime: '5:02', bounce: '18%' },
-        { url: '/contact', views: '412', avgTime: '1:10', bounce: '62%' },
-      ]
-    }
-
-    // Sources
-    const sd = sourcesRes.data?.data || sourcesRes.data || sourcesRes
-    const sourceArr = Array.isArray(sd) ? sd : sd.results || []
-    const sourceColors = ['#c9a050', '#1a1a2e', '#27ae60', '#2980b9', '#e74c3c']
-    if (sourceArr.length) {
-      sources.value = sourceArr.map((s, i) => ({
-        name: s.source || s.name || 'Unknown',
-        pct: s.percentage || s.pct || 0,
-        sessions: s.sessions || Math.round((s.pct || 10) * 42),
-        color: sourceColors[i % sourceColors.length],
-      }))
-    } else {
-      sources.value = [
-        { name: 'Organic Search', pct: 42, sessions: '3,528', color: '#c9a050' },
-        { name: 'Direct', pct: 28, sessions: '2,352', color: '#1a1a2e' },
-        { name: 'Social Media', pct: 16, sessions: '1,344', color: '#27ae60' },
-        { name: 'Referral', pct: 9, sessions: '756', color: '#2980b9' },
-        { name: 'Paid Ads', pct: 5, sessions: '420', color: '#e74c3c' },
-      ]
-    }
-
-    // Devices
-    const rawDevices = o.devices
-    if (rawDevices && rawDevices.length) {
-      devices.value = rawDevices.map((d, i) => ({ ...d, color: deviceColors[i], count: d.count || 0 }))
-    } else {
-      devices.value = [
-        { name: 'Desktop', pct: 58, count: 4916, color: 'var(--brand-accent)' },
-        { name: 'Mobile', pct: 35, count: 2968, color: 'var(--text-primary)' },
-        { name: 'Tablet', pct: 7, count: 593, color: 'var(--text-muted)' },
-      ]
-    }
-
-    // Countries
-    const rawCountries = o.countries
-    if (rawCountries && rawCountries.length) {
-      countries.value = rawCountries
-    } else {
-      countries.value = [
-        { name: 'United States', visitors: '3,210', pct: 38 },
-        { name: 'United Kingdom', visitors: '1,420', pct: 17 },
-        { name: 'Germany', visitors: '890', pct: 11 },
-        { name: 'Canada', visitors: '720', pct: 9 },
-        { name: 'Australia', visitors: '540', pct: 6 },
-        { name: 'France', visitors: '380', pct: 5 },
-      ]
-    }
-
-    realtimeVisitors.value = o.realtime || Math.floor(Math.random() * 20) + 5
-  } catch (e) {
-    console.error('Analytics fetch error', e)
-  } finally {
-    loading.value = false
-  }
+function retentionColor(pct) {
+  if (pct >= 80) return 'rgba(39, 174, 96, 0.3)'
+  if (pct >= 60) return 'rgba(39, 174, 96, 0.2)'
+  if (pct >= 40) return 'rgba(201, 160, 80, 0.2)'
+  if (pct >= 20) return 'rgba(231, 76, 60, 0.15)'
+  if (pct > 0) return 'rgba(231, 76, 60, 0.1)'
+  return 'transparent'
 }
 
-onMounted(fetchData)
+function eventBadge(type) {
+  const map = { pageview: 'badge-info', click: 'badge-warning', scroll: 'badge-neutral', form_submit: 'badge-success', custom: 'badge-neutral', exit: 'badge-danger' }
+  return map[type] || 'badge-neutral'
+}
+
+function formatDate(d) {
+  if (!d) return '--'
+  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
+function formatTime(d) {
+  if (!d) return ''
+  return new Date(d).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+}
+
+// ── Tab switching ──
+function switchTab(tabId) {
+  activeTab.value = tabId
+  loadTab()
+}
+
+async function loadTab() {
+  const tab = activeTab.value
+  try {
+    if (tab === 'overview') await fetchOverview()
+    else if (tab === 'funnels') await fetchFunnels()
+    else if (tab === 'retention') await fetchRetention()
+    else if (tab === 'flows') await fetchFlows()
+    else if (tab === 'insights') await fetchInsights()
+    else if (tab === 'visitors') await fetchVisitors()
+  } catch (e) { console.error('Tab load error', e) }
+}
+
+async function fetchOverview() {
+  const [overviewRes, chartRes, pagesRes, sourcesRes, devicesRes, countriesRes] = await Promise.all([
+    analyticsApi.overview(websiteId, { period: period.value }).catch(() => ({ data: {} })),
+    analyticsApi.chart(websiteId, { period: period.value }).catch(() => ({ data: [] })),
+    analyticsApi.pages(websiteId, { period: period.value }).catch(() => ({ data: [] })),
+    analyticsApi.sources(websiteId, { period: period.value }).catch(() => ({ data: [] })),
+    analyticsApi.devices(websiteId, { period: period.value }).catch(() => ({ data: [] })),
+    analyticsApi.countries(websiteId, { period: period.value }).catch(() => ({ data: [] })),
+  ])
+
+  const o = overviewRes.data?.data || overviewRes.data || {}
+
+  stats.value = [
+    { label: 'Unique Visitors', value: (o.total_visitors || 0).toLocaleString(), trend: o.visitor_growth_pct || 0, highlight: true },
+    { label: 'Page Views', value: (o.total_pageviews || 0).toLocaleString(), trend: o.pageviews_trend || 0 },
+    { label: 'Avg. Session', value: o.avg_session || '0:00', trend: o.session_trend || 0 },
+    { label: 'Bounce Rate', value: (o.bounce_rate || '0') + '%', trend: o.bounce_trend || 0 },
+  ]
+
+  const rawChart = chartRes.data?.data || chartRes.data || []
+  chartData.value = Array.isArray(rawChart) ? rawChart : []
+
+  const pd = pagesRes.data?.data || pagesRes.data || []
+  topPages.value = (Array.isArray(pd) ? pd : []).map(p => ({ url: p.url || p.page, views: p.views || p.count || 0 }))
+
+  const sd = sourcesRes.data?.data || sourcesRes.data || []
+  const sourceColors = ['#c9a050', '#1a1a2e', '#27ae60', '#2980b9', '#e74c3c']
+  sources.value = (Array.isArray(sd) ? sd : []).map((s, i) => ({
+    name: s.source || s.name || 'direct',
+    pct: s.percentage || s.pct || 0,
+    sessions: s.sessions || s.count || 0,
+    color: sourceColors[i % sourceColors.length],
+  }))
+
+  devices.value = devicesRes.data?.data || devicesRes.data || []
+  countries.value = countriesRes.data?.data || countriesRes.data || []
+
+  realtimeVisitors.value = o.realtime || 0
+  noData.value = !chartData.value.length && !topPages.value.length && !sources.value.length
+}
+
+async function fetchFunnels() {
+  const res = await analyticsApi.funnels(websiteId).catch(() => ({ data: [] }))
+  funnelList.value = res.data?.data || res.data || []
+}
+
+async function runFunnel(fid) {
+  const res = await analyticsApi.calculateFunnel(websiteId, fid, { period: period.value }).catch(() => ({ data: {} }))
+  funnelResult.value = res.data?.data || res.data || null
+}
+
+async function createFunnel() {
+  await analyticsApi.createFunnel(websiteId, { name: newFunnel.value.name, steps: newFunnel.value.steps })
+  showCreateFunnel.value = false
+  newFunnel.value = { name: '', steps: [{ name: '', type: 'url', value: '' }, { name: '', type: 'url', value: '' }] }
+  await fetchFunnels()
+}
+
+async function fetchRetention() {
+  const res = await analyticsApi.retention(websiteId, { weeks: 8 }).catch(() => ({ data: {} }))
+  retentionData.value = res.data?.data || res.data || {}
+}
+
+async function fetchFlows() {
+  const [flowRes, eeRes] = await Promise.all([
+    analyticsApi.flows(websiteId, { period: period.value }).catch(() => ({ data: {} })),
+    analyticsApi.entryExit(websiteId, { period: period.value }).catch(() => ({ data: {} })),
+  ])
+  flowData.value = flowRes.data?.data || flowRes.data || {}
+  entryExitData.value = eeRes.data?.data || eeRes.data || {}
+}
+
+async function fetchInsights() {
+  const res = await analyticsApi.insights(websiteId).catch(() => ({ data: {} }))
+  insightsData.value = res.data?.data || res.data || {}
+}
+
+async function fetchVisitors() {
+  const res = await analyticsApi.visitors(websiteId).catch(() => ({ data: [] }))
+  visitorList.value = res.data?.data || res.data || []
+}
+
+async function loadTimeline(vid) {
+  const res = await analyticsApi.visitorTimeline(websiteId, vid).catch(() => ({ data: [] }))
+  timelineEvents.value = res.data?.data || res.data || []
+}
+
+onMounted(async () => {
+  await fetchOverview()
+  loading.value = false
+})
 </script>
 
 <style scoped>
-.loading-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 80px 20px;
-  color: var(--text-muted);
-}
+.loading-state { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 80px 20px; color: var(--text-muted); }
+
+/* ── Tabs ── */
+.analytics-tabs { display: flex; gap: 4px; margin-bottom: 24px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 4px; overflow-x: auto; }
+.atab { display: flex; align-items: center; gap: 6px; padding: 10px 16px; border: none; background: transparent; border-radius: var(--radius-md); font-size: var(--font-sm); font-weight: 600; color: var(--text-muted); cursor: pointer; transition: all 0.15s; white-space: nowrap; font-family: var(--font-family); }
+.atab:hover { color: var(--text-primary); background: var(--bg-surface); }
+.atab.active { background: var(--text-primary); color: var(--text-inverse); }
+.atab-icon { font-size: 16px; }
 
 /* ── KPI Grid ── */
-.kpi-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
-  margin-bottom: 24px;
-}
-
-.kpi-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg);
-  padding: 20px 22px 14px;
-  position: relative;
-  overflow: hidden;
-  transition: all var(--transition-base);
-}
-
-.kpi-card:hover {
-  border-color: var(--border-hover);
-  box-shadow: var(--shadow-sm);
-}
-
-.kpi-highlight {
-  border-color: var(--brand-accent);
-  background: linear-gradient(135deg, var(--bg-card) 0%, rgba(201, 160, 80, 0.04) 100%);
-}
-
-.kpi-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 8px;
-}
-
-.kpi-label {
-  font-size: var(--font-xs);
-  font-weight: 600;
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-
-.kpi-trend {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  font-size: 11px;
-  font-weight: 700;
-  padding: 2px 8px;
-  border-radius: var(--radius-full);
-}
-
+.kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+.kpi-card { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 20px; transition: all var(--transition-base); }
+.kpi-card:hover { border-color: var(--border-hover); box-shadow: var(--shadow-sm); }
+.kpi-highlight { border-color: var(--brand-accent); background: linear-gradient(135deg, var(--bg-card) 0%, rgba(201, 160, 80, 0.04) 100%); }
+.kpi-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.kpi-label { font-size: var(--font-xs); font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.06em; }
+.kpi-trend { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: var(--radius-full); }
 .trend-up { color: var(--color-success); background: var(--color-success-bg); }
 .trend-down { color: var(--color-danger); background: var(--color-danger-bg); }
+.kpi-value { font-family: var(--font-display); font-size: var(--font-3xl); color: var(--text-primary); line-height: 1.1; }
 
-.kpi-value {
-  font-family: var(--font-display);
-  font-size: var(--font-3xl);
-  color: var(--text-primary);
-  line-height: 1.1;
-  margin-bottom: 10px;
-}
-
-.kpi-sparkline {
-  height: 30px;
-  margin: 0 -22px -14px;
-  padding: 0 22px;
-  opacity: 0.4;
-}
-
-.kpi-sparkline svg {
-  width: 100%;
-  height: 100%;
-}
-
-/* ── Chart Card ── */
+/* ── Chart ── */
 .chart-card { margin-bottom: 24px; }
-
-.chart-legend {
-  display: flex;
-  gap: 16px;
-}
-
-.legend-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: var(--font-xs);
-  color: var(--text-secondary);
-}
-
-.legend-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-/* ── Area Chart ── */
-.area-chart-wrap {
-  position: relative;
-  margin-top: 12px;
-}
-
-.area-chart-svg {
-  width: 100%;
-  height: 220px;
-  display: block;
-}
-
-.chart-tooltip {
-  position: absolute;
-  top: 10px;
-  transform: translateX(-50%);
-  background: var(--text-primary);
-  color: var(--text-inverse);
-  padding: 8px 14px;
-  border-radius: var(--radius-md);
-  font-size: var(--font-xs);
-  line-height: 1.6;
-  white-space: nowrap;
-  z-index: 10;
-  box-shadow: var(--shadow-md);
-  pointer-events: none;
-}
-
-.tooltip-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.area-chart-labels {
-  display: flex;
-  justify-content: space-between;
-  padding: 8px 0 0;
-  font-size: var(--font-xs);
-  color: var(--text-muted);
-}
-
+.chart-legend { display: flex; gap: 16px; }
+.legend-item { display: flex; align-items: center; gap: 6px; font-size: var(--font-xs); color: var(--text-secondary); }
+.legend-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.area-chart-wrap { position: relative; margin-top: 12px; }
+.area-chart-svg { width: 100%; height: 220px; display: block; }
+.chart-tooltip { position: absolute; top: 10px; transform: translateX(-50%); background: var(--text-primary); color: var(--text-inverse); padding: 8px 14px; border-radius: var(--radius-md); font-size: var(--font-xs); white-space: nowrap; z-index: 10; box-shadow: var(--shadow-md); pointer-events: none; }
+.area-chart-labels { display: flex; justify-content: space-between; padding: 8px 0 0; font-size: 10px; color: var(--text-muted); }
 .area-chart-labels .highlighted { color: var(--text-secondary); font-weight: 600; }
 
-/* ── Analytics Row ── */
-.analytics-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 20px;
-  margin-bottom: 24px;
-}
+/* ── Layout ── */
+.analytics-row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 24px; }
 
-/* ── Channel List ── */
+/* ── Channels ── */
 .channel-list { display: flex; flex-direction: column; gap: 14px; }
+.channel-item { display: flex; align-items: center; gap: 14px; }
+.channel-info { min-width: 130px; }
+.channel-name { font-size: var(--font-sm); font-weight: 600; color: var(--text-primary); display: block; }
+.channel-bar-wrap { flex: 1; height: 6px; background: var(--bg-surface); border-radius: var(--radius-full); overflow: hidden; }
+.channel-bar { height: 100%; border-radius: var(--radius-full); transition: width var(--transition-slow); }
+.channel-pct { font-size: var(--font-sm); font-weight: 700; color: var(--text-primary); min-width: 36px; text-align: right; }
 
-.channel-item {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-}
+/* ── Pages ── */
+.page-rank { width: 22px; height: 22px; background: var(--bg-surface); border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: var(--text-muted); margin-right: 8px; }
 
-.channel-info {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 160px;
-}
-
-.channel-icon {
-  width: 28px;
-  height: 28px;
-  border-radius: var(--radius-sm);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.channel-name { font-size: var(--font-sm); font-weight: 600; color: var(--text-primary); }
-
-.channel-bar-wrap {
-  flex: 1;
-  height: 6px;
-  background: var(--bg-surface);
-  border-radius: var(--radius-full);
-  overflow: hidden;
-}
-
-.channel-bar {
-  height: 100%;
-  border-radius: var(--radius-full);
-  transition: width var(--transition-slow);
-}
-
-.channel-pct {
-  font-size: var(--font-sm);
-  font-weight: 700;
-  color: var(--text-primary);
-  min-width: 36px;
-  text-align: right;
-}
-
-/* ── Page URL ── */
-.page-url {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.page-rank {
-  width: 22px;
-  height: 22px;
-  background: var(--bg-surface);
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--text-muted);
-  flex-shrink: 0;
-}
-
-/* ── Donut Chart ── */
-.device-breakdown {
-  display: flex;
-  align-items: center;
-  gap: 28px;
-}
-
-.donut-chart {
-  position: relative;
-  width: 140px;
-  height: 140px;
-  flex-shrink: 0;
-}
-
-.donut-chart svg {
-  width: 100%;
-  height: 100%;
-  transform: rotate(-90deg);
-}
-
-.donut-center {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-}
-
-.donut-total { font-weight: 700; font-size: var(--font-md); color: var(--text-primary); }
-.donut-label { font-size: var(--font-xs); color: var(--text-muted); }
-
-.device-legend { display: flex; flex-direction: column; gap: 12px; flex: 1; }
-
-.device-legend-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: var(--font-sm);
-}
-
+/* ── Devices ── */
+.device-breakdown { display: flex; align-items: center; gap: 28px; }
+.donut-chart { position: relative; width: 120px; height: 120px; flex-shrink: 0; }
+.donut-chart svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.device-legend { display: flex; flex-direction: column; gap: 10px; flex: 1; }
+.device-legend-item { display: flex; align-items: center; gap: 10px; font-size: var(--font-sm); }
 .device-name { flex: 1; color: var(--text-secondary); }
 .device-value { color: var(--text-primary); }
 
-/* ── Country List ── */
+/* ── Countries ── */
 .country-list { display: flex; flex-direction: column; gap: 10px; }
-
-.country-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 6px 0;
-}
-
-.country-rank {
-  width: 22px;
-  height: 22px;
-  background: var(--bg-surface);
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--text-muted);
-  flex-shrink: 0;
-}
-
+.country-item { display: flex; align-items: center; gap: 12px; }
+.country-rank { width: 22px; height: 22px; background: var(--bg-surface); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: var(--text-muted); }
 .country-info { flex: 1; }
 .country-name { font-size: var(--font-sm); font-weight: 600; color: var(--text-primary); margin-bottom: 4px; }
+.country-bar-wrap { height: 4px; background: var(--bg-surface); border-radius: var(--radius-full); overflow: hidden; }
+.country-bar { height: 100%; background: var(--brand-accent); border-radius: var(--radius-full); }
 
-.country-bar-wrap {
-  height: 4px;
-  background: var(--bg-surface);
-  border-radius: var(--radius-full);
-  overflow: hidden;
-}
-
-.country-bar {
-  height: 100%;
-  background: var(--brand-accent);
-  border-radius: var(--radius-full);
-  transition: width var(--transition-slow);
-}
-
-.country-stats {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 2px;
-  min-width: 60px;
-  font-size: var(--font-sm);
-  color: var(--text-primary);
-}
-
-/* ── Realtime Card ── */
-.realtime-card {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 16px 24px;
-  background: var(--bg-card);
-}
-
-.realtime-dot {
-  width: 10px;
-  height: 10px;
-  background: var(--color-success);
-  border-radius: 50%;
-  animation: pulse 2s infinite;
-  flex-shrink: 0;
-}
+/* ── Realtime ── */
+.realtime-card { display: flex; align-items: center; gap: 12px; padding: 16px 24px; }
+.realtime-dot { width: 10px; height: 10px; background: var(--color-success); border-radius: 50%; animation: pulse 2s infinite; }
 
 /* ── Period Tabs ── */
-.period-tabs {
-  display: flex;
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-full);
-  overflow: hidden;
-}
-
-.period-tab {
-  padding: 6px 14px;
-  font-size: var(--font-xs);
-  font-weight: 600;
-  color: var(--text-muted);
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  transition: all var(--transition-fast);
-  font-family: var(--font-family);
-}
-
+.period-tabs { display: flex; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-full); overflow: hidden; }
+.period-tab { padding: 6px 14px; font-size: var(--font-xs); font-weight: 600; color: var(--text-muted); background: transparent; border: none; cursor: pointer; transition: all var(--transition-fast); font-family: var(--font-family); }
 .period-tab:hover { color: var(--text-primary); }
+.period-tab.active { background: var(--brand-accent); color: #1a1a2e; }
 
-.period-tab.active {
-  background: var(--brand-accent);
-  color: #1a1a2e;
-}
+/* ── Funnels ── */
+.funnel-list { display: flex; flex-direction: column; gap: 8px; }
+.funnel-item { display: flex; justify-content: space-between; align-items: center; padding: 14px 16px; background: var(--bg-surface); border-radius: var(--radius-md); cursor: pointer; transition: all 0.15s; }
+.funnel-item:hover { background: var(--bg-card); border: 1px solid var(--border-hover); }
+.funnel-viz { display: flex; gap: 4px; align-items: flex-end; padding: 20px 0; height: 200px; }
+.funnel-step { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 8px; height: 100%; }
+.funnel-bar { width: 100%; background: rgba(201,160,80,0.08); border-radius: var(--radius-md) var(--radius-md) 0 0; position: relative; min-height: 20px; transition: height 0.5s; display: flex; align-items: flex-end; }
+.funnel-bar-fill { width: 100%; height: 100%; background: linear-gradient(180deg, var(--brand-accent), rgba(201,160,80,0.3)); border-radius: var(--radius-md) var(--radius-md) 0 0; }
+.funnel-step-info { text-align: center; }
+.text-danger { color: var(--color-danger); }
+
+/* ── Retention ── */
+.retention-table { font-size: var(--font-xs); }
+.retention-cell { text-align: center; font-weight: 600; font-size: 11px; min-width: 50px; }
+
+/* ── Flows ── */
+.flow-list { display: flex; flex-direction: column; gap: 10px; }
+.flow-item { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border-color); font-size: var(--font-sm); }
+.flow-item:last-child { border-bottom: none; }
+.flow-page { background: var(--bg-surface); padding: 4px 10px; border-radius: var(--radius-sm); font-family: 'SF Mono', monospace; font-size: var(--font-xs); }
+.flow-arrow { color: var(--text-muted); }
+.flow-count { margin-left: auto; font-weight: 700; color: var(--text-primary); }
+.flow-stat-item { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--border-color); font-size: var(--font-sm); }
+.flow-stat-item:last-child { border-bottom: none; }
+
+/* ── AI Insights ── */
+.insights-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
+.insight-card { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 20px; transition: all 0.15s; }
+.insight-card:hover { box-shadow: var(--shadow-sm); }
+.insight-warning { border-left: 3px solid var(--color-warning); }
+.insight-critical { border-left: 3px solid var(--color-danger); }
+.insight-opportunity { border-left: 3px solid var(--color-success); }
+.insight-info { border-left: 3px solid var(--color-info); }
+.insight-header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.insight-icon { font-size: 20px; }
+.insight-badge { font-size: 10px; font-weight: 700; text-transform: uppercase; padding: 2px 8px; border-radius: var(--radius-full); }
+.ibadge-warning { background: rgba(243,156,18,0.12); color: var(--color-warning); }
+.ibadge-critical { background: rgba(231,76,60,0.12); color: var(--color-danger); }
+.ibadge-opportunity { background: rgba(39,174,96,0.12); color: var(--color-success); }
+.ibadge-info { background: rgba(52,152,219,0.12); color: var(--color-info); }
+.insight-metric { margin-left: auto; font-size: var(--font-md); font-weight: 700; color: var(--text-primary); }
+.insight-title { font-size: var(--font-md); color: var(--text-primary); margin: 0 0 6px; }
+.insight-desc { font-size: var(--font-sm); color: var(--text-secondary); line-height: 1.5; margin: 0 0 12px; }
+.insight-action { display: flex; align-items: center; gap: 6px; font-size: var(--font-xs); color: var(--brand-accent); font-weight: 600; }
+
+/* ── Actions ── */
+.action-item { display: flex; align-items: center; gap: 14px; padding: 14px 0; border-bottom: 1px solid var(--border-color); }
+.action-item:last-child { border-bottom: none; }
+.action-priority { font-size: 10px; font-weight: 700; text-transform: uppercase; padding: 3px 10px; border-radius: var(--radius-full); }
+.ap-critical { background: rgba(231,76,60,0.12); color: var(--color-danger); }
+.ap-warning { background: rgba(243,156,18,0.12); color: var(--color-warning); }
+.ap-opportunity { background: rgba(39,174,96,0.12); color: var(--color-success); }
+.ap-info { background: rgba(52,152,219,0.12); color: var(--color-info); }
+
+/* ── Visitors ── */
+.clickable-row { cursor: pointer; transition: background 0.1s; }
+.clickable-row:hover { background: var(--bg-surface); }
+.visitor-id { font-family: 'SF Mono', monospace; font-size: var(--font-sm); color: var(--text-primary); }
+
+/* ── Timeline ── */
+.timeline { display: flex; flex-direction: column; gap: 0; }
+.timeline-item { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border-color); }
+.timeline-item:last-child { border-bottom: none; }
+.timeline-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.dot-pageview { background: var(--color-info); }
+.dot-click { background: var(--color-warning); }
+.dot-scroll { background: var(--text-muted); }
+.dot-form_submit { background: var(--color-success); }
+.dot-exit { background: var(--color-danger); }
+.dot-custom { background: var(--brand-accent); }
+.timeline-content { display: flex; align-items: center; gap: 10px; flex: 1; }
+.badge-sm { font-size: 10px; padding: 1px 6px; }
+
+/* ── Empty ── */
+.empty-state-card { text-align: center; padding: 60px 40px; background: var(--bg-card); border: 2px dashed var(--border-color); border-radius: var(--radius-lg); margin-bottom: 24px; }
+.empty-icon { margin-bottom: 20px; opacity: 0.7; }
+.empty-title { font-size: var(--font-lg); color: var(--text-primary); margin: 0 0 10px; }
+.empty-desc { font-size: var(--font-sm); color: var(--text-secondary); max-width: 480px; margin: 0 auto 20px; line-height: 1.6; }
+.empty-snippet { background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 14px 20px; display: inline-block; margin-bottom: 16px; }
+.empty-snippet code { font-size: var(--font-xs); color: var(--brand-accent); font-family: 'SF Mono', 'Fira Code', monospace; }
+.empty-hint { font-size: var(--font-xs); color: var(--text-muted); }
+.empty-inline { text-align: center; padding: 40px 20px; color: var(--text-muted); font-size: var(--font-sm); }
+
+/* ── Modal ── */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; z-index: 200; }
+.modal-card { background: var(--bg-card); padding: 28px; border-radius: var(--radius-lg); width: 100%; box-shadow: var(--shadow-lg); }
 
 /* ── Responsive ── */
-@media (max-width: 900px) {
-  .kpi-grid { grid-template-columns: repeat(2, 1fr); }
-  .analytics-row { grid-template-columns: 1fr; }
-}
-
-@media (max-width: 600px) {
-  .kpi-grid { grid-template-columns: 1fr; }
-}
+@media (max-width: 900px) { .kpi-grid { grid-template-columns: repeat(2, 1fr); } .analytics-row { grid-template-columns: 1fr; } .analytics-tabs { flex-wrap: wrap; } }
+@media (max-width: 600px) { .kpi-grid { grid-template-columns: 1fr; } .insights-grid { grid-template-columns: 1fr; } }
 </style>

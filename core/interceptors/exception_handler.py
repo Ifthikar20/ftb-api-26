@@ -7,16 +7,40 @@ from core.exceptions import GrowthPilotException
 
 logger = logging.getLogger("apps")
 
+# ──────────────────────────────────────────────────
+# User-friendly messages — NEVER expose raw errors
+# ──────────────────────────────────────────────────
+
+FRIENDLY_MESSAGES = {
+    400: "We couldn't process that request. Please check your input and try again.",
+    401: "Your session has expired. Please log in again.",
+    403: "You don't have permission to do that.",
+    404: "We couldn't find what you're looking for.",
+    405: "That action isn't supported.",
+    409: "There's a conflict with your request. Please try again.",
+    429: "You're making too many requests. Please wait a moment and try again.",
+    500: "Something went wrong on our end. We've been notified and are looking into it.",
+    502: "Our servers are temporarily unavailable. Please try again in a moment.",
+    503: "This service is temporarily unavailable. Please try again shortly.",
+}
+
+
+def _friendly_message(status_code: int, fallback: str = "") -> str:
+    """Return a calm, user-friendly message. Never expose raw errors."""
+    return FRIENDLY_MESSAGES.get(status_code, fallback or FRIENDLY_MESSAGES[500])
+
 
 def custom_exception_handler(exc, context):
     """
-    Wraps ALL API errors in a consistent envelope:
+    Wraps ALL API errors in a consistent envelope with user-friendly messages.
+    Raw exception details are logged server-side but NEVER sent to the client.
+
+    Response format:
     {
         "success": false,
         "error": {
             "code": "error_code",
-            "message": "Human-readable message",
-            "details": { ... }
+            "message": "Calm, user-friendly message"
         },
         "request_id": "uuid"
     }
@@ -24,7 +48,7 @@ def custom_exception_handler(exc, context):
     request = context.get("request")
     request_id = getattr(request, "request_id", "unknown") if request else "unknown"
 
-    # Handle our domain exceptions
+    # ── Our domain exceptions (already have safe messages) ──
     if isinstance(exc, GrowthPilotException):
         return Response(
             {
@@ -35,18 +59,18 @@ def custom_exception_handler(exc, context):
             status=exc.status_code,
         )
 
-    # Handle Django validation errors
+    # ── Django validation errors — show field-level feedback, not raw text ──
     if isinstance(exc, DjangoValidationError):
         return Response(
             {
                 "success": False,
                 "error": {
                     "code": "validation_error",
-                    "message": "Validation failed.",
-                    "details": (
+                    "message": "Please check your input and try again.",
+                    "fields": (
                         exc.message_dict
                         if hasattr(exc, "message_dict")
-                        else {"non_field_errors": exc.messages}
+                        else {"general": exc.messages}
                     ),
                 },
                 "request_id": request_id,
@@ -54,45 +78,67 @@ def custom_exception_handler(exc, context):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    # Handle domain ValueError (raised by services for business logic errors)
+    # ── ValueError — log it, but NEVER expose str(exc) to users ──
     if isinstance(exc, ValueError):
+        logger.warning(
+            f"Business logic error: {exc}",
+            extra={"request_id": request_id},
+        )
         return Response(
             {
                 "success": False,
-                "error": {"code": "validation_error", "message": str(exc)},
+                "error": {
+                    "code": "validation_error",
+                    "message": _friendly_message(400),
+                },
                 "request_id": request_id,
             },
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    # Let DRF handle its own exceptions
+    # ── Let DRF handle its own exceptions ──
     response = exception_handler(exc, context)
 
     if response is not None:
-        error_data = response.data
-        message = "An error occurred."
+        # Log the original error details server-side
+        logger.warning(
+            f"DRF exception ({response.status_code}): {response.data}",
+            extra={"request_id": request_id},
+        )
 
-        if isinstance(error_data, dict):
-            message = error_data.get("detail", str(error_data))
-        elif isinstance(error_data, list):
-            message = error_data[0] if error_data else message
+        # Replace the response data with a friendly message
+        error_code = "api_error"
+        if response.status_code == 401:
+            error_code = "authentication_required"
+        elif response.status_code == 403:
+            error_code = "permission_denied"
+        elif response.status_code == 404:
+            error_code = "not_found"
+        elif response.status_code == 429:
+            error_code = "rate_limited"
 
         response.data = {
             "success": False,
-            "error": {"code": "api_error", "message": str(message), "details": error_data},
+            "error": {
+                "code": error_code,
+                "message": _friendly_message(response.status_code),
+            },
             "request_id": request_id,
         }
         return response
 
-    # Unhandled exceptions
-    logger.exception(f"Unhandled exception: {exc}", extra={"request_id": request_id})
+    # ── Unhandled exceptions — log full stack, return calming message ──
+    logger.exception(
+        f"Unhandled exception: {exc.__class__.__name__}",
+        extra={"request_id": request_id, "exception_type": type(exc).__name__},
+    )
 
     return Response(
         {
             "success": False,
             "error": {
                 "code": "internal_error",
-                "message": "An unexpected error occurred. Our team has been notified.",
+                "message": _friendly_message(500),
             },
             "request_id": request_id,
         },

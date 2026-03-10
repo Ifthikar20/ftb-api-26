@@ -49,8 +49,8 @@
               {{ f }}
             </li>
           </ul>
-          <button v-if="currentPlan !== plan.id" class="btn" :class="plan.popular ? 'btn-primary' : 'btn-secondary'" style="width:100%;margin-top:auto">
-            {{ isPlanUpgrade(plan.id) ? 'Upgrade' : 'Downgrade' }}
+          <button v-if="currentPlan !== plan.id" class="btn" :class="plan.popular ? 'btn-primary' : 'btn-secondary'" style="width:100%;margin-top:auto" @click="handlePlanSelect(plan.id)" :disabled="checkingOut">
+            {{ checkingOut === plan.id ? 'Redirecting...' : isPlanUpgrade(plan.id) ? 'Upgrade' : 'Downgrade' }}
           </button>
           <button v-else class="btn btn-secondary" style="width:100%;margin-top:auto" disabled>Active</button>
         </div>
@@ -129,6 +129,33 @@
         </div>
       </div>
 
+      <!-- Subscription Management -->
+      <div class="card" style="margin-top:24px" v-if="subscription">
+        <div class="card-header">
+          <h3 class="card-title">Your Subscription</h3>
+        </div>
+        <div class="subscription-info">
+          <div class="sub-row">
+            <span class="text-sm text-muted">Plan</span>
+            <span class="font-semibold">{{ subscription.plan_details?.name || currentPlan }}</span>
+          </div>
+          <div class="sub-row">
+            <span class="text-sm text-muted">Status</span>
+            <span class="badge" :class="subStatusClass">{{ subscription.subscription_status }}</span>
+          </div>
+          <div class="sub-row" v-if="subscription.current_period_end">
+            <span class="text-sm text-muted">{{ subscription.cancel_at_period_end ? 'Cancels on' : 'Renews on' }}</span>
+            <span class="text-sm">{{ formatDate(subscription.current_period_end) }}</span>
+          </div>
+          <div v-if="subscription.cancel_at_period_end" class="cancel-notice">
+            Your subscription will not renew. You'll retain access until the end of your billing period.
+          </div>
+          <button class="btn btn-secondary btn-sm" @click="openPortal" :disabled="portalLoading" style="margin-top:16px">
+            {{ portalLoading ? 'Opening...' : 'Manage Subscription' }}
+          </button>
+        </div>
+      </div>
+
       <!-- Current Usage + Invoices -->
       <div class="billing-row" style="margin-top:24px">
         <div class="card" v-if="usage.length">
@@ -164,13 +191,20 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
+import { useToast } from '@/composables/useToast'
 import billingApi from '@/api/billing'
+
+const route = useRoute()
+const toast = useToast()
 
 const loading = ref(true)
 const subscription = ref(null)
 const invoices = ref([])
 const usage = ref([])
 const annual = ref(false)
+const checkingOut = ref(null)
+const portalLoading = ref(false)
 
 const limits = { pageviews: 100000, audits: 50, ai_calls: 200, leads: 500 }
 
@@ -262,7 +296,58 @@ function formatDate(d) {
 
 function formatMetric(m) { return (m || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) }
 
+const subStatusClass = computed(() => {
+  const s = subscription.value?.subscription_status
+  if (s === 'active') return 'badge-success'
+  if (s === 'trialing') return 'badge-neutral'
+  if (s === 'past_due') return 'badge-danger'
+  if (s === 'canceled') return 'badge-danger'
+  return 'badge-neutral'
+})
+
+async function handlePlanSelect(planId) {
+  checkingOut.value = planId
+  try {
+    const res = await billingApi.checkout({ plan: planId, annual: annual.value })
+    const url = res.data?.checkout_url || res.checkout_url
+    if (url) {
+      window.location.href = url
+    } else {
+      toast.error("We couldn't start the checkout. Please try again.")
+    }
+  } catch (e) {
+    // Toast is auto-triggered by client.js interceptor
+  } finally {
+    checkingOut.value = null
+  }
+}
+
+async function openPortal() {
+  portalLoading.value = true
+  try {
+    const res = await billingApi.portal()
+    const url = res.data?.portal_url || res.portal_url
+    if (url) {
+      window.location.href = url
+    } else {
+      toast.error("We couldn't open the billing portal. Please try again.")
+    }
+  } catch (e) {
+    // Toast is auto-triggered by client.js interceptor
+  } finally {
+    portalLoading.value = false
+  }
+}
+
 onMounted(async () => {
+  // Check for checkout return params
+  const checkoutParam = route.query.checkout
+  if (checkoutParam === 'success') {
+    toast.success('Your subscription has been activated! Welcome aboard.')
+  } else if (checkoutParam === 'canceled') {
+    toast.info('Checkout was canceled. You can upgrade anytime.')
+  }
+
   try {
     const [subRes, invRes, usageRes] = await Promise.all([
       billingApi.getCurrent().catch(() => ({ data: null })),
@@ -271,12 +356,13 @@ onMounted(async () => {
     ])
     subscription.value = subRes.data?.data || subRes.data || null
     invoices.value = invRes.data?.data || invRes.data || []
-    usage.value = (usageRes.data?.data || usageRes.data || []).map(u => ({
+    const usageData = usageRes.data?.data || usageRes.data || []
+    usage.value = Array.isArray(usageData) ? usageData.map(u => ({
       ...u,
-      limit: limits[u.metric] || 10000,
-    }))
+      limit: u.limit || limits[u.metric] || 10000,
+    })) : []
   } catch (e) {
-    console.error('Billing fetch error', e)
+    // Toast auto-triggered
   } finally {
     loading.value = false
   }
@@ -508,6 +594,12 @@ onMounted(async () => {
 .usage-value { font-size: var(--font-lg); font-weight: 700; color: var(--text-primary); margin-bottom: 8px; }
 .usage-bar { width: 100%; height: 4px; background: var(--bg-input); border-radius: var(--radius-full); overflow: hidden; }
 .usage-fill { height: 100%; background: var(--color-success); border-radius: var(--radius-full); }
+
+/* ── Subscription Management ── */
+.subscription-info { padding: 4px 0; }
+.sub-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border-color); }
+.sub-row:last-of-type { border-bottom: none; }
+.cancel-notice { font-size: var(--font-sm); color: var(--color-warning); background: rgba(245, 158, 11, 0.08); padding: 12px 14px; border-radius: var(--radius-md); margin-top: 12px; line-height: 1.5; }
 
 @media (max-width: 768px) {
   .pricing-grid { grid-template-columns: 1fr; }

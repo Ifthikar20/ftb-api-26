@@ -14,6 +14,18 @@
 
     <div v-if="loading" class="loading-state">Loading heatmap data...</div>
     <template v-else>
+      <!-- Empty State -->
+      <div v-if="!pages.length" class="empty-guide">
+        <div class="empty-guide-icon">🔥</div>
+        <h3>No click data yet</h3>
+        <p>Once visitors interact with your tracked website, click positions will appear here as a heatmap. Install the tracking pixel to start collecting data.</p>
+        <div class="empty-guide-snippet">
+          <code>&lt;script src="/fetchbot-pixel.js" data-site="YOUR_PIXEL_KEY" async&gt;&lt;/script&gt;</code>
+        </div>
+        <p class="empty-guide-hint">The pixel automatically captures click coordinates — no extra setup needed.</p>
+      </div>
+
+      <template v-if="pages.length">
       <!-- Stats Row -->
       <div class="heatmap-stats">
         <div class="stat-pill">
@@ -103,6 +115,7 @@
           </tbody>
         </table>
       </div>
+      </template>
     </template>
   </div>
 </template>
@@ -216,6 +229,15 @@ onMounted(async () => {
 
 .heat-bar { width: 100%; height: 6px; background: var(--bg-input); border-radius: var(--radius-full); overflow: hidden; }
 .heat-bar-fill { height: 100%; border-radius: var(--radius-full); transition: width 0.5s ease; }
+
+/* Empty Guide */
+.empty-guide { text-align: center; padding: 60px 40px; background: var(--bg-card); border: 2px dashed var(--border-color); border-radius: var(--radius-lg); }
+.empty-guide-icon { font-size: 48px; margin-bottom: 16px; }
+.empty-guide h3 { font-size: var(--font-lg); color: var(--text-primary); margin: 0 0 10px; }
+.empty-guide p { font-size: var(--font-sm); color: var(--text-secondary); max-width: 480px; margin: 0 auto 16px; line-height: 1.6; }
+.empty-guide-snippet { background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 14px 20px; display: inline-block; margin-bottom: 12px; }
+.empty-guide-snippet code { font-size: var(--font-xs); color: var(--brand-accent); font-family: 'SF Mono', 'Fira Code', monospace; }
+.empty-guide-hint { font-size: var(--font-xs); color: var(--text-muted); }
 
 @media (max-width: 768px) {
   .heatmap-stats { flex-direction: column; }

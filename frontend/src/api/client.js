@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { useAuthStore } from '@/stores/auth'
+import { useToast } from '@/composables/useToast'
 import router from '@/router'
 
 const api = axios.create({
@@ -37,6 +38,20 @@ api.interceptors.request.use((config) => {
 })
 
 /* ── Response Interceptor ── */
+
+// User-friendly fallback messages — never show raw errors
+const FRIENDLY_MESSAGES = {
+    400: 'Something didn\'t look right. Please check your input.',
+    401: 'Your session has expired. Please log in again.',
+    403: 'You don\'t have permission to do that.',
+    404: 'We couldn\'t find what you\'re looking for.',
+    409: 'This action conflicts with something already in progress.',
+    429: 'You\'re making requests too quickly. Please wait a moment.',
+    500: 'Something went wrong on our end. Please try again.',
+    502: 'Our servers are temporarily unavailable. Please try again shortly.',
+    503: 'This feature is temporarily unavailable. Please try again shortly.',
+}
+
 api.interceptors.response.use(
     (response) => {
         // Unwrap envelope: { success: true, data: ... }
@@ -48,7 +63,7 @@ api.interceptors.response.use(
     async (error) => {
         const originalRequest = error.config
 
-        // 401 — try to refresh
+        // 401 — try to refresh (silently, no toast)
         if (error.response?.status === 401 && !originalRequest._retry) {
             if (isRefreshing) {
                 return new Promise((resolve, reject) => {
@@ -82,14 +97,41 @@ api.interceptors.response.use(
             }
         }
 
-        // Extract human-readable error
-        const message =
-            error.response?.data?.error?.message ||
-            error.response?.data?.message ||
-            error.message ||
-            'Something went wrong'
+        // ── Extract user-friendly message ──
+        const status = error.response?.status || 0
+        const serverMessage = error.response?.data?.error?.message
 
-        error.displayMessage = message
+        // Use the server's friendly message if it exists, otherwise use our fallback
+        const displayMessage = serverMessage || FRIENDLY_MESSAGES[status] || FRIENDLY_MESSAGES[500]
+
+        // Attach for page-level catch blocks to use
+        error.displayMessage = displayMessage
+
+        // ── Show toast automatically for most errors ──
+        // Skip toasts for: 401 (handled above), cancelled requests, and network errors
+        const skipToast = (
+            status === 401 ||
+            axios.isCancel(error) ||
+            originalRequest?._silentError  // opt-in: api.get('/...', { _silentError: true })
+        )
+
+        if (!skipToast) {
+            try {
+                const toast = useToast()
+                if (status === 429) {
+                    toast.warning(displayMessage)
+                } else if (status >= 500) {
+                    toast.error(displayMessage)
+                } else if (status === 403) {
+                    toast.warning(displayMessage)
+                } else {
+                    toast.error(displayMessage)
+                }
+            } catch {
+                // Toast composable may not be available outside Vue context
+            }
+        }
+
         return Promise.reject(error)
     }
 )

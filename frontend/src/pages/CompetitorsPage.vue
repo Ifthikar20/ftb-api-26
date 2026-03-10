@@ -27,7 +27,11 @@
             </tr>
           </tbody>
         </table>
-        <div v-if="competitors.length === 0" class="empty-state">No competitors tracked yet.</div>
+        <div v-if="competitors.length === 0" class="empty-guide">
+          <div style="font-size:40px;margin-bottom:12px">🏆</div>
+          <h3 style="margin:0 0 8px;color:var(--text-primary)">No competitors tracked</h3>
+          <p style="font-size:var(--font-sm);color:var(--text-secondary);max-width:400px;margin:0 auto;line-height:1.6">Click "+ Add Competitor" to start monitoring rival websites. Track their traffic, domain authority, content changes, and keyword gaps.</p>
+        </div>
       </div>
 
       <!-- Recent Changes -->

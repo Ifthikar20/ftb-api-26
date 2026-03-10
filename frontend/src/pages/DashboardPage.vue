@@ -78,6 +78,25 @@
             </div>
           </div>
         </div>
+
+        <!-- Agent Activity -->
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">🤖 Agent Activity</h3>
+            <span class="text-sm text-muted">Latest runs</span>
+          </div>
+          <div v-if="agentRuns.length" class="activity-list">
+            <div v-for="run in agentRuns" :key="run.id" class="activity-item">
+              <span class="activity-dot" :style="{ background: agentColor(run.status) }"></span>
+              <div style="flex:1">
+                <div class="text-sm font-semibold">{{ run.agent_type_display }}</div>
+                <div class="text-xs text-muted">{{ run.website_name }} · {{ run.status_display || run.status }}</div>
+              </div>
+              <span v-if="run.status === 'paused'" class="badge badge-warning" style="font-size:10px">Needs Approval</span>
+            </div>
+          </div>
+          <div v-else class="text-sm text-muted" style="padding:16px 0">No agent runs yet.</div>
+        </div>
       </div>
     </template>
   </div>
@@ -87,6 +106,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import dashboardApi from '@/api/dashboard'
+import agentsApi from '@/api/agents'
 
 const authStore = useAuthStore()
 const firstName = computed(() => (authStore.user?.full_name || 'there').split(' ')[0])
@@ -100,6 +120,12 @@ const brief = ref('')
 const actions = ref([])
 const activity = ref([])
 const quickActions = ref([])
+const agentRuns = ref([])
+
+function agentColor(status) {
+  const map = { completed: '#22c55e', running: '#3b82f6', paused: '#f59e0b', failed: '#ef4444' }
+  return map[status] || '#94a3b8'
+}
 
 const completedActions = computed(() => actions.value.filter(a => a.done).length)
 
@@ -111,13 +137,17 @@ function priorityClass(p) {
 
 onMounted(async () => {
   try {
-    const { data } = await dashboardApi.get()
-    const d = data.data || data
+    const [dashRes, agentRes] = await Promise.all([
+      dashboardApi.get(),
+      agentsApi.activity().catch(() => ({ data: [] })),
+    ])
+    const d = dashRes.data?.data || dashRes.data
     stats.value = d.stats || []
     brief.value = d.brief || ''
     actions.value = d.actions || []
     activity.value = d.activity || []
     quickActions.value = d.quick_actions || []
+    agentRuns.value = (agentRes.data || agentRes || []).slice(0, 3)
   } catch (e) {
     console.error('Dashboard load error', e)
   } finally {

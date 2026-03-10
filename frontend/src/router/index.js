@@ -2,6 +2,14 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 
 const routes = [
+    /* ── Public Landing Page ── */
+    {
+        path: '/welcome',
+        name: 'landing',
+        component: () => import('@/pages/LandingPage.vue'),
+        meta: { guest: true }
+    },
+
     /* ── Auth (public) ── */
     {
         path: '/login',
@@ -91,6 +99,12 @@ const routes = [
                 path: 'strategy/:websiteId',
                 name: 'strategy',
                 component: () => import('@/pages/StrategyPage.vue'),
+                props: true
+            },
+            {
+                path: 'agents/:websiteId',
+                name: 'agents',
+                component: () => import('@/pages/AgentsPage.vue'),
                 props: true
             },
             {

@@ -51,8 +51,8 @@ class AuditLogMiddleware:
                 body = json.loads(request.body) if request.body else None
                 if body:
                     log_entry["request_body"] = self._redact_sensitive(body)
-            except (json.JSONDecodeError, UnicodeDecodeError):
-                pass
+            except (json.JSONDecodeError, UnicodeDecodeError, Exception):
+                pass  # Includes RawPostDataException when stream already read
 
         if response.status_code >= 500:
             audit_logger.error("api_request", extra=log_entry)

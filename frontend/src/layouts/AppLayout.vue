@@ -63,6 +63,10 @@
           <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1l2 4h4l-3 3 1 4-4-2-4 2 1-4-3-3h4z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg></span>
           <span v-if="!appStore.sidebarCollapsed" class="nav-text">Strategy</span>
         </router-link>
+        <router-link :to="agentsRoute" class="nav-link" active-class="active">
+          <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="6" r="3"/><path d="M3 14c0-3 2.2-5 5-5s5 2 5 5"/><path d="M12 4l2-2M4 4L2 2" stroke-linecap="round"/></svg></span>
+          <span v-if="!appStore.sidebarCollapsed" class="nav-text">Agents</span>
+        </router-link>
 
         <div class="nav-section-label">Account</div>
         <router-link to="/billing" class="nav-link" active-class="active">
@@ -108,6 +112,9 @@
             <svg v-else width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="9" cy="9" r="4"/><path d="M9 1v2M9 15v2M1 9h2M15 9h2M3.3 3.3l1.4 1.4M13.3 13.3l1.4 1.4M14.7 3.3l-1.4 1.4M4.7 13.3l-1.4 1.4"/></svg>
           </button>
 
+          <!-- Help Button -->
+          <HelpButton />
+
           <!-- Notifications -->
           <button class="topbar-btn" title="Notifications">
             <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13 6a4 4 0 0 0-8 0c0 5-2 6-2 6h12s-2-1-2-6M7 15a2 2 0 0 0 4 0"/></svg>
@@ -120,6 +127,11 @@
         <router-view />
       </main>
     </div>
+
+    <!-- Toast Notifications (global) -->
+    <ToastContainer />
+    <!-- Onboarding Tooltips (first-time users) -->
+    <OnboardingTooltip :steps="onboardingSteps" storage-key="fb_onboarding_done" />
     <!-- Add Project Modal -->
     <div v-if="showAddProject" class="modal-overlay" @click.self="showAddProject = false">
       <div class="modal-card">
@@ -158,8 +170,14 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useAppStore } from '@/stores/app'
+import { useToast } from '@/composables/useToast'
 import websitesApi from '@/api/websites'
 import billingApi from '@/api/billing'
+import HelpButton from '@/components/HelpButton.vue'
+import OnboardingTooltip from '@/components/OnboardingTooltip.vue'
+import ToastContainer from '@/components/ToastContainer.vue'
+
+const toast = useToast()
 
 const router = useRouter()
 const route = useRoute()
@@ -171,6 +189,34 @@ const showAddProject = ref(false)
 const creating = ref(false)
 const createError = ref('')
 const newProject = ref({ name: '', url: '', industry: '' })
+
+// Onboarding steps for first-time users
+const onboardingSteps = [
+  {
+    target: '.project-select',
+    title: 'Your Projects',
+    message: 'This is the project selector. Each project tracks one website. Switch between them or add new ones with the + button.',
+    position: 'right',
+  },
+  {
+    target: '.nav-link[href*="analytics"], a.nav-link.active',
+    title: 'Analytics Dashboard',
+    message: 'View real-time visitor data, traffic sources, and engagement. Install the tracking pixel to start collecting data.',
+    position: 'right',
+  },
+  {
+    target: '.nav-link[href*="audits"], a[href*="audits"]',
+    title: 'Run Site Audits',
+    message: 'Click "Run Audit" to scan your website for SEO, performance, mobile, security, and content issues — with actionable recommendations.',
+    position: 'right',
+  },
+  {
+    target: '.help-trigger',
+    title: 'Need Help?',
+    message: 'Click the ? button anytime for quick start guides, page-specific help, and setup instructions.',
+    position: 'bottom',
+  },
+]
 
 const userInitials = computed(() => {
   const name = authStore.user?.full_name || ''
@@ -185,6 +231,7 @@ const auditsRoute = computed(() => websiteId.value ? `/audits/${websiteId.value}
 const heatmapRoute = computed(() => websiteId.value ? `/heatmap/${websiteId.value}` : '/websites')
 const keywordsRoute = computed(() => websiteId.value ? `/keywords/${websiteId.value}` : '/websites')
 const strategyRoute = computed(() => websiteId.value ? `/strategy/${websiteId.value}` : '/websites')
+const agentsRoute = computed(() => websiteId.value ? `/agents/${websiteId.value}` : '/websites')
 
 // Dynamic page background tint based on current route
 const pageTint = computed(() => {
@@ -197,6 +244,7 @@ const pageTint = computed(() => {
   if (path.startsWith('/heatmap')) return 'var(--tint-analytics)'
   if (path.startsWith('/keywords')) return 'var(--tint-leads)'
   if (path.startsWith('/strategy')) return 'var(--tint-strategy)'
+  if (path.startsWith('/agents')) return 'var(--tint-strategy)'
   if (path.startsWith('/billing')) return 'var(--tint-billing)'
   if (path.startsWith('/settings')) return 'var(--tint-settings)'
   if (path.startsWith('/websites')) return 'var(--tint-dashboard)'
@@ -237,14 +285,12 @@ async function createProject() {
     appStore.setActiveWebsite(project)
     newProject.value = { name: '', url: '', industry: '' }
     showAddProject.value = false
+    toast.success('Project created successfully!')
     router.push(`/websites/${project.id}`)
   } catch (err) {
-    const resp = err.response?.data
-    if (resp?.error === 'project_limit_reached') {
-      createError.value = resp.message
-    } else {
-      createError.value = resp?.detail || resp?.url?.[0] || 'Failed to create project.'
-    }
+    const msg = err.displayMessage || 'We couldn\'t create the project. Please check the URL and try again.'
+    createError.value = msg
+    toast.error(msg)
   } finally {
     creating.value = false
   }

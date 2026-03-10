@@ -7,16 +7,18 @@ from apps.websites.models import Website, WebsiteSettings
 
 logger = logging.getLogger("apps")
 
-PLAN_WEBSITE_LIMITS = {"starter": 1, "growth": 5, "scale": 50}
+# Limits disabled for testing — re-enable for production
+# PLAN_WEBSITE_LIMITS = {"starter": 1, "growth": 5, "scale": 50}
 
 
 class WebsiteService:
     @staticmethod
     def create(*, user, url: str, name: str, industry: str = "") -> Website:
         """Add a new website for a user."""
-        limit = PLAN_WEBSITE_LIMITS.get(user.plan, 1)
-        if Website.objects.filter(user=user).count() >= limit:
-            raise PlanLimitExceeded(f"Your plan allows up to {limit} website(s).")
+        # Plan limit check disabled for testing
+        # limit = PLAN_WEBSITE_LIMITS.get(user.plan, 1)
+        # if Website.objects.filter(user=user).count() >= limit:
+        #     raise PlanLimitExceeded(f"Your plan allows up to {limit} website(s).")
 
         validated_url = validate_website_url(url)
 
