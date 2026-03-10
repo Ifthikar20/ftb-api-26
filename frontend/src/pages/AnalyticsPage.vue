@@ -8,7 +8,7 @@
       </div>
       <div class="flex gap-8 items-center">
         <div class="period-tabs">
-          <button v-for="p in periods" :key="p.value" class="period-tab" :class="{ active: period === p.value }" @click="period = p.value; loadTab()">{{ p.label }}</button>
+          <button v-for="p in periods" :key="p.value" class="period-tab" :class="{ active: period === p.value }" @click="changePeriod(p.value)">{{ p.label }}</button>
         </div>
       </div>
     </div>
@@ -24,6 +24,9 @@
     <div v-if="loading" class="loading-state">
       <div class="spinner"></div>
       <span style="margin-top:12px">Loading analytics...</span>
+    </div>
+    <div v-if="refreshing && !loading" class="refresh-indicator">
+      <div class="refresh-dot"></div> Updating...
     </div>
 
     <template v-else>
@@ -71,7 +74,7 @@
               <span class="legend-item"><span class="legend-dot" style="background: var(--color-info)"></span> Page Views</span>
             </div>
           </div>
-          <div class="area-chart-wrap" @mousemove="handleChartHover" @mouseleave="chartHover = null">
+          <div class="area-chart-wrap" @mousemove="handleChartHover" @mouseleave="localChartHover = null">
             <svg class="area-chart-svg" :viewBox="'0 0 ' + chartWidth + ' ' + chartHeight" preserveAspectRatio="none">
               <defs>
                 <linearGradient id="visitorsGrad" x1="0" y1="0" x2="0" y2="1">
@@ -88,11 +91,11 @@
               <path :d="viewsLinePath" fill="none" stroke="var(--color-info)" stroke-width="2" stroke-linejoin="round"/>
               <path :d="visitorsAreaPath" fill="url(#visitorsGrad)" />
               <path :d="visitorsLinePath" fill="none" stroke="var(--brand-accent)" stroke-width="2.5" stroke-linejoin="round"/>
-              <line v-if="chartHover" :x1="chartHover.x" :y1="0" :x2="chartHover.x" :y2="chartHeight" stroke="var(--text-muted)" stroke-width="0.5" stroke-dasharray="4"/>
+              <line v-if="localChartHover" :x1="localChartHover.x" :y1="0" :x2="localChartHover.x" :y2="chartHeight" stroke="var(--text-muted)" stroke-width="0.5" stroke-dasharray="4"/>
             </svg>
-            <div v-if="chartHover" class="chart-tooltip" :style="{ left: chartHover.pctX + '%' }">
-              <strong>{{ chartHover.label }}</strong>
-              <div>{{ chartHover.visitors }} visitors · {{ chartHover.pageviews }} views</div>
+            <div v-if="localChartHover" class="chart-tooltip" :style="{ left: localChartHover.pctX + '%' }">
+              <strong>{{ localChartHover.label }}</strong>
+              <div>{{ localChartHover.visitors }} visitors · {{ localChartHover.pageviews }} views</div>
             </div>
             <div class="area-chart-labels">
               <span v-for="(d, i) in chartData" :key="i" :class="{ highlighted: i % Math.ceil(chartData.length / 7) === 0 }">{{ d.label }}</span>
@@ -384,11 +387,13 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import analyticsApi from '@/api/analytics'
+import { useAnalyticsStore } from '@/stores/analytics'
 
 const route = useRoute()
+const store = useAnalyticsStore()
+
 const websiteId = route.params.websiteId
 
 const tabs = [
@@ -407,40 +412,36 @@ const periods = [
   { label: '90d', value: '90d' },
 ]
 
-const activeTab = ref('overview')
-const period = ref('30d')
-const loading = ref(true)
-const noData = ref(false)
-const chartHover = ref(null)
+// ── Bind to store ──
+const activeTab = computed(() => store.activeTab)
+const period = computed(() => store.activePeriod)
+const loading = computed(() => store.initialLoading)
+const refreshing = computed(() => store.refreshing)
 
-// Overview data
-const stats = ref([])
-const chartData = ref([])
-const topPages = ref([])
-const sources = ref([])
-const devices = ref([])
-const countries = ref([])
-const realtimeVisitors = ref(0)
+// Read from the per-website cache (reactive via computed)
+const cached = computed(() => store.data)
+const stats = computed(() => cached.value.stats || [])
+const chartData = computed(() => cached.value.chartData || [])
+const topPages = computed(() => cached.value.topPages || [])
+const sources = computed(() => cached.value.sources || [])
+const devices = computed(() => cached.value.devices || [])
+const countries = computed(() => cached.value.countries || [])
+const realtimeVisitors = computed(() => cached.value.realtimeVisitors || 0)
+const noData = computed(() => cached.value.noData)
+const funnelList = computed(() => cached.value.funnelList || [])
+const funnelResult = computed(() => cached.value.funnelResult)
+const retentionData = computed(() => cached.value.retentionData || {})
+const flowData = computed(() => cached.value.flowData || {})
+const entryExitData = computed(() => cached.value.entryExitData || {})
+const insightsData = computed(() => cached.value.insightsData || {})
+const visitorList = computed(() => cached.value.visitorList || [])
+const timelineEvents = computed(() => cached.value.timelineEvents || [])
 
-// Funnels
-const funnelList = ref([])
-const funnelResult = ref(null)
+// Local UI state (no need to cache)
+import { ref } from 'vue'
+const localChartHover = ref(null)
 const showCreateFunnel = ref(false)
 const newFunnel = ref({ name: '', steps: [{ name: '', type: 'url', value: '' }, { name: '', type: 'url', value: '' }] })
-
-// Retention
-const retentionData = ref({})
-
-// Flows
-const flowData = ref({})
-const entryExitData = ref({})
-
-// AI Insights
-const insightsData = ref({})
-
-// Visitors
-const visitorList = ref([])
-const timelineEvents = ref([])
 
 // Chart
 const chartWidth = 600
@@ -481,7 +482,7 @@ function handleChartHover(e) {
   if (!d) return
   const step = chartWidth / Math.max(chartData.value.length - 1, 1)
   const x = idx * step
-  chartHover.value = { x, pctX, label: d.label, visitors: d.visitors, pageviews: d.pageviews }
+  localChartHover.value = { x, pctX, label: d.label, visitors: d.visitors, pageviews: d.pageviews }
 }
 
 const deviceColors = ['var(--brand-accent)', 'var(--text-primary)', 'var(--text-muted)']
@@ -525,119 +526,52 @@ function formatTime(d) {
   return new Date(d).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 }
 
-// ── Tab switching ──
+// ── Store-backed actions ──
 function switchTab(tabId) {
-  activeTab.value = tabId
-  loadTab()
+  store.switchTab(tabId)
 }
 
-async function loadTab() {
-  const tab = activeTab.value
-  try {
-    if (tab === 'overview') await fetchOverview()
-    else if (tab === 'funnels') await fetchFunnels()
-    else if (tab === 'retention') await fetchRetention()
-    else if (tab === 'flows') await fetchFlows()
-    else if (tab === 'insights') await fetchInsights()
-    else if (tab === 'visitors') await fetchVisitors()
-  } catch (e) { console.error('Tab load error', e) }
-}
-
-async function fetchOverview() {
-  const [overviewRes, chartRes, pagesRes, sourcesRes, devicesRes, countriesRes] = await Promise.all([
-    analyticsApi.overview(websiteId, { period: period.value }).catch(() => ({ data: {} })),
-    analyticsApi.chart(websiteId, { period: period.value }).catch(() => ({ data: [] })),
-    analyticsApi.pages(websiteId, { period: period.value }).catch(() => ({ data: [] })),
-    analyticsApi.sources(websiteId, { period: period.value }).catch(() => ({ data: [] })),
-    analyticsApi.devices(websiteId, { period: period.value }).catch(() => ({ data: [] })),
-    analyticsApi.countries(websiteId, { period: period.value }).catch(() => ({ data: [] })),
-  ])
-
-  const o = overviewRes.data?.data || overviewRes.data || {}
-
-  stats.value = [
-    { label: 'Unique Visitors', value: (o.total_visitors || 0).toLocaleString(), trend: o.visitor_growth_pct || 0, highlight: true },
-    { label: 'Page Views', value: (o.total_pageviews || 0).toLocaleString(), trend: o.pageviews_trend || 0 },
-    { label: 'Avg. Session', value: o.avg_session || '0:00', trend: o.session_trend || 0 },
-    { label: 'Bounce Rate', value: (o.bounce_rate || '0') + '%', trend: o.bounce_trend || 0 },
-  ]
-
-  const rawChart = chartRes.data?.data || chartRes.data || []
-  chartData.value = Array.isArray(rawChart) ? rawChart : []
-
-  const pd = pagesRes.data?.data || pagesRes.data || []
-  topPages.value = (Array.isArray(pd) ? pd : []).map(p => ({ url: p.url || p.page, views: p.views || p.count || 0 }))
-
-  const sd = sourcesRes.data?.data || sourcesRes.data || []
-  const sourceColors = ['#c9a050', '#1a1a2e', '#27ae60', '#2980b9', '#e74c3c']
-  sources.value = (Array.isArray(sd) ? sd : []).map((s, i) => ({
-    name: s.source || s.name || 'direct',
-    pct: s.percentage || s.pct || 0,
-    sessions: s.sessions || s.count || 0,
-    color: sourceColors[i % sourceColors.length],
-  }))
-
-  devices.value = devicesRes.data?.data || devicesRes.data || []
-  countries.value = countriesRes.data?.data || countriesRes.data || []
-
-  realtimeVisitors.value = o.realtime || 0
-  noData.value = !chartData.value.length && !topPages.value.length && !sources.value.length
-}
-
-async function fetchFunnels() {
-  const res = await analyticsApi.funnels(websiteId).catch(() => ({ data: [] }))
-  funnelList.value = res.data?.data || res.data || []
+function changePeriod(p) {
+  store.changePeriod(p)
 }
 
 async function runFunnel(fid) {
-  const res = await analyticsApi.calculateFunnel(websiteId, fid, { period: period.value }).catch(() => ({ data: {} }))
-  funnelResult.value = res.data?.data || res.data || null
+  await store.runFunnel(websiteId, fid, period.value)
 }
 
 async function createFunnel() {
-  await analyticsApi.createFunnel(websiteId, { name: newFunnel.value.name, steps: newFunnel.value.steps })
+  await store.createFunnel(websiteId, { name: newFunnel.value.name, steps: newFunnel.value.steps })
   showCreateFunnel.value = false
   newFunnel.value = { name: '', steps: [{ name: '', type: 'url', value: '' }, { name: '', type: 'url', value: '' }] }
-  await fetchFunnels()
-}
-
-async function fetchRetention() {
-  const res = await analyticsApi.retention(websiteId, { weeks: 8 }).catch(() => ({ data: {} }))
-  retentionData.value = res.data?.data || res.data || {}
-}
-
-async function fetchFlows() {
-  const [flowRes, eeRes] = await Promise.all([
-    analyticsApi.flows(websiteId, { period: period.value }).catch(() => ({ data: {} })),
-    analyticsApi.entryExit(websiteId, { period: period.value }).catch(() => ({ data: {} })),
-  ])
-  flowData.value = flowRes.data?.data || flowRes.data || {}
-  entryExitData.value = eeRes.data?.data || eeRes.data || {}
-}
-
-async function fetchInsights() {
-  const res = await analyticsApi.insights(websiteId).catch(() => ({ data: {} }))
-  insightsData.value = res.data?.data || res.data || {}
-}
-
-async function fetchVisitors() {
-  const res = await analyticsApi.visitors(websiteId).catch(() => ({ data: [] }))
-  visitorList.value = res.data?.data || res.data || []
 }
 
 async function loadTimeline(vid) {
-  const res = await analyticsApi.visitorTimeline(websiteId, vid).catch(() => ({ data: [] }))
-  timelineEvents.value = res.data?.data || res.data || []
+  await store.loadTimeline(websiteId, vid)
 }
 
+// ── Save to sessionStorage when data changes ──
+let saveTimer = null
+watch(() => store.cache, () => {
+  clearTimeout(saveTimer)
+  saveTimer = setTimeout(() => store.saveToSession(), 500)
+}, { deep: true })
+
+// ── Init ──
 onMounted(async () => {
-  await fetchOverview()
-  loading.value = false
+  store.init(websiteId, period.value)
+  // Fetch overview (store handles caching — shows cached, refreshes if stale)
+  await store.fetchOverview(websiteId, period.value)
+})
+
+onBeforeUnmount(() => {
+  store.saveToSession()
 })
 </script>
 
 <style scoped>
 .loading-state { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 80px 20px; color: var(--text-muted); }
+.refresh-indicator { display: flex; align-items: center; gap: 8px; padding: 6px 14px; font-size: var(--font-xs); color: var(--text-muted); }
+.refresh-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--brand-accent); animation: pulse 1s infinite; }
 
 /* ── Tabs ── */
 .analytics-tabs { display: flex; gap: 4px; margin-bottom: 24px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 4px; overflow-x: auto; }
