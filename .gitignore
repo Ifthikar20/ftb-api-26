@@ -32,6 +32,7 @@ media/
 !.env.example
 !.env.prod.example
 *.pem
+ssl/
 
 # Testing
 .coverage

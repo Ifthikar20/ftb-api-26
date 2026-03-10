@@ -4,10 +4,14 @@ import { useAuthStore } from '@/stores/auth'
 const routes = [
     /* ── Public Landing Page ── */
     {
-        path: '/welcome',
+        path: '/',
         name: 'landing',
         component: () => import('@/pages/LandingPage.vue'),
         meta: { guest: true }
+    },
+    {
+        path: '/welcome',
+        redirect: '/'
     },
 
     /* ── Auth (public) ── */
@@ -38,16 +42,22 @@ const routes = [
 
     /* ── App (protected) ── */
     {
+        path: '/dashboard',
+        component: () => import('@/layouts/AppLayout.vue'),
+        meta: { requiresAuth: true },
+        children: [
+            {
+                path: '',
+                name: 'dashboard',
+                component: () => import('@/pages/DashboardPage.vue')
+            },
+        ]
+    },
+    {
         path: '/',
         component: () => import('@/layouts/AppLayout.vue'),
         meta: { requiresAuth: true },
         children: [
-            { path: '', redirect: '/dashboard' },
-            {
-                path: 'dashboard',
-                name: 'dashboard',
-                component: () => import('@/pages/DashboardPage.vue')
-            },
             {
                 path: 'websites',
                 name: 'websites',
@@ -143,6 +153,7 @@ router.beforeEach((to, from, next) => {
         return next({ name: 'login', query: { redirect: to.fullPath } })
     }
 
+    // If guest visits a guest-only page but is already logged in, go to dashboard
     if (to.meta.guest && auth.isAuthenticated) {
         return next({ name: 'dashboard' })
     }
