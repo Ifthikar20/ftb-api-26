@@ -377,6 +377,11 @@ const tabs = [
 ]
 
 const periods = [
+  { label: '5m', value: '5m' },
+  { label: '15m', value: '15m' },
+  { label: '30m', value: '30m' },
+  { label: '1h', value: '1h' },
+  { label: '6h', value: '6h' },
   { label: '24h', value: '24h' },
   { label: '7d', value: '7d' },
   { label: '30d', value: '30d' },
@@ -420,14 +425,14 @@ const trafficChartData = computed(() => ({
     {
       label: 'Visitors',
       data: chartData.value.map(d => d.visitors || 0),
-      borderColor: '#c9a050',
-      backgroundColor: 'rgba(201, 160, 80, 0.08)',
+      borderColor: '#5B8DEF',
+      backgroundColor: 'rgba(91, 141, 239, 0.08)',
       fill: true,
       tension: 0.4,
       borderWidth: 2.5,
       pointRadius: 0,
       pointHoverRadius: 5,
-      pointHoverBackgroundColor: '#c9a050',
+      pointHoverBackgroundColor: '#5B8DEF',
       pointHoverBorderColor: '#fff',
       pointHoverBorderWidth: 2,
     },
@@ -458,7 +463,7 @@ const trafficChartOptions = {
       backgroundColor: 'rgba(26, 26, 46, 0.95)',
       titleColor: '#fff',
       bodyColor: '#ccc',
-      borderColor: 'rgba(201, 160, 80, 0.3)',
+      borderColor: 'rgba(91, 141, 239, 0.15)',
       borderWidth: 1,
       padding: 12,
       cornerRadius: 8,
@@ -489,7 +494,7 @@ const sourcesChartData = computed(() => ({
   datasets: [{
     label: 'Sessions',
     data: sources.value.map(s => s.sessions || 0),
-    backgroundColor: ['#c9a050', '#3498db', '#27ae60', '#e67e22', '#e74c3c', '#9b59b6'],
+    backgroundColor: ['#5B8DEF', '#34D399', '#A78BFA', '#F59E0B', '#6B7280', '#EC4899'],
     borderRadius: 4,
     barThickness: 22,
   }],
@@ -505,7 +510,7 @@ const sourcesChartOptions = {
       backgroundColor: 'rgba(26, 26, 46, 0.95)',
       titleColor: '#fff',
       bodyColor: '#ccc',
-      borderColor: 'rgba(201, 160, 80, 0.3)',
+      borderColor: 'rgba(91, 141, 239, 0.15)',
       borderWidth: 1,
       padding: 12,
       cornerRadius: 8,
@@ -527,7 +532,7 @@ const sourcesChartOptions = {
 }
 
 // Devices — Doughnut chart
-const deviceColors = ['#c9a050', '#3498db', '#8a8a9a', '#27ae60', '#e74c3c']
+const deviceColors = ['#5B8DEF', '#34D399', '#A78BFA', '#F59E0B', '#6B7280']
 const devicesChartData = computed(() => ({
   labels: devices.value.map(d => d.name),
   datasets: [{
@@ -548,7 +553,7 @@ const devicesChartOptions = {
       backgroundColor: 'rgba(26, 26, 46, 0.95)',
       titleColor: '#fff',
       bodyColor: '#ccc',
-      borderColor: 'rgba(201, 160, 80, 0.3)',
+      borderColor: 'rgba(91, 141, 239, 0.15)',
       borderWidth: 1,
       padding: 12,
       cornerRadius: 8,
