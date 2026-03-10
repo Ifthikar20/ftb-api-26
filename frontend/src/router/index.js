@@ -1,6 +1,14 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 
+/* ── Helper: wrap a protected route in AppLayout ── */
+const protect = (path, name, component, props = false) => ({
+    path,
+    component: () => import('@/layouts/AppLayout.vue'),
+    meta: { requiresAuth: true },
+    children: [{ path: '', name, component, props }]
+})
+
 const routes = [
     /* ── Public Landing Page ── */
     {
@@ -40,95 +48,20 @@ const routes = [
         meta: { layout: 'auth', guest: true }
     },
 
-    /* ── App (protected) ── */
-    {
-        path: '/dashboard',
-        component: () => import('@/layouts/AppLayout.vue'),
-        meta: { requiresAuth: true },
-        children: [
-            {
-                path: '',
-                name: 'dashboard',
-                component: () => import('@/pages/DashboardPage.vue')
-            },
-        ]
-    },
-    {
-        path: '/',
-        component: () => import('@/layouts/AppLayout.vue'),
-        meta: { requiresAuth: true },
-        children: [
-            {
-                path: 'websites',
-                name: 'websites',
-                component: () => import('@/pages/WebsitesListPage.vue')
-            },
-            {
-                path: 'websites/:id',
-                name: 'website-detail',
-                component: () => import('@/pages/WebsiteDetailPage.vue'),
-                props: true
-            },
-            {
-                path: 'analytics/:websiteId',
-                name: 'analytics',
-                component: () => import('@/pages/AnalyticsPage.vue'),
-                props: true
-            },
-            {
-                path: 'leads/:websiteId',
-                name: 'leads',
-                component: () => import('@/pages/LeadsPage.vue'),
-                props: true
-            },
-            {
-                path: 'competitors/:websiteId',
-                name: 'competitors',
-                component: () => import('@/pages/CompetitorsPage.vue'),
-                props: true
-            },
-            {
-                path: 'audits/:websiteId',
-                name: 'audits',
-                component: () => import('@/pages/AuditsPage.vue'),
-                props: true
-            },
-            {
-                path: 'heatmap/:websiteId',
-                name: 'heatmap',
-                component: () => import('@/pages/HeatmapPage.vue'),
-                props: true
-            },
-            {
-                path: 'keywords/:websiteId',
-                name: 'keywords',
-                component: () => import('@/pages/KeywordsPage.vue'),
-                props: true
-            },
-            {
-                path: 'strategy/:websiteId',
-                name: 'strategy',
-                component: () => import('@/pages/StrategyPage.vue'),
-                props: true
-            },
-            {
-                path: 'agents/:websiteId',
-                name: 'agents',
-                component: () => import('@/pages/AgentsPage.vue'),
-                props: true
-            },
-            {
-                path: 'billing',
-                name: 'billing',
-                component: () => import('@/pages/BillingPage.vue')
-            },
-            {
-                path: 'settings',
-                name: 'settings',
-                component: () => import('@/pages/SettingsPage.vue')
-            },
-        ]
-    },
+    /* ── App (protected — each uses AppLayout) ── */
+    protect('/dashboard', 'dashboard', () => import('@/pages/DashboardPage.vue')),
+    protect('/websites', 'websites', () => import('@/pages/WebsitesListPage.vue')),
+    protect('/websites/:id', 'website-detail', () => import('@/pages/WebsiteDetailPage.vue'), true),
+    protect('/analytics/:websiteId', 'analytics', () => import('@/pages/AnalyticsPage.vue'), true),
+    protect('/leads/:websiteId', 'leads', () => import('@/pages/LeadsPage.vue'), true),
+    protect('/competitors/:websiteId', 'competitors', () => import('@/pages/CompetitorsPage.vue'), true),
+    protect('/audits/:websiteId', 'audits', () => import('@/pages/AuditsPage.vue'), true),
+    protect('/heatmap/:websiteId', 'heatmap', () => import('@/pages/HeatmapPage.vue'), true),
+    protect('/keywords/:websiteId', 'keywords', () => import('@/pages/KeywordsPage.vue'), true),
+    protect('/strategy/:websiteId', 'strategy', () => import('@/pages/StrategyPage.vue'), true),
+    protect('/agents/:websiteId', 'agents', () => import('@/pages/AgentsPage.vue'), true),
+    protect('/billing', 'billing', () => import('@/pages/BillingPage.vue')),
+    protect('/settings', 'settings', () => import('@/pages/SettingsPage.vue')),
 
     /* ── 404 ── */
     {
