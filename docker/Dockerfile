@@ -20,6 +20,7 @@ RUN pip install -r requirements/prod.txt
 COPY . .
 
 RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser
+RUN mkdir -p /app/logs
 RUN chown -R appuser:appgroup /app
 USER appuser
 

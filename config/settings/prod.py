@@ -30,7 +30,7 @@ AWS_S3_CUSTOM_DOMAIN = f"{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com"
 AWS_DEFAULT_ACL = "private"
 AWS_S3_FILE_OVERWRITE = False
 
-LOG_DIR = "/var/log/growthpilot"
+LOG_DIR = os.environ.get("LOG_DIR", "/app/logs")
 os.makedirs(LOG_DIR, exist_ok=True)
 
 LOGGING["handlers"].update(  # noqa: F405
