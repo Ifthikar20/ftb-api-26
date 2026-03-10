@@ -13,12 +13,14 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        target: process.env.VITE_API_URL || 'https://fetchbot.ai',
         changeOrigin: true,
+        secure: false,
       },
       '/ws': {
-        target: 'ws://localhost:8000',
+        target: process.env.VITE_WS_URL || 'wss://fetchbot.ai',
         ws: true,
+        secure: false,
       }
     }
   }

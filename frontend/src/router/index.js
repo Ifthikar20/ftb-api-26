@@ -79,8 +79,23 @@ const router = createRouter({
     }
 })
 
-router.beforeEach((to, from, next) => {
+let sessionRestored = false
+
+router.beforeEach(async (to, from, next) => {
     const auth = useAuthStore()
+
+    // On first load, try to restore session from refresh token cookie
+    if (!sessionRestored && !auth.isAuthenticated) {
+        sessionRestored = true
+        try {
+            await auth.refreshToken()
+            if (auth.accessToken) {
+                await auth.fetchMe()
+            }
+        } catch {
+            // No valid session — continue as guest
+        }
+    }
 
     if (to.meta.requiresAuth && !auth.isAuthenticated) {
         return next({ name: 'login', query: { redirect: to.fullPath } })
