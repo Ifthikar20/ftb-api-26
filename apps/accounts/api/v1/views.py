@@ -21,9 +21,9 @@ REFRESH_COOKIE_SETTINGS = {
     "key": "refresh_token",
     "httponly": True,
     "secure": True,
-    "samesite": "Lax",
+    "samesite": "None",
     "max_age": 7 * 24 * 60 * 60,
-    "path": "/api/v1/auth/",
+    "path": "/",
 }
 
 
@@ -77,7 +77,7 @@ class LogoutView(APIView):
         AuthService.logout(refresh_token=refresh_token, user=request.user)
 
         response = Response({"message": "Successfully logged out."}, status=status.HTTP_200_OK)
-        response.delete_cookie("refresh_token", path="/api/v1/auth/")
+        response.delete_cookie("refresh_token", path="/")
         return response
 
 
