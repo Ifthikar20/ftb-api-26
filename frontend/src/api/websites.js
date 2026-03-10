@@ -1,7 +1,7 @@
 import api from './client'
 
 export default {
-    list: () => api.get('/websites/'),
+    list: (config) => api.get('/websites/', config),
     create: (data) => api.post('/websites/', data),
     get: (id) => api.get(`/websites/${id}/`),
     update: (id, data) => api.put(`/websites/${id}/`, data),

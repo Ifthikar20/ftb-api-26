@@ -224,14 +224,14 @@ const userInitials = computed(() => {
 })
 
 const websiteId = computed(() => appStore.activeWebsite?.id)
-const analyticsRoute = computed(() => websiteId.value ? `/analytics/${websiteId.value}` : '/websites')
-const leadsRoute = computed(() => websiteId.value ? `/leads/${websiteId.value}` : '/websites')
-const competitorsRoute = computed(() => websiteId.value ? `/competitors/${websiteId.value}` : '/websites')
-const auditsRoute = computed(() => websiteId.value ? `/audits/${websiteId.value}` : '/websites')
-const heatmapRoute = computed(() => websiteId.value ? `/heatmap/${websiteId.value}` : '/websites')
-const keywordsRoute = computed(() => websiteId.value ? `/keywords/${websiteId.value}` : '/websites')
-const strategyRoute = computed(() => websiteId.value ? `/strategy/${websiteId.value}` : '/websites')
-const agentsRoute = computed(() => websiteId.value ? `/agents/${websiteId.value}` : '/websites')
+const analyticsRoute = computed(() => websiteId.value ? `/analytics/${websiteId.value}` : '#')
+const leadsRoute = computed(() => websiteId.value ? `/leads/${websiteId.value}` : '#')
+const competitorsRoute = computed(() => websiteId.value ? `/competitors/${websiteId.value}` : '#')
+const auditsRoute = computed(() => websiteId.value ? `/audits/${websiteId.value}` : '#')
+const heatmapRoute = computed(() => websiteId.value ? `/heatmap/${websiteId.value}` : '#')
+const keywordsRoute = computed(() => websiteId.value ? `/keywords/${websiteId.value}` : '#')
+const strategyRoute = computed(() => websiteId.value ? `/strategy/${websiteId.value}` : '#')
+const agentsRoute = computed(() => websiteId.value ? `/agents/${websiteId.value}` : '#')
 
 // Dynamic page background tint based on current route
 const pageTint = computed(() => {
@@ -306,12 +306,12 @@ onMounted(async () => {
     try { await authStore.fetchMe() } catch {}
   }
   try {
-    const { data } = await websitesApi.list()
+    const { data } = await websitesApi.list({ _silentError: true })
     appStore.setWebsites(data?.results || data || [])
   } catch {}
   // Fetch plan info for project limits
   try {
-    const { data } = await billingApi.getCurrent()
+    const { data } = await billingApi.getCurrent({ _silentError: true })
     const plan = data?.plan || data?.data?.plan || 'starter'
     const limits = { starter: 1, growth: 5, scale: -1 }
     appStore.setPlanInfo(plan, limits[plan] ?? 1)

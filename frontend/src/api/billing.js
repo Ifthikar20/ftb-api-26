@@ -1,7 +1,7 @@
 import api from './client'
 
 export default {
-    getCurrent: () => api.get('/billing/'),
+    getCurrent: (config) => api.get('/billing/', config),
     getPlans: () => api.get('/billing/plans/'),
     checkout: (data) => api.post('/billing/checkout/', data),
     portal: () => api.post('/billing/portal/'),
