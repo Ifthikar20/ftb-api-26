@@ -12,12 +12,12 @@ CSRF_TRUSTED_ORIGINS = [
     "https://www.fetchbot.ai",
 ]
 
-# Enforce SSL for DB
+# DB SSL — configurable: use "require" for managed DBs (RDS), "prefer" for Docker internal
+DB_SSLMODE = env("DB_SSLMODE", default="prefer")  # noqa: F405
 DATABASES["default"]["OPTIONS"] = {  # noqa: F405
-    "sslmode": "require",
+    "sslmode": DB_SSLMODE,
     "connect_timeout": 10,
 }
-DATABASES["default"]["OPTIONS"]["sslmode"] = "require"  # noqa: F405
 
 # AWS S3 Storage
 DEFAULT_FILE_STORAGE = "storages.backends.s3boto3.S3Boto3Storage"
