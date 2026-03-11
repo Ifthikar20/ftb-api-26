@@ -7,6 +7,12 @@
         <p class="page-subtitle">Product analytics, funnels, retention, and AI insights.</p>
       </div>
       <div class="flex gap-8 items-center">
+        <button class="refresh-btn" :class="{ spinning: isRefreshing }" title="Refresh data" @click="handleRefresh">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M1 1v5h5"/><path d="M15 15v-5h-5"/>
+            <path d="M2.4 10a6 6 0 0010.3 1.5L15 10M1 6l2.3-1.5A6 6 0 0113.6 6"/>
+          </svg>
+        </button>
         <div class="period-tabs">
           <button v-for="p in periods" :key="p.value" class="period-tab" :class="{ active: period === p.value }" @click="changePeriod(p.value)">{{ p.label }}</button>
         </div>
@@ -923,12 +929,22 @@ watch(() => store.cache, () => {
 }, { deep: true })
 
 // ── Init ──
+const isRefreshing = ref(false)
+
+function handleRefresh() {
+  isRefreshing.value = true
+  store.forceRefresh()
+  setTimeout(() => { isRefreshing.value = false }, 1000)
+}
+
 onMounted(async () => {
   store.init(websiteId, period.value)
   await store.fetchOverview(websiteId, period.value)
+  store.startPolling()
 })
 
 onBeforeUnmount(() => {
+  store.stopPolling()
   store.saveToSession()
 })
 </script>
@@ -937,6 +953,18 @@ onBeforeUnmount(() => {
 .loading-state { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 80px 20px; color: var(--text-muted); }
 .refresh-indicator { display: flex; align-items: center; gap: 8px; padding: 6px 14px; font-size: var(--font-xs); color: var(--text-muted); }
 .refresh-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--brand-accent); animation: pulse 1s infinite; }
+
+/* Refresh Button */
+.refresh-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; border-radius: var(--radius-md);
+  border: 1px solid var(--border-color); background: var(--bg-card);
+  color: var(--text-secondary); cursor: pointer;
+  transition: all 0.2s;
+}
+.refresh-btn:hover { border-color: var(--brand-accent); color: var(--brand-accent); }
+.refresh-btn.spinning svg { animation: spin-refresh 0.8s ease; }
+@keyframes spin-refresh { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
 /* ── Tabs ── */
 .analytics-tabs { display: flex; gap: 4px; margin-bottom: 24px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 4px; overflow-x: auto; }

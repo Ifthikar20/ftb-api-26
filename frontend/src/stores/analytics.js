@@ -3,6 +3,7 @@ import { ref, computed } from 'vue'
 import analyticsApi from '@/api/analytics'
 
 const STALE_MS = 30_000 // 30 seconds before re-fetch
+const POLL_MS = 30_000 // auto-refresh every 30 seconds
 
 export const useAnalyticsStore = defineStore('analytics', () => {
     // ── Per-website cache: { [websiteId]: { overview, chart, ... , _ts: { overview: Date } } }
@@ -225,6 +226,41 @@ export const useAnalyticsStore = defineStore('analytics', () => {
         loadTabBackground()
     }
 
+    // ── Force refresh: invalidate all caches and re-fetch ──
+    function forceRefresh() {
+        const wid = activeWebsiteId.value
+        if (!wid) return
+        const c = _key(wid)
+        // Clear ALL timestamps so every fetch runs fresh
+        Object.keys(c._ts).forEach(k => { c._ts[k] = 0 })
+        loadTabBackground()
+    }
+
+    // ── Auto-polling: keep data fresh while page is active ──
+    let _pollTimer = null
+
+    function startPolling() {
+        stopPolling()
+        _pollTimer = setInterval(() => {
+            const wid = activeWebsiteId.value
+            if (!wid) return
+            // Invalidate current tab's cache and re-fetch
+            const c = _key(wid)
+            const tab = activeTab.value
+            const section = tab === 'events' ? 'visitors' : tab
+            if (c._ts[section]) c._ts[section] = 0
+            if (tab === 'overview' && c._ts.overview) c._ts.overview = 0
+            loadTabBackground()
+        }, POLL_MS)
+    }
+
+    function stopPolling() {
+        if (_pollTimer) {
+            clearInterval(_pollTimer)
+            _pollTimer = null
+        }
+    }
+
     // ── Manual sessionStorage persistence ──
     function saveToSession() {
         try {
@@ -256,6 +292,6 @@ export const useAnalyticsStore = defineStore('analytics', () => {
         init, switchTab, changePeriod, loadTabBackground,
         fetchOverview, fetchFunnels, runFunnel, createFunnel,
         fetchRetention, fetchFlows, fetchInsights, fetchVisitors,
-        loadTimeline, saveToSession,
+        loadTimeline, saveToSession, forceRefresh, startPolling, stopPolling,
     }
 })
