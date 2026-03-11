@@ -65,6 +65,7 @@ class PageEvent(TimestampMixin):
         ("click", "Click"),
         ("form_submit", "Form Submit"),
         ("scroll", "Scroll"),
+        ("session_end", "Session End"),
         ("custom", "Custom"),
     ]
 

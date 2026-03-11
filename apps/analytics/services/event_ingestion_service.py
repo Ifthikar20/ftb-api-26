@@ -7,6 +7,7 @@ from django.utils import timezone
 
 from apps.analytics.models import Visitor, PageEvent, Session
 from apps.websites.models import Website
+from core.utils.ua_parser import parse_user_agent, get_client_ip
 
 logger = logging.getLogger("apps")
 
@@ -15,25 +16,46 @@ SESSION_TIMEOUT_MINUTES = 30
 
 class EventIngestionService:
     @staticmethod
-    def ingest_event(*, pixel_key: str, event_data: dict) -> PageEvent:
+    def ingest_event(*, pixel_key: str, event_data: dict, request=None) -> PageEvent:
         """Process an incoming pixel event and store it."""
         try:
             website = Website.objects.get(pixel_key=pixel_key, is_active=True)
         except Website.DoesNotExist:
             raise ValueError(f"Invalid pixel key: {pixel_key}")
 
+        # Parse user-agent server-side for accuracy
+        ua_string = ""
+        client_ip = ""
+        if request:
+            ua_string = request.META.get("HTTP_USER_AGENT", "")
+            client_ip = get_client_ip(request)
+        if not ua_string:
+            ua_string = event_data.get("user_agent", "")
+
+        ua_info = parse_user_agent(ua_string)
+
         fingerprint = event_data.get("fingerprint") or event_data.get("visitor_id", "")
+        if not fingerprint and ua_string:
+            # Generate fingerprint from UA + screen dims + language for anonymous visitors
+            fp_parts = f"{ua_string}|{event_data.get('screen_width', '')}|{event_data.get('screen_height', '')}|{event_data.get('language', '')}"
+            fingerprint = fp_parts
         fingerprint_hash = hashlib.sha256(fingerprint.encode()).hexdigest()[:64]
+
+        # Detect country from IP using free API (cached per IP)
+        geo_country = event_data.get("geo_country", "")
+        if not geo_country and client_ip:
+            geo_country = EventIngestionService._detect_country(client_ip)
 
         visitor, created = Visitor.objects.get_or_create(
             website=website,
             fingerprint_hash=fingerprint_hash,
             defaults={
-                "geo_country": event_data.get("geo_country", ""),
+                "geo_country": geo_country,
                 "geo_city": event_data.get("geo_city", ""),
-                "device_type": event_data.get("device_type", ""),
-                "browser": event_data.get("browser", ""),
-                "os": event_data.get("os", ""),
+                "device_type": ua_info["device_type"],
+                "browser": ua_info["browser"],
+                "os": ua_info["os"],
+                "ip_hash": hashlib.sha256(client_ip.encode()).hexdigest()[:64] if client_ip else "",
             },
         )
 
@@ -168,15 +190,42 @@ class EventIngestionService:
         return source[:100], medium[:100], campaign[:200]
 
     @staticmethod
-    def ingest_batch(*, pixel_key: str, events: list) -> list:
+    def ingest_batch(*, pixel_key: str, events: list, request=None) -> list:
         """Ingest up to 50 events in one request."""
         results = []
         for event_data in events[:50]:
             try:
                 event = EventIngestionService.ingest_event(
-                    pixel_key=pixel_key, event_data=event_data
+                    pixel_key=pixel_key, event_data=event_data, request=request
                 )
                 results.append(event)
             except Exception as e:
                 logger.warning(f"Failed to ingest event: {e}")
         return results
+
+    # ── Country detection from IP ──
+    _country_cache = {}
+
+    @staticmethod
+    def _detect_country(ip: str) -> str:
+        """Detect country code from IP using free ip-api.com (non-commercial)."""
+        if ip in EventIngestionService._country_cache:
+            return EventIngestionService._country_cache[ip]
+
+        # Skip private/local IPs
+        if ip.startswith(("127.", "10.", "192.168.", "172.", "::1", "0.")):
+            return ""
+
+        try:
+            import urllib.request
+            import json as _json
+            resp = urllib.request.urlopen(
+                f"http://ip-api.com/json/{ip}?fields=countryCode", timeout=3
+            )
+            data = _json.loads(resp.read())
+            country = data.get("countryCode", "")
+            EventIngestionService._country_cache[ip] = country
+            return country
+        except Exception:
+            return ""
+

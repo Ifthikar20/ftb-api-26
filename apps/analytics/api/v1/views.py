@@ -35,7 +35,7 @@ class EventIngestView(APIView):
 
         try:
             EventIngestionService.ingest_event(
-                pixel_key=pixel_key, event_data=request.data
+                pixel_key=pixel_key, event_data=request.data, request=request
             )
         except ValueError as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
@@ -54,7 +54,7 @@ class BatchEventIngestView(APIView):
         if not pixel_key or not events:
             return Response({"error": "pixel_key and events required"}, status=status.HTTP_400_BAD_REQUEST)
 
-        results = EventIngestionService.ingest_batch(pixel_key=pixel_key, events=events)
+        results = EventIngestionService.ingest_batch(pixel_key=pixel_key, events=events, request=request)
         return Response({"ingested": len(results)}, status=status.HTTP_202_ACCEPTED)
 
 
