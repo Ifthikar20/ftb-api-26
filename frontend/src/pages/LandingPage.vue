@@ -39,13 +39,23 @@
     <!-- ═══ Features — Travel Lab Carousel ═══ -->
     <section class="features-section" id="features">
       <div class="feat-full anim" data-anim="fade-up">
-        <!-- Header row -->
+        <!-- Header row — Framer-style animated text -->
         <div class="feat-header wrap">
-          <h2 class="feat-headline">OUR TOOLS FOR</h2>
+          <h2 class="feat-headline">
+            OUR TOOLS FOR
+            <span class="feat-word-cycler">
+              <TransitionGroup name="word-cycle">
+                <span class="feat-word" :key="categories[activeCat]">
+                  {{ categories[activeCat] }}
+                  <span class="feat-word-glow"></span>
+                </span>
+              </TransitionGroup>
+            </span>
+          </h2>
           <div class="feat-tabs">
             <button v-for="(cat, ci) in categories" :key="cat"
                     class="feat-tab" :class="{ active: ci === activeCat }"
-                    @click="activeCat = ci">{{ cat }}</button>
+                    @click="activeCat = ci; resetCycle()">{{ cat }}</button>
           </div>
         </div>
 
@@ -149,17 +159,29 @@
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 
 const scrolled = ref(false)
-const activeCard = ref(1) // start with card 02 expanded, like the reference
+const activeCard = ref(1)
 const activeCat = ref(0)
 const trackOffset = ref(0)
 const trackRef = ref(null)
 
 const cardStep = 280
 const visibleCards = 4
+let cycleTimer = null
 
 function scrollCarousel(dir) {
   const maxOffset = -(features.length - visibleCards) * cardStep
   trackOffset.value = Math.max(maxOffset, Math.min(0, trackOffset.value - dir * cardStep))
+}
+
+function startCycle() {
+  cycleTimer = setInterval(() => {
+    activeCat.value = (activeCat.value + 1) % categories.length
+  }, 2800)
+}
+
+function resetCycle() {
+  clearInterval(cycleTimer)
+  startCycle()
 }
 
 onMounted(() => {
@@ -177,10 +199,12 @@ onMounted(() => {
   }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' })
 
   document.querySelectorAll('.anim').forEach(el => obs.observe(el))
+  startCycle()
 
   onUnmounted(() => {
     window.removeEventListener('scroll', onScroll)
     obs.disconnect()
+    clearInterval(cycleTimer)
   })
 })
 
@@ -269,7 +293,7 @@ const plans = [
   -webkit-font-smoothing: antialiased;
 }
 .wrap { max-width: 1200px; margin: 0 auto; padding: 0 32px; }
-em { color: #d4956a; font-style: italic; }
+em { color: #5B8DEF; font-style: italic; }
 .hide-m {}
 
 /* ── Nav ── */
@@ -329,22 +353,72 @@ em { color: #d4956a; font-style: italic; }
 .features-section { padding: 64px 0 80px; }
 .feat-full { background: #FFF6C6; border-radius: 24px; margin: 0 32px; padding: 48px 0 40px; overflow: hidden; }
 
-.feat-header { display: flex; align-items: baseline; gap: 40px; margin-bottom: 36px; }
+.feat-header { display: flex; align-items: baseline; gap: 40px; margin-bottom: 36px; flex-wrap: wrap; }
 .feat-headline {
   font-family: 'DM Serif Display', Georgia, serif;
   font-size: clamp(1.8rem, 3.5vw, 3rem);
   font-weight: 400; text-transform: uppercase;
-  letter-spacing: -0.02em; white-space: nowrap;
+  letter-spacing: -0.02em;
+  display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap;
 }
+
+/* ── Framer-style word cycler ── */
+.feat-word-cycler {
+  display: inline-block; position: relative;
+  min-width: 180px; height: 1.1em;
+  vertical-align: baseline; overflow: hidden;
+}
+.feat-word {
+  display: inline-block; position: absolute;
+  left: 0; bottom: 0;
+  color: #5B8DEF; font-style: italic;
+  white-space: nowrap;
+}
+.feat-word-glow {
+  position: absolute; bottom: -4px; left: 0; right: 0;
+  height: 3px; background: #5B8DEF;
+  border-radius: 2px;
+  box-shadow: 0 0 12px rgba(91, 141, 239, 0.5), 0 0 24px rgba(91, 141, 239, 0.2);
+  animation: glow-pulse 2.8s ease-in-out infinite;
+}
+@keyframes glow-pulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+/* Word cycle transition — slide up with blur */
+.word-cycle-enter-active {
+  transition: all 0.55s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.word-cycle-leave-active {
+  transition: all 0.35s cubic-bezier(0.55, 0, 1, 0.45);
+}
+.word-cycle-enter-from {
+  opacity: 0; transform: translateY(100%) scale(0.9);
+  filter: blur(6px);
+}
+.word-cycle-enter-to {
+  opacity: 1; transform: translateY(0) scale(1);
+  filter: blur(0);
+}
+.word-cycle-leave-from {
+  opacity: 1; transform: translateY(0) scale(1);
+  filter: blur(0);
+}
+.word-cycle-leave-to {
+  opacity: 0; transform: translateY(-80%) scale(0.9);
+  filter: blur(6px);
+}
+
 .feat-tabs { display: flex; gap: 24px; }
 .feat-tab {
   background: none; border: none; cursor: pointer;
   font-family: 'DM Serif Display', Georgia, serif;
   font-size: clamp(1rem, 1.8vw, 1.3rem);
-  font-style: italic; color: #a09a93;
-  padding: 0; transition: color 0.2s;
+  font-style: italic; color: #94a3b8;
+  padding: 0; transition: all 0.3s;
 }
-.feat-tab.active { color: #131718; text-decoration: underline; text-underline-offset: 4px; }
+.feat-tab.active { color: #5B8DEF; text-decoration: underline; text-underline-offset: 4px; text-decoration-color: #5B8DEF; }
 .feat-tab:hover { color: #131718; }
 
 /* Carousel track */
@@ -443,10 +517,10 @@ em { color: #d4956a; font-style: italic; }
   position: relative; transition: all 0.3s;
 }
 .price-card:hover { transform: translateY(-3px); box-shadow: 0 8px 28px rgba(0,0,0,0.05); }
-.price-card.featured { border-color: #d4956a; box-shadow: 0 4px 20px rgba(212,149,106,0.08); }
+.price-card.featured { border-color: #5B8DEF; box-shadow: 0 4px 20px rgba(91,141,239,0.1); }
 .pop {
   position: absolute; top: -11px; left: 50%; transform: translateX(-50%);
-  padding: 3px 14px; background: #d4956a; color: #fff;
+  padding: 3px 14px; background: #5B8DEF; color: #fff;
   border-radius: 999px; font-size: 10px; font-weight: 700;
   text-transform: uppercase; letter-spacing: 0.04em;
 }
@@ -462,7 +536,7 @@ em { color: #d4956a; font-style: italic; }
   text-decoration: none; border: 1.5px solid rgba(0,0,0,0.1);
   color: #131718; transition: all 0.25s;
 }
-.price-btn:hover { border-color: #d4956a; color: #d4956a; }
+.price-btn:hover { border-color: #5B8DEF; color: #5B8DEF; }
 .price-btn.dark { background: #131718; border-color: #131718; color: #fff; }
 .price-btn.dark:hover { background: #2a2d2e; transform: translateY(-1px); }
 

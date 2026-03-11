@@ -49,11 +49,52 @@
 
       <!-- ═══════════ TAB 1: Overview ═══════════ -->
       <div v-show="activeTab === 'overview' && !noData">
-        <!-- KPI Cards -->
+
+        <!-- Search & Filter Bar -->
+        <div class="filter-bar">
+          <div class="filter-input-wrap">
+            <svg class="filter-search-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="5"/><path d="M11 11l3 3"/></svg>
+            <input class="filter-input" v-model="searchQuery" placeholder="Search pages, events, sources..." @keydown.enter="addFilter" />
+          </div>
+          <div class="filter-selects">
+            <select class="filter-select" v-model="filterEvent" @change="addFilterFromSelect('event')">
+              <option value="">Event Type</option>
+              <option value="pageview">Pageview</option>
+              <option value="click">Click</option>
+              <option value="scroll">Scroll</option>
+              <option value="form_submit">Form Submit</option>
+            </select>
+            <select class="filter-select" v-model="filterDevice" @change="addFilterFromSelect('device')">
+              <option value="">Device</option>
+              <option value="desktop">Desktop</option>
+              <option value="mobile">Mobile</option>
+              <option value="tablet">Tablet</option>
+            </select>
+            <select class="filter-select" v-model="filterCountry" @change="addFilterFromSelect('country')">
+              <option value="">Country</option>
+              <option v-for="c in countries" :key="c.name" :value="c.name">{{ c.name }}</option>
+            </select>
+          </div>
+        </div>
+        <!-- Active Filters -->
+        <TransitionGroup name="chip" tag="div" class="filter-chips" v-if="activeFilters.length">
+          <span v-for="(f, i) in activeFilters" :key="f.label" class="filter-chip">
+            {{ f.label }}
+            <button class="chip-remove" @click="removeFilter(i)">&times;</button>
+          </span>
+        </TransitionGroup>
+
+        <!-- KPI Cards with tooltips -->
         <div class="kpi-grid">
           <div class="kpi-card" v-for="stat in stats" :key="stat.label" :class="stat.highlight ? 'kpi-highlight' : ''">
             <div class="kpi-header">
-              <span class="kpi-label">{{ stat.label }}</span>
+              <span class="kpi-label">
+                {{ stat.label }}
+                <span class="kpi-info" v-if="kpiTooltips[stat.label]" @mouseenter="showTooltip = stat.label" @mouseleave="showTooltip = null">
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="7"/><path d="M8 7v4M8 5.5v0"/></svg>
+                  <div class="kpi-tooltip" v-show="showTooltip === stat.label">{{ kpiTooltips[stat.label] }}</div>
+                </span>
+              </span>
               <span class="kpi-trend" :class="stat.trend >= 0 ? 'trend-up' : 'trend-down'">
                 {{ stat.trend >= 0 ? '↑' : '↓' }} {{ Math.abs(stat.trend) }}%
               </span>
@@ -97,6 +138,23 @@
               </tbody>
             </table>
             <div v-if="!topPages.length" class="empty-inline">No page data yet</div>
+          </div>
+        </div>
+
+        <!-- Engagement Radar + Source Polar Row -->
+        <div class="analytics-row">
+          <div class="card">
+            <div class="card-header"><h3 class="card-title">Engagement Score</h3></div>
+            <div class="chart-container" style="height:250px;position:relative">
+              <Radar :data="radarChartData" :options="radarChartOptions" />
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header"><h3 class="card-title">Source Distribution</h3></div>
+            <div class="chart-container" style="height:250px;position:relative" v-if="sources.length">
+              <PolarArea :data="polarChartData" :options="polarChartOptions" />
+            </div>
+            <div v-else class="empty-inline">No source data yet</div>
           </div>
         </div>
 
@@ -435,17 +493,17 @@
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAnalyticsStore } from '@/stores/analytics'
-import { Line, Bar, Doughnut } from 'vue-chartjs'
+import { Line, Bar, Doughnut, Radar, PolarArea } from 'vue-chartjs'
 import {
   Chart as ChartJS,
   CategoryScale, LinearScale, PointElement, LineElement,
-  BarElement, ArcElement,
+  BarElement, ArcElement, RadialLinearScale,
   Filler, Tooltip, Legend,
 } from 'chart.js'
 
 ChartJS.register(
   CategoryScale, LinearScale, PointElement, LineElement,
-  BarElement, ArcElement,
+  BarElement, ArcElement, RadialLinearScale,
   Filler, Tooltip, Legend,
 )
 
@@ -535,6 +593,53 @@ const avgLoadTime = computed(() => cached.value.avgLoadTime || 0)
 // Local UI state
 const showCreateFunnel = ref(false)
 const newFunnel = ref({ name: '', steps: [{ name: '', type: 'url', value: '' }, { name: '', type: 'url', value: '' }] })
+const showTooltip = ref(null)
+
+// ── Filter state ──
+const searchQuery = ref('')
+const filterEvent = ref('')
+const filterDevice = ref('')
+const filterCountry = ref('')
+const activeFilters = ref([])
+
+function addFilter() {
+  if (searchQuery.value.trim()) {
+    activeFilters.value.push({ type: 'search', label: `"${searchQuery.value.trim()}"` })
+    searchQuery.value = ''
+  }
+}
+function addFilterFromSelect(type) {
+  const map = { event: filterEvent, device: filterDevice, country: filterCountry }
+  const val = map[type].value
+  if (val) {
+    activeFilters.value.push({ type, label: `${type}: ${val}` })
+    map[type].value = ''
+  }
+}
+function removeFilter(i) { activeFilters.value.splice(i, 1) }
+
+// ── KPI tooltip definitions ──
+const kpiTooltips = {
+  'UNIQUE VISITORS': 'Count of distinct visitor IDs in the selected time period.',
+  'PAGE VIEWS': 'Total number of pages loaded by all visitors.',
+  'AVG. SESSION': 'Average time between first and last event in a session.',
+  'BOUNCE RATE': 'Percentage of single-page sessions. Formula: (Single-page sessions \u00f7 Total sessions) \u00d7 100',
+}
+
+// ── Helpers ──
+function eventBadge(type) {
+  const m = { pageview: 'badge-info', click: 'badge-warning', scroll: 'badge-neutral', form_submit: 'badge-success', exit: 'badge-danger' }
+  return m[type] || 'badge-neutral'
+}
+function formatTime(ts) {
+  if (!ts) return '--'
+  const d = new Date(ts)
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+}
+function formatDate(ts) {
+  if (!ts) return '--'
+  return new Date(ts).toLocaleDateString()
+}
 
 // ════════════ CHART.JS CONFIGURATIONS ════════════
 
@@ -678,6 +783,88 @@ const devicesChartOptions = {
       padding: 12,
       cornerRadius: 8,
       callbacks: { label: (ctx) => `${ctx.label}: ${ctx.parsed}%` },
+    },
+  },
+}
+
+// Engagement Radar chart
+const radarChartData = computed(() => ({
+  labels: ['Bounce Rate', 'Session Duration', 'Pages/Visit', 'Return Rate', 'Scroll Depth'],
+  datasets: [{
+    label: 'Engagement',
+    data: [
+      100 - bounceRate.value,
+      Math.min(parseFloat(avgTimeOnPage.value) * 20 || 30, 100),
+      Math.min(parseFloat(pagesPerSession.value) * 25 || 25, 100),
+      100 - newVisitorPct.value,
+      65,
+    ],
+    backgroundColor: 'rgba(91, 141, 239, 0.15)',
+    borderColor: '#5B8DEF',
+    borderWidth: 2,
+    pointBackgroundColor: '#5B8DEF',
+    pointBorderColor: '#fff',
+    pointRadius: 4,
+    pointHoverRadius: 6,
+  }],
+}))
+
+const radarChartOptions = {
+  responsive: true,
+  maintainAspectRatio: false,
+  plugins: {
+    legend: { display: false },
+    tooltip: {
+      backgroundColor: 'rgba(26, 26, 46, 0.95)',
+      titleColor: '#fff', bodyColor: '#ccc',
+      borderColor: 'rgba(91, 141, 239, 0.15)', borderWidth: 1,
+      padding: 12, cornerRadius: 8,
+      callbacks: { label: (ctx) => `${ctx.label}: ${ctx.parsed.r}/100` },
+    },
+  },
+  scales: {
+    r: {
+      beginAtZero: true, max: 100,
+      grid: { color: 'rgba(138, 138, 154, 0.08)' },
+      pointLabels: { font: { size: 11 }, color: '#8a8a9a' },
+      ticks: { display: false },
+    },
+  },
+}
+
+// Traffic Sources — PolarArea (alternative view)
+const polarChartData = computed(() => ({
+  labels: sources.value.map(s => s.name),
+  datasets: [{
+    data: sources.value.map(s => s.sessions || 0),
+    backgroundColor: [
+      'rgba(91, 141, 239, 0.7)',
+      'rgba(52, 211, 153, 0.7)',
+      'rgba(167, 139, 250, 0.7)',
+      'rgba(245, 158, 11, 0.7)',
+      'rgba(107, 114, 128, 0.7)',
+      'rgba(236, 72, 153, 0.7)',
+    ],
+    borderWidth: 0,
+  }],
+}))
+
+const polarChartOptions = {
+  responsive: true,
+  maintainAspectRatio: false,
+  plugins: {
+    legend: { display: true, position: 'right', labels: { usePointStyle: true, pointStyle: 'circle', padding: 14, boxWidth: 8, font: { size: 12 } } },
+    tooltip: {
+      backgroundColor: 'rgba(26, 26, 46, 0.95)',
+      titleColor: '#fff', bodyColor: '#ccc',
+      borderColor: 'rgba(91, 141, 239, 0.15)', borderWidth: 1,
+      padding: 12, cornerRadius: 8,
+    },
+  },
+  scales: {
+    r: {
+      grid: { color: 'rgba(138, 138, 154, 0.08)' },
+      ticks: { display: false },
     },
   },
 }
@@ -955,8 +1142,32 @@ onBeforeUnmount(() => {
 .perf-ok { background: var(--color-warning); }
 .perf-bad { background: var(--color-danger); }
 .perf-value { font-size: var(--font-sm); font-weight: 700; color: var(--text-primary); min-width: 40px; text-align: right; }
+/* ── Filter Bar ── */
+.filter-bar { display: flex; gap: 12px; margin-bottom: 12px; align-items: center; flex-wrap: wrap; }
+.filter-input-wrap { position: relative; flex: 1; min-width: 200px; }
+.filter-search-icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-muted); pointer-events: none; }
+.filter-input { width: 100%; padding: 10px 14px 10px 36px; font-family: var(--font-family); font-size: var(--font-sm); color: var(--text-primary); background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); outline: none; transition: all var(--transition-fast); }
+.filter-input:focus { border-color: var(--brand-accent); box-shadow: var(--shadow-glow); }
+.filter-input::placeholder { color: var(--text-muted); }
+.filter-selects { display: flex; gap: 8px; }
+.filter-select { padding: 8px 12px; font-family: var(--font-family); font-size: var(--font-xs); font-weight: 600; color: var(--text-secondary); background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); cursor: pointer; outline: none; transition: all var(--transition-fast); appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' fill='%236b7280' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; padding-right: 26px; }
+.filter-select:focus { border-color: var(--brand-accent); }
+
+/* ── Filter Chips ── */
+.filter-chips { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+.filter-chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; background: var(--brand-accent-glow); color: var(--brand-accent); border-radius: var(--radius-full); font-size: var(--font-xs); font-weight: 600; }
+.chip-remove { background: none; border: none; color: var(--brand-accent); cursor: pointer; font-size: 14px; line-height: 1; padding: 0 2px; opacity: 0.7; transition: opacity 0.15s; }
+.chip-remove:hover { opacity: 1; }
+.chip-enter-active { transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); }
+.chip-leave-active { transition: all 0.2s ease; }
+.chip-enter-from { opacity: 0; transform: scale(0.8) translateY(-4px); }
+.chip-leave-to { opacity: 0; transform: scale(0.8); }
+
+/* ── KPI Tooltip ── */
+.kpi-info { position: relative; display: inline-flex; align-items: center; margin-left: 4px; cursor: help; vertical-align: middle; color: var(--text-muted); }
+.kpi-tooltip { position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%); background: var(--text-primary); color: var(--text-inverse); padding: 10px 14px; border-radius: var(--radius-md); font-size: var(--font-xs); font-weight: 400; text-transform: none; letter-spacing: 0; line-height: 1.5; white-space: nowrap; max-width: 300px; white-space: normal; z-index: 50; box-shadow: var(--shadow-md); pointer-events: none; }
 
 /* ── Responsive ── */
-@media (max-width: 900px) { .kpi-grid { grid-template-columns: repeat(2, 1fr); } .analytics-row { grid-template-columns: 1fr; } .analytics-tabs { flex-wrap: wrap; } .engagement-grid { grid-template-columns: 1fr; } }
+@media (max-width: 900px) { .kpi-grid { grid-template-columns: repeat(2, 1fr); } .analytics-row { grid-template-columns: 1fr; } .analytics-tabs { flex-wrap: wrap; } .engagement-grid { grid-template-columns: 1fr; } .filter-bar { flex-direction: column; } .filter-selects { flex-wrap: wrap; } }
 @media (max-width: 600px) { .kpi-grid { grid-template-columns: 1fr; } .insights-grid { grid-template-columns: 1fr; } }
 </style>
