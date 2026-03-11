@@ -101,6 +101,27 @@
             </div>
             <div class="kpi-value">{{ stat.value }}</div>
           </div>
+          <!-- Extra KPI cards -->
+          <div class="kpi-card">
+            <div class="kpi-header"><span class="kpi-label">NEW VISITORS</span></div>
+            <div class="kpi-value">{{ newVisitorPct }}%</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-header"><span class="kpi-label">PAGES / SESSION</span></div>
+            <div class="kpi-value">{{ pagesPerSession }}</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-header">
+              <span class="kpi-label">
+                BOUNCE RATE
+                <span class="kpi-info" @mouseenter="showTooltip = 'BOUNCE RATE'" @mouseleave="showTooltip = null">
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="7"/><path d="M8 7v4M8 5.5v0"/></svg>
+                  <div class="kpi-tooltip" v-show="showTooltip === 'BOUNCE RATE'">{{ kpiTooltips['BOUNCE RATE'] }}</div>
+                </span>
+              </span>
+            </div>
+            <div class="kpi-value">{{ bounceRate }}%</div>
+          </div>
         </div>
 
         <!-- Traffic Charts Row -->
@@ -229,69 +250,6 @@
               </div>
             </div>
             <div v-else class="empty-inline">No live events yet — data will appear as visitors browse your site</div>
-          </div>
-        </div>
-
-        <!-- Session Quality Row -->
-        <div class="analytics-row">
-          <div class="card">
-            <div class="card-header"><h3 class="card-title">Engagement Summary</h3></div>
-            <div class="engagement-grid">
-              <div class="engagement-item">
-                <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="var(--brand-accent)" stroke-width="1.5"><path d="M8 1v14M1 8h14"/></svg>
-                <div>
-                  <div class="engagement-label">New Visitors</div>
-                  <div class="engagement-value">{{ newVisitorPct }}%</div>
-                </div>
-              </div>
-              <div class="engagement-item">
-                <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="var(--color-success)" stroke-width="1.5"><path d="M1 8a7 7 0 0114 0M12 5l3 3-3 3"/></svg>
-                <div>
-                  <div class="engagement-label">Returning</div>
-                  <div class="engagement-value">{{ 100 - newVisitorPct }}%</div>
-                </div>
-              </div>
-              <div class="engagement-item">
-                <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="var(--color-info)" stroke-width="1.5"><rect x="2" y="2" width="12" height="12" rx="2"/><path d="M2 6h12"/></svg>
-                <div>
-                  <div class="engagement-label">Pages / Session</div>
-                  <div class="engagement-value">{{ pagesPerSession }}</div>
-                </div>
-              </div>
-              <div class="engagement-item">
-                <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="var(--color-warning)" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 4v4l3 2"/></svg>
-                <div>
-                  <div class="engagement-label">Avg. Time on Page</div>
-                  <div class="engagement-value">{{ avgTimeOnPage }}</div>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div class="card">
-            <div class="card-header"><h3 class="card-title">Performance</h3></div>
-            <div class="perf-grid">
-              <div class="perf-item">
-                <div class="perf-label">Bounce Rate</div>
-                <div class="perf-bar-wrap">
-                  <div class="perf-bar" :style="{ width: bounceRate + '%' }" :class="bounceRate > 70 ? 'perf-bad' : bounceRate > 40 ? 'perf-ok' : 'perf-good'"></div>
-                </div>
-                <div class="perf-value">{{ bounceRate }}%</div>
-              </div>
-              <div class="perf-item">
-                <div class="perf-label">Conversion Rate</div>
-                <div class="perf-bar-wrap">
-                  <div class="perf-bar perf-good" :style="{ width: Math.min(conversionRate * 10, 100) + '%' }"></div>
-                </div>
-                <div class="perf-value">{{ conversionRate }}%</div>
-              </div>
-              <div class="perf-item">
-                <div class="perf-label">Avg. Load Time</div>
-                <div class="perf-bar-wrap">
-                  <div class="perf-bar" :style="{ width: Math.min(avgLoadTime * 20, 100) + '%' }" :class="avgLoadTime > 3 ? 'perf-bad' : avgLoadTime > 1.5 ? 'perf-ok' : 'perf-good'"></div>
-                </div>
-                <div class="perf-value">{{ avgLoadTime }}s</div>
-              </div>
-            </div>
           </div>
         </div>
       </div>
@@ -1025,7 +983,7 @@ onBeforeUnmount(() => {
 }
 
 /* ── KPI Grid ── */
-.kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px; margin-bottom: 24px; }
 .kpi-card { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 20px; transition: all var(--transition-base); }
 .kpi-card:hover { border-color: var(--border-hover); box-shadow: var(--shadow-sm); }
 .kpi-highlight { border-color: var(--brand-accent); background: linear-gradient(135deg, var(--bg-card) 0%, rgba(91, 141, 239, 0.04) 100%); }
