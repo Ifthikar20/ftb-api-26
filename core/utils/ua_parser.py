@@ -35,20 +35,20 @@ def parse_user_agent(ua: str) -> dict:
     elif "msie" in ua_lower or "trident" in ua_lower:
         browser = "IE"
 
-    # ── OS ──
+    # ── OS ── (order matters: iOS before macOS since iPhone UA contains 'Mac OS')
     os_name = "other"
-    if "windows" in ua_lower:
-        os_name = "Windows"
-    elif "mac os" in ua_lower or "macintosh" in ua_lower:
-        os_name = "macOS"
-    elif "iphone" in ua_lower or "ipad" in ua_lower:
+    if "iphone" in ua_lower or "ipad" in ua_lower:
         os_name = "iOS"
     elif "android" in ua_lower:
         os_name = "Android"
-    elif "linux" in ua_lower:
-        os_name = "Linux"
+    elif "windows" in ua_lower:
+        os_name = "Windows"
+    elif "mac os" in ua_lower or "macintosh" in ua_lower:
+        os_name = "macOS"
     elif "cros" in ua_lower:
         os_name = "ChromeOS"
+    elif "linux" in ua_lower:
+        os_name = "Linux"
 
     return {"device_type": device_type, "browser": browser, "os": os_name}
 
