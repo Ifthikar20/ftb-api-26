@@ -411,6 +411,7 @@
         <div class="card" style="margin-top:20px" v-else-if="journeys.length && !filteredJourneys.length">
           <div class="empty-inline">No journeys match your filters</div>
         </div>
+      </div>
 
       <!-- ═══════════ TAB 5: AI Insights ═══════════ -->
       <div v-show="activeTab === 'insights'">
