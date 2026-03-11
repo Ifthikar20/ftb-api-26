@@ -323,15 +323,7 @@
           </select>
         </div>
 
-        <!-- Actionable Insights -->
-        <div v-if="flowInsights.length" class="flow-insights-grid">
-          <div v-for="(insight, i) in flowInsights" :key="i" class="flow-insight-card card">
-            <div class="flow-insight-dot" :class="insight.severity"></div>
-            <div class="flow-insight-title">{{ insight.title }}</div>
-            <div class="flow-insight-value">{{ insight.value }}</div>
-            <div class="flow-insight-desc">{{ insight.desc }}</div>
-          </div>
-        </div>
+
 
         <div class="analytics-row">
           <!-- Common Flow Patterns -->
