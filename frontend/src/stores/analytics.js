@@ -205,7 +205,7 @@ export const useAnalyticsStore = defineStore('analytics', () => {
             else if (tab === 'retention') await fetchRetention(wid)
             else if (tab === 'flows') await fetchFlows(wid)
             else if (tab === 'insights') await fetchInsights(wid)
-            else if (tab === 'visitors') await fetchVisitors(wid)
+            else if (tab === 'events') await fetchVisitors(wid)
         } catch { /* silent */ }
     }
 

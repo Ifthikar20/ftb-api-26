@@ -50,40 +50,6 @@
       <!-- ═══════════ TAB 1: Overview ═══════════ -->
       <div v-show="activeTab === 'overview' && !noData">
 
-        <!-- Search & Filter Bar -->
-        <div class="filter-bar">
-          <div class="filter-input-wrap">
-            <svg class="filter-search-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="5"/><path d="M11 11l3 3"/></svg>
-            <input class="filter-input" v-model="searchQuery" placeholder="Search pages, events, sources..." @keydown.enter="addFilter" />
-          </div>
-          <div class="filter-selects">
-            <select class="filter-select" v-model="filterEvent" @change="addFilterFromSelect('event')">
-              <option value="">Event Type</option>
-              <option value="pageview">Pageview</option>
-              <option value="click">Click</option>
-              <option value="scroll">Scroll</option>
-              <option value="form_submit">Form Submit</option>
-            </select>
-            <select class="filter-select" v-model="filterDevice" @change="addFilterFromSelect('device')">
-              <option value="">Device</option>
-              <option value="desktop">Desktop</option>
-              <option value="mobile">Mobile</option>
-              <option value="tablet">Tablet</option>
-            </select>
-            <select class="filter-select" v-model="filterCountry" @change="addFilterFromSelect('country')">
-              <option value="">Country</option>
-              <option v-for="c in countries" :key="c.name" :value="c.name">{{ c.name }}</option>
-            </select>
-          </div>
-        </div>
-        <!-- Active Filters -->
-        <TransitionGroup name="chip" tag="div" class="filter-chips" v-if="activeFilters.length">
-          <span v-for="(f, i) in activeFilters" :key="f.label" class="filter-chip">
-            {{ f.label }}
-            <button class="chip-remove" @click="removeFilter(i)">&times;</button>
-          </span>
-        </TransitionGroup>
-
         <!-- KPI Cards with tooltips -->
         <div class="kpi-grid">
           <div class="kpi-card" v-for="stat in stats" :key="stat.label" :class="stat.highlight ? 'kpi-highlight' : ''">
@@ -411,8 +377,42 @@
         </div>
       </div>
 
-      <!-- ═══════════ TAB 6: Visitors ═══════════ -->
-      <div v-show="activeTab === 'visitors'">
+      <!-- ═══════════ TAB 6: Events ═══════════ -->
+      <div v-show="activeTab === 'events'">
+
+        <!-- Search & Filter Bar -->
+        <div class="filter-bar">
+          <div class="filter-input-wrap">
+            <svg class="filter-search-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="5"/><path d="M11 11l3 3"/></svg>
+            <input class="filter-input" v-model="searchQuery" placeholder="Search pages, events, sources..." @keydown.enter="addFilter" />
+          </div>
+          <div class="filter-selects">
+            <select class="filter-select" v-model="filterEvent" @change="addFilterFromSelect('event')">
+              <option value="">Event Type</option>
+              <option value="pageview">Pageview</option>
+              <option value="click">Click</option>
+              <option value="scroll">Scroll</option>
+              <option value="form_submit">Form Submit</option>
+            </select>
+            <select class="filter-select" v-model="filterDevice" @change="addFilterFromSelect('device')">
+              <option value="">Device</option>
+              <option value="desktop">Desktop</option>
+              <option value="mobile">Mobile</option>
+              <option value="tablet">Tablet</option>
+            </select>
+            <select class="filter-select" v-model="filterCountry" @change="addFilterFromSelect('country')">
+              <option value="">Country</option>
+              <option v-for="c in countries" :key="c.name" :value="c.name">{{ c.name }}</option>
+            </select>
+          </div>
+        </div>
+        <!-- Active Filters -->
+        <TransitionGroup name="chip" tag="div" class="filter-chips" v-if="activeFilters.length">
+          <span v-for="(f, i) in activeFilters" :key="f.label" class="filter-chip">
+            {{ f.label }}
+            <button class="chip-remove" @click="removeFilter(i)">&times;</button>
+          </span>
+        </TransitionGroup>
         <div class="card">
           <div class="card-header">
             <h3 class="card-title">Visitor Profiles</h3>
@@ -494,7 +494,7 @@ const tabs = [
   { id: 'retention', svg: '<path d="M1 8a7 7 0 0114 0M12 5l3 3-3 3"/><circle cx="8" cy="8" r="2"/>', label: 'Retention' },
   { id: 'flows', svg: '<path d="M1 4h4l3 4-3 4H1M15 4h-4l-3 4 3 4h4"/>', label: 'Flows' },
   { id: 'insights', svg: '<circle cx="8" cy="6" r="4"/><path d="M5 10v1a3 3 0 006 0v-1"/><line x1="8" y1="14" x2="8" y2="15"/>', label: 'AI Insights' },
-  { id: 'visitors', svg: '<circle cx="8" cy="5" r="3"/><path d="M2 14c0-3 3-5 6-5s6 2 6 5"/>', label: 'Visitors' },
+  { id: 'events', svg: '<path d="M3 2h10v12H3zM6 5h4M6 8h4M6 11h2"/>', label: 'Events' },
 ]
 
 const periods = [
