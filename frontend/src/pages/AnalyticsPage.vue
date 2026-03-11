@@ -293,31 +293,62 @@
 
       <!-- ═══════════ TAB 4: Flows ═══════════ -->
       <div v-show="activeTab === 'flows'">
+
+        <!-- Flow Insights (auto-generated from real data) -->
+        <div v-if="flowInsights.length" class="flow-insights-grid">
+          <div v-for="(insight, i) in flowInsights" :key="i" class="flow-insight-card card">
+            <div class="flow-insight-icon">{{ insight.icon }}</div>
+            <div class="flow-insight-title">{{ insight.title }}</div>
+            <div class="flow-insight-value">{{ insight.value }}</div>
+            <div class="flow-insight-desc">{{ insight.desc }}</div>
+          </div>
+        </div>
+
         <div class="analytics-row">
+          <!-- Top Page Flows with strength bars -->
           <div class="card">
-            <div class="card-header"><h3 class="card-title">Top Page Flows</h3></div>
+            <div class="card-header">
+              <h3 class="card-title">Top Page Flows</h3>
+              <span class="text-xs text-muted">How visitors move between pages</span>
+            </div>
             <div v-if="flowData.links && flowData.links.length" class="flow-list">
-              <div v-for="(link, i) in flowData.links.slice(0, 15)" :key="i" class="flow-item">
-                <span class="flow-page">{{ link.source }}</span>
-                <span class="flow-arrow">→</span>
-                <span class="flow-page">{{ link.target }}</span>
+              <div v-for="(link, i) in flowData.links.slice(0, 12)" :key="i" class="flow-item-enhanced">
+                <div class="flow-item-route">
+                  <span class="flow-page">{{ cleanPath(link.source) }}</span>
+                  <span class="flow-arrow">→</span>
+                  <span class="flow-page">{{ cleanPath(link.target) }}</span>
+                </div>
+                <div class="flow-item-bar-wrap">
+                  <div class="flow-item-bar" :style="{ width: flowBarWidth(link.value) + '%', background: flowBarColor(i) }"></div>
+                </div>
                 <span class="flow-count">{{ link.value }}×</span>
               </div>
             </div>
             <div v-else class="empty-inline">No flow data yet</div>
           </div>
+
+          <!-- Entry & Exit Pages with bars -->
           <div class="card">
-            <div class="card-header"><h3 class="card-title">Entry & Exit Pages</h3></div>
+            <div class="card-header">
+              <h3 class="card-title">Entry & Exit Pages</h3>
+              <span class="text-xs text-muted">Where journeys begin and end</span>
+            </div>
             <div v-if="entryExitData.entry_pages && entryExitData.entry_pages.length">
-              <h4 class="text-sm font-semibold" style="margin-bottom:8px;color:var(--color-success)">↓ Entry Pages</h4>
-              <div v-for="p in entryExitData.entry_pages" :key="'e'+p.page" class="flow-stat-item">
-                <span class="truncate" style="max-width:200px">{{ p.page }}</span>
-                <span class="font-semibold">{{ p.count }}</span>
+              <h4 class="text-sm font-semibold" style="margin-bottom:8px;color:var(--color-success)">↓ Where visitors land first</h4>
+              <div v-for="p in entryExitData.entry_pages" :key="'e'+p.page" class="flow-bar-row">
+                <span class="flow-bar-label truncate">{{ cleanPath(p.page) }}</span>
+                <div class="flow-bar-track">
+                  <div class="flow-bar-fill entry" :style="{ width: entryPct(p.count) + '%' }"></div>
+                </div>
+                <span class="flow-bar-count">{{ p.count }}</span>
               </div>
-              <h4 class="text-sm font-semibold" style="margin:16px 0 8px;color:var(--color-danger)">↑ Exit Pages</h4>
-              <div v-for="p in entryExitData.exit_pages || []" :key="'x'+p.page" class="flow-stat-item">
-                <span class="truncate" style="max-width:200px">{{ p.page }}</span>
-                <span class="font-semibold">{{ p.count }}</span>
+              <h4 class="text-sm font-semibold" style="margin:20px 0 8px;color:var(--color-danger)">↑ Where visitors leave</h4>
+              <div v-for="p in entryExitData.exit_pages || []" :key="'x'+p.page" class="flow-bar-row">
+                <span class="flow-bar-label truncate">{{ cleanPath(p.page) }}</span>
+                <div class="flow-bar-track">
+                  <div class="flow-bar-fill exit" :style="{ width: exitPct(p.count) + '%' }"></div>
+                </div>
+                <span class="flow-bar-count">{{ p.count }}</span>
               </div>
             </div>
             <div v-else class="empty-inline">No entry/exit data yet</div>
@@ -619,6 +650,88 @@ const filteredVisitors = computed(() => {
 
   return list
 })
+
+// ── Flow insights: auto-generated from real data ──
+const flowInsights = computed(() => {
+  const insights = []
+  const entries = entryExitData.value?.entry_pages || []
+  const exits = entryExitData.value?.exit_pages || []
+  const links = flowData.value?.links || []
+
+  if (entries.length) {
+    const top = entries[0]
+    insights.push({
+      icon: '🚪', title: 'Top Landing Page',
+      value: cleanPath(top.page),
+      desc: `${top.count} visitors start their journey here. This is your most common first impression.`
+    })
+  }
+
+  if (exits.length) {
+    const top = exits[0]
+    const isSignup = cleanPath(top.page).includes('signup') || cleanPath(top.page).includes('login')
+    insights.push({
+      icon: isSignup ? '✅' : '🚨', title: isSignup ? 'Top Conversion Exit' : 'Top Drop-off Page',
+      value: cleanPath(top.page),
+      desc: isSignup
+        ? `${top.count} visitors leave after signup — this is likely a conversion point.`
+        : `${top.count} visitors leave from this page. Consider improving content or adding CTAs here.`
+    })
+  }
+
+  if (links.length) {
+    const topFlow = links[0]
+    insights.push({
+      icon: '🔗', title: 'Strongest Flow',
+      value: `${cleanPath(topFlow.source)} → ${cleanPath(topFlow.target)}`,
+      desc: `${topFlow.value} visitors take this path. This is your most popular page transition.`
+    })
+  }
+
+  if (links.length >= 3) {
+    // Find pages that appear as targets but not sources (potential dead ends)
+    const sources = new Set(links.map(l => l.source))
+    const deadEnds = links.filter(l => !sources.has(l.target)).map(l => cleanPath(l.target))
+    const unique = [...new Set(deadEnds)].slice(0, 3)
+    if (unique.length) {
+      insights.push({
+        icon: '🔍', title: 'Pages to Investigate',
+        value: unique.join(', '),
+        desc: 'Visitors reach these pages but don't navigate further. Add links or CTAs to keep them engaged.'
+      })
+    }
+  }
+
+  return insights
+})
+
+function cleanPath(url) {
+  if (!url) return '--'
+  try { return new URL(url).pathname } catch { return url.startsWith('/') ? url : '/' + url }
+}
+
+function flowBarWidth(value) {
+  const links = flowData.value?.links || []
+  const max = links.length ? links[0].value : 1
+  return Math.max(8, (value / max) * 100)
+}
+
+function flowBarColor(i) {
+  const colors = ['var(--brand-accent)', '#34d399', '#fbbf24', '#f97316', '#a78bfa', '#f472b6']
+  return colors[i % colors.length]
+}
+
+function entryPct(count) {
+  const entries = entryExitData.value?.entry_pages || []
+  const max = entries.length ? entries[0].count : 1
+  return Math.max(8, (count / max) * 100)
+}
+
+function exitPct(count) {
+  const exits = entryExitData.value?.exit_pages || []
+  const max = exits.length ? exits[0].count : 1
+  return Math.max(8, (count / max) * 100)
+}
 
 // ── KPI tooltip definitions ──
 const kpiTooltips = {
@@ -1115,13 +1228,37 @@ onBeforeUnmount(() => {
 .retention-table { font-size: var(--font-xs); }
 .retention-cell { text-align: center; font-weight: 600; font-size: 11px; min-width: 50px; }
 
-/* ── Flows ── */
-.flow-list { display: flex; flex-direction: column; gap: 10px; }
-.flow-item { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border-color); font-size: var(--font-sm); }
-.flow-item:last-child { border-bottom: none; }
+/* ── Flows: Insights Grid ── */
+.flow-insights-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px; margin-bottom: 20px;
+}
+.flow-insight-card { display: flex; flex-direction: column; gap: 6px; padding: 16px !important; }
+.flow-insight-icon { font-size: 24px; }
+.flow-insight-title { font-size: var(--font-xs); text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); font-weight: 700; }
+.flow-insight-value { font-size: var(--font-base); font-weight: 700; color: var(--text-primary); word-break: break-word; }
+.flow-insight-desc { font-size: var(--font-xs); color: var(--text-secondary); line-height: 1.5; }
+
+/* ── Flows: Enhanced Items ── */
+.flow-list { display: flex; flex-direction: column; gap: 6px; }
+.flow-item-enhanced { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border-color); }
+.flow-item-enhanced:last-child { border-bottom: none; }
+.flow-item-route { display: flex; align-items: center; gap: 6px; min-width: 200px; flex-shrink: 0; }
 .flow-page { background: var(--bg-surface); padding: 4px 10px; border-radius: var(--radius-sm); font-family: 'SF Mono', monospace; font-size: var(--font-xs); }
-.flow-arrow { color: var(--text-muted); }
-.flow-count { margin-left: auto; font-weight: 700; color: var(--text-primary); }
+.flow-arrow { color: var(--text-muted); font-size: 14px; }
+.flow-count { margin-left: 8px; font-weight: 700; color: var(--text-primary); font-size: var(--font-sm); min-width: 30px; text-align: right; flex-shrink: 0; }
+.flow-item-bar-wrap { flex: 1; height: 6px; background: var(--bg-surface); border-radius: var(--radius-full); overflow: hidden; }
+.flow-item-bar { height: 100%; border-radius: var(--radius-full); transition: width 0.5s ease; }
+
+/* ── Flows: Bar Rows ── */
+.flow-bar-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--border-color); font-size: var(--font-sm); }
+.flow-bar-row:last-child { border-bottom: none; }
+.flow-bar-label { min-width: 100px; max-width: 160px; font-family: 'SF Mono', monospace; font-size: var(--font-xs); color: var(--text-secondary); }
+.flow-bar-track { flex: 1; height: 8px; background: var(--bg-surface); border-radius: var(--radius-full); overflow: hidden; }
+.flow-bar-fill { height: 100%; border-radius: var(--radius-full); transition: width 0.5s ease; }
+.flow-bar-fill.entry { background: var(--color-success); }
+.flow-bar-fill.exit { background: var(--color-danger); }
+.flow-bar-count { font-weight: 700; color: var(--text-primary); min-width: 24px; text-align: right; }
 .flow-stat-item { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--border-color); font-size: var(--font-sm); }
 .flow-stat-item:last-child { border-bottom: none; }
 
