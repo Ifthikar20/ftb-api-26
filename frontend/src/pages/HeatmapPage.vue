@@ -16,13 +16,23 @@
     <template v-else>
       <!-- Empty State -->
       <div v-if="!pages.length" class="empty-guide">
-        <div class="empty-guide-icon">🔥</div>
+        <div class="empty-guide-icon">
+          <svg width="48" height="48" viewBox="0 0 48 48" fill="none" stroke="var(--brand-accent)" stroke-width="1.5">
+            <rect x="6" y="6" width="36" height="36" rx="4"/>
+            <circle cx="18" cy="20" r="4" fill="rgba(91,141,239,0.3)"/>
+            <circle cx="30" cy="16" r="6" fill="rgba(239,68,68,0.3)"/>
+            <circle cx="24" cy="32" r="5" fill="rgba(234,179,8,0.3)"/>
+            <circle cx="36" cy="28" r="3" fill="rgba(34,197,94,0.3)"/>
+          </svg>
+        </div>
         <h3>No click data yet</h3>
         <p>Once visitors interact with your tracked website, click positions will appear here as a heatmap. Install the tracking pixel to start collecting data.</p>
         <div class="empty-guide-snippet">
           <code>&lt;script src="/fetchbot-pixel.js" data-site="YOUR_PIXEL_KEY" async&gt;&lt;/script&gt;</code>
         </div>
         <p class="empty-guide-hint">The pixel automatically captures click coordinates — no extra setup needed.</p>
+        <button v-if="fetchError" class="btn btn-secondary" style="margin-top:12px" @click="retryFetch">Retry</button>
+        <p v-if="fetchError" class="text-danger text-sm" style="margin-top:8px">{{ fetchError }}</p>
       </div>
 
       <template v-if="pages.length">
@@ -131,6 +141,7 @@ const pages = ref([])
 const selectedPage = ref('')
 const points = ref([])
 const totalClicks = ref(0)
+const fetchError = ref(null)
 
 const canvasW = 720
 const canvasH = 420
@@ -165,6 +176,7 @@ function dotColor(intensity) {
 
 async function fetchHeatmap() {
   try {
+    fetchError.value = null
     const { data } = await analyticsApi.heatmap(props.websiteId, { page: selectedPage.value })
     const d = data?.data || data
     pages.value = d.pages || []
@@ -175,7 +187,14 @@ async function fetchHeatmap() {
     }
   } catch (e) {
     console.error('Heatmap fetch error', e)
+    fetchError.value = e?.response?.data?.detail || e?.message || 'Failed to load heatmap data'
   }
+}
+
+async function retryFetch() {
+  loading.value = true
+  await fetchHeatmap()
+  loading.value = false
 }
 
 onMounted(async () => {

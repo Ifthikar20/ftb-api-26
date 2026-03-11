@@ -103,17 +103,31 @@
           </div>
         </div>
 
-        <!-- Traffic Chart (Chart.js) -->
-        <div class="card chart-card">
-          <div class="card-header">
-            <div>
-              <h3 class="card-title">Traffic Overview</h3>
-              <p class="card-subtitle">Visitor sessions over time</p>
+        <!-- Traffic Charts Row -->
+        <div class="analytics-row chart-animate">
+          <div class="card chart-card" style="flex:1.5">
+            <div class="card-header">
+              <div>
+                <h3 class="card-title">Traffic Overview</h3>
+                <p class="card-subtitle">Visitor sessions over time</p>
+              </div>
+            </div>
+            <div class="chart-container" style="height:280px;position:relative">
+              <Line v-if="chartData.length" :data="trafficChartData" :options="trafficChartOptions" />
+              <div v-else class="empty-inline">No chart data yet</div>
             </div>
           </div>
-          <div class="chart-container" style="height:280px;position:relative">
-            <Line v-if="chartData.length" :data="trafficChartData" :options="trafficChartOptions" />
-            <div v-else class="empty-inline">No chart data yet</div>
+          <div class="card chart-card chart-animate-delay">
+            <div class="card-header">
+              <div>
+                <h3 class="card-title">Users vs Page Views</h3>
+                <p class="card-subtitle">Grouped comparison</p>
+              </div>
+            </div>
+            <div class="chart-container" style="height:280px;position:relative">
+              <Bar v-if="chartData.length" :data="usersVsPagesBarData" :options="usersVsPagesBarOptions" />
+              <div v-else class="empty-inline">No data yet</div>
+            </div>
           </div>
         </div>
 
@@ -713,6 +727,62 @@ const trafficChartOptions = {
   },
 }
 
+// Users vs Page Views — Grouped Bar chart
+const usersVsPagesBarData = computed(() => ({
+  labels: chartData.value.map(d => d.date),
+  datasets: [
+    {
+      label: 'Unique Users',
+      data: chartData.value.map(d => d.visitors || 0),
+      backgroundColor: 'rgba(91, 141, 239, 0.75)',
+      borderColor: '#5B8DEF',
+      borderWidth: 1,
+      borderRadius: 6,
+      barPercentage: 0.7,
+      categoryPercentage: 0.6,
+    },
+    {
+      label: 'Page Views',
+      data: chartData.value.map(d => d.pageviews || 0),
+      backgroundColor: 'rgba(167, 139, 250, 0.65)',
+      borderColor: '#A78BFA',
+      borderWidth: 1,
+      borderRadius: 6,
+      barPercentage: 0.7,
+      categoryPercentage: 0.6,
+    },
+  ],
+}))
+
+const usersVsPagesBarOptions = {
+  responsive: true,
+  maintainAspectRatio: false,
+  animation: { duration: 800, easing: 'easeOutQuart' },
+  plugins: {
+    legend: { display: true, position: 'top', align: 'end', labels: { usePointStyle: true, pointStyle: 'circle', padding: 18, boxWidth: 6 } },
+    tooltip: {
+      backgroundColor: 'rgba(26, 26, 46, 0.95)',
+      titleColor: '#fff', bodyColor: '#ccc',
+      borderColor: 'rgba(91, 141, 239, 0.15)', borderWidth: 1,
+      padding: 12, cornerRadius: 8,
+      displayColors: true, boxWidth: 8, boxHeight: 8, usePointStyle: true,
+    },
+  },
+  scales: {
+    x: {
+      grid: { display: false },
+      border: { display: false },
+      ticks: { maxTicksLimit: 8, padding: 8 },
+    },
+    y: {
+      grid: { color: 'rgba(138, 138, 154, 0.08)', drawTicks: false },
+      border: { display: false },
+      ticks: { padding: 12 },
+      beginAtZero: true,
+    },
+  },
+}
+
 // Sources — Horizontal Bar chart
 const sourcesChartData = computed(() => ({
   labels: sources.value.map(s => s.name),
@@ -938,6 +1008,21 @@ onBeforeUnmount(() => {
 .atab.active { background: var(--text-primary); color: var(--text-inverse); }
 .atab-icon { width: 16px; height: 16px; flex-shrink: 0; }
 .chart-container canvas { width: 100% !important; }
+
+/* ── Chart Entrance Animations ── */
+@keyframes chart-fade-up {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.chart-animate > .card {
+  animation: chart-fade-up 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.chart-animate > .card:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.chart-animate-delay {
+  animation: chart-fade-up 0.6s cubic-bezier(0.22, 1, 0.36, 1) 0.2s both;
+}
 
 /* ── KPI Grid ── */
 .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
