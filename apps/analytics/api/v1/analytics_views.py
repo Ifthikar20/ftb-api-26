@@ -118,6 +118,17 @@ class EntryExitPagesView(APIView):
         return Response({"entry_pages": entry, "exit_pages": exit_})
 
 
+class VisitorJourneysView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, website_id):
+        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        from apps.analytics.services.flow_service import FlowService
+        period = request.query_params.get("period", "30d")
+        data = FlowService.get_visitor_journeys(website_id=website_id, period=period)
+        return Response(data)
+
+
 class VisitorListView(APIView):
     permission_classes = [IsAuthenticated]
 

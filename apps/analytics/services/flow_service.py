@@ -127,3 +127,68 @@ class FlowService:
             }
             for r in qs
         ]
+
+    @staticmethod
+    def get_visitor_journeys(*, website_id: str, period: str = "30d", limit: int = 20) -> list:
+        """
+        Return per-visitor session journeys: the full sequence of pages
+        each visitor viewed, grouped by session.
+        """
+        start, end = get_date_range(period)
+        from apps.analytics.models import Session
+
+        sessions = (
+            Session.objects.filter(
+                visitor__website_id=website_id,
+                started_at__range=(start, end),
+            )
+            .select_related("visitor")
+            .order_by("-started_at")[:limit * 2]  # fetch more to filter empties
+        )
+
+        journeys = []
+        for sess in sessions:
+            # Get all pageview events in this session
+            events = list(
+                PageEvent.objects.filter(
+                    session=sess, event_type="pageview"
+                )
+                .order_by("timestamp")
+                .values_list("url", flat=True)
+            )
+            if not events:
+                continue
+
+            # Normalize URLs to paths
+            pages = []
+            for url in events:
+                try:
+                    from urllib.parse import urlparse
+                    path = urlparse(url).path or "/"
+                except Exception:
+                    path = url
+                # Deduplicate consecutive same page
+                if not pages or pages[-1] != path:
+                    pages.append(path)
+
+            duration_secs = 0
+            if sess.ended_at and sess.started_at:
+                duration_secs = int((sess.ended_at - sess.started_at).total_seconds())
+
+            v = sess.visitor
+            journeys.append({
+                "visitor_hash": (v.fingerprint_hash or "")[:12],
+                "company": v.company_name or "",
+                "device": v.device_type or "",
+                "country": v.geo_country or "",
+                "pages": pages,
+                "page_count": len(pages),
+                "duration_secs": duration_secs,
+                "source": sess.source or "direct",
+                "started_at": sess.started_at.isoformat() if sess.started_at else None,
+            })
+
+            if len(journeys) >= limit:
+                break
+
+        return journeys

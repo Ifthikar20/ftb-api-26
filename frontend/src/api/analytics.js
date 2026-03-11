@@ -25,6 +25,7 @@ export default {
     // Flows
     flows: (wid, params) => api.get(`/analytics/${wid}/flows/`, { params }),
     entryExit: (wid, params) => api.get(`/analytics/${wid}/entry-exit/`, { params }),
+    journeys: (wid, params) => api.get(`/analytics/${wid}/journeys/`, { params }),
 
     // Visitors
     visitors: (wid, params) => api.get(`/analytics/${wid}/visitors/`, { params }),

@@ -92,13 +92,21 @@
           <div class="card chart-card chart-animate-delay">
             <div class="card-header">
               <div>
-                <h3 class="card-title">Users vs Page Views</h3>
-                <p class="card-subtitle">Grouped comparison</p>
+                <h3 class="card-title">Live Activity</h3>
+                <p class="card-subtitle">Recent visitor events in real-time</p>
+              </div>
+              <span class="live-badge"><span class="live-pulse"></span>LIVE</span>
+            </div>
+            <div class="live-feed" v-if="liveEvents.length">
+              <div v-for="ev in liveEvents.slice(0, 10)" :key="ev.id" class="live-feed-item">
+                <span class="badge badge-sm" :class="eventBadge(ev.event_type)">{{ ev.event_type }}</span>
+                <span class="live-feed-url truncate">{{ cleanPath(ev.url) }}</span>
+                <span class="text-xs text-muted">{{ formatTime(ev.timestamp) }}</span>
               </div>
             </div>
-            <div class="chart-container" style="height:280px;position:relative">
-              <Bar v-if="chartData.length" :data="usersVsPagesBarData" :options="usersVsPagesBarOptions" />
-              <div v-else class="empty-inline">No data yet</div>
+            <div v-else class="empty-inline" style="padding:40px 20px">
+              <p style="margin:0;font-size:var(--font-sm)">No live events in the last 2 minutes.</p>
+              <p class="text-xs text-muted" style="margin-top:6px">Events appear here as visitors interact with your site.</p>
             </div>
           </div>
         </div>
@@ -354,6 +362,37 @@
             <div v-else class="empty-inline">No entry/exit data yet</div>
           </div>
         </div>
+
+        <!-- Visitor Journeys -->
+        <div class="card" style="margin-top:20px" v-if="journeys.length">
+          <div class="card-header">
+            <h3 class="card-title">Visitor Journeys</h3>
+            <span class="text-xs text-muted">{{ journeys.length }} recent sessions — full page paths</span>
+          </div>
+          <div class="journey-list">
+            <div v-for="(j, i) in journeys" :key="i" class="journey-card">
+              <div class="journey-meta">
+                <span class="journey-visitor">
+                  <span class="visitor-hash">{{ j.visitor_hash }}...</span>
+                  <span v-if="j.company" class="journey-company">{{ j.company }}</span>
+                </span>
+                <div class="journey-tags">
+                  <span v-if="j.device" class="badge badge-sm badge-outline">{{ j.device }}</span>
+                  <span v-if="j.country" class="badge badge-sm badge-outline">{{ j.country }}</span>
+                  <span v-if="j.source" class="badge badge-sm badge-outline">{{ j.source }}</span>
+                  <span v-if="j.duration_secs" class="text-xs text-muted">{{ formatDuration(j.duration_secs) }}</span>
+                </div>
+              </div>
+              <div class="journey-path">
+                <template v-for="(page, pi) in j.pages" :key="pi">
+                  <span class="journey-step" :class="{ 'step-entry': pi === 0, 'step-exit': pi === j.pages.length - 1 }">{{ page }}</span>
+                  <span v-if="pi < j.pages.length - 1" class="journey-arrow">→</span>
+                </template>
+                <span class="journey-pages-count">{{ j.page_count }} pages</span>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- ═══════════ TAB 5: AI Insights ═══════════ -->
@@ -552,6 +591,7 @@ const timelineEvents = computed(() => cached.value.timelineEvents || [])
 // ── Extended analytics data ──
 const browserData = computed(() => cached.value.browserData || cached.value.browsers || [])
 const liveEvents = computed(() => cached.value.liveEvents || [])
+const journeys = computed(() => cached.value.journeys || [])
 const browserColors = ['#5B8DEF', '#34D399', '#A78BFA', '#F59E0B', '#6B7280', '#EC4899']
 
 // Engagement metrics (derived from stats)
@@ -754,6 +794,13 @@ function formatTime(ts) {
 function formatDate(ts) {
   if (!ts) return '--'
   return new Date(ts).toLocaleDateString()
+}
+function formatDuration(secs) {
+  if (!secs || secs <= 0) return '--'
+  const m = Math.floor(secs / 60)
+  const s = secs % 60
+  if (m > 60) return `${Math.floor(m / 60)}h ${m % 60}m`
+  return m > 0 ? `${m}m ${s}s` : `${s}s`
 }
 
 // ════════════ CHART.JS CONFIGURATIONS ════════════
@@ -1098,6 +1145,7 @@ function handleRefresh() {
 onMounted(async () => {
   store.init(websiteId, period.value)
   await store.fetchOverview(websiteId, period.value)
+  store.fetchLiveEvents(websiteId)
   store.startPolling()
 })
 
@@ -1336,12 +1384,29 @@ onBeforeUnmount(() => {
 
 /* ── Live Events ── */
 .realtime-badge { display: flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: var(--radius-full); background: rgba(34, 197, 94, 0.1); color: var(--color-success); font-size: var(--font-xs); font-weight: 600; }
+.live-badge { display: flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: var(--radius-full); background: rgba(239, 68, 68, 0.1); color: #ef4444; font-size: 10px; font-weight: 700; letter-spacing: 0.05em; }
+.live-pulse { width: 6px; height: 6px; border-radius: 50%; background: #ef4444; animation: pulse 1.5s infinite; }
 .live-feed { display: flex; flex-direction: column; gap: 0; max-height: 300px; overflow-y: auto; }
-.live-event { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border-color); font-size: var(--font-sm); }
-.live-event:last-child { border-bottom: none; }
-.live-event-type { font-size: 10px; font-weight: 700; text-transform: uppercase; padding: 2px 8px; border-radius: var(--radius-full); flex-shrink: 0; }
-.live-event-url { flex: 1; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.live-event-time { color: var(--text-muted); font-size: var(--font-xs); flex-shrink: 0; }
+.live-feed-item { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border-color); font-size: var(--font-sm); }
+.live-feed-item:last-child { border-bottom: none; }
+.live-feed-url { flex: 1; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: 'SF Mono', monospace; font-size: var(--font-xs); }
+
+/* ── Visitor Journeys ── */
+.journey-list { display: flex; flex-direction: column; gap: 0; }
+.journey-card { padding: 14px 0; border-bottom: 1px solid var(--border-color); }
+.journey-card:last-child { border-bottom: none; }
+.journey-meta { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; gap: 8px; flex-wrap: wrap; }
+.journey-visitor { display: flex; align-items: center; gap: 8px; }
+.visitor-hash { font-family: 'SF Mono', monospace; font-size: var(--font-xs); color: var(--text-secondary); }
+.journey-company { font-size: var(--font-xs); font-weight: 600; color: var(--brand-accent); }
+.journey-tags { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.badge-outline { border: 1px solid var(--border-color); background: transparent; color: var(--text-muted); }
+.journey-path { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.journey-step { padding: 3px 10px; background: var(--bg-surface); border-radius: var(--radius-sm); font-family: 'SF Mono', monospace; font-size: 11px; color: var(--text-primary); }
+.step-entry { border-left: 3px solid var(--color-success); }
+.step-exit { border-right: 3px solid var(--color-danger); }
+.journey-arrow { color: var(--text-muted); font-size: 12px; }
+.journey-pages-count { margin-left: auto; font-size: var(--font-xs); color: var(--text-muted); font-weight: 600; }
 
 /* ── Engagement ── */
 .engagement-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }

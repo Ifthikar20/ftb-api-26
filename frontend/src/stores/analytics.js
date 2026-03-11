@@ -25,6 +25,7 @@ export const useAnalyticsStore = defineStore('analytics', () => {
                 countries: [], realtimeVisitors: 0, noData: false,
                 funnelList: [], funnelResult: null,
                 retentionData: {}, flowData: {}, entryExitData: {},
+                journeys: [], liveEvents: [],
                 insightsData: {}, visitorList: [], timelineEvents: [],
                 _ts: {},
             }
@@ -152,13 +153,24 @@ export const useAnalyticsStore = defineStore('analytics', () => {
         wid = wid || activeWebsiteId.value
         if (!wid || !isStale('flows', wid)) return
         try {
-            const [flowRes, eeRes] = await Promise.all([
+            const [flowRes, eeRes, journeyRes] = await Promise.all([
                 analyticsApi.flows(wid, { period: period || activePeriod.value }),
                 analyticsApi.entryExit(wid, { period: period || activePeriod.value }),
+                analyticsApi.journeys(wid, { period: period || activePeriod.value }),
             ])
             _key(wid).flowData = flowRes.data?.data || flowRes.data || {}
             _key(wid).entryExitData = eeRes.data?.data || eeRes.data || {}
+            _key(wid).journeys = journeyRes.data?.data || journeyRes.data || []
             _key(wid)._ts.flows = Date.now()
+        } catch { /* keep cached */ }
+    }
+
+    async function fetchLiveEvents(wid) {
+        wid = wid || activeWebsiteId.value
+        if (!wid) return
+        try {
+            const res = await analyticsApi.liveEvents(wid)
+            _key(wid).liveEvents = res.data?.data || res.data || []
         } catch { /* keep cached */ }
     }
 
@@ -292,6 +304,6 @@ export const useAnalyticsStore = defineStore('analytics', () => {
         init, switchTab, changePeriod, loadTabBackground,
         fetchOverview, fetchFunnels, runFunnel, createFunnel,
         fetchRetention, fetchFlows, fetchInsights, fetchVisitors,
-        loadTimeline, saveToSession, forceRefresh, startPolling, stopPolling,
+        fetchLiveEvents, loadTimeline, saveToSession, forceRefresh, startPolling, stopPolling,
     }
 })

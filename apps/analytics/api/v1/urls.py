@@ -27,6 +27,7 @@ urlpatterns = [
     path("<uuid:website_id>/retention/curve/", analytics_views.RetentionCurveView.as_view(), name="analytics-retention-curve"),
     path("<uuid:website_id>/flows/", analytics_views.FlowView.as_view(), name="analytics-flows"),
     path("<uuid:website_id>/entry-exit/", analytics_views.EntryExitPagesView.as_view(), name="analytics-entry-exit"),
+    path("<uuid:website_id>/journeys/", analytics_views.VisitorJourneysView.as_view(), name="analytics-journeys"),
     path("<uuid:website_id>/visitors/", analytics_views.VisitorListView.as_view(), name="analytics-visitors"),
     path("<uuid:website_id>/visitors/<uuid:visitor_id>/timeline/", analytics_views.VisitorTimelineView.as_view(), name="analytics-visitor-timeline"),
     path("<uuid:website_id>/insights/", analytics_views.AIInsightsView.as_view(), name="analytics-insights"),
