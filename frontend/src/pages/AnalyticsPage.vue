@@ -401,14 +401,14 @@
         <div class="card">
           <div class="card-header">
             <h3 class="card-title">Visitor Profiles</h3>
-            <span class="text-xs text-muted">{{ visitorList.length }} visitors</span>
+            <span class="text-xs text-muted">{{ filteredVisitors.length }} of {{ visitorList.length }} visitors</span>
           </div>
-          <table class="data-table" v-if="visitorList.length">
+          <table class="data-table" v-if="filteredVisitors.length">
             <thead>
               <tr><th>Visitor</th><th>Device</th><th>Country</th><th>Visits</th><th>Events</th><th>Last Seen</th></tr>
             </thead>
             <tbody>
-              <tr v-for="v in visitorList" :key="v.id" class="clickable-row" @click="loadTimeline(v.id)">
+              <tr v-for="v in filteredVisitors" :key="v.id" class="clickable-row" @click="loadTimeline(v.id)">
                 <td>
                   <div class="visitor-id">{{ v.fingerprint_hash?.substring(0, 8) }}...</div>
                   <div class="text-xs text-muted" v-if="v.company_name">{{ v.company_name }}</div>
@@ -421,7 +421,7 @@
               </tr>
             </tbody>
           </table>
-          <div v-else class="empty-inline">No visitor data yet</div>
+          <div v-else class="empty-inline">{{ visitorList.length ? 'No visitors match your filters' : 'No visitor data yet' }}</div>
         </div>
 
         <!-- Visitor Timeline -->
@@ -574,6 +574,51 @@ function addFilterFromSelect(type) {
   }
 }
 function removeFilter(i) { activeFilters.value.splice(i, 1) }
+
+// ── Filtered visitors based on active filter chips ──
+const filteredVisitors = computed(() => {
+  let list = visitorList.value
+  if (!activeFilters.value.length && !searchQuery.value.trim()) return list
+
+  // Apply active filter chips
+  for (const f of activeFilters.value) {
+    if (f.type === 'search') {
+      const q = f.label.replace(/^"|"$/g, '').toLowerCase()
+      list = list.filter(v =>
+        (v.fingerprint_hash || '').toLowerCase().includes(q) ||
+        (v.company_name || '').toLowerCase().includes(q) ||
+        (v.geo_city || '').toLowerCase().includes(q) ||
+        (v.browser || '').toLowerCase().includes(q)
+      )
+    } else if (f.type === 'device') {
+      const val = f.label.replace(/^device:\s*/i, '').toLowerCase()
+      list = list.filter(v => (v.device_type || '').toLowerCase() === val)
+    } else if (f.type === 'country') {
+      const val = f.label.replace(/^country:\s*/i, '').toLowerCase()
+      list = list.filter(v => (v.geo_country || '').toLowerCase() === val)
+    } else if (f.type === 'event') {
+      // Event type filter — keep visitors that have matching event types
+      // Since we don't have per-visitor event types in the list, filter by general match
+      const val = f.label.replace(/^event:\s*/i, '').toLowerCase()
+      list = list.filter(v => v.event_count > 0 || val === 'pageview')
+    }
+  }
+
+  // Live search (before pressing Enter)
+  if (searchQuery.value.trim()) {
+    const q = searchQuery.value.trim().toLowerCase()
+    list = list.filter(v =>
+      (v.fingerprint_hash || '').toLowerCase().includes(q) ||
+      (v.company_name || '').toLowerCase().includes(q) ||
+      (v.geo_city || '').toLowerCase().includes(q) ||
+      (v.geo_country || '').toLowerCase().includes(q) ||
+      (v.browser || '').toLowerCase().includes(q) ||
+      (v.device_type || '').toLowerCase().includes(q)
+    )
+  }
+
+  return list
+})
 
 // ── KPI tooltip definitions ──
 const kpiTooltips = {
