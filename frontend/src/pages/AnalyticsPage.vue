@@ -389,8 +389,9 @@
             <div v-for="(j, i) in filteredJourneys" :key="i" class="journey-card">
               <div class="journey-meta">
                 <span class="journey-visitor">
-                  <span class="intent-dot" :class="journeyIntent(j).cls"></span>
+                  <span class="intent-dot" :class="j.intent_cls || 'dot-neutral'"></span>
                   <span class="visitor-hash">{{ j.visitor_hash }}...</span>
+                  <span v-if="j.intent_score != null" class="intent-score-badge" :class="intentScoreClass(j.intent_score)">{{ j.intent_score }}%</span>
                   <span v-if="j.company" class="journey-company">{{ j.company }}</span>
                 </span>
                 <div class="journey-tags">
@@ -400,13 +401,21 @@
                   <span class="journey-duration" v-if="j.duration_secs">{{ formatDuration(j.duration_secs) }}</span>
                 </div>
               </div>
-              <div class="journey-intent-label">{{ journeyIntent(j).label }}</div>
+              <div class="journey-intent-label">{{ j.intent_label || 'Analyzing...' }}</div>
               <div class="journey-path">
                 <template v-for="(page, pi) in j.pages" :key="pi">
                   <span class="journey-step" :class="{ 'step-entry': pi === 0, 'step-exit': pi === j.pages.length - 1 }">{{ page }}</span>
                   <span v-if="pi < j.pages.length - 1" class="journey-arrow">&rarr;</span>
                 </template>
                 <span class="journey-pages-count">{{ j.page_count }} pages</span>
+              </div>
+              <div v-if="j.recommendations && j.recommendations.length" class="journey-recs">
+                <span class="rec-label">Recommended pages:</span>
+                <span v-for="(r, ri) in j.recommendations" :key="ri" class="rec-item" :title="r.reason">{{ r.page }}</span>
+              </div>
+              <div v-if="j.predicted_next && j.predicted_next.length" class="journey-predicted">
+                <span class="predicted-label">Likely next:</span>
+                <span v-for="(p, pi) in j.predicted_next" :key="pi" class="predicted-page">{{ p }}</span>
               </div>
             </div>
           </div>
@@ -720,16 +729,11 @@ const filteredJourneys = computed(() => {
   return list
 })
 
-function journeyIntent(j) {
-  const pages = j.pages || []
-  const hasProduct = pages.some(p => p.startsWith('/product'))
-  const hasLogin = pages.some(p => p.includes('login') || p.includes('signup'))
-  const hasPricing = pages.some(p => p.includes('pricing'))
-  if (hasLogin) return { cls: 'dot-success', label: 'High intent - attempted login/signup' }
-  if (hasProduct && hasPricing) return { cls: 'dot-info', label: 'Evaluating - viewed product and pricing' }
-  if (hasProduct) return { cls: 'dot-warning', label: 'Interested - viewed product but skipped pricing' }
-  if (pages.length <= 1) return { cls: 'dot-muted', label: 'Quick visit - single page view' }
-  return { cls: 'dot-neutral', label: 'Browsing - exploring the site' }
+function intentScoreClass(score) {
+  if (score >= 60) return 'score-high'
+  if (score >= 40) return 'score-med'
+  if (score >= 20) return 'score-low'
+  return 'score-bounce'
 }
 
 function addFilter() {
@@ -1350,6 +1354,17 @@ onBeforeUnmount(() => {
 /* ── Journey Intent ── */
 .intent-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; display: inline-block; margin-right: 6px; }
 .journey-intent-label { font-size: var(--font-xs); color: var(--text-secondary); margin-bottom: 6px; }
+.intent-score-badge { display: inline-block; font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: var(--radius-full); margin-left: 6px; }
+.score-high { background: rgba(52,199,89,0.15); color: var(--color-success); }
+.score-med { background: rgba(0,122,255,0.12); color: var(--color-info); }
+.score-low { background: rgba(255,159,10,0.12); color: var(--color-warning); }
+.score-bounce { background: var(--bg-surface); color: var(--text-muted); }
+.journey-recs { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 4px; padding-top: 6px; border-top: 1px dashed var(--border-color); }
+.rec-label { font-size: 10px; color: var(--text-muted); font-weight: 500; }
+.rec-item { font-size: 10px; padding: 2px 8px; border-radius: var(--radius-full); background: rgba(99,102,241,0.1); color: var(--brand-accent); cursor: help; font-family: 'SF Mono', monospace; }
+.journey-predicted { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 3px; }
+.predicted-label { font-size: 10px; color: var(--text-muted); font-style: italic; }
+.predicted-page { font-size: 10px; padding: 2px 8px; border-radius: var(--radius-full); background: var(--bg-surface); color: var(--text-secondary); font-family: 'SF Mono', monospace; }
 .journey-duration { font-size: var(--font-xs); color: var(--text-muted); font-weight: 600; font-variant-numeric: tabular-nums; }
 
 /* ── Flows: Enhanced Items ── */
