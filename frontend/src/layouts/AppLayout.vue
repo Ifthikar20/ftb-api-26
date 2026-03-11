@@ -25,55 +25,55 @@
       <!-- Nav -->
       <nav class="sidebar-nav">
         <div class="nav-section-label">Overview</div>
-        <router-link to="/dashboard" class="nav-link" active-class="active">
+        <router-link to="/dashboard" class="nav-link" exact-active-class="active">
           <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/><rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg></span>
           <span v-if="!appStore.sidebarCollapsed" class="nav-text">Dashboard</span>
         </router-link>
-        <router-link to="/websites" class="nav-link" active-class="active">
+        <router-link to="/websites" class="nav-link" exact-active-class="active">
           <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="1" y1="8" x2="15" y2="8" stroke="currentColor" stroke-width="1.5"/><ellipse cx="8" cy="8" rx="3" ry="7" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></span>
           <span v-if="!appStore.sidebarCollapsed" class="nav-text">Projects</span>
         </router-link>
 
         <div class="nav-section-label">Intelligence</div>
-        <router-link :to="analyticsRoute" class="nav-link" active-class="active">
+        <router-link :to="analyticsRoute" class="nav-link" exact-active-class="active">
           <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M2 14V6l4-4 4 4 4-4v12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg></span>
           <span v-if="!appStore.sidebarCollapsed" class="nav-text">Analytics</span>
         </router-link>
-        <router-link :to="leadsRoute" class="nav-link" active-class="active">
+        <router-link :to="leadsRoute" class="nav-link" exact-active-class="active">
           <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="5" r="3" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M2 14c0-3 3-5 6-5s6 2 6 5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></span>
           <span v-if="!appStore.sidebarCollapsed" class="nav-text">Leads</span>
         </router-link>
-        <router-link :to="competitorsRoute" class="nav-link" active-class="active">
+        <router-link :to="competitorsRoute" class="nav-link" exact-active-class="active">
           <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><rect x="2" y="4" width="5" height="10" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="9" y="2" width="5" height="12" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></span>
           <span v-if="!appStore.sidebarCollapsed" class="nav-text">Competitors</span>
         </router-link>
-        <router-link :to="auditsRoute" class="nav-link" active-class="active">
+        <router-link :to="auditsRoute" class="nav-link" exact-active-class="active">
           <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="11" y1="11" x2="14" y2="14" stroke="currentColor" stroke-width="1.5"/></svg></span>
           <span v-if="!appStore.sidebarCollapsed" class="nav-text">Audits</span>
         </router-link>
-        <router-link :to="heatmapRoute" class="nav-link" active-class="active">
+        <router-link :to="heatmapRoute" class="nav-link" exact-active-class="active">
           <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="1" width="14" height="14" rx="2"/><circle cx="6" cy="6" r="2" fill="currentColor" opacity="0.6"/><circle cx="10" cy="5" r="1.5" fill="currentColor" opacity="0.4"/><circle cx="8" cy="10" r="2.5" fill="currentColor" opacity="0.8"/></svg></span>
           <span v-if="!appStore.sidebarCollapsed" class="nav-text">Heatmaps</span>
         </router-link>
-        <router-link :to="keywordsRoute" class="nav-link" active-class="active">
+        <router-link :to="keywordsRoute" class="nav-link" exact-active-class="active">
           <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 12l4-4 3 3 5-7"/><circle cx="14" cy="4" r="1.5" fill="currentColor"/></svg></span>
           <span v-if="!appStore.sidebarCollapsed" class="nav-text">Keywords</span>
         </router-link>
-        <router-link :to="strategyRoute" class="nav-link" active-class="active">
+        <router-link :to="strategyRoute" class="nav-link" exact-active-class="active">
           <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1l2 4h4l-3 3 1 4-4-2-4 2 1-4-3-3h4z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg></span>
           <span v-if="!appStore.sidebarCollapsed" class="nav-text">Strategy</span>
         </router-link>
-        <router-link :to="agentsRoute" class="nav-link" active-class="active">
+        <router-link :to="agentsRoute" class="nav-link" exact-active-class="active">
           <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="6" r="3"/><path d="M3 14c0-3 2.2-5 5-5s5 2 5 5"/><path d="M12 4l2-2M4 4L2 2" stroke-linecap="round"/></svg></span>
           <span v-if="!appStore.sidebarCollapsed" class="nav-text">Agents</span>
         </router-link>
 
         <div class="nav-section-label">Account</div>
-        <router-link to="/billing" class="nav-link" active-class="active">
+        <router-link to="/billing" class="nav-link" exact-active-class="active">
           <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="3" width="14" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="1" y1="7" x2="15" y2="7" stroke="currentColor" stroke-width="1.5"/></svg></span>
           <span v-if="!appStore.sidebarCollapsed" class="nav-text">Billing</span>
         </router-link>
-        <router-link to="/settings" class="nav-link" active-class="active">
+        <router-link to="/settings" class="nav-link" exact-active-class="active">
           <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="8" r="2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3 3l1.5 1.5M11.5 11.5L13 13M13 3l-1.5 1.5M4.5 11.5L3 13" stroke="currentColor" stroke-width="1.5"/></svg></span>
           <span v-if="!appStore.sidebarCollapsed" class="nav-text">Settings</span>
         </router-link>
