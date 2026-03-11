@@ -26,6 +26,7 @@ export const useAuthStore = defineStore('auth', () => {
             const result = data.data || data
             accessToken.value = result.access
             user.value = result.user
+            localStorage.setItem('fb-session', '1')
             return result
         } finally {
             loading.value = false
@@ -47,6 +48,7 @@ export const useAuthStore = defineStore('auth', () => {
             await api.post('/auth/logout/')
         } catch { /* ignore */ }
         clearAuth()
+        localStorage.removeItem('fb-session')
     }
 
     async function fetchMe() {
@@ -64,9 +66,11 @@ export const useAuthStore = defineStore('auth', () => {
             const { data } = await api.post('/auth/refresh/', {}, { _silentError: true })
             const result = data.data || data
             accessToken.value = result.access
+            localStorage.setItem('fb-session', '1')
             return result.access
         } catch {
             clearAuth()
+            localStorage.removeItem('fb-session')
         }
     }
 

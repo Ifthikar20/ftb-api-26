@@ -87,13 +87,16 @@ router.beforeEach(async (to, from, next) => {
     // On first load, try to restore session from refresh token cookie
     if (!sessionRestored && !auth.isAuthenticated) {
         sessionRestored = true
-        try {
-            await auth.refreshToken()
-            if (auth.accessToken) {
-                await auth.fetchMe()
+        const hadSession = localStorage.getItem('fb-session')
+        if (hadSession) {
+            try {
+                await auth.refreshToken()
+                if (auth.accessToken) {
+                    await auth.fetchMe()
+                }
+            } catch {
+                // No valid session — continue as guest
             }
-        } catch {
-            // No valid session — continue as guest
         }
     }
 
