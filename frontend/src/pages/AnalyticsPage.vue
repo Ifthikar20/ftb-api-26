@@ -885,21 +885,6 @@ function retentionColor(pct) {
   return 'transparent'
 }
 
-function eventBadge(type) {
-  const map = { pageview: 'badge-info', click: 'badge-warning', scroll: 'badge-neutral', form_submit: 'badge-success', custom: 'badge-neutral', exit: 'badge-danger' }
-  return map[type] || 'badge-neutral'
-}
-
-function formatDate(d) {
-  if (!d) return '--'
-  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
-}
-
-function formatTime(d) {
-  if (!d) return ''
-  return new Date(d).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-}
-
 // ── Store-backed actions ──
 function switchTab(tabId) {
   store.switchTab(tabId)
