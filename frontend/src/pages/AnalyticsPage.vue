@@ -923,62 +923,6 @@ const trafficChartOptions = {
   },
 }
 
-// Users vs Page Views — Grouped Bar chart
-const usersVsPagesBarData = computed(() => ({
-  labels: chartData.value.map(d => d.date),
-  datasets: [
-    {
-      label: 'Unique Users',
-      data: chartData.value.map(d => d.visitors || 0),
-      backgroundColor: 'rgba(91, 141, 239, 0.75)',
-      borderColor: '#5B8DEF',
-      borderWidth: 1,
-      borderRadius: 6,
-      barPercentage: 0.7,
-      categoryPercentage: 0.6,
-    },
-    {
-      label: 'Page Views',
-      data: chartData.value.map(d => d.pageviews || 0),
-      backgroundColor: 'rgba(167, 139, 250, 0.65)',
-      borderColor: '#A78BFA',
-      borderWidth: 1,
-      borderRadius: 6,
-      barPercentage: 0.7,
-      categoryPercentage: 0.6,
-    },
-  ],
-}))
-
-const usersVsPagesBarOptions = {
-  responsive: true,
-  maintainAspectRatio: false,
-  animation: { duration: 800, easing: 'easeOutQuart' },
-  plugins: {
-    legend: { display: true, position: 'top', align: 'end', labels: { usePointStyle: true, pointStyle: 'circle', padding: 18, boxWidth: 6 } },
-    tooltip: {
-      backgroundColor: 'rgba(26, 26, 46, 0.95)',
-      titleColor: '#fff', bodyColor: '#ccc',
-      borderColor: 'rgba(91, 141, 239, 0.15)', borderWidth: 1,
-      padding: 12, cornerRadius: 8,
-      displayColors: true, boxWidth: 8, boxHeight: 8, usePointStyle: true,
-    },
-  },
-  scales: {
-    x: {
-      grid: { display: false },
-      border: { display: false },
-      ticks: { maxTicksLimit: 8, padding: 8 },
-    },
-    y: {
-      grid: { color: 'rgba(138, 138, 154, 0.08)', drawTicks: false },
-      border: { display: false },
-      ticks: { padding: 12 },
-      beginAtZero: true,
-    },
-  },
-}
-
 // Sources — Horizontal Bar chart
 const sourcesChartData = computed(() => ({
   labels: sources.value.map(s => s.name),
