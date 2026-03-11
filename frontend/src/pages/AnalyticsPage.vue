@@ -302,10 +302,23 @@
       <!-- ═══════════ TAB 4: Flows ═══════════ -->
       <div v-show="activeTab === 'flows'">
 
-        <!-- Flow Insights (auto-generated from real data) -->
+        <!-- Flow-specific Filters -->
+        <div class="flow-filters">
+          <input v-model="flowSearch" type="text" class="flow-filter-input" placeholder="Filter by visitor, page, or source..." />
+          <select v-model="flowFilterSource" class="flow-filter-select">
+            <option value="">All Sources</option>
+            <option v-for="s in flowSources" :key="s" :value="s">{{ s }}</option>
+          </select>
+          <select v-model="flowFilterPage" class="flow-filter-select">
+            <option value="">All Pages</option>
+            <option v-for="p in flowPages" :key="p" :value="p">{{ p }}</option>
+          </select>
+        </div>
+
+        <!-- Actionable Insights -->
         <div v-if="flowInsights.length" class="flow-insights-grid">
           <div v-for="(insight, i) in flowInsights" :key="i" class="flow-insight-card card">
-            <div class="flow-insight-icon">{{ insight.icon }}</div>
+            <div class="flow-insight-dot" :class="insight.severity"></div>
             <div class="flow-insight-title">{{ insight.title }}</div>
             <div class="flow-insight-value">{{ insight.value }}</div>
             <div class="flow-insight-desc">{{ insight.desc }}</div>
@@ -313,36 +326,36 @@
         </div>
 
         <div class="analytics-row">
-          <!-- Top Page Flows with strength bars -->
+          <!-- Common Flow Patterns -->
           <div class="card">
             <div class="card-header">
-              <h3 class="card-title">Top Page Flows</h3>
-              <span class="text-xs text-muted">How visitors move between pages</span>
+              <h3 class="card-title">Common Flow Patterns</h3>
+              <span class="text-xs text-muted">Page-to-page transitions by frequency</span>
             </div>
             <div v-if="flowData.links && flowData.links.length" class="flow-list">
               <div v-for="(link, i) in flowData.links.slice(0, 12)" :key="i" class="flow-item-enhanced">
                 <div class="flow-item-route">
                   <span class="flow-page">{{ cleanPath(link.source) }}</span>
-                  <span class="flow-arrow">→</span>
+                  <span class="flow-arrow">&rarr;</span>
                   <span class="flow-page">{{ cleanPath(link.target) }}</span>
                 </div>
                 <div class="flow-item-bar-wrap">
                   <div class="flow-item-bar" :style="{ width: flowBarWidth(link.value) + '%', background: flowBarColor(i) }"></div>
                 </div>
-                <span class="flow-count">{{ link.value }}×</span>
+                <span class="flow-count">{{ link.value }}&times;</span>
               </div>
             </div>
             <div v-else class="empty-inline">No flow data yet</div>
           </div>
 
-          <!-- Entry & Exit Pages with bars -->
+          <!-- Entry & Exit Pages -->
           <div class="card">
             <div class="card-header">
               <h3 class="card-title">Entry & Exit Pages</h3>
-              <span class="text-xs text-muted">Where journeys begin and end</span>
+              <span class="text-xs text-muted">Where sessions start and end</span>
             </div>
             <div v-if="entryExitData.entry_pages && entryExitData.entry_pages.length">
-              <h4 class="text-sm font-semibold" style="margin-bottom:8px;color:var(--color-success)">↓ Where visitors land first</h4>
+              <h4 class="text-sm font-semibold" style="margin-bottom:8px;color:var(--color-success)">Entry Pages</h4>
               <div v-for="p in entryExitData.entry_pages" :key="'e'+p.page" class="flow-bar-row">
                 <span class="flow-bar-label truncate">{{ cleanPath(p.page) }}</span>
                 <div class="flow-bar-track">
@@ -350,7 +363,7 @@
                 </div>
                 <span class="flow-bar-count">{{ p.count }}</span>
               </div>
-              <h4 class="text-sm font-semibold" style="margin:20px 0 8px;color:var(--color-danger)">↑ Where visitors leave</h4>
+              <h4 class="text-sm font-semibold" style="margin:20px 0 8px;color:var(--color-danger)">Exit Pages</h4>
               <div v-for="p in entryExitData.exit_pages || []" :key="'x'+p.page" class="flow-bar-row">
                 <span class="flow-bar-label truncate">{{ cleanPath(p.page) }}</span>
                 <div class="flow-bar-track">
@@ -363,37 +376,41 @@
           </div>
         </div>
 
-        <!-- Visitor Journeys -->
-        <div class="card" style="margin-top:20px" v-if="journeys.length">
+        <!-- Per-Visitor Journeys -->
+        <div class="card" style="margin-top:20px" v-if="filteredJourneys.length">
           <div class="card-header">
             <h3 class="card-title">Visitor Journeys</h3>
-            <span class="text-xs text-muted">{{ journeys.length }} recent sessions — full page paths</span>
+            <span class="text-xs text-muted">{{ filteredJourneys.length }} sessions</span>
           </div>
           <div class="journey-list">
-            <div v-for="(j, i) in journeys" :key="i" class="journey-card">
+            <div v-for="(j, i) in filteredJourneys" :key="i" class="journey-card">
               <div class="journey-meta">
                 <span class="journey-visitor">
+                  <span class="intent-dot" :class="journeyIntent(j).cls"></span>
                   <span class="visitor-hash">{{ j.visitor_hash }}...</span>
                   <span v-if="j.company" class="journey-company">{{ j.company }}</span>
                 </span>
                 <div class="journey-tags">
-                  <span v-if="j.device" class="badge badge-sm badge-outline">{{ j.device }}</span>
-                  <span v-if="j.country" class="badge badge-sm badge-outline">{{ j.country }}</span>
-                  <span v-if="j.source" class="badge badge-sm badge-outline">{{ j.source }}</span>
-                  <span v-if="j.duration_secs" class="text-xs text-muted">{{ formatDuration(j.duration_secs) }}</span>
+                  <span class="badge badge-sm badge-outline" v-if="j.device">{{ j.device }}</span>
+                  <span class="badge badge-sm badge-outline" v-if="j.country">{{ j.country }}</span>
+                  <span class="badge badge-sm badge-outline" v-if="j.source && j.source !== 'direct'">{{ j.source }}</span>
+                  <span class="journey-duration" v-if="j.duration_secs">{{ formatDuration(j.duration_secs) }}</span>
                 </div>
               </div>
+              <div class="journey-intent-label">{{ journeyIntent(j).label }}</div>
               <div class="journey-path">
                 <template v-for="(page, pi) in j.pages" :key="pi">
                   <span class="journey-step" :class="{ 'step-entry': pi === 0, 'step-exit': pi === j.pages.length - 1 }">{{ page }}</span>
-                  <span v-if="pi < j.pages.length - 1" class="journey-arrow">→</span>
+                  <span v-if="pi < j.pages.length - 1" class="journey-arrow">&rarr;</span>
                 </template>
                 <span class="journey-pages-count">{{ j.page_count }} pages</span>
               </div>
             </div>
           </div>
         </div>
-      </div>
+        <div class="card" style="margin-top:20px" v-else-if="journeys.length && !filteredJourneys.length">
+          <div class="empty-inline">No journeys match your filters</div>
+        </div>
 
       <!-- ═══════════ TAB 5: AI Insights ═══════════ -->
       <div v-show="activeTab === 'insights'">
@@ -630,6 +647,55 @@ const filterDevice = ref('')
 const filterCountry = ref('')
 const activeFilters = ref([])
 
+// ── Flow-specific filter state ──
+const flowSearch = ref('')
+const flowFilterSource = ref('')
+const flowFilterPage = ref('')
+
+const flowSources = computed(() => {
+  const s = new Set()
+  journeys.value.forEach(j => { if (j.source) s.add(j.source) })
+  return [...s].sort()
+})
+
+const flowPages = computed(() => {
+  const p = new Set()
+  journeys.value.forEach(j => (j.pages || []).forEach(pg => p.add(pg)))
+  return [...p].sort()
+})
+
+const filteredJourneys = computed(() => {
+  let list = journeys.value
+  const q = flowSearch.value.toLowerCase().trim()
+  if (q) {
+    list = list.filter(j =>
+      (j.visitor_hash || '').toLowerCase().includes(q) ||
+      (j.company || '').toLowerCase().includes(q) ||
+      (j.source || '').toLowerCase().includes(q) ||
+      (j.pages || []).some(p => p.toLowerCase().includes(q))
+    )
+  }
+  if (flowFilterSource.value) {
+    list = list.filter(j => j.source === flowFilterSource.value)
+  }
+  if (flowFilterPage.value) {
+    list = list.filter(j => (j.pages || []).includes(flowFilterPage.value))
+  }
+  return list
+})
+
+function journeyIntent(j) {
+  const pages = j.pages || []
+  const hasProduct = pages.some(p => p.startsWith('/product'))
+  const hasLogin = pages.some(p => p.includes('login') || p.includes('signup'))
+  const hasPricing = pages.some(p => p.includes('pricing'))
+  if (hasLogin) return { cls: 'dot-success', label: 'High intent - attempted login/signup' }
+  if (hasProduct && hasPricing) return { cls: 'dot-info', label: 'Evaluating - viewed product and pricing' }
+  if (hasProduct) return { cls: 'dot-warning', label: 'Interested - viewed product but skipped pricing' }
+  if (pages.length <= 1) return { cls: 'dot-muted', label: 'Quick visit - single page view' }
+  return { cls: 'dot-neutral', label: 'Browsing - exploring the site' }
+}
+
 function addFilter() {
   if (searchQuery.value.trim()) {
     activeFilters.value.push({ type: 'search', label: `"${searchQuery.value.trim()}"` })
@@ -691,107 +757,61 @@ const filteredVisitors = computed(() => {
   return list
 })
 
-// ── Flow insights: user-level analysis with missed pages ──
+// ── Flow insights: user-level analysis ──
 const flowInsights = computed(() => {
   const insights = []
   const entries = entryExitData.value?.entry_pages || []
   const exits = entryExitData.value?.exit_pages || []
   const links = flowData.value?.links || []
   const jList = journeys.value || []
-
-  // Key pages every visitor should ideally see
   const keyPages = ['/pricing', '/features', '/about', '/signup', '/demo', '/contact', '/blog']
-
-  // Collect all pages visited across all journeys
   const allVisitedPages = new Set()
   jList.forEach(j => (j.pages || []).forEach(p => allVisitedPages.add(p)))
-  // Also from flow links
   links.forEach(l => { allVisitedPages.add(cleanPath(l.source)); allVisitedPages.add(cleanPath(l.target)) })
 
-  // 1. Per-journey analysis
   if (jList.length) {
     jList.forEach((j, idx) => {
       const pages = j.pages || []
       if (!pages.length) return
-
       const visited = new Set(pages)
-      const missed = keyPages.filter(p => !visited.has(p))
       const viewedProduct = pages.some(p => p.startsWith('/product'))
       const reachedLogin = pages.some(p => p.includes('login') || p.includes('signup'))
       const sawPricing = visited.has('/pricing')
       const name = j.company || j.visitor_hash || `Visitor ${idx + 1}`
-
-      // Journey summary
-      let intent = 'Browsing'
-      let intentIcon = '👀'
-      if (reachedLogin) { intent = 'High Intent — tried to log in'; intentIcon = '🔥' }
-      else if (viewedProduct && sawPricing) { intent = 'Evaluating — viewed product + pricing'; intentIcon = '📊' }
-      else if (viewedProduct) { intent = 'Interested — viewed a product'; intentIcon = '🛍️' }
-      else if (pages.length <= 1) { intent = 'Quick visit — single page'; intentIcon = '⚡' }
-
-      insights.push({
-        icon: intentIcon,
-        title: `${name}`,
-        value: pages.join(' → '),
-        desc: `${intent}. ${pages.length} page${pages.length > 1 ? 's' : ''} visited${j.duration_secs ? ', ' + formatDuration(j.duration_secs) + ' session' : ''}.`
-      })
-
-      // What they missed
-      if (missed.length && pages.length > 1) {
+      let intent = 'Browsing', sev = 'dot-neutral'
+      if (reachedLogin) { intent = 'High intent - tried to log in'; sev = 'dot-success' }
+      else if (viewedProduct && sawPricing) { intent = 'Evaluating - viewed product + pricing'; sev = 'dot-info' }
+      else if (viewedProduct) { intent = 'Interested - viewed a product'; sev = 'dot-warning' }
+      else if (pages.length <= 1) { intent = 'Quick visit - single page'; sev = 'dot-muted' }
+      insights.push({ severity: sev, title: name, value: pages.join(' > '), desc: `${intent}. ${pages.length} pages visited${j.duration_secs ? ', ' + formatDuration(j.duration_secs) + ' session' : ''}.` })
+      if (pages.length > 1) {
         const critical = []
         if (viewedProduct && !sawPricing) critical.push('/pricing')
         if (viewedProduct && !visited.has('/signup') && !reachedLogin) critical.push('/signup')
         if (!visited.has('/features')) critical.push('/features')
-
         if (critical.length) {
-          insights.push({
-            icon: '⚠️',
-            title: `${name} — Missed Pages`,
-            value: critical.join(', '),
-            desc: viewedProduct && !sawPricing
-              ? 'Viewed a product but never saw pricing. Add pricing CTAs on product pages.'
-              : 'Consider adding navigation prompts to guide visitors to these key pages.'
-          })
+          insights.push({ severity: 'dot-danger', title: `${name} - missed pages`, value: critical.join(', '), desc: viewedProduct && !sawPricing ? 'Viewed a product but never saw pricing. Add pricing CTAs on product pages.' : 'Consider adding navigation prompts to guide visitors to these key pages.' })
         }
       }
     })
   }
 
-  // 2. Overall site coverage
   const missedOverall = keyPages.filter(p => !allVisitedPages.has(p))
   if (missedOverall.length && allVisitedPages.size > 0) {
-    insights.push({
-      icon: '📋',
-      title: 'Pages No One Visits',
-      value: missedOverall.join(', '),
-      desc: `No visitors have reached ${missedOverall.length === 1 ? 'this page' : 'these pages'}. Check navigation links and internal linking strategy.`
-    })
+    insights.push({ severity: 'dot-danger', title: 'Pages with zero visits', value: missedOverall.join(', '), desc: 'No visitors have reached these pages. Check navigation links and internal linking.' })
   }
-
-  // 3. Entry/exit analysis (keep best ones)
   if (entries.length) {
-    insights.push({
-      icon: '🚪', title: 'Top Landing Page',
-      value: cleanPath(entries[0].page),
-      desc: `${entries[0].count} visit${entries[0].count > 1 ? 's' : ''} start here. This is your most common first impression.`
-    })
+    insights.push({ severity: 'dot-info', title: 'Top landing page', value: cleanPath(entries[0].page), desc: `${entries[0].count} visit${entries[0].count > 1 ? 's' : ''} start here.` })
   }
-
   if (exits.length) {
     const top = exits[0]
     const isConversion = cleanPath(top.page).match(/signup|login|checkout|thank/)
-    insights.push({
-      icon: isConversion ? '✅' : '🚨',
-      title: isConversion ? 'Conversion Exit' : 'Top Drop-off',
-      value: cleanPath(top.page),
-      desc: isConversion
-        ? `${top.count} visitors leave after ${cleanPath(top.page)} — likely a conversion point.`
-        : `${top.count} visitors leave from here. Consider adding CTAs or improving content.`
-    })
+    insights.push({ severity: isConversion ? 'dot-success' : 'dot-danger', title: isConversion ? 'Conversion exit' : 'Top drop-off', value: cleanPath(top.page), desc: isConversion ? `${top.count} visitors leave after ${cleanPath(top.page)}.` : `${top.count} visitors leave from here. Add CTAs or improve content.` })
   }
-
   return insights
 })
+
+
 
 function cleanPath(url) {
   if (!url) return '--'
@@ -1273,11 +1293,28 @@ onBeforeUnmount(() => {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 16px; margin-bottom: 20px;
 }
-.flow-insight-card { display: flex; flex-direction: column; gap: 6px; padding: 16px !important; }
-.flow-insight-icon { font-size: 24px; }
+.flow-insight-card { display: flex; flex-direction: column; gap: 6px; padding: 16px !important; position: relative; }
+.flow-insight-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.dot-danger { background: var(--color-danger, #ef4444); }
+.dot-warning { background: #f59e0b; }
+.dot-info { background: #5B8DEF; }
+.dot-success { background: var(--color-success, #22c55e); }
+.dot-muted { background: var(--text-muted); }
+.dot-neutral { background: var(--text-secondary); }
 .flow-insight-title { font-size: var(--font-xs); text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); font-weight: 700; }
 .flow-insight-value { font-size: var(--font-base); font-weight: 700; color: var(--text-primary); word-break: break-word; }
 .flow-insight-desc { font-size: var(--font-xs); color: var(--text-secondary); line-height: 1.5; }
+
+/* ── Flow Filters ── */
+.flow-filters { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+.flow-filter-input { flex: 1; min-width: 200px; padding: 8px 14px; border-radius: var(--radius-md); border: 1px solid var(--border-color); background: var(--bg-surface); color: var(--text-primary); font-size: var(--font-sm); outline: none; }
+.flow-filter-input:focus { border-color: var(--brand-accent); }
+.flow-filter-select { padding: 8px 12px; border-radius: var(--radius-md); border: 1px solid var(--border-color); background: var(--bg-surface); color: var(--text-primary); font-size: var(--font-sm); cursor: pointer; }
+
+/* ── Journey Intent ── */
+.intent-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; display: inline-block; margin-right: 6px; }
+.journey-intent-label { font-size: var(--font-xs); color: var(--text-secondary); margin-bottom: 6px; }
+.journey-duration { font-size: var(--font-xs); color: var(--text-muted); font-weight: 600; font-variant-numeric: tabular-nums; }
 
 /* ── Flows: Enhanced Items ── */
 .flow-list { display: flex; flex-direction: column; gap: 6px; }
