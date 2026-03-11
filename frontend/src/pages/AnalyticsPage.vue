@@ -691,55 +691,103 @@ const filteredVisitors = computed(() => {
   return list
 })
 
-// ── Flow insights: auto-generated from real data ──
+// ── Flow insights: user-level analysis with missed pages ──
 const flowInsights = computed(() => {
   const insights = []
   const entries = entryExitData.value?.entry_pages || []
   const exits = entryExitData.value?.exit_pages || []
   const links = flowData.value?.links || []
+  const jList = journeys.value || []
 
+  // Key pages every visitor should ideally see
+  const keyPages = ['/pricing', '/features', '/about', '/signup', '/demo', '/contact', '/blog']
+
+  // Collect all pages visited across all journeys
+  const allVisitedPages = new Set()
+  jList.forEach(j => (j.pages || []).forEach(p => allVisitedPages.add(p)))
+  // Also from flow links
+  links.forEach(l => { allVisitedPages.add(cleanPath(l.source)); allVisitedPages.add(cleanPath(l.target)) })
+
+  // 1. Per-journey analysis
+  if (jList.length) {
+    jList.forEach((j, idx) => {
+      const pages = j.pages || []
+      if (!pages.length) return
+
+      const visited = new Set(pages)
+      const missed = keyPages.filter(p => !visited.has(p))
+      const viewedProduct = pages.some(p => p.startsWith('/product'))
+      const reachedLogin = pages.some(p => p.includes('login') || p.includes('signup'))
+      const sawPricing = visited.has('/pricing')
+      const name = j.company || j.visitor_hash || `Visitor ${idx + 1}`
+
+      // Journey summary
+      let intent = 'Browsing'
+      let intentIcon = '👀'
+      if (reachedLogin) { intent = 'High Intent — tried to log in'; intentIcon = '🔥' }
+      else if (viewedProduct && sawPricing) { intent = 'Evaluating — viewed product + pricing'; intentIcon = '📊' }
+      else if (viewedProduct) { intent = 'Interested — viewed a product'; intentIcon = '🛍️' }
+      else if (pages.length <= 1) { intent = 'Quick visit — single page'; intentIcon = '⚡' }
+
+      insights.push({
+        icon: intentIcon,
+        title: `${name}`,
+        value: pages.join(' → '),
+        desc: `${intent}. ${pages.length} page${pages.length > 1 ? 's' : ''} visited${j.duration_secs ? ', ' + formatDuration(j.duration_secs) + ' session' : ''}.`
+      })
+
+      // What they missed
+      if (missed.length && pages.length > 1) {
+        const critical = []
+        if (viewedProduct && !sawPricing) critical.push('/pricing')
+        if (viewedProduct && !visited.has('/signup') && !reachedLogin) critical.push('/signup')
+        if (!visited.has('/features')) critical.push('/features')
+
+        if (critical.length) {
+          insights.push({
+            icon: '⚠️',
+            title: `${name} — Missed Pages`,
+            value: critical.join(', '),
+            desc: viewedProduct && !sawPricing
+              ? 'Viewed a product but never saw pricing. Add pricing CTAs on product pages.'
+              : 'Consider adding navigation prompts to guide visitors to these key pages.'
+          })
+        }
+      }
+    })
+  }
+
+  // 2. Overall site coverage
+  const missedOverall = keyPages.filter(p => !allVisitedPages.has(p))
+  if (missedOverall.length && allVisitedPages.size > 0) {
+    insights.push({
+      icon: '📋',
+      title: 'Pages No One Visits',
+      value: missedOverall.join(', '),
+      desc: `No visitors have reached ${missedOverall.length === 1 ? 'this page' : 'these pages'}. Check navigation links and internal linking strategy.`
+    })
+  }
+
+  // 3. Entry/exit analysis (keep best ones)
   if (entries.length) {
-    const top = entries[0]
     insights.push({
       icon: '🚪', title: 'Top Landing Page',
-      value: cleanPath(top.page),
-      desc: `${top.count} visitors start their journey here. This is your most common first impression.`
+      value: cleanPath(entries[0].page),
+      desc: `${entries[0].count} visit${entries[0].count > 1 ? 's' : ''} start here. This is your most common first impression.`
     })
   }
 
   if (exits.length) {
     const top = exits[0]
-    const isSignup = cleanPath(top.page).includes('signup') || cleanPath(top.page).includes('login')
+    const isConversion = cleanPath(top.page).match(/signup|login|checkout|thank/)
     insights.push({
-      icon: isSignup ? '✅' : '🚨', title: isSignup ? 'Top Conversion Exit' : 'Top Drop-off Page',
+      icon: isConversion ? '✅' : '🚨',
+      title: isConversion ? 'Conversion Exit' : 'Top Drop-off',
       value: cleanPath(top.page),
-      desc: isSignup
-        ? `${top.count} visitors leave after signup — this is likely a conversion point.`
-        : `${top.count} visitors leave from this page. Consider improving content or adding CTAs here.`
+      desc: isConversion
+        ? `${top.count} visitors leave after ${cleanPath(top.page)} — likely a conversion point.`
+        : `${top.count} visitors leave from here. Consider adding CTAs or improving content.`
     })
-  }
-
-  if (links.length) {
-    const topFlow = links[0]
-    insights.push({
-      icon: '🔗', title: 'Strongest Flow',
-      value: `${cleanPath(topFlow.source)} → ${cleanPath(topFlow.target)}`,
-      desc: `${topFlow.value} visitors take this path. This is your most popular page transition.`
-    })
-  }
-
-  if (links.length >= 3) {
-    // Find pages that appear as targets but not sources (potential dead ends)
-    const sources = new Set(links.map(l => l.source))
-    const deadEnds = links.filter(l => !sources.has(l.target)).map(l => cleanPath(l.target))
-    const unique = [...new Set(deadEnds)].slice(0, 3)
-    if (unique.length) {
-      insights.push({
-        icon: '🔍', title: 'Pages to Investigate',
-        value: unique.join(', '),
-        desc: 'Visitors reach these pages but do not navigate further. Add links or CTAs to keep them engaged.'
-      })
-    }
   }
 
   return insights
