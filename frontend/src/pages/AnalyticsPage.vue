@@ -67,27 +67,6 @@
             </div>
             <div class="kpi-value">{{ stat.value }}</div>
           </div>
-          <!-- Extra KPI cards -->
-          <div class="kpi-card">
-            <div class="kpi-header"><span class="kpi-label">NEW VISITORS</span></div>
-            <div class="kpi-value">{{ newVisitorPct }}%</div>
-          </div>
-          <div class="kpi-card">
-            <div class="kpi-header"><span class="kpi-label">PAGES / SESSION</span></div>
-            <div class="kpi-value">{{ pagesPerSession }}</div>
-          </div>
-          <div class="kpi-card">
-            <div class="kpi-header">
-              <span class="kpi-label">
-                BOUNCE RATE
-                <span class="kpi-info" @mouseenter="showTooltip = 'BOUNCE RATE'" @mouseleave="showTooltip = null">
-                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="7"/><path d="M8 7v4M8 5.5v0"/></svg>
-                  <div class="kpi-tooltip" v-show="showTooltip === 'BOUNCE RATE'">{{ kpiTooltips['BOUNCE RATE'] }}</div>
-                </span>
-              </span>
-            </div>
-            <div class="kpi-value">{{ bounceRate }}%</div>
-          </div>
         </div>
 
         <!-- Traffic Charts Row -->
