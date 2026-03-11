@@ -78,7 +78,7 @@ class FlowService:
 
     @staticmethod
     def get_entry_pages(*, website_id: str, period: str = "30d", limit: int = 10) -> list:
-        """Top pages where visitors start their session."""
+        """Top pages where visitors start their session, with source."""
         start, end = get_date_range(period)
         from apps.analytics.models import Session
 
@@ -88,7 +88,7 @@ class FlowService:
                 started_at__range=(start, end),
             )
             .exclude(entry_page="")
-            .values("entry_page")
+            .values("entry_page", "source")
             .annotate(count=Count("id"))
             .order_by("-count")[:limit]
         )
@@ -96,6 +96,7 @@ class FlowService:
         return [
             {
                 "page": r["entry_page"],
+                "source": r["source"] or "direct",
                 "count": r["count"],
                 "pct": round(r["count"] / total * 100, 1),
             }

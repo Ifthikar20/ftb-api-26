@@ -313,6 +313,14 @@
             <option value="">All Pages</option>
             <option v-for="p in flowPages" :key="p" :value="p">{{ p }}</option>
           </select>
+          <select v-model="flowFilterDevice" class="flow-filter-select">
+            <option value="">All Devices</option>
+            <option v-for="d in flowDevices" :key="d" :value="d">{{ d }}</option>
+          </select>
+          <select v-model="flowFilterCountry" class="flow-filter-select">
+            <option value="">All Countries</option>
+            <option v-for="c in flowCountries" :key="c" :value="c">{{ c }}</option>
+          </select>
         </div>
 
         <!-- Actionable Insights -->
@@ -357,7 +365,10 @@
             <div v-if="entryExitData.entry_pages && entryExitData.entry_pages.length">
               <h4 class="text-sm font-semibold" style="margin-bottom:8px;color:var(--color-success)">Entry Pages</h4>
               <div v-for="p in entryExitData.entry_pages" :key="'e'+p.page" class="flow-bar-row">
-                <span class="flow-bar-label truncate">{{ cleanPath(p.page) }}</span>
+                <div class="flow-bar-label-group">
+                  <span class="flow-bar-label truncate">{{ cleanPath(p.page) }}</span>
+                  <span v-if="p.source" class="flow-source-tag">via {{ p.source }}</span>
+                </div>
                 <div class="flow-bar-track">
                   <div class="flow-bar-fill entry" :style="{ width: entryPct(p.count) + '%' }"></div>
                 </div>
@@ -380,7 +391,7 @@
         <div class="card" style="margin-top:20px" v-if="filteredJourneys.length">
           <div class="card-header">
             <h3 class="card-title">Visitor Journeys</h3>
-            <span class="text-xs text-muted">{{ filteredJourneys.length }} sessions</span>
+            <span class="text-xs text-muted">{{ filteredJourneys.length }} of {{ journeys.length }} sessions{{ activeFlowFilterCount ? ` (${activeFlowFilterCount} filter${activeFlowFilterCount > 1 ? 's' : ''})` : '' }}</span>
           </div>
           <div class="journey-list">
             <div v-for="(j, i) in filteredJourneys" :key="i" class="journey-card">
@@ -652,6 +663,8 @@ const activeFilters = ref([])
 const flowSearch = ref('')
 const flowFilterSource = ref('')
 const flowFilterPage = ref('')
+const flowFilterDevice = ref('')
+const flowFilterCountry = ref('')
 
 const flowSources = computed(() => {
   const s = new Set()
@@ -665,6 +678,28 @@ const flowPages = computed(() => {
   return [...p].sort()
 })
 
+const flowDevices = computed(() => {
+  const d = new Set()
+  journeys.value.forEach(j => { if (j.device) d.add(j.device) })
+  return [...d].sort()
+})
+
+const flowCountries = computed(() => {
+  const c = new Set()
+  journeys.value.forEach(j => { if (j.country) c.add(j.country) })
+  return [...c].sort()
+})
+
+const activeFlowFilterCount = computed(() => {
+  let n = 0
+  if (flowSearch.value.trim()) n++
+  if (flowFilterSource.value) n++
+  if (flowFilterPage.value) n++
+  if (flowFilterDevice.value) n++
+  if (flowFilterCountry.value) n++
+  return n
+})
+
 const filteredJourneys = computed(() => {
   let list = journeys.value
   const q = flowSearch.value.toLowerCase().trim()
@@ -673,6 +708,8 @@ const filteredJourneys = computed(() => {
       (j.visitor_hash || '').toLowerCase().includes(q) ||
       (j.company || '').toLowerCase().includes(q) ||
       (j.source || '').toLowerCase().includes(q) ||
+      (j.device || '').toLowerCase().includes(q) ||
+      (j.country || '').toLowerCase().includes(q) ||
       (j.pages || []).some(p => p.toLowerCase().includes(q))
     )
   }
@@ -681,6 +718,12 @@ const filteredJourneys = computed(() => {
   }
   if (flowFilterPage.value) {
     list = list.filter(j => (j.pages || []).includes(flowFilterPage.value))
+  }
+  if (flowFilterDevice.value) {
+    list = list.filter(j => j.device === flowFilterDevice.value)
+  }
+  if (flowFilterCountry.value) {
+    list = list.filter(j => j.country === flowFilterCountry.value)
   }
   return list
 })
@@ -1332,6 +1375,9 @@ onBeforeUnmount(() => {
 .flow-bar-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--border-color); font-size: var(--font-sm); }
 .flow-bar-row:last-child { border-bottom: none; }
 .flow-bar-label { min-width: 100px; max-width: 160px; font-family: 'SF Mono', monospace; font-size: var(--font-xs); color: var(--text-secondary); }
+.flow-bar-label-group { display: flex; flex-direction: column; gap: 2px; min-width: 100px; max-width: 180px; }
+.flow-bar-label-group .flow-bar-label { min-width: auto; max-width: none; }
+.flow-source-tag { font-size: 10px; color: var(--brand-accent); opacity: 0.8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .flow-bar-track { flex: 1; height: 8px; background: var(--bg-surface); border-radius: var(--radius-full); overflow: hidden; }
 .flow-bar-fill { height: 100%; border-radius: var(--radius-full); transition: width 0.5s ease; }
 .flow-bar-fill.entry { background: var(--color-success); }
