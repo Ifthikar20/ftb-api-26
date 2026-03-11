@@ -697,7 +697,7 @@ const flowInsights = computed(() => {
       insights.push({
         icon: '🔍', title: 'Pages to Investigate',
         value: unique.join(', '),
-        desc: 'Visitors reach these pages but don't navigate further. Add links or CTAs to keep them engaged.'
+        desc: 'Visitors reach these pages but do not navigate further. Add links or CTAs to keep them engaged.'
       })
     }
   }
