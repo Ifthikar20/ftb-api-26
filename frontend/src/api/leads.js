@@ -12,4 +12,5 @@ export default {
     updateScoring: (wid, data) => api.put(`/leads/${wid}/scoring/`, data),
     segments: (wid) => api.get(`/leads/${wid}/segments/`),
     createSegment: (wid, data) => api.post(`/leads/${wid}/segments/`, data),
+    aiSearch: (wid, data) => api.post(`/leads/${wid}/ai-search/`, data),
 }

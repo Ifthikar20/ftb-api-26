@@ -7,4 +7,5 @@ urlpatterns = [
     path("<uuid:website_id>/<uuid:lead_id>/", views.LeadDetailView.as_view(), name="lead-detail"),
     path("<uuid:website_id>/<uuid:lead_id>/note/", views.LeadNoteView.as_view(), name="lead-note"),
     path("<uuid:website_id>/export/", views.LeadExportView.as_view(), name="lead-export"),
+    path("<uuid:website_id>/ai-search/", views.AILeadFinderView.as_view(), name="lead-ai-search"),
 ]

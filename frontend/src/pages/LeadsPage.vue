@@ -22,6 +22,7 @@
     <div class="tabs">
       <button class="tab" :class="{ active: activeTab === 'table' }" @click="activeTab = 'table'">Table</button>
       <button class="tab" :class="{ active: activeTab === 'pipeline' }" @click="activeTab = 'pipeline'">Pipeline</button>
+      <button class="tab" :class="{ active: activeTab === 'ai-finder' }" @click="activeTab = 'ai-finder'" style="color:var(--brand-accent)">AI Lead Finder</button>
     </div>
 
     <div v-if="loading" class="loading-state">Loading leads...</div>
@@ -185,6 +186,105 @@
         </div>
       </div>
     </template>
+
+    <!-- ════════════════ AI LEAD FINDER ════════════════ -->
+    <template v-else-if="activeTab === 'ai-finder'">
+      <div class="ai-finder">
+        <!-- Search Input -->
+        <div class="ai-search-card card">
+          <h3 class="card-title" style="margin-bottom:4px">Describe your ideal lead</h3>
+          <p class="text-sm text-muted" style="margin-bottom:16px">Use natural language to find leads from LinkedIn and Twitter profiles.</p>
+          <textarea
+            v-model="aiPrompt"
+            class="ai-prompt-input"
+            rows="3"
+            placeholder='e.g. "SaaS founders in Austin who tweet about growth marketing" or "VP of Engineering at healthcare startups in NYC"'
+            @keydown.meta.enter="runAISearch"
+            @keydown.ctrl.enter="runAISearch"
+          ></textarea>
+          <div class="ai-search-actions">
+            <div class="ai-example-prompts">
+              <span class="text-xs text-muted">Try:</span>
+              <button class="ai-example-btn" @click="aiPrompt = 'SaaS founders in San Francisco'">SaaS founders in SF</button>
+              <button class="ai-example-btn" @click="aiPrompt = 'Marketing directors at e-commerce companies'">E-com marketing directors</button>
+              <button class="ai-example-btn" @click="aiPrompt = 'CTO at fintech startups raising Series A'">Fintech CTOs</button>
+            </div>
+            <button class="btn btn-primary" @click="runAISearch" :disabled="aiSearching || !aiPrompt.trim()">
+              <span v-if="aiSearching" class="ai-spinner"></span>
+              {{ aiSearching ? 'Searching...' : 'Find Leads' }}
+            </button>
+          </div>
+        </div>
+
+        <!-- Loading State -->
+        <div v-if="aiSearching" class="ai-loading">
+          <div class="ai-spinner-lg"></div>
+          <p class="text-sm text-muted" style="margin-top:12px">Parsing your prompt with AI and searching social profiles...</p>
+        </div>
+
+        <!-- Results -->
+        <template v-if="aiResults.length">
+          <div class="ai-results-header">
+            <h3 style="margin:0;font-size:var(--font-md)">{{ aiResults.length }} leads found</h3>
+            <div class="ai-meta">
+              <span v-if="aiMeta.sources_searched" class="text-xs text-muted">
+                LinkedIn: {{ aiMeta.sources_searched.linkedin || 0 }} | Twitter: {{ aiMeta.sources_searched.twitter || 0 }}
+              </span>
+              <span v-if="!aiMeta.has_google_search" class="badge badge-neutral" style="font-size:9px">AI-generated (no Google API key)</span>
+            </div>
+          </div>
+          <div class="ai-results-grid">
+            <div v-for="(lead, i) in aiResults" :key="i" class="ai-lead-card card" :style="{ animationDelay: (i * 0.08) + 's' }">
+              <div class="ai-lead-top">
+                <div class="avatar" style="width:40px;height:40px;font-size:14px">{{ (lead.name || 'A').split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2) }}</div>
+                <div style="flex:1;min-width:0">
+                  <div class="ai-lead-name">{{ lead.name }}</div>
+                  <div class="text-sm text-muted">{{ lead.title }}</div>
+                </div>
+                <div class="ai-score" :class="lead.relevance_score >= 80 ? 'score-hot' : lead.relevance_score >= 60 ? 'score-warm' : 'score-cold'">
+                  {{ lead.relevance_score }}
+                </div>
+              </div>
+              <div class="ai-lead-details">
+                <div class="ai-lead-detail" v-if="lead.company">
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="4" width="12" height="10" rx="1"/><path d="M5 4V2h6v2"/></svg>
+                  {{ lead.company }}
+                </div>
+                <div class="ai-lead-detail" v-if="lead.location">
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 1C5.2 1 3 3.2 3 6c0 4 5 9 5 9s5-5 5-9c0-2.8-2.2-5-5-5z"/><circle cx="8" cy="6" r="2"/></svg>
+                  {{ lead.location }}
+                </div>
+                <div class="ai-lead-detail" v-if="lead.industry">
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M2 8h12M8 2c-2 2-2 10 0 12M8 2c2 2 2 10 0 12"/></svg>
+                  {{ lead.industry }}
+                </div>
+              </div>
+              <p class="ai-lead-reason">{{ lead.reason }}</p>
+              <div class="ai-lead-actions">
+                <div class="ai-social-links">
+                  <a v-if="lead.linkedin_url" :href="lead.linkedin_url" target="_blank" class="ai-social-link li">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M0 1.146C0 .513.526 0 1.175 0h13.65C15.474 0 16 .513 16 1.146v13.708c0 .633-.526 1.146-1.175 1.146H1.175C.526 16 0 15.487 0 14.854V1.146zm4.943 12.248V6.169H2.542v7.225h2.401zm-1.2-8.212c.837 0 1.358-.554 1.358-1.248-.015-.709-.52-1.248-1.342-1.248-.822 0-1.359.54-1.359 1.248 0 .694.521 1.248 1.327 1.248h.016zm4.908 8.212V9.359c0-.216.016-.432.08-.586.173-.431.568-.878 1.232-.878.869 0 1.216.662 1.216 1.634v3.865h2.401V9.25c0-2.22-1.184-3.252-2.764-3.252-1.274 0-1.845.7-2.165 1.193V6.169H6.29c.032.68 0 7.225 0 7.225h2.361z"/></svg>
+                    LinkedIn
+                  </a>
+                  <a v-if="lead.twitter_url" :href="lead.twitter_url" target="_blank" class="ai-social-link tw">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M5.026 15c6.038 0 9.341-5.003 9.341-9.334 0-.14 0-.282-.006-.422A6.685 6.685 0 0016 3.542a6.658 6.658 0 01-1.889.518 3.301 3.301 0 001.447-1.817 6.533 6.533 0 01-2.087.793A3.286 3.286 0 007.875 6.03 9.325 9.325 0 011.114 2.1 3.323 3.323 0 002.13 6.574A3.203 3.203 0 01.64 6.14v.04a3.288 3.288 0 002.632 3.218 3.203 3.203 0 01-.865.115c-.212 0-.418-.02-.62-.058a3.283 3.283 0 003.067 2.277A6.588 6.588 0 01.78 13.58a6.32 6.32 0 01-.78-.045A9.344 9.344 0 005.026 15z"/></svg>
+                    Twitter
+                  </a>
+                </div>
+                <button class="btn btn-secondary btn-sm" @click="addAILeadToTable(lead)">
+                  + Add as Lead
+                </button>
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <!-- Empty State -->
+        <div v-else-if="!aiSearching && aiSearchDone" class="ai-empty">
+          <p>No matching leads found. Try a different description.</p>
+        </div>
+      </div>
+    </template>
   </div>
 </template>
 
@@ -213,6 +313,13 @@ const statusFilter = ref('')
 const activeTab = ref('table')
 const selectedNodeId = ref(null)
 const selectedLead = ref(null)
+
+// AI Lead Finder state
+const aiPrompt = ref('')
+const aiSearching = ref(false)
+const aiSearchDone = ref(false)
+const aiResults = ref([])
+const aiMeta = ref({})
 
 // ── Connector catalog (drag from sidebar) ──
 const connectorCatalog = {
@@ -456,6 +563,37 @@ async function handleExport() {
 }
 
 onMounted(fetchData)
+
+// ── AI Lead Finder ──
+async function runAISearch() {
+  if (!aiPrompt.value.trim() || aiSearching.value) return
+  aiSearching.value = true
+  aiSearchDone.value = false
+  aiResults.value = []
+  try {
+    const { data } = await leadsApi.aiSearch(websiteId, { prompt: aiPrompt.value })
+    aiResults.value = data?.leads || []
+    aiMeta.value = data || {}
+  } catch (e) {
+    console.error('AI search failed', e)
+  } finally {
+    aiSearching.value = false
+    aiSearchDone.value = true
+  }
+}
+
+function addAILeadToTable(lead) {
+  // Add to local leads array for now
+  leads.value.unshift({
+    id: 'ai-' + Date.now(),
+    name: lead.name,
+    email: '',
+    company: lead.company || '',
+    score: lead.relevance_score || 50,
+    status: 'new',
+    source: 'AI Finder',
+  })
+}
 </script>
 
 <style scoped>
@@ -597,5 +735,184 @@ onMounted(fetchData)
   .connector-sidebar { width: 100%; max-height: 200px; border-radius: var(--radius-lg) var(--radius-lg) 0 0; border-right: 1px solid var(--border-color); border-bottom: none; }
   .pipeline-canvas-wrap { border-radius: 0 0 var(--radius-lg) var(--radius-lg); }
   .pipeline-detail-grid { grid-template-columns: 1fr; }
+  .ai-results-grid { grid-template-columns: 1fr; }
+}
+
+/* ═══════════════════════════════════════
+   AI Lead Finder
+   ═══════════════════════════════════════ */
+.ai-finder { max-width: 960px; }
+
+.ai-search-card { margin-bottom: 24px; }
+
+.ai-prompt-input {
+  width: 100%;
+  padding: 14px 16px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  font-size: var(--font-sm);
+  font-family: var(--font-family);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  resize: vertical;
+  transition: border-color 0.2s;
+}
+.ai-prompt-input:focus {
+  outline: none;
+  border-color: var(--brand-accent);
+  box-shadow: 0 0 0 3px rgba(91, 141, 239, 0.1);
+}
+
+.ai-search-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 12px;
+  gap: 12px;
+}
+
+.ai-example-prompts {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.ai-example-btn {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-full);
+  padding: 4px 10px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s;
+  font-family: var(--font-family);
+}
+.ai-example-btn:hover {
+  border-color: var(--brand-accent);
+  color: var(--brand-accent);
+}
+
+.ai-loading {
+  text-align: center;
+  padding: 60px 20px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.ai-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+.ai-spinner-lg {
+  display: inline-block;
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--border-color);
+  border-top-color: var(--brand-accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.ai-results-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+.ai-meta { display: flex; gap: 8px; align-items: center; }
+
+.ai-results-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+}
+
+@keyframes ai-card-in {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.ai-lead-card {
+  animation: ai-card-in 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ai-lead-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.ai-lead-name {
+  font-weight: 700;
+  font-size: var(--font-sm);
+  color: var(--text-primary);
+}
+.ai-score {
+  font-weight: 800;
+  font-size: var(--font-lg);
+  flex-shrink: 0;
+}
+
+.ai-lead-details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.ai-lead-detail {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--font-xs);
+  color: var(--text-secondary);
+}
+
+.ai-lead-reason {
+  font-size: var(--font-xs);
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin: 0;
+  border-left: 2px solid var(--brand-accent);
+  padding-left: 8px;
+}
+
+.ai-lead-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-color);
+}
+
+.ai-social-links { display: flex; gap: 8px; }
+.ai-social-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: all 0.15s;
+}
+.ai-social-link.li { background: rgba(10, 102, 194, 0.08); color: #0a66c2; }
+.ai-social-link.li:hover { background: rgba(10, 102, 194, 0.18); }
+.ai-social-link.tw { background: rgba(29, 161, 242, 0.08); color: #1da1f2; }
+.ai-social-link.tw:hover { background: rgba(29, 161, 242, 0.18); }
+
+.ai-empty {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--text-muted);
 }
 </style>

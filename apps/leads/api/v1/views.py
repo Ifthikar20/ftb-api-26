@@ -75,3 +75,21 @@ class LeadExportView(APIView):
         response = HttpResponse(csv_data, content_type="text/csv")
         response["Content-Disposition"] = f"attachment; filename=leads-{website_id}.csv"
         return response
+
+
+class AILeadFinderView(APIView):
+    """AI-powered lead discovery — search LinkedIn & Twitter via natural language."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, website_id):
+        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        prompt = request.data.get("prompt", "").strip()
+        if not prompt:
+            return Response(
+                {"error": "A search prompt is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        from apps.leads.services.ai_lead_finder import AILeadFinder
+
+        result = AILeadFinder.search(prompt)
+        return Response(result)
