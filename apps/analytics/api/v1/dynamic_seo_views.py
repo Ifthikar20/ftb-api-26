@@ -21,181 +21,207 @@ logger = logging.getLogger("apps")
 
 class SEOScriptView(View):
     """
-    Serve the dynamic optimization JS script.
-    Public endpoint — called by <script> tag on user's website.
+    Serve the COMBINED FetchBot script — analytics tracking + SEO optimizer.
+    Single JS file, single <script> tag. Public endpoint.
     """
 
     def get(self, request, website_id):
-        # Validate website exists
         try:
             website = Website.objects.get(id=website_id)
         except Website.DoesNotExist:
             return HttpResponse("// invalid site", content_type="application/javascript")
 
-        api_base = request.build_absolute_uri("/api/v1/analytics/")
+        api_base = request.build_absolute_uri("/api/v1/")
+        track_endpoint = request.build_absolute_uri("/api/v1/track/")
+        pixel_key = str(website.pixel_key)
 
         script = f"""
 (function() {{
   'use strict';
-  var FBOpt = window.FBOpt = window.FBOpt || {{}};
-  FBOpt.siteId = '{website_id}';
-  FBOpt.apiBase = '{api_base}';
-  FBOpt.version = '1.0';
-  FBOpt.applied = [];
 
-  // Fetch optimization rules from FetchBot API
-  function fetchRules() {{
-    return fetch(FBOpt.apiBase + '{website_id}/seo-rules/')
-      .then(function(r) {{ return r.json(); }})
-      .catch(function() {{ return {{ rules: [] }}; }});
+  /* ═══════════════════════════════════════════════
+     FetchBot v1.0 — Analytics + SEO Optimizer
+     Single script: visitor tracking + SEO auto-fix
+     ═══════════════════════════════════════════════ */
+
+  var FB = window.FetchBot = window.FetchBot || {{}};
+  FB.siteId   = '{website_id}';
+  FB.pixelKey = '{pixel_key}';
+  FB.api      = '{api_base}';
+  FB.track    = '{track_endpoint}';
+  FB.v        = '1.0';
+  FB.applied  = [];
+
+  /* ─── PART 1: ANALYTICS TRACKING ─── */
+
+  var sid = sessionStorage.getItem('fb_sid');
+  if (!sid) {{ sid = Math.random().toString(36).substr(2, 12); sessionStorage.setItem('fb_sid', sid); }}
+  FB.sessionId = sid;
+
+  function send(eventType, extra) {{
+    var payload = Object.assign({{
+      pixel_key: FB.pixelKey,
+      event_type: eventType,
+      url: window.location.href,
+      path: window.location.pathname,
+      referrer: document.referrer,
+      title: document.title,
+      session_id: FB.sessionId,
+      screen_w: screen.width,
+      screen_h: screen.height,
+      timestamp: new Date().toISOString()
+    }}, extra || {{}});
+    navigator.sendBeacon(FB.track + 'event/', JSON.stringify(payload));
   }}
 
-  // Apply meta tag optimization
-  function applyMeta(tag, attr, value) {{
+  // Track pageview
+  send('pageview');
+
+  // Track clicks
+  document.addEventListener('click', function(e) {{
+    var t = e.target.closest('a, button, [data-fb-track]');
+    if (t) {{
+      send('click', {{
+        element: t.tagName.toLowerCase(),
+        text: (t.textContent || '').trim().slice(0, 100),
+        href: t.href || '',
+        x: e.clientX,
+        y: e.clientY
+      }});
+    }}
+  }});
+
+  // Track scroll depth
+  var maxScroll = 0;
+  var scrollTimer;
+  window.addEventListener('scroll', function() {{
+    clearTimeout(scrollTimer);
+    scrollTimer = setTimeout(function() {{
+      var s = Math.round((window.scrollY / (document.body.scrollHeight - window.innerHeight)) * 100);
+      if (s > maxScroll) {{
+        maxScroll = s;
+        if (maxScroll === 25 || maxScroll === 50 || maxScroll === 75 || maxScroll === 100) {{
+          send('scroll', {{ depth: maxScroll }});
+        }}
+      }}
+    }}, 200);
+  }});
+
+  // Track form submissions
+  document.addEventListener('submit', function(e) {{
+    var f = e.target;
+    send('form_submit', {{ form_id: f.id || '', form_action: f.action || '' }});
+  }});
+
+  // Track time on page (send on unload)
+  var pageStart = Date.now();
+  window.addEventListener('beforeunload', function() {{
+    send('time_on_page', {{ duration_ms: Date.now() - pageStart, max_scroll: maxScroll }});
+  }});
+
+  /* ─── PART 2: SEO OPTIMIZER ─── */
+
+  function fetchRules() {{
+    return fetch(FB.api + 'analytics/{website_id}/seo-rules/')
+      .then(function(r) {{ return r.json(); }})
+      .catch(function() {{ return {{}}; }});
+  }}
+
+  function setMeta(attr, value) {{
     var el = document.querySelector('meta[' + attr + ']');
     if (el) {{
-      var old = el.getAttribute('content');
-      if (old !== value) {{
+      if (el.getAttribute('content') !== value) {{
         el.setAttribute('content', value);
-        FBOpt.applied.push({{ type: 'meta', tag: attr, old: old, new: value }});
+        FB.applied.push({{ type: 'meta', tag: attr }});
       }}
     }} else {{
       el = document.createElement('meta');
-      if (attr.indexOf('property=') === 0) {{
-        el.setAttribute('property', attr.split('=')[1].replace(/"/g, ''));
-      }} else {{
-        el.setAttribute('name', attr.split('=')[1].replace(/"/g, ''));
-      }}
+      var parts = attr.split('=');
+      el.setAttribute(parts[0].trim(), parts[1].replace(/"/g, '').trim());
       el.setAttribute('content', value);
       document.head.appendChild(el);
-      FBOpt.applied.push({{ type: 'meta_add', tag: attr, new: value }});
+      FB.applied.push({{ type: 'meta_add', tag: attr }});
     }}
   }}
 
-  // Apply title optimization
-  function applyTitle(value) {{
-    if (value && document.title !== value) {{
-      var old = document.title;
-      document.title = value;
-      FBOpt.applied.push({{ type: 'title', old: old, new: value }});
-    }}
-  }}
-
-  // Inject JSON-LD schema
-  function applySchema(schema) {{
+  function setSchema(schema) {{
     if (!schema) return;
-    var existing = document.querySelector('script[type="application/ld+json"][data-fb="1"]');
-    if (existing) existing.remove();
-    var el = document.createElement('script');
-    el.type = 'application/ld+json';
-    el.setAttribute('data-fb', '1');
-    el.textContent = JSON.stringify(schema);
-    document.head.appendChild(el);
-    FBOpt.applied.push({{ type: 'schema', schema_type: schema['@type'] || 'unknown' }});
+    var old = document.querySelector('script[type="application/ld+json"][data-fb="1"]');
+    if (old) old.remove();
+    var s = document.createElement('script');
+    s.type = 'application/ld+json'; s.setAttribute('data-fb', '1');
+    s.textContent = JSON.stringify(schema);
+    document.head.appendChild(s);
+    FB.applied.push({{ type: 'schema', t: schema['@type'] || '' }});
   }}
 
-  // Inject canonical tag if missing
-  function applyCanonical(url) {{
-    if (!url) return;
-    var existing = document.querySelector('link[rel="canonical"]');
-    if (!existing) {{
-      var link = document.createElement('link');
-      link.rel = 'canonical';
-      link.href = url;
-      document.head.appendChild(link);
-      FBOpt.applied.push({{ type: 'canonical', url: url }});
-    }}
-  }}
-
-  // Inject Open Graph tags
-  function applyOG(og) {{
+  function setOG(og) {{
     if (!og) return;
-    for (var key in og) {{
-      if (og.hasOwnProperty(key)) {{
-        applyMeta('og:' + key, 'property="og:' + key + '"', og[key]);
-      }}
-    }}
+    for (var k in og) {{ if (og.hasOwnProperty(k)) setMeta('property="og:' + k + '"', og[k]); }}
   }}
 
-  // Add hreflang tags
-  function applyHreflang(tags) {{
-    if (!tags || !tags.length) return;
+  function setHreflang(tags) {{
+    if (!tags) return;
     tags.forEach(function(t) {{
-      var existing = document.querySelector('link[hreflang="' + t.lang + '"]');
-      if (!existing) {{
-        var link = document.createElement('link');
-        link.rel = 'alternate';
-        link.hreflang = t.lang;
-        link.href = t.href;
-        document.head.appendChild(link);
-        FBOpt.applied.push({{ type: 'hreflang', lang: t.lang }});
+      if (!document.querySelector('link[hreflang="' + t.lang + '"]')) {{
+        var l = document.createElement('link');
+        l.rel = 'alternate'; l.hreflang = t.lang; l.href = t.href;
+        document.head.appendChild(l);
+        FB.applied.push({{ type: 'hreflang', lang: t.lang }});
       }}
     }});
   }}
 
-  // Inject geo meta tags
-  function applyGeoTags(geo) {{
-    if (!geo) return;
-    if (geo.region) applyMeta('geo.region', 'name="geo.region"', geo.region);
-    if (geo.placename) applyMeta('geo.placename', 'name="geo.placename"', geo.placename);
-    if (geo.position) applyMeta('geo.position', 'name="geo.position"', geo.position);
-  }}
-
-  // Report what was applied back to FetchBot
-  function report() {{
-    if (!FBOpt.applied.length) return;
-    var payload = {{
-      url: window.location.href,
-      title: document.title,
-      applied: FBOpt.applied,
-      timestamp: new Date().toISOString()
-    }};
-    navigator.sendBeacon(
-      FBOpt.apiBase + '{website_id}/seo-report/',
-      JSON.stringify(payload)
-    );
-  }}
-
-  // Main: fetch rules and apply
   function optimize() {{
     fetchRules().then(function(data) {{
       var rules = data.rules || data;
       var path = window.location.pathname;
 
-      // Find matching rule for current page
-      var pageRule = null;
-      if (rules.pages) {{
-        for (var p in rules.pages) {{
-          if (path === p || path.indexOf(p) === 0) {{
-            pageRule = rules.pages[p];
-            break;
-          }}
+      // Global rules
+      if (rules.global) {{
+        if (rules.global.schema) setSchema(rules.global.schema);
+        if (rules.global.og) setOG(rules.global.og);
+        if (rules.global.hreflang) setHreflang(rules.global.hreflang);
+        if (rules.global.geo) {{
+          var g = rules.global.geo;
+          if (g.region) setMeta('name="geo.region"', g.region);
+          if (g.placename) setMeta('name="geo.placename"', g.placename);
+        }}
+        if (rules.global.canonical && !document.querySelector('link[rel="canonical"]')) {{
+          var c = document.createElement('link'); c.rel = 'canonical';
+          c.href = rules.global.canonical.replace('{{path}}', path);
+          document.head.appendChild(c);
+          FB.applied.push({{ type: 'canonical' }});
         }}
       }}
 
-      // Apply global rules
-      if (rules.global) {{
-        if (rules.global.schema) applySchema(rules.global.schema);
-        if (rules.global.og) applyOG(rules.global.og);
-        if (rules.global.hreflang) applyHreflang(rules.global.hreflang);
-        if (rules.global.geo) applyGeoTags(rules.global.geo);
-        if (rules.global.canonical) applyCanonical(rules.global.canonical);
+      // Page-specific rules
+      var pr = null;
+      if (rules.pages) {{
+        for (var p in rules.pages) {{
+          if (path === p || path.indexOf(p) === 0) {{ pr = rules.pages[p]; break; }}
+        }}
+      }}
+      if (pr) {{
+        if (pr.title && document.title !== pr.title) {{ document.title = pr.title; FB.applied.push({{ type: 'title' }}); }}
+        if (pr.description) setMeta('name="description"', pr.description);
+        if (pr.schema) setSchema(pr.schema);
+        if (pr.og) setOG(pr.og);
       }}
 
-      // Apply page-specific rules
-      if (pageRule) {{
-        if (pageRule.title) applyTitle(pageRule.title);
-        if (pageRule.description) applyMeta('description', 'name="description"', pageRule.description);
-        if (pageRule.schema) applySchema(pageRule.schema);
-        if (pageRule.og) applyOG(pageRule.og);
+      // Report optimizations
+      if (FB.applied.length) {{
+        setTimeout(function() {{
+          navigator.sendBeacon(
+            FB.api + 'analytics/{website_id}/seo-report/',
+            JSON.stringify({{ url: location.href, applied: FB.applied, ts: new Date().toISOString() }})
+          );
+        }}, 2000);
       }}
-
-      // Report after short delay
-      setTimeout(report, 2000);
     }});
   }}
 
-  // Run after DOM ready
+  // Run SEO optimizer after DOM ready
   if (document.readyState === 'loading') {{
     document.addEventListener('DOMContentLoaded', optimize);
   }} else {{
@@ -347,8 +373,8 @@ class SEOReportView(View):
 
 class SEOEmbedCodeView(APIView):
     """
-    GET — return the COMBINED embed code (tracking pixel + SEO optimizer).
-    Single script tag that loads both.
+    GET — return the single combined embed code.
+    One <script> tag for both analytics + SEO.
     """
     permission_classes = [IsAuthenticated]
 
@@ -358,23 +384,17 @@ class SEOEmbedCodeView(APIView):
         except Website.DoesNotExist:
             return Response({"error": "Website not found"}, status=404)
 
-        base_url = request.build_absolute_uri("/")
-        pixel_url = f"{base_url}pixel/growthpilot.min.js"
-        seo_url = request.build_absolute_uri(f"/api/v1/analytics/{website_id}/seo-script/")
+        script_url = request.build_absolute_uri(f"/api/v1/analytics/{website_id}/seo-script/")
 
-        # Combined single embed — loads both pixel and SEO optimizer
         embed_code = (
             f'<!-- FetchBot — Analytics + SEO Optimizer -->\n'
-            f'<script src="{pixel_url}" data-key="{website.pixel_key}"></script>\n'
-            f'<script src="{seo_url}" data-site="{website_id}" defer></script>'
+            f'<script src="{script_url}" data-site="{website_id}" defer></script>'
         )
 
         return Response({
             "data": {
                 "embed_code": embed_code,
-                "pixel_url": pixel_url,
-                "seo_url": seo_url,
-                "pixel_key": str(website.pixel_key),
+                "script_url": script_url,
                 "website_id": str(website_id),
                 "website_url": website.url,
             }
