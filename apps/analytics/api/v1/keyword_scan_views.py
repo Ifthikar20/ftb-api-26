@@ -44,4 +44,33 @@ class KeywordScanView(APIView):
             website_url=website.url,
             website_id=str(website.id),
         )
+
+        # Auto-populate TrackedKeyword from scan results
+        auto_tracked = 0
+        if result.get("keywords"):
+            from apps.analytics.models import TrackedKeyword
+            trends = result.get("trends", {})
+
+            for kw_data in result["keywords"][:12]:
+                kw_text = kw_data["keyword"]
+                trend_info = trends.get(kw_text, {})
+                interest = trend_info.get("interest", 0)
+
+                obj, created = TrackedKeyword.objects.get_or_create(
+                    website_id=website_id,
+                    keyword=kw_text,
+                    defaults={
+                        "target_url": website.url,
+                        "search_volume": interest * 100,  # Scale interest to est. volume
+                        "difficulty": min(100, max(0, round(kw_data.get("density", 0) * 25))),
+                    },
+                )
+                if created:
+                    auto_tracked += 1
+                elif interest > 0:
+                    # Update existing with fresh data
+                    obj.search_volume = interest * 100
+                    obj.save(update_fields=["search_volume"])
+
+        result["auto_tracked"] = auto_tracked
         return Response({"data": result})

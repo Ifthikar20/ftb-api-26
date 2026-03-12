@@ -83,6 +83,8 @@ class SEOKeywordScanner:
                     "title": page_data.get("title", ""),
                     "meta_description": page_data.get("meta_description", ""),
                     "h1": page_data.get("h1", []),
+                    "h2": page_data.get("h2", []),
+                    "h3": page_data.get("h3", []),
                     "word_count": page_data.get("word_count", 0),
                 },
             }

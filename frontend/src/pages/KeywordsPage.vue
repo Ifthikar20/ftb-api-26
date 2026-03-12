@@ -304,7 +304,53 @@
               </div>
             </div>
 
-            <!-- Extracted Keywords -->
+            <!-- Split-Screen: Page Content with Highlighted Keywords -->
+            <div v-if="scanData.keywords?.length" class="split-screen">
+              <div class="split-left">
+                <div class="split-header">
+                  <h4 class="seo-sec-title">📄 Page Content</h4>
+                  <span class="text-xs text-muted">Keywords highlighted</span>
+                </div>
+                <div class="page-preview" v-html="highlightedContent"></div>
+              </div>
+              <div class="split-right">
+                <div class="split-header">
+                  <h4 class="seo-sec-title">🔍 Detected Keywords</h4>
+                  <span class="text-xs text-muted">{{ scanData.keywords.length }} found</span>
+                </div>
+                <div class="kw-found-list">
+                  <div v-for="(k, i) in scanData.keywords.slice(0, 12)" :key="i" class="kw-found-item">
+                    <span class="kw-found-rank">#{{ i + 1 }}</span>
+                    <div class="kw-found-info">
+                      <span class="kw-found-word" :class="'kw-hl-' + (i < 3 ? 'hot' : i < 7 ? 'warm' : 'cool')">{{ k.keyword }}</span>
+                      <div class="kw-found-meta">
+                        <span>Density: <b :class="k.density_status === 'optimal' ? 'text-success' : k.density_status === 'high' ? 'text-danger' : 'text-warning'">{{ k.density }}%</b></span>
+                        <span v-if="scanData.trends?.[k.keyword]">Trend: <b :class="scanData.trends[k.keyword].trend === 'rising' ? 'text-success' : scanData.trends[k.keyword].trend === 'declining' ? 'text-danger' : ''">{{ scanData.trends[k.keyword].interest }}/100</b></span>
+                        <span v-for="l in k.locations" :key="l" class="seo-loc-tag">{{ l }}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Suggestions inline -->
+                <div v-if="scanData.suggestions?.length" style="margin-top:16px">
+                  <h4 class="seo-sec-title">💡 Better Alternatives</h4>
+                  <div v-for="(s, i) in scanData.suggestions.slice(0, 6)" :key="'s'+i" class="kw-alt-row">
+                    <span class="kw-alt-orig">{{ s.original }}</span>
+                    <span class="kw-alt-arrow">→</span>
+                    <span class="kw-alt-new">{{ s.suggested }}</span>
+                    <span class="kw-alt-delta">+{{ s.improvement }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Auto-tracked Banner -->
+            <div v-if="scanData.auto_tracked > 0" class="auto-tracked-banner">
+              ✅ Auto-tracked <strong>{{ scanData.auto_tracked }} keywords</strong> from scan. Switch to <a href="#" @click.prevent="activeTab = 'tracker'">Rank Tracker</a> to view them.
+            </div>
+
+            <!-- Extracted Keywords Table -->
             <div v-if="scanData.keywords?.length" class="seo-kw-section">
               <h4 class="seo-sec-title">Extracted Keywords</h4>
               <table class="data-table">
@@ -530,11 +576,40 @@ async function runKeywordScan() {
   try {
     const res = await analyticsApi.keywordScanTrigger(props.websiteId)
     scanData.value = res.data?.data || res.data || {}
+    // Auto-refresh tracked keywords list
+    await fetchKeywords()
   } catch (e) {
     scanData.value = { error: 'Scan failed — ensure your site URL is accessible.' }
   } finally {
     scanLoading.value = false
   }
+}
+
+const highlightedContent = computed(() => {
+  const meta = scanData.value?.page_meta
+  if (!meta) return ''
+  const kws = (scanData.value.keywords || []).map(k => k.keyword)
+  
+  let html = ''
+  // Title
+  if (meta.title) html += `<div class="pv-section"><span class="pv-tag">TITLE</span> ${highlightWords(meta.title, kws)}</div>`
+  // Meta description
+  if (meta.meta_description) html += `<div class="pv-section"><span class="pv-tag">META</span> ${highlightWords(meta.meta_description, kws)}</div>`
+  // H1
+  if (meta.h1?.length) meta.h1.forEach(h => { html += `<div class="pv-section"><span class="pv-tag">H1</span> <strong>${highlightWords(h, kws)}</strong></div>` })
+  // H2
+  if (meta.h2?.length) meta.h2.slice(0, 6).forEach(h => { html += `<div class="pv-section"><span class="pv-tag">H2</span> ${highlightWords(h, kws)}</div>` })
+  // H3
+  if (meta.h3?.length) meta.h3.slice(0, 6).forEach(h => { html += `<div class="pv-section"><span class="pv-tag">H3</span> <span style="font-size:11px">${highlightWords(h, kws)}</span></div>` })
+  
+  return html || '<div class="text-muted">No page content extracted.</div>'
+})
+
+function highlightWords(text, keywords) {
+  if (!text || !keywords.length) return text
+  const escaped = keywords.map(k => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+  const regex = new RegExp(`\\b(${escaped.join('|')})\\b`, 'gi')
+  return text.replace(regex, '<mark class="kw-highlight">$1</mark>')
 }
 
 async function fetchCompareKeywords() {
@@ -613,12 +688,16 @@ async function fetchTrending() {
   } catch (e) { console.error('Trending fetch error', e) }
 }
 
-onMounted(async () => {
+async function fetchKeywords() {
   try {
     const { data } = await analyticsApi.keywords(props.websiteId)
     keywords.value = (data?.data || data || []).map(k => ({ ...k, _history: null }))
   } catch (e) { console.error('Keywords fetch error', e) }
-  finally { loading.value = false }
+}
+
+onMounted(async () => {
+  await fetchKeywords()
+  loading.value = false
 })
 </script>
 
@@ -814,6 +893,41 @@ onMounted(async () => {
 .aec-kws { display: flex; flex-wrap: wrap; gap: 4px; }
 .aec-kw-tag { display: inline-block; padding: 2px 8px; border-radius: var(--radius-full); font-size: 10px; font-weight: 700; background: rgba(99,102,241,0.1); color: var(--brand-accent); }
 
-@media (max-width: 900px) { .analytics-row { grid-template-columns: 1fr; } .explainer-grid { grid-template-columns: repeat(2, 1fr); } .tips-grid { grid-template-columns: 1fr; } .seo-br-name { width: 140px; } }
+/* Split Screen */
+.split-screen { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
+.split-left, .split-right { background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 16px; overflow: hidden; }
+.split-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.split-header .seo-sec-title { margin: 0; padding: 0; border: none; }
+
+/* Page Preview */
+.page-preview { font-size: 12px; color: var(--text-secondary); line-height: 1.7; max-height: 400px; overflow-y: auto; }
+.page-preview :deep(.pv-section) { padding: 8px 10px; margin-bottom: 6px; background: var(--bg-card); border-radius: var(--radius-md); border-left: 3px solid var(--border-color); }
+.page-preview :deep(.pv-tag) { display: inline-block; font-size: 9px; font-weight: 800; color: white; background: var(--brand-accent); padding: 1px 6px; border-radius: 3px; margin-right: 6px; vertical-align: middle; }
+.page-preview :deep(.kw-highlight) { background: rgba(250,204,21,0.35); color: var(--text-primary); font-weight: 700; padding: 0 2px; border-radius: 2px; }
+
+/* Keyword Found List */
+.kw-found-list { display: flex; flex-direction: column; gap: 6px; max-height: 320px; overflow-y: auto; }
+.kw-found-item { display: flex; align-items: flex-start; gap: 8px; padding: 6px 8px; border-radius: var(--radius-md); background: var(--bg-card); }
+.kw-found-rank { flex-shrink: 0; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 800; color: var(--text-muted); background: var(--bg-surface); }
+.kw-found-info { flex: 1; min-width: 0; }
+.kw-found-word { font-size: 13px; font-weight: 700; }
+.kw-hl-hot { color: #ef4444; }
+.kw-hl-warm { color: #f59e0b; }
+.kw-hl-cool { color: #6366f1; }
+.kw-found-meta { font-size: 10px; color: var(--text-muted); display: flex; gap: 8px; flex-wrap: wrap; margin-top: 2px; }
+
+/* Alternative Keywords */
+.kw-alt-row { display: flex; align-items: center; gap: 8px; padding: 5px 8px; font-size: 12px; border-bottom: 1px solid var(--border-color); }
+.kw-alt-row:last-child { border-bottom: none; }
+.kw-alt-orig { color: var(--text-muted); min-width: 80px; }
+.kw-alt-arrow { color: var(--text-muted); }
+.kw-alt-new { font-weight: 700; color: var(--brand-accent); flex: 1; }
+.kw-alt-delta { font-size: 11px; font-weight: 700; color: #22c55e; background: rgba(34,197,94,0.08); padding: 2px 6px; border-radius: 3px; }
+
+/* Auto-tracked Banner */
+.auto-tracked-banner { padding: 12px 16px; background: rgba(34,197,94,0.08); border: 1px solid rgba(34,197,94,0.2); border-radius: var(--radius-md); font-size: 13px; color: var(--text-primary); margin-bottom: 16px; }
+.auto-tracked-banner a { color: var(--brand-accent); font-weight: 700; text-decoration: underline; }
+
+@media (max-width: 900px) { .analytics-row { grid-template-columns: 1fr; } .explainer-grid { grid-template-columns: repeat(2, 1fr); } .tips-grid { grid-template-columns: 1fr; } .seo-br-name { width: 140px; } .split-screen { grid-template-columns: 1fr; } }
 @media (max-width: 768px) { .kw-stats { flex-direction: column; } .seo-score-row { flex-direction: column; text-align: center; } }
 </style>
