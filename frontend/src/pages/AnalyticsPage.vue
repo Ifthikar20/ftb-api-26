@@ -450,129 +450,182 @@
       </div>
 
       <!-- ═══════════ TAB 4: Flows ═══════════ -->
-      <div v-show="activeTab === 'flows'">
+      <div v-show="activeTab === 'flows'" @click.self="showFlowPicker = false">
 
-        <!-- Flow-specific Filters -->
-        <div class="flow-filters">
-          <input v-model="flowSearch" type="text" class="flow-filter-input" placeholder="Filter by visitor, page, or source..." />
-          <select v-model="flowFilterSource" class="flow-filter-select">
-            <option value="">All Sources</option>
-            <option v-for="s in flowSources" :key="s" :value="s">{{ s }}</option>
-          </select>
-          <select v-model="flowFilterPage" class="flow-filter-select">
-            <option value="">All Pages</option>
-            <option v-for="p in flowPages" :key="p" :value="p">{{ p }}</option>
-          </select>
-          <select v-model="flowFilterDevice" class="flow-filter-select">
-            <option value="">All Devices</option>
-            <option v-for="d in flowDevices" :key="d" :value="d">{{ d }}</option>
-          </select>
-          <select v-model="flowFilterCountry" class="flow-filter-select">
-            <option value="">All Countries</option>
-            <option v-for="c in flowCountries" :key="c" :value="c">{{ c }}</option>
-          </select>
-        </div>
-
-
-
-        <div class="analytics-row">
-          <!-- Common Flow Patterns -->
-          <div class="card">
-            <div class="card-header">
-              <h3 class="card-title">Common Flow Patterns</h3>
-              <span class="text-xs text-muted">Page-to-page transitions by frequency</span>
-            </div>
-            <div v-if="flowData.links && flowData.links.length" class="flow-list">
-              <div v-for="(link, i) in flowData.links.slice(0, 12)" :key="i" class="flow-item-enhanced">
-                <div class="flow-item-route">
-                  <span class="flow-page">{{ cleanPath(link.source) }}</span>
-                  <span class="flow-arrow">&rarr;</span>
-                  <span class="flow-page">{{ cleanPath(link.target) }}</span>
-                </div>
-                <div class="flow-item-bar-wrap">
-                  <div class="flow-item-bar" :style="{ width: flowBarWidth(link.value) + '%', background: flowBarColor(i) }"></div>
-                </div>
-                <span class="flow-count">{{ link.value }}&times;</span>
-              </div>
-            </div>
-            <div v-else class="empty-inline">No flow data yet</div>
+        <!-- Empty State -->
+        <div v-if="!flowCards.length" class="ret-empty-state">
+          <div class="ret-empty-icon">
+            <svg width="48" height="48" viewBox="0 0 48 48" fill="none" stroke="var(--text-muted)" stroke-width="1.5">
+              <path d="M6 20h12l6 8-6 8H6M42 20H30l-6 8 6 8h12"/><path d="M24 16v16M16 24h16"/>
+            </svg>
           </div>
-
-          <!-- Entry & Exit Pages -->
-          <div class="card">
-            <div class="card-header">
-              <h3 class="card-title">Entry & Exit Pages</h3>
-              <span class="text-xs text-muted">Where sessions start and end</span>
-            </div>
-            <div v-if="entryExitData.entry_pages && entryExitData.entry_pages.length">
-              <h4 class="text-sm font-semibold" style="margin-bottom:8px;color:var(--color-success)">Entry Pages</h4>
-              <div v-for="p in entryExitData.entry_pages" :key="'e'+p.page" class="flow-bar-row">
-                <div class="flow-bar-label-group">
-                  <span class="flow-bar-label truncate">{{ cleanPath(p.page) }}</span>
-                  <span v-if="p.source" class="flow-source-tag">via {{ p.source }}</span>
+          <h3 class="ret-empty-title">Build Your Flow Analytics</h3>
+          <p class="ret-empty-desc">Add widgets to analyze visitor journeys, page flows, and navigation patterns.</p>
+          <div class="ret-add-wrap">
+            <button class="btn btn-primary" @click.stop="showFlowPicker = !showFlowPicker">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:6px"><path d="M7 1v12M1 7h12"/></svg>
+              Add Widget
+            </button>
+            <div v-if="showFlowPicker" class="card-picker-dropdown card-picker-center" @click.stop>
+              <div class="card-picker-header">Choose a widget</div>
+              <div v-for="c in flowAvailableCards" :key="c.id" class="card-picker-item" :class="{ disabled: flowCards.includes(c.id) }" @click="addFlowCard(c.id)">
+                <div class="card-picker-icon" v-html="c.icon"></div>
+                <div class="card-picker-info">
+                  <div class="card-picker-name">{{ c.title }}</div>
+                  <div class="card-picker-desc">{{ c.desc }}</div>
                 </div>
-                <div class="flow-bar-track">
-                  <div class="flow-bar-fill entry" :style="{ width: entryPct(p.count) + '%' }"></div>
-                </div>
-                <span class="flow-bar-count">{{ p.count }}</span>
-              </div>
-              <h4 class="text-sm font-semibold" style="margin:20px 0 8px;color:var(--color-danger)">Exit Pages</h4>
-              <div v-for="p in entryExitData.exit_pages || []" :key="'x'+p.page" class="flow-bar-row">
-                <span class="flow-bar-label truncate">{{ cleanPath(p.page) }}</span>
-                <div class="flow-bar-track">
-                  <div class="flow-bar-fill exit" :style="{ width: exitPct(p.count) + '%' }"></div>
-                </div>
-                <span class="flow-bar-count">{{ p.count }}</span>
-              </div>
-            </div>
-            <div v-else class="empty-inline">No entry/exit data yet</div>
-          </div>
-        </div>
-
-        <!-- Per-Visitor Journeys -->
-        <div class="card" style="margin-top:20px" v-if="filteredJourneys.length">
-          <div class="card-header">
-            <h3 class="card-title">Visitor Journeys</h3>
-            <span class="text-xs text-muted">{{ filteredJourneys.length }} of {{ journeys.length }} sessions{{ activeFlowFilterCount ? ` (${activeFlowFilterCount} filter${activeFlowFilterCount > 1 ? 's' : ''})` : '' }}</span>
-          </div>
-          <div class="journey-list">
-            <div v-for="(j, i) in filteredJourneys" :key="i" class="journey-card">
-              <div class="journey-meta">
-                <span class="journey-visitor">
-                  <span class="intent-dot" :class="j.intent_cls || 'dot-neutral'"></span>
-                  <span class="visitor-hash">{{ j.visitor_hash }}...</span>
-                  <span v-if="j.intent_score != null" class="intent-score-badge" :class="intentScoreClass(j.intent_score)">{{ j.intent_score }}%</span>
-                  <span v-if="j.company" class="journey-company">{{ j.company }}</span>
-                </span>
-                <div class="journey-tags">
-                  <span class="badge badge-sm badge-outline" v-if="j.device">{{ j.device }}</span>
-                  <span class="badge badge-sm badge-outline" v-if="j.country">{{ j.country }}</span>
-                  <span class="badge badge-sm badge-outline" v-if="j.source && j.source !== 'direct'">{{ j.source }}</span>
-                  <span class="journey-duration" v-if="j.duration_secs">{{ formatDuration(j.duration_secs) }}</span>
-                </div>
-              </div>
-              <div class="journey-intent-label">{{ j.intent_label || 'Analyzing...' }}</div>
-              <div class="journey-path">
-                <template v-for="(page, pi) in j.pages" :key="pi">
-                  <span class="journey-step" :class="{ 'step-entry': pi === 0, 'step-exit': pi === j.pages.length - 1 }">{{ page }}</span>
-                  <span v-if="pi < j.pages.length - 1" class="journey-arrow">&rarr;</span>
-                </template>
-                <span class="journey-pages-count">{{ j.page_count }} pages</span>
-              </div>
-              <div v-if="j.recommendations && j.recommendations.length" class="journey-recs">
-                <span class="rec-label">Recommended pages:</span>
-                <span v-for="(r, ri) in j.recommendations" :key="ri" class="rec-item" :title="r.reason">{{ r.page }}</span>
-              </div>
-              <div v-if="j.predicted_next && j.predicted_next.length" class="journey-predicted">
-                <span class="predicted-label">Likely next:</span>
-                <span v-for="(p, pi) in j.predicted_next" :key="pi" class="predicted-page">{{ p }}</span>
+                <span v-if="flowCards.includes(c.id)" class="card-picker-check">✓</span>
               </div>
             </div>
           </div>
         </div>
-        <div class="card" style="margin-top:20px" v-else-if="journeys.length && !filteredJourneys.length">
-          <div class="empty-inline">No journeys match your filters</div>
+
+        <!-- Dynamic Card Grid -->
+        <div v-else>
+
+          <!-- Flow Filters (always visible when cards exist) -->
+          <div class="flow-filters" style="margin-bottom:16px">
+            <input v-model="flowSearch" type="text" class="flow-filter-input" placeholder="Filter by visitor, page, or source..." />
+            <select v-model="flowFilterSource" class="flow-filter-select">
+              <option value="">All Sources</option>
+              <option v-for="s in flowSources" :key="s" :value="s">{{ s }}</option>
+            </select>
+            <select v-model="flowFilterPage" class="flow-filter-select">
+              <option value="">All Pages</option>
+              <option v-for="p in flowPages" :key="p" :value="p">{{ p }}</option>
+            </select>
+            <select v-model="flowFilterDevice" class="flow-filter-select">
+              <option value="">All Devices</option>
+              <option v-for="d in flowDevices" :key="d" :value="d">{{ d }}</option>
+            </select>
+            <select v-model="flowFilterCountry" class="flow-filter-select">
+              <option value="">All Countries</option>
+              <option v-for="c in flowCountries" :key="c" :value="c">{{ c }}</option>
+            </select>
+          </div>
+
+          <div class="ret-card-grid">
+            <template v-for="cid in flowCards" :key="cid">
+
+              <!-- Common Flow Patterns -->
+              <div v-if="cid === 'flow_patterns'" class="ret-dyn-card ret-half">
+                <button class="ret-card-close" @click="removeFlowCard(cid)" title="Remove">&times;</button>
+                <div class="card">
+                  <div class="card-header"><h3 class="card-title">Common Flow Patterns</h3><span class="text-xs text-muted">Page-to-page transitions</span></div>
+                  <div v-if="flowData.links && flowData.links.length" class="flow-list">
+                    <div v-for="(link, i) in flowData.links.slice(0, 12)" :key="i" class="flow-item-enhanced">
+                      <div class="flow-item-route">
+                        <span class="flow-page">{{ cleanPath(link.source) }}</span>
+                        <span class="flow-arrow">&rarr;</span>
+                        <span class="flow-page">{{ cleanPath(link.target) }}</span>
+                      </div>
+                      <div class="flow-item-bar-wrap"><div class="flow-item-bar" :style="{ width: flowBarWidth(link.value) + '%', background: flowBarColor(i) }"></div></div>
+                      <span class="flow-count">{{ link.value }}&times;</span>
+                    </div>
+                  </div>
+                  <div v-else class="empty-inline">No flow data yet</div>
+                </div>
+              </div>
+
+              <!-- Entry & Exit Pages -->
+              <div v-if="cid === 'entry_exit'" class="ret-dyn-card ret-half">
+                <button class="ret-card-close" @click="removeFlowCard(cid)" title="Remove">&times;</button>
+                <div class="card">
+                  <div class="card-header"><h3 class="card-title">Entry & Exit Pages</h3><span class="text-xs text-muted">Where sessions start and end</span></div>
+                  <div v-if="entryExitData.entry_pages && entryExitData.entry_pages.length">
+                    <h4 class="text-sm font-semibold" style="margin-bottom:8px;color:var(--color-success)">Entry Pages</h4>
+                    <div v-for="p in entryExitData.entry_pages" :key="'e'+p.page" class="flow-bar-row">
+                      <div class="flow-bar-label-group">
+                        <span class="flow-bar-label truncate">{{ cleanPath(p.page) }}</span>
+                        <span v-if="p.source" class="flow-source-tag">via {{ p.source }}</span>
+                      </div>
+                      <div class="flow-bar-track"><div class="flow-bar-fill entry" :style="{ width: entryPct(p.count) + '%' }"></div></div>
+                      <span class="flow-bar-count">{{ p.count }}</span>
+                    </div>
+                    <h4 class="text-sm font-semibold" style="margin:20px 0 8px;color:var(--color-danger)">Exit Pages</h4>
+                    <div v-for="p in entryExitData.exit_pages || []" :key="'x'+p.page" class="flow-bar-row">
+                      <span class="flow-bar-label truncate">{{ cleanPath(p.page) }}</span>
+                      <div class="flow-bar-track"><div class="flow-bar-fill exit" :style="{ width: exitPct(p.count) + '%' }"></div></div>
+                      <span class="flow-bar-count">{{ p.count }}</span>
+                    </div>
+                  </div>
+                  <div v-else class="empty-inline">No entry/exit data yet</div>
+                </div>
+              </div>
+
+              <!-- Visitor Journeys -->
+              <div v-if="cid === 'visitor_journeys'" class="ret-dyn-card ret-full">
+                <button class="ret-card-close" @click="removeFlowCard(cid)" title="Remove">&times;</button>
+                <div class="card" v-if="filteredJourneys.length">
+                  <div class="card-header">
+                    <h3 class="card-title">Visitor Journeys</h3>
+                    <span class="text-xs text-muted">{{ filteredJourneys.length }} of {{ journeys.length }} sessions{{ activeFlowFilterCount ? ` (${activeFlowFilterCount} filter${activeFlowFilterCount > 1 ? 's' : ''})` : '' }}</span>
+                  </div>
+                  <div class="journey-list">
+                    <div v-for="(j, i) in filteredJourneys" :key="i" class="journey-card">
+                      <div class="journey-meta">
+                        <span class="journey-visitor">
+                          <span class="intent-dot" :class="j.intent_cls || 'dot-neutral'"></span>
+                          <span class="visitor-hash">{{ j.visitor_hash }}...</span>
+                          <span v-if="j.intent_score != null" class="intent-score-badge" :class="intentScoreClass(j.intent_score)">{{ j.intent_score }}%</span>
+                          <span v-if="j.company" class="journey-company">{{ j.company }}</span>
+                        </span>
+                        <div class="journey-tags">
+                          <span class="badge badge-sm badge-outline" v-if="j.device">{{ j.device }}</span>
+                          <span class="badge badge-sm badge-outline" v-if="j.country">{{ j.country }}</span>
+                          <span class="badge badge-sm badge-outline" v-if="j.source && j.source !== 'direct'">{{ j.source }}</span>
+                          <span class="journey-duration" v-if="j.duration_secs">{{ formatDuration(j.duration_secs) }}</span>
+                        </div>
+                      </div>
+                      <div class="journey-intent-label">{{ j.intent_label || 'Analyzing...' }}</div>
+                      <div class="journey-path">
+                        <template v-for="(page, pi) in j.pages" :key="pi">
+                          <span class="journey-step" :class="{ 'step-entry': pi === 0, 'step-exit': pi === j.pages.length - 1 }">{{ page }}</span>
+                          <span v-if="pi < j.pages.length - 1" class="journey-arrow">&rarr;</span>
+                        </template>
+                        <span class="journey-pages-count">{{ j.page_count }} pages</span>
+                      </div>
+                      <div v-if="j.recommendations && j.recommendations.length" class="journey-recs">
+                        <span class="rec-label">Recommended pages:</span>
+                        <span v-for="(r, ri) in j.recommendations" :key="ri" class="rec-item" :title="r.reason">{{ r.page }}</span>
+                      </div>
+                      <div v-if="j.predicted_next && j.predicted_next.length" class="journey-predicted">
+                        <span class="predicted-label">Likely next:</span>
+                        <span v-for="(p, pi) in j.predicted_next" :key="pi" class="predicted-page">{{ p }}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="card" v-else-if="journeys.length && !filteredJourneys.length">
+                  <div class="empty-inline">No journeys match your filters</div>
+                </div>
+                <div class="card" v-else>
+                  <div class="empty-inline">No journey data yet</div>
+                </div>
+              </div>
+
+            </template>
+
+            <!-- Inline + Add Widget -->
+            <div class="ret-dyn-card ret-add-inline">
+              <button class="ret-add-btn" @click.stop="showFlowPicker = !showFlowPicker">
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 3v14M3 10h14"/></svg>
+              </button>
+              <div v-if="showFlowPicker" class="card-picker-dropdown" @click.stop>
+                <div class="card-picker-header">Add Widget</div>
+                <div v-for="c in flowAvailableCards" :key="c.id" class="card-picker-item" :class="{ disabled: flowCards.includes(c.id) }" @click="addFlowCard(c.id)">
+                  <div class="card-picker-icon" v-html="c.icon"></div>
+                  <div class="card-picker-info">
+                    <div class="card-picker-name">{{ c.title }}</div>
+                    <div class="card-picker-desc">{{ c.desc }}</div>
+                  </div>
+                  <span v-if="flowCards.includes(c.id)" class="card-picker-check">✓</span>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
+
       </div>
 
       <!-- ═══════════ TAB 5: AI Insights ═══════════ -->
@@ -802,6 +855,40 @@ function addRetCard(id) {
 function removeRetCard(id) {
   retentionCards.value = retentionCards.value.filter(c => c !== id)
   _saveRetCards()
+}
+
+// ── Customizable Flow Cards ──
+const flowAvailableCards = [
+  { id: 'flow_patterns', title: 'Common Flow Patterns', desc: 'Page-to-page transitions ranked by frequency', icon: '<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 8h4l2-4 2 4h4"/></svg>', size: 'half' },
+  { id: 'entry_exit', title: 'Entry & Exit Pages', desc: 'Where visitors land and where they leave', icon: '<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3v10M13 3v10M3 8h10"/><path d="M10 5l3 3-3 3"/></svg>', size: 'half' },
+  { id: 'visitor_journeys', title: 'Visitor Journeys', desc: 'Per-session page paths with ML intent scoring and recommendations', icon: '<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="3" cy="8" r="2"/><circle cx="13" cy="4" r="2"/><circle cx="13" cy="12" r="2"/><path d="M5 8h3l3-4M8 8l3 4"/></svg>', size: 'full' },
+]
+
+const _flowStorageKey = computed(() => `ftb_flow_cards_${store.activeWebsiteId}`)
+const flowCards = ref([])
+const showFlowPicker = ref(false)
+
+onMounted(() => {
+  try {
+    const saved = localStorage.getItem(_flowStorageKey.value)
+    if (saved) flowCards.value = JSON.parse(saved)
+  } catch {}
+})
+
+function _saveFlowCards() {
+  try { localStorage.setItem(_flowStorageKey.value, JSON.stringify(flowCards.value)) } catch {}
+}
+
+function addFlowCard(id) {
+  if (flowCards.value.includes(id)) return
+  flowCards.value.push(id)
+  _saveFlowCards()
+  showFlowPicker.value = false
+}
+
+function removeFlowCard(id) {
+  flowCards.value = flowCards.value.filter(c => c !== id)
+  _saveFlowCards()
 }
 const flowData = computed(() => cached.value.flowData || {})
 const entryExitData = computed(() => cached.value.entryExitData || {})
