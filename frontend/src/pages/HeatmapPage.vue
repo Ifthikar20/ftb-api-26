@@ -6,8 +6,12 @@
         <p class="page-subtitle">See where visitors click on your pages.</p>
       </div>
       <div class="header-controls">
-        <select v-model="selectedPage" class="form-input" style="min-width:260px;max-width:360px" @change="onPageChange">
-          <option v-for="p in pages" :key="p.url" :value="p.url">{{ cleanUrl(p.url) }} ({{ p.click_count }} clicks)</option>
+        <div class="time-pills">
+          <button v-for="r in ranges" :key="r.value" class="time-pill" :class="{ active: timeRange === r.value }" @click="onRangeChange(r.value)">{{ r.label }}</button>
+        </div>
+        <select v-model="selectedPage" class="form-input" style="min-width:240px;max-width:340px" @change="onPageChange">
+          <option value="">All Pages</option>
+          <option v-for="p in pages" :key="p.url" :value="p.url">{{ cleanUrl(p.url) }} ({{ p.click_count }})</option>
         </select>
       </div>
     </div>
@@ -251,6 +255,14 @@ const zones = ref([])
 const topElements = ref([])
 const aiInsights = ref([])
 const insightsLoading = ref(false)
+const timeRange = ref('all')
+
+const ranges = [
+  { value: 'today', label: 'Today' },
+  { value: '7d', label: '7 Days' },
+  { value: '30d', label: '30 Days' },
+  { value: 'all', label: 'All Time' },
+]
 
 const viewportRef = ref(null)
 const heatCanvas = ref(null)
@@ -366,6 +378,14 @@ function buildPalette() {
 }
 
 async function onPageChange() {
+  aiInsights.value = []
+  await fetchHeatmap()
+  nextTick(() => drawHeatmap())
+}
+
+async function onRangeChange(range) {
+  timeRange.value = range
+  aiInsights.value = []
   await fetchHeatmap()
   nextTick(() => drawHeatmap())
 }
@@ -373,7 +393,8 @@ async function onPageChange() {
 async function fetchHeatmap() {
   try {
     fetchError.value = null
-    const { data } = await analyticsApi.heatmap(props.websiteId, { page: selectedPage.value })
+    const params = { page: selectedPage.value, range: timeRange.value }
+    const { data } = await analyticsApi.heatmap(props.websiteId, params)
     const d = data?.data || data
     pages.value = d.pages || []
     points.value = d.points || []
@@ -392,7 +413,7 @@ async function fetchHeatmap() {
 async function fetchInsights() {
   insightsLoading.value = true
   try {
-    const { data } = await analyticsApi.heatmap(props.websiteId, { page: selectedPage.value, insights: 1 })
+    const { data } = await analyticsApi.heatmap(props.websiteId, { page: selectedPage.value, range: timeRange.value, insights: 1 })
     const d = data?.data || data
     aiInsights.value = d.ai_insights || []
   } catch (e) {
@@ -427,7 +448,14 @@ watch(points, () => nextTick(() => drawHeatmap()))
 
 <style scoped>
 .loading-state { text-align: center; padding: 80px 20px; font-size: var(--font-md); color: var(--text-muted); }
-.header-controls { display: flex; gap: 12px; align-items: center; flex-shrink: 0; }
+.header-controls { display: flex; gap: 10px; align-items: center; flex-shrink: 0; flex-wrap: wrap; }
+
+/* Time pills */
+.time-pills { display: flex; gap: 0; border: 1px solid var(--border-color); border-radius: var(--radius-md); overflow: hidden; }
+.time-pill { padding: 6px 12px; font-size: 11px; font-weight: 500; color: var(--text-secondary); background: var(--bg-card); border: none; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
+.time-pill:not(:last-child) { border-right: 1px solid var(--border-color); }
+.time-pill:hover { background: var(--bg-surface); color: var(--text-primary); }
+.time-pill.active { background: var(--brand-accent); color: white; }
 
 /* Stats */
 .heatmap-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }

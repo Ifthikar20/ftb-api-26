@@ -104,22 +104,34 @@ class HeatmapView(APIView):
     def get(self, request, website_id):
         from apps.analytics.models import PageEvent
         from django.db.models import Count
+        from django.utils import timezone
         from collections import defaultdict
+        from datetime import timedelta
         import random
 
         website = WebsiteService.get_for_user(user=request.user, website_id=website_id)
         page_url = request.query_params.get("page", None)
         include_insights = request.query_params.get("insights", "0") == "1"
+        time_range = request.query_params.get("range", "all")
 
         clicks_qs = PageEvent.objects.filter(
             website_id=website_id, event_type="click"
         )
 
-        # Top pages by click count
+        # Apply time range filter
+        now = timezone.now()
+        if time_range == "today":
+            clicks_qs = clicks_qs.filter(created_at__gte=now.replace(hour=0, minute=0, second=0))
+        elif time_range == "7d":
+            clicks_qs = clicks_qs.filter(created_at__gte=now - timedelta(days=7))
+        elif time_range == "30d":
+            clicks_qs = clicks_qs.filter(created_at__gte=now - timedelta(days=30))
+
+        # All tracked pages (no artificial limit)
         top_pages = list(
             clicks_qs.values("url")
             .annotate(click_count=Count("id"))
-            .order_by("-click_count")[:10]
+            .order_by("-click_count")[:50]
         )
 
         # If a specific page is selected, get click coordinates
