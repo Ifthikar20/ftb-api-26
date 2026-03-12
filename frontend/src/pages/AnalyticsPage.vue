@@ -2198,7 +2198,7 @@ onBeforeUnmount(() => {
 .ret-add-wrap { position: relative; display: inline-block; }
 
 /* ── Card Picker Dropdown ── */
-.card-picker-dropdown { position: absolute; top: 100%; left: 0; z-index: 100; width: 320px; max-height: 400px; overflow-y: auto; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-lg); box-shadow: 0 12px 40px rgba(0,0,0,0.2); margin-top: 8px; animation: pickerFadeIn 0.15s ease; }
+.card-picker-dropdown { position: absolute; top: 100%; right: 0; z-index: 100; width: 320px; max-height: 400px; overflow-y: auto; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-lg); box-shadow: 0 12px 40px rgba(0,0,0,0.2); margin-top: 8px; animation: pickerFadeIn 0.15s ease; }
 .card-picker-center { left: 50%; transform: translateX(-50%); }
 @keyframes pickerFadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
 .card-picker-header { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); padding: 12px 16px 8px; }
@@ -2224,9 +2224,8 @@ onBeforeUnmount(() => {
 .ret-card-close:hover { background: var(--color-danger); color: white; }
 
 /* ── Add Widget Inline ── */
-.ret-add-inline { display: flex; align-items: center; justify-content: center; position: relative; min-height: 100px; border: 2px dashed var(--border-color); border-radius: var(--radius-lg); transition: border-color 0.2s; }
-.ret-add-inline:hover { border-color: var(--brand-accent); }
-.ret-add-btn { width: 40px; height: 40px; border-radius: 50%; border: 2px solid var(--border-color); background: transparent; color: var(--text-muted); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
+.ret-add-inline { display: flex; align-items: center; justify-content: flex-end; position: relative; min-height: auto; border: none; border-radius: 0; grid-column: 1 / -1; padding: 0; margin: -8px 0 8px; order: -1; }
+.ret-add-btn { width: 36px; height: 36px; border-radius: 50%; border: 2px solid var(--border-color); background: var(--bg-card); color: var(--text-muted); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; box-shadow: var(--shadow-sm); }
 .ret-add-btn:hover { border-color: var(--brand-accent); color: var(--brand-accent); background: rgba(99,102,241,0.08); }
 
 /* ── Engagement Score Ring ── */
