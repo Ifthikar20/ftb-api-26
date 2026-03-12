@@ -87,6 +87,14 @@ class SEOKeywordScanner:
                     "h3": page_data.get("h3", []),
                     "word_count": page_data.get("word_count", 0),
                 },
+                "geo_data": {
+                    "hreflang": page_data.get("hreflang", []),
+                    "og_locale": page_data.get("og_locale", ""),
+                    "geo_region": page_data.get("geo_region", ""),
+                    "geo_placename": page_data.get("geo_placename", ""),
+                    "has_geo_tags": bool(page_data.get("hreflang") or page_data.get("og_locale") or page_data.get("geo_region")),
+                    "tips": SEOKeywordScanner._geo_tips(page_data),
+                },
             }
 
             # 6. Check AI engine rankings
@@ -108,6 +116,35 @@ class SEOKeywordScanner:
             return {"error": str(e), "score": 0}
 
     @staticmethod
+    def _geo_tips(page_data: dict) -> list:
+        """Generate geo SEO tips based on detected tags."""
+        tips = []
+        if not page_data.get("hreflang"):
+            tips.append({
+                "type": "warning",
+                "tip": "No hreflang tags found. Add hreflang to target international audiences and improve regional SEO.",
+                "tag": '<link rel="alternate" hreflang="en-US" href="..." />',
+            })
+        else:
+            tips.append({
+                "type": "success",
+                "tip": f"Found {len(page_data['hreflang'])} hreflang tag(s) — good for international SEO.",
+            })
+        if not page_data.get("og_locale"):
+            tips.append({
+                "type": "info",
+                "tip": "No og:locale meta tag. Add it to specify your content's language/region for social sharing.",
+                "tag": '<meta property="og:locale" content="en_US" />',
+            })
+        if not page_data.get("geo_region"):
+            tips.append({
+                "type": "info",
+                "tip": "No geo.region meta tag. Add it for local SEO targeting.",
+                "tag": '<meta name="geo.region" content="US-NY" />',
+            })
+        return tips
+
+    @staticmethod
     def _crawl_page(url: str) -> dict:
         """Fetch and parse page content."""
         try:
@@ -117,6 +154,29 @@ class SEOKeywordScanner:
             resp.raise_for_status()
             from bs4 import BeautifulSoup
             soup = BeautifulSoup(resp.text, "html.parser")
+
+            # ── Extract geo tags BEFORE decomposing ──
+            hreflang_tags = []
+            for link in soup.find_all("link", attrs={"hreflang": True}):
+                hreflang_tags.append({
+                    "lang": link.get("hreflang", ""),
+                    "href": link.get("href", ""),
+                })
+
+            og_locale = ""
+            og_tag = soup.find("meta", attrs={"property": "og:locale"})
+            if og_tag:
+                og_locale = og_tag.get("content", "")
+
+            geo_region = ""
+            geo_tag = soup.find("meta", attrs={"name": "geo.region"})
+            if geo_tag:
+                geo_region = geo_tag.get("content", "")
+
+            geo_placename = ""
+            geo_pn = soup.find("meta", attrs={"name": "geo.placename"})
+            if geo_pn:
+                geo_placename = geo_pn.get("content", "")
 
             # Remove script, style, nav, footer elements
             for tag in soup(["script", "style", "nav", "footer", "header", "noscript"]):
@@ -139,7 +199,6 @@ class SEOKeywordScanner:
 
             # Get visible text
             body_text = soup.get_text(separator=" ", strip=True)
-            # Clean up whitespace
             body_text = re.sub(r"\s+", " ", body_text)
 
             words = body_text.lower().split()
@@ -155,6 +214,10 @@ class SEOKeywordScanner:
                 "words": words,
                 "word_count": word_count,
                 "soup": soup,
+                "hreflang": hreflang_tags,
+                "og_locale": og_locale,
+                "geo_region": geo_region,
+                "geo_placename": geo_placename,
             }
         except Exception as e:
             logger.warning(f"Failed to crawl {url}: {e}")
