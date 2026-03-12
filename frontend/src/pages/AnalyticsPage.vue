@@ -562,7 +562,7 @@
                     <span class="text-xs text-muted">{{ filteredJourneys.length }} of {{ journeys.length }} sessions{{ activeFlowFilterCount ? ` (${activeFlowFilterCount} filter${activeFlowFilterCount > 1 ? 's' : ''})` : '' }}</span>
                   </div>
                   <div class="journey-list">
-                    <div v-for="(j, i) in filteredJourneys" :key="i" class="journey-card">
+                    <div v-for="(j, i) in filteredJourneys" :key="i" class="journey-card" :class="{ 'journey-expanded': expandedJourneys.has(i) }">
                       <div class="journey-meta">
                         <span class="journey-visitor">
                           <span class="intent-dot" :class="j.intent_cls || 'dot-neutral'"></span>
@@ -577,21 +577,39 @@
                           <span class="journey-duration" v-if="j.duration_secs">{{ formatDuration(j.duration_secs) }}</span>
                         </div>
                       </div>
-                      <div class="journey-intent-label">{{ j.intent_label || 'Analyzing...' }}</div>
-                      <div class="journey-path">
-                        <template v-for="(page, pi) in j.pages" :key="pi">
-                          <span class="journey-step" :class="{ 'step-entry': pi === 0, 'step-exit': pi === j.pages.length - 1 }">{{ page }}</span>
-                          <span v-if="pi < j.pages.length - 1" class="journey-arrow">&rarr;</span>
-                        </template>
+                      <div class="journey-summary-row">
+                        <span class="journey-intent-label">{{ j.intent_label || 'Analyzing...' }}</span>
                         <span class="journey-pages-count">{{ j.page_count }} pages</span>
                       </div>
+                      <div class="journey-path">
+                        <!-- Short path (≤5 pages): show all -->
+                        <template v-if="j.pages.length <= 5 || expandedJourneys.has(i)">
+                          <template v-for="(page, pi) in j.pages" :key="pi">
+                            <span class="journey-step" :class="{ 'step-entry': pi === 0, 'step-exit': pi === j.pages.length - 1 }">{{ page }}</span>
+                            <span v-if="pi < j.pages.length - 1" class="journey-arrow">&rarr;</span>
+                          </template>
+                          <button v-if="j.pages.length > 5" class="journey-collapse-btn" @click.stop="expandedJourneys.delete(i)">collapse</button>
+                        </template>
+                        <!-- Long path (>5 pages): show first 2 + ...N more... + last 2 -->
+                        <template v-else>
+                          <span class="journey-step step-entry">{{ j.pages[0] }}</span>
+                          <span class="journey-arrow">&rarr;</span>
+                          <span class="journey-step">{{ j.pages[1] }}</span>
+                          <span class="journey-arrow">&rarr;</span>
+                          <button class="journey-more-btn" @click.stop="expandedJourneys.add(i); expandedJourneys = new Set(expandedJourneys)">+{{ j.pages.length - 4 }} more</button>
+                          <span class="journey-arrow">&rarr;</span>
+                          <span class="journey-step">{{ j.pages[j.pages.length - 2] }}</span>
+                          <span class="journey-arrow">&rarr;</span>
+                          <span class="journey-step step-exit">{{ j.pages[j.pages.length - 1] }}</span>
+                        </template>
+                      </div>
                       <div v-if="j.recommendations && j.recommendations.length" class="journey-recs">
-                        <span class="rec-label">Recommended pages:</span>
-                        <span v-for="(r, ri) in j.recommendations" :key="ri" class="rec-item" :title="r.reason">{{ r.page }}</span>
+                        <span class="rec-label">Recommended:</span>
+                        <span v-for="(r, ri) in j.recommendations.slice(0, 3)" :key="ri" class="rec-item" :title="r.reason">{{ r.page }}</span>
                       </div>
                       <div v-if="j.predicted_next && j.predicted_next.length" class="journey-predicted">
                         <span class="predicted-label">Likely next:</span>
-                        <span v-for="(p, pi) in j.predicted_next" :key="pi" class="predicted-page">{{ p }}</span>
+                        <span v-for="(p, pi) in j.predicted_next.slice(0, 3)" :key="pi" class="predicted-page">{{ p }}</span>
                       </div>
                     </div>
                   </div>
@@ -867,6 +885,7 @@ const flowAvailableCards = [
 const _flowStorageKey = computed(() => `ftb_flow_cards_${store.activeWebsiteId}`)
 const flowCards = ref([])
 const showFlowPicker = ref(false)
+const expandedJourneys = ref(new Set())
 
 onMounted(() => {
   try {
@@ -1894,6 +1913,11 @@ onBeforeUnmount(() => {
 .step-exit { border-right: 3px solid var(--color-danger); }
 .journey-arrow { color: var(--text-muted); font-size: 12px; }
 .journey-pages-count { margin-left: auto; font-size: var(--font-xs); color: var(--text-muted); font-weight: 600; }
+.journey-summary-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.journey-more-btn { display: inline-flex; align-items: center; padding: 2px 10px; border: 1px solid var(--brand-accent); border-radius: var(--radius-full); background: rgba(99,102,241,0.08); color: var(--brand-accent); font-size: 11px; font-weight: 600; cursor: pointer; transition: all 0.15s; white-space: nowrap; }
+.journey-more-btn:hover { background: var(--brand-accent); color: white; }
+.journey-collapse-btn { display: inline-flex; align-items: center; padding: 1px 8px; border: none; border-radius: var(--radius-full); background: var(--bg-surface); color: var(--text-muted); font-size: 10px; cursor: pointer; margin-left: 6px; transition: all 0.15s; }
+.journey-collapse-btn:hover { color: var(--text-primary); }
 
 /* ── Engagement ── */
 .engagement-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
