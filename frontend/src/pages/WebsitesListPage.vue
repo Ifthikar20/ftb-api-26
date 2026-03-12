@@ -29,9 +29,14 @@
           <span class="badge" :class="site.pixel_verified ? 'badge-success' : 'badge-warning'">
             {{ site.pixel_verified ? 'Pixel Active' : 'Pixel Pending' }}
           </span>
-          <button class="btn-delete-project" @click.stop="confirmDelete(site)" title="Delete project">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
-          </button>
+          <div class="site-actions">
+            <button class="btn-action-project" @click.stop="openRename(site)" title="Rename">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.83 2.83 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
+            </button>
+            <button class="btn-action-project btn-action-danger" @click.stop="confirmDelete(site)" title="Delete">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+            </button>
+          </div>
         </div>
         <div class="site-stats">
           <div class="site-stat">
@@ -81,6 +86,26 @@
       </div>
     </div>
 
+    <!-- Rename Modal -->
+    <div v-if="renameTarget" class="modal-overlay" @click.self="renameTarget = null">
+      <div class="modal-content slide-up">
+        <div class="modal-header">
+          <h2 class="modal-title">Rename Project</h2>
+          <button class="btn-icon btn-ghost" @click="renameTarget = null">✕</button>
+        </div>
+        <form @submit.prevent="renameWebsite" style="display:flex;flex-direction:column;gap:16px">
+          <div class="form-group">
+            <label class="form-label">Project Name</label>
+            <input v-model="renameName" class="form-input" placeholder="Project name" required />
+          </div>
+          <div style="display: flex; gap: 8px; justify-content: flex-end;">
+            <button type="button" class="btn btn-secondary" @click="renameTarget = null">Cancel</button>
+            <button type="submit" class="btn btn-primary" :disabled="renaming || !renameName.trim()">{{ renaming ? 'Saving...' : 'Save' }}</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
     <!-- Delete Confirmation Modal -->
     <div v-if="deleteTarget" class="modal-overlay" @click.self="deleteTarget = null">
       <div class="modal-content slide-up">
@@ -88,7 +113,7 @@
           <h2 class="modal-title">Delete Project</h2>
           <button class="btn-icon btn-ghost" @click="deleteTarget = null">✕</button>
         </div>
-        <p style="margin: 0 0 16px; color: var(--text-secondary); font-size: 13px;">Are you sure you want to delete <strong>{{ deleteTarget.name }}</strong>? This will remove all tracking data, analytics, and keywords. This cannot be undone.</p>
+        <p style="margin: 0 0 16px; color: var(--text-secondary); font-size: 13px;">Are you sure you want to delete <strong>{{ deleteTarget.name }}</strong>? This will remove all tracking data, analytics, keywords, and audit history. This cannot be undone.</p>
         <div style="display: flex; gap: 8px; justify-content: flex-end;">
           <button class="btn btn-secondary" @click="deleteTarget = null">Cancel</button>
           <button class="btn btn-danger" @click="deleteWebsite" :disabled="deleting">{{ deleting ? 'Deleting...' : 'Delete' }}</button>
@@ -103,12 +128,18 @@ import { ref, reactive, onMounted } from 'vue'
 import { useAppStore } from '@/stores/app'
 import websitesApi from '@/api/websites'
 
+import { useRouter } from 'vue-router'
+
+const router = useRouter()
 const appStore = useAppStore()
 const websites = ref([])
 const showAddModal = ref(false)
 const adding = ref(false)
 const deleting = ref(false)
 const deleteTarget = ref(null)
+const renameTarget = ref(null)
+const renameName = ref('')
+const renaming = ref(false)
 const newSite = reactive({ name: '', url: '', industry: '' })
 
 onMounted(async () => {
@@ -119,6 +150,24 @@ onMounted(async () => {
   } catch { /* empty */ }
 })
 
+function openRename(site) {
+  renameTarget.value = site
+  renameName.value = site.name
+}
+
+async function renameWebsite() {
+  if (!renameTarget.value || !renameName.value.trim()) return
+  renaming.value = true
+  try {
+    await websitesApi.update(renameTarget.value.id, { name: renameName.value.trim() })
+    const site = websites.value.find(s => s.id === renameTarget.value.id)
+    if (site) site.name = renameName.value.trim()
+    appStore.setWebsites(websites.value)
+    renameTarget.value = null
+  } catch (e) { console.error('Rename failed', e) }
+  finally { renaming.value = false }
+}
+
 function confirmDelete(site) {
   deleteTarget.value = site
 }
@@ -127,10 +176,19 @@ async function deleteWebsite() {
   if (!deleteTarget.value) return
   deleting.value = true
   try {
-    await websitesApi.delete(deleteTarget.value.id)
-    websites.value = websites.value.filter(s => s.id !== deleteTarget.value.id)
+    const deletedId = deleteTarget.value.id
+    await websitesApi.delete(deletedId)
+    websites.value = websites.value.filter(s => s.id !== deletedId)
     appStore.setWebsites(websites.value)
     deleteTarget.value = null
+    // If deleted project was active, switch to first remaining or go to projects
+    if (appStore.activeWebsite?.id === deletedId) {
+      if (websites.value.length) {
+        appStore.setActiveWebsite(websites.value[0])
+      } else {
+        router.push('/websites')
+      }
+    }
   } catch (e) { console.error('Delete failed', e) }
   finally { deleting.value = false }
 }
@@ -210,7 +268,14 @@ async function addWebsite() {
   gap: 4px;
 }
 
-.btn-delete-project {
+.site-actions {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.btn-action-project {
   width: 28px;
   height: 28px;
   border-radius: var(--radius-md);
@@ -224,21 +289,14 @@ async function addWebsite() {
   transition: all 0.15s;
   flex-shrink: 0;
 }
-.btn-delete-project:hover {
+.btn-action-project:hover {
+  border-color: var(--border-hover);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+.btn-action-danger:hover {
   border-color: #ef4444;
   background: rgba(239,68,68,0.08);
   color: #ef4444;
 }
-
-.btn-danger {
-  background: #ef4444;
-  color: white;
-  border: none;
-  padding: 8px 16px;
-  border-radius: var(--radius-md);
-  font-weight: 600;
-  cursor: pointer;
-}
-.btn-danger:hover { background: #dc2626; }
-.btn-danger:disabled { opacity: 0.5; }
 </style>
