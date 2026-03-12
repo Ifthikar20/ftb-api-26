@@ -16,6 +16,8 @@
       <button class="kw-tab" :class="{ active: activeTab === 'tracker' }" @click="activeTab = 'tracker'">📊 Rank Tracker</button>
       <button class="kw-tab" :class="{ active: activeTab === 'scores' }" @click="switchTab('scores')">🧠 AI Scores</button>
       <button class="kw-tab" :class="{ active: activeTab === 'trending' }" @click="switchTab('trending')">🔥 Trending Now</button>
+      <button class="kw-tab" :class="{ active: activeTab === 'compare' }" @click="activeTab = 'compare'">📈 Compare</button>
+      <button class="kw-tab" :class="{ active: activeTab === 'related' }" @click="activeTab = 'related'">🔗 Related</button>
       <button class="kw-tab" :class="{ active: activeTab === 'scanner' }" @click="switchTab('scanner')">🤖 Keyword Agents</button>
     </div>
 
@@ -350,6 +352,72 @@
       </div>
     </template>
 
+      <!-- ═══ TAB 5: Keyword Comparison ═══ -->
+      <div v-show="activeTab === 'compare'">
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">📈 Keyword Comparison</h3>
+            <span class="text-xs text-muted">Google Trends side-by-side</span>
+          </div>
+          <div class="kw-compare-input">
+            <input v-model="compareInput" class="form-input" placeholder="e.g. react, vue, angular (comma separated)" @keydown.enter="fetchCompareKeywords" />
+            <button class="btn btn-primary btn-sm" @click="fetchCompareKeywords" :disabled="compareLoading">{{ compareLoading ? 'Loading...' : 'Compare' }}</button>
+          </div>
+          <div v-if="compareData.data && compareData.data.length" class="kw-compare-results">
+            <div class="kw-compare-legend">
+              <span v-for="(kw, ki) in compareData.keywords" :key="ki" class="kw-compare-legend-item">
+                <span class="kw-legend-dot" :style="{ background: compareColors[ki] }"></span>
+                {{ kw }}
+              </span>
+            </div>
+            <div class="kw-compare-chart">
+              <div v-for="(point, pi) in compareData.data" :key="pi" class="kw-compare-bar-group">
+                <div class="kw-compare-bars">
+                  <div v-for="(kw, ki) in compareData.keywords" :key="ki" class="kw-compare-bar" :style="{ height: (point[kw] || 0) + '%', background: compareColors[ki] }" :title="kw + ': ' + (point[kw] || 0)"></div>
+                </div>
+                <span class="kw-compare-date">{{ point.date ? point.date.slice(5) : '' }}</span>
+              </div>
+            </div>
+          </div>
+          <div v-else-if="compareData.note || compareData.error" class="empty-inline">{{ compareData.note || compareData.error }}</div>
+          <div v-else class="empty-inline">Enter keywords above (comma separated) and click Compare</div>
+        </div>
+      </div>
+
+      <!-- ═══ TAB 6: Related Keywords ═══ -->
+      <div v-show="activeTab === 'related'">
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">🔗 Related Keywords</h3>
+            <span class="text-xs text-muted">Rising & top queries from Google Trends</span>
+          </div>
+          <div class="kw-compare-input">
+            <input v-model="relatedInput" class="form-input" placeholder="Enter a keyword to explore..." @keydown.enter="fetchRelatedKeywords" />
+            <button class="btn btn-primary btn-sm" @click="fetchRelatedKeywords" :disabled="relatedLoading">{{ relatedLoading ? 'Loading...' : 'Explore' }}</button>
+          </div>
+          <div v-if="relatedData.rising && relatedData.rising.length || relatedData.top && relatedData.top.length" class="kw-related-results">
+            <div class="kw-related-cols">
+              <div class="kw-related-col" v-if="relatedData.rising && relatedData.rising.length">
+                <h4 class="kw-related-heading">🚀 Rising</h4>
+                <div v-for="(r, i) in relatedData.rising" :key="'r'+i" class="kw-related-item">
+                  <span class="kw-related-name">{{ r.keyword }}</span>
+                  <span class="kw-related-value rising">+{{ r.value }}%</span>
+                </div>
+              </div>
+              <div class="kw-related-col" v-if="relatedData.top && relatedData.top.length">
+                <h4 class="kw-related-heading">⭐ Top</h4>
+                <div v-for="(t, i) in relatedData.top" :key="'t'+i" class="kw-related-item">
+                  <span class="kw-related-name">{{ t.keyword }}</span>
+                  <span class="kw-related-value">{{ t.value }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div v-else-if="relatedData.note || relatedData.error" class="empty-inline">{{ relatedData.note || relatedData.error }}</div>
+          <div v-else class="empty-inline">Enter a keyword above and click Explore</div>
+        </div>
+      </div>
+
     <!-- Add Keyword Modal -->
     <div v-if="showAddModal" class="modal-overlay" @click.self="showAddModal = false">
       <div class="modal-card">
@@ -393,6 +461,17 @@ const trendingData = ref({})
 const scanData = ref({})
 const scanLoading = ref(false)
 const suggestions = ref([])
+
+// Keyword Comparison
+const compareInput = ref('')
+const compareData = ref({})
+const compareLoading = ref(false)
+const compareColors = ['#6366f1', '#f59e0b', '#22c55e', '#ef4444', '#3b82f6']
+
+// Related Keywords
+const relatedInput = ref('')
+const relatedData = ref({})
+const relatedLoading = ref(false)
 
 const chartW = 700; const chartH = 200; const chartPadLeft = 50; const chartPadTop = 15; const chartPadBottom = 25
 
@@ -455,6 +534,34 @@ async function runKeywordScan() {
     scanData.value = { error: 'Scan failed — ensure your site URL is accessible.' }
   } finally {
     scanLoading.value = false
+  }
+}
+
+async function fetchCompareKeywords() {
+  const kws = compareInput.value.split(',').map(k => k.trim()).filter(Boolean)
+  if (!kws.length) return
+  compareLoading.value = true
+  try {
+    const res = await analyticsApi.keywordInterest(props.websiteId, { keywords: kws.slice(0, 5) })
+    compareData.value = res.data?.data || res.data || {}
+  } catch (e) {
+    compareData.value = { error: 'Failed to fetch comparison data' }
+  } finally {
+    compareLoading.value = false
+  }
+}
+
+async function fetchRelatedKeywords() {
+  const kw = relatedInput.value.trim()
+  if (!kw) return
+  relatedLoading.value = true
+  try {
+    const res = await analyticsApi.keywordInterest(props.websiteId, { keywords: [kw], related: true })
+    relatedData.value = res.data?.data || res.data || {}
+  } catch (e) {
+    relatedData.value = { error: 'Failed to fetch related keywords' }
+  } finally {
+    relatedLoading.value = false
   }
 }
 
@@ -655,6 +762,28 @@ onMounted(async () => {
 .seo-loc-tag { display: inline-block; padding: 1px 7px; margin: 1px 3px; border-radius: var(--radius-full); font-size: 9px; font-weight: 700; text-transform: uppercase; background: rgba(99,102,241,0.1); color: var(--brand-accent); }
 
 .seo-delta { color: #22c55e; font-weight: 700; font-size: 13px; }
+
+/* Keyword Comparison */
+.kw-compare-input { display: flex; gap: 8px; margin-bottom: 16px; }
+.kw-compare-input .form-input { flex: 1; }
+.kw-compare-legend { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 12px; }
+.kw-compare-legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; color: var(--text-primary); }
+.kw-legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.kw-compare-chart { display: flex; align-items: flex-end; gap: 2px; height: 120px; padding: 8px 0; overflow-x: auto; }
+.kw-compare-bar-group { display: flex; flex-direction: column; align-items: center; flex: 1; min-width: 24px; }
+.kw-compare-bars { display: flex; align-items: flex-end; gap: 1px; height: 100px; }
+.kw-compare-bar { width: 8px; min-height: 2px; border-radius: 2px 2px 0 0; transition: height 0.3s ease; }
+.kw-compare-date { font-size: 8px; color: var(--text-muted); margin-top: 4px; white-space: nowrap; }
+
+/* Related Keywords */
+.kw-related-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+@media (max-width: 640px) { .kw-related-cols { grid-template-columns: 1fr; } }
+.kw-related-heading { font-size: 13px; font-weight: 700; margin: 0 0 8px; color: var(--text-primary); }
+.kw-related-item { display: flex; align-items: center; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--border-color); }
+.kw-related-item:last-child { border-bottom: none; }
+.kw-related-name { font-size: 12px; color: var(--text-primary); }
+.kw-related-value { font-size: 12px; font-weight: 700; color: var(--text-muted); }
+.kw-related-value.rising { color: #22c55e; }
 
 /* AI Engine Visibility */
 .ai-engines-section { margin-top: 4px; }
