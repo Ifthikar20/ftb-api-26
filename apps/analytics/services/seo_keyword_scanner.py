@@ -1,5 +1,6 @@
 """
-SEO Keyword Scanner — Crawl site, extract keywords, compare to Google Trends,
+SEO Keyword Scanner & AI Ranking Agent — Crawl site, extract keywords,
+compare to Google Trends, check AI engine rankings (Claude, ChatGPT, Perplexity),
 suggest better synonyms, and calculate a progressive SEO score.
 """
 import logging
@@ -9,6 +10,7 @@ from collections import Counter
 from urllib.parse import urlparse
 
 import requests
+from django.conf import settings
 from django.core.cache import cache
 from django.utils import timezone
 
@@ -34,7 +36,7 @@ STOP_WORDS = frozenset(
 
 
 class SEOKeywordScanner:
-    """Crawl website, extract keywords, compare to trends, suggest alternatives."""
+    """Crawl website, extract keywords, compare to trends, check AI rankings, suggest alternatives."""
 
     @staticmethod
     def scan(*, website_url: str, website_id: str = "") -> dict:
@@ -84,6 +86,17 @@ class SEOKeywordScanner:
                     "word_count": page_data.get("word_count", 0),
                 },
             }
+
+            # 6. Check AI engine rankings
+            try:
+                domain = urlparse(website_url).netloc.replace("www.", "")
+                ai_rankings = SEOKeywordScanner._check_ai_rankings(
+                    [k["keyword"] for k in keywords[:6]], domain
+                )
+                result["ai_rankings"] = ai_rankings
+            except Exception as e:
+                logger.warning(f"AI ranking check failed: {e}")
+                result["ai_rankings"] = {}
 
             cache.set(cache_key, result, 900)  # Cache 15 min
             return result
@@ -450,4 +463,179 @@ class SEOKeywordScanner:
             "keyword_density": {"score": density_score, "weight": 15, "label": "Keyword Density"},
             "content_freshness": {"score": freshness, "weight": 10, "label": "Content Freshness"},
             "heading_usage": {"score": heading_score, "weight": 10, "label": "Heading Usage"},
+        }
+
+    @staticmethod
+    def _check_ai_rankings(keywords: list, domain: str) -> dict:
+        """
+        Query AI engines to check if the domain is mentioned/recommended
+        for the given keywords. Returns per-engine visibility scores.
+        """
+        engines = {}
+
+        prompt_template = (
+            "I'm looking for the best websites and online resources for: {keywords}. "
+            "Please recommend specific websites and URLs that are most relevant and "
+            "authoritative for these topics. List at least 5-10 website recommendations "
+            "with their URLs."
+        )
+        keyword_str = ", ".join(keywords[:6])
+        prompt = prompt_template.format(keywords=keyword_str)
+
+        # ── Claude (Anthropic) ──
+        try:
+            api_key = getattr(settings, "ANTHROPIC_API_KEY", "")
+            if api_key:
+                import anthropic
+                client = anthropic.Anthropic(api_key=api_key)
+                response = client.messages.create(
+                    model="claude-sonnet-4-20250514",
+                    max_tokens=800,
+                    messages=[{"role": "user", "content": prompt}],
+                )
+                text = response.content[0].text if response.content else ""
+                engines["claude"] = SEOKeywordScanner._score_ai_response(
+                    text, domain, keywords, "Claude"
+                )
+            else:
+                engines["claude"] = {"status": "not_configured", "score": 0}
+        except Exception as e:
+            logger.warning(f"Claude ranking check failed: {e}")
+            engines["claude"] = {"status": "error", "score": 0, "error": str(e)[:100]}
+
+        # ── ChatGPT (OpenAI) ──
+        try:
+            api_key = getattr(settings, "OPENAI_API_KEY", "")
+            if api_key:
+                import openai
+                client = openai.OpenAI(api_key=api_key)
+                response = client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    max_tokens=800,
+                    messages=[{"role": "user", "content": prompt}],
+                )
+                text = response.choices[0].message.content if response.choices else ""
+                engines["chatgpt"] = SEOKeywordScanner._score_ai_response(
+                    text, domain, keywords, "ChatGPT"
+                )
+            else:
+                engines["chatgpt"] = {"status": "not_configured", "score": 0}
+        except Exception as e:
+            logger.warning(f"ChatGPT ranking check failed: {e}")
+            engines["chatgpt"] = {"status": "error", "score": 0, "error": str(e)[:100]}
+
+        # ── Perplexity ──
+        try:
+            api_key = getattr(settings, "PERPLEXITY_API_KEY", "")
+            if api_key:
+                import openai as openai_compat
+                client = openai_compat.OpenAI(
+                    api_key=api_key,
+                    base_url="https://api.perplexity.ai",
+                )
+                response = client.chat.completions.create(
+                    model="llama-3.1-sonar-small-128k-online",
+                    max_tokens=800,
+                    messages=[{"role": "user", "content": prompt}],
+                )
+                text = response.choices[0].message.content if response.choices else ""
+                engines["perplexity"] = SEOKeywordScanner._score_ai_response(
+                    text, domain, keywords, "Perplexity"
+                )
+            else:
+                engines["perplexity"] = {"status": "not_configured", "score": 0}
+        except Exception as e:
+            logger.warning(f"Perplexity ranking check failed: {e}")
+            engines["perplexity"] = {"status": "error", "score": 0, "error": str(e)[:100]}
+
+        # Calculate overall AI visibility score
+        active_engines = [e for e in engines.values() if e.get("status") == "found" or e.get("status") == "not_found"]
+        if active_engines:
+            engines["overall_score"] = round(
+                sum(e.get("score", 0) for e in active_engines) / len(active_engines)
+            )
+        else:
+            engines["overall_score"] = 0
+
+        return engines
+
+    @staticmethod
+    def _score_ai_response(response_text: str, domain: str, keywords: list, engine_name: str) -> dict:
+        """
+        Score how visible a domain is in an AI engine's response.
+        Returns visibility score (0-100), mentioned keywords, and response excerpt.
+        """
+        text_lower = response_text.lower()
+        domain_lower = domain.lower()
+
+        # Check if domain is mentioned
+        domain_mentioned = domain_lower in text_lower
+
+        # Also check partial domain (without TLD)
+        domain_base = domain_lower.split(".")[0]
+        base_mentioned = len(domain_base) > 3 and domain_base in text_lower
+
+        mentioned = domain_mentioned or base_mentioned
+
+        # Check which keywords triggered a mention near the domain
+        mentioned_keywords = []
+        if mentioned:
+            for kw in keywords:
+                # Check if keyword appears within 200 chars of domain mention
+                positions = []
+                search_term = domain_lower if domain_mentioned else domain_base
+                idx = text_lower.find(search_term)
+                while idx != -1:
+                    positions.append(idx)
+                    idx = text_lower.find(search_term, idx + 1)
+
+                for pos in positions:
+                    context = text_lower[max(0, pos - 200):pos + 200]
+                    if kw.lower() in context:
+                        mentioned_keywords.append(kw)
+                        break
+
+        # Calculate visibility score
+        score = 0
+        if mentioned:
+            # Base score for being mentioned
+            score = 40
+
+            # Position bonus — earlier mention = higher score
+            first_pos = text_lower.find(domain_lower if domain_mentioned else domain_base)
+            total_len = max(len(text_lower), 1)
+            position_ratio = 1 - (first_pos / total_len)
+            score += round(position_ratio * 25)  # Up to 25 pts for position
+
+            # Mention count bonus
+            count = text_lower.count(domain_lower if domain_mentioned else domain_base)
+            score += min(15, count * 5)  # Up to 15 pts for multiple mentions
+
+            # Keyword association bonus
+            if mentioned_keywords:
+                kw_ratio = len(mentioned_keywords) / max(len(keywords), 1)
+                score += round(kw_ratio * 20)  # Up to 20 pts
+
+        # Find excerpt showing the mention
+        excerpt = ""
+        if mentioned:
+            search_term = domain_lower if domain_mentioned else domain_base
+            idx = text_lower.find(search_term)
+            if idx != -1:
+                start = max(0, idx - 80)
+                end = min(len(response_text), idx + 120)
+                excerpt = response_text[start:end].strip()
+                if start > 0:
+                    excerpt = "..." + excerpt
+                if end < len(response_text):
+                    excerpt = excerpt + "..."
+
+        return {
+            "engine": engine_name,
+            "status": "found" if mentioned else "not_found",
+            "score": min(100, score),
+            "mentioned": mentioned,
+            "mentioned_keywords": mentioned_keywords,
+            "mention_count": text_lower.count(domain_lower) if domain_mentioned else text_lower.count(domain_base) if base_mentioned else 0,
+            "excerpt": excerpt,
         }

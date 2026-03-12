@@ -16,7 +16,7 @@
       <button class="kw-tab" :class="{ active: activeTab === 'tracker' }" @click="activeTab = 'tracker'">📊 Rank Tracker</button>
       <button class="kw-tab" :class="{ active: activeTab === 'scores' }" @click="switchTab('scores')">🧠 AI Scores</button>
       <button class="kw-tab" :class="{ active: activeTab === 'trending' }" @click="switchTab('trending')">🔥 Trending Now</button>
-      <button class="kw-tab" :class="{ active: activeTab === 'scanner' }" @click="switchTab('scanner')">🔍 SEO Scanner</button>
+      <button class="kw-tab" :class="{ active: activeTab === 'scanner' }" @click="switchTab('scanner')">🤖 Keyword Agents</button>
     </div>
 
     <div v-if="loading" class="loading-state">Loading keywords...</div>
@@ -204,13 +204,13 @@
         </div>
       </div>
 
-      <!-- ═══ TAB 4: SEO Scanner ═══ -->
+      <!-- ═══ TAB 4: Keyword Agents ═══ -->
       <div v-show="activeTab === 'scanner'">
         <div class="card">
           <div class="card-header">
-            <h3 class="card-title">🔍 SEO Keyword Scanner</h3>
+            <h3 class="card-title">🤖 Keyword Agents</h3>
             <button class="btn btn-primary btn-sm" @click="runKeywordScan" :disabled="scanLoading">
-              {{ scanLoading ? 'Scanning...' : (scanData.score != null ? 'Re-scan' : 'Scan My Site') }}
+              {{ scanLoading ? 'Agents working...' : (scanData.score != null ? 'Re-scan' : 'Run Agents') }}
             </button>
           </div>
 
@@ -237,6 +237,68 @@
                 <div class="seo-br-name">{{ comp.label }} <span class="text-xs text-muted">({{ comp.weight }}%)</span></div>
                 <div class="seo-br-track"><div class="seo-br-fill" :style="{ width: comp.score + '%' }" :class="comp.score >= 70 ? 'bf-good' : comp.score >= 40 ? 'bf-mid' : 'bf-bad'"></div></div>
                 <span class="seo-br-num">{{ comp.score }}</span>
+              </div>
+            </div>
+
+            <!-- AI Engine Visibility -->
+            <div v-if="scanData.ai_rankings && Object.keys(scanData.ai_rankings).length" class="ai-engines-section">
+              <h4 class="seo-sec-title">🤖 AI Engine Visibility
+                <span v-if="scanData.ai_rankings.overall_score != null" class="ai-overall-badge" :class="scanData.ai_rankings.overall_score >= 40 ? 'aob-good' : scanData.ai_rankings.overall_score > 0 ? 'aob-mid' : 'aob-none'">
+                  Overall: {{ scanData.ai_rankings.overall_score }}/100
+                </span>
+              </h4>
+              <p class="text-xs text-muted" style="margin-bottom:14px">Do AI search engines recommend your site when users ask about your keywords?</p>
+              <div class="ai-engine-grid">
+                <!-- Claude -->
+                <div v-if="scanData.ai_rankings.claude" class="ai-engine-card" :class="scanData.ai_rankings.claude.mentioned ? 'aec-found' : 'aec-missing'">
+                  <div class="aec-header">
+                    <div class="aec-name">Claude</div>
+                    <div class="aec-score-circle" :class="scanData.ai_rankings.claude.score >= 40 ? 'asc-good' : scanData.ai_rankings.claude.score > 0 ? 'asc-mid' : 'asc-none'">
+                      {{ scanData.ai_rankings.claude.score }}
+                    </div>
+                  </div>
+                  <div class="aec-status" :class="scanData.ai_rankings.claude.mentioned ? 'ast-found' : scanData.ai_rankings.claude.status === 'not_configured' ? 'ast-na' : 'ast-missing'">
+                    {{ scanData.ai_rankings.claude.mentioned ? '✓ Found' : scanData.ai_rankings.claude.status === 'not_configured' ? 'Not configured' : scanData.ai_rankings.claude.status === 'error' ? 'Error' : '✗ Not mentioned' }}
+                  </div>
+                  <div v-if="scanData.ai_rankings.claude.excerpt" class="aec-excerpt">{{ scanData.ai_rankings.claude.excerpt }}</div>
+                  <div v-if="scanData.ai_rankings.claude.mentioned_keywords?.length" class="aec-kws">
+                    <span v-for="kw in scanData.ai_rankings.claude.mentioned_keywords" :key="kw" class="aec-kw-tag">{{ kw }}</span>
+                  </div>
+                </div>
+
+                <!-- ChatGPT -->
+                <div v-if="scanData.ai_rankings.chatgpt" class="ai-engine-card" :class="scanData.ai_rankings.chatgpt.mentioned ? 'aec-found' : 'aec-missing'">
+                  <div class="aec-header">
+                    <div class="aec-name">ChatGPT</div>
+                    <div class="aec-score-circle" :class="scanData.ai_rankings.chatgpt.score >= 40 ? 'asc-good' : scanData.ai_rankings.chatgpt.score > 0 ? 'asc-mid' : 'asc-none'">
+                      {{ scanData.ai_rankings.chatgpt.score }}
+                    </div>
+                  </div>
+                  <div class="aec-status" :class="scanData.ai_rankings.chatgpt.mentioned ? 'ast-found' : scanData.ai_rankings.chatgpt.status === 'not_configured' ? 'ast-na' : 'ast-missing'">
+                    {{ scanData.ai_rankings.chatgpt.mentioned ? '✓ Found' : scanData.ai_rankings.chatgpt.status === 'not_configured' ? 'Not configured' : scanData.ai_rankings.chatgpt.status === 'error' ? 'Error' : '✗ Not mentioned' }}
+                  </div>
+                  <div v-if="scanData.ai_rankings.chatgpt.excerpt" class="aec-excerpt">{{ scanData.ai_rankings.chatgpt.excerpt }}</div>
+                  <div v-if="scanData.ai_rankings.chatgpt.mentioned_keywords?.length" class="aec-kws">
+                    <span v-for="kw in scanData.ai_rankings.chatgpt.mentioned_keywords" :key="kw" class="aec-kw-tag">{{ kw }}</span>
+                  </div>
+                </div>
+
+                <!-- Perplexity -->
+                <div v-if="scanData.ai_rankings.perplexity" class="ai-engine-card" :class="scanData.ai_rankings.perplexity.mentioned ? 'aec-found' : 'aec-missing'">
+                  <div class="aec-header">
+                    <div class="aec-name">Perplexity</div>
+                    <div class="aec-score-circle" :class="scanData.ai_rankings.perplexity.score >= 40 ? 'asc-good' : scanData.ai_rankings.perplexity.score > 0 ? 'asc-mid' : 'asc-none'">
+                      {{ scanData.ai_rankings.perplexity.score }}
+                    </div>
+                  </div>
+                  <div class="aec-status" :class="scanData.ai_rankings.perplexity.mentioned ? 'ast-found' : scanData.ai_rankings.perplexity.status === 'not_configured' ? 'ast-na' : 'ast-missing'">
+                    {{ scanData.ai_rankings.perplexity.mentioned ? '✓ Found' : scanData.ai_rankings.perplexity.status === 'not_configured' ? 'Not configured' : scanData.ai_rankings.perplexity.status === 'error' ? 'Error' : '✗ Not mentioned' }}
+                  </div>
+                  <div v-if="scanData.ai_rankings.perplexity.excerpt" class="aec-excerpt">{{ scanData.ai_rankings.perplexity.excerpt }}</div>
+                  <div v-if="scanData.ai_rankings.perplexity.mentioned_keywords?.length" class="aec-kws">
+                    <span v-for="kw in scanData.ai_rankings.perplexity.mentioned_keywords" :key="kw" class="aec-kw-tag">{{ kw }}</span>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -283,7 +345,7 @@
           </div>
 
           <div v-else-if="scanData.error" class="empty-inline">{{ scanData.error }}</div>
-          <div v-else class="empty-inline">Click <strong>Scan My Site</strong> to analyze your site's keywords, compare them to Google Trends, and get better alternatives.</div>
+          <div v-else class="empty-inline">Click <strong>Run Agents</strong> to scan your site's keywords, check AI engine rankings (Claude, ChatGPT, Perplexity), and get optimization suggestions.</div>
         </div>
       </div>
     </template>
@@ -593,6 +655,35 @@ onMounted(async () => {
 .seo-loc-tag { display: inline-block; padding: 1px 7px; margin: 1px 3px; border-radius: var(--radius-full); font-size: 9px; font-weight: 700; text-transform: uppercase; background: rgba(99,102,241,0.1); color: var(--brand-accent); }
 
 .seo-delta { color: #22c55e; font-weight: 700; font-size: 13px; }
+
+/* AI Engine Visibility */
+.ai-engines-section { margin-top: 4px; }
+.ai-overall-badge { display: inline-block; margin-left: 10px; padding: 2px 10px; border-radius: var(--radius-full); font-size: 11px; font-weight: 700; vertical-align: middle; }
+.aob-good { background: rgba(34,197,94,0.12); color: #22c55e; }
+.aob-mid { background: rgba(245,158,11,0.1); color: #f59e0b; }
+.aob-none { background: rgba(100,100,100,0.1); color: var(--text-muted); }
+
+.ai-engine-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.ai-engine-card { background: var(--bg-surface); border-radius: var(--radius-lg); padding: 18px; border: 1px solid var(--border-color); transition: border-color 0.2s; }
+.aec-found { border-color: #22c55e; border-left: 3px solid #22c55e; }
+.aec-missing { border-style: dashed; opacity: 0.85; }
+
+.aec-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.aec-name { font-size: 15px; font-weight: 700; color: var(--text-primary); }
+.aec-score-circle { width: 42px; height: 42px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 800; border: 3px solid; }
+.asc-good { border-color: #22c55e; color: #22c55e; background: rgba(34,197,94,0.06); }
+.asc-mid { border-color: #f59e0b; color: #f59e0b; background: rgba(245,158,11,0.06); }
+.asc-none { border-color: var(--border-color); color: var(--text-muted); background: transparent; }
+
+.aec-status { font-size: 12px; font-weight: 700; margin-bottom: 8px; }
+.ast-found { color: #22c55e; }
+.ast-missing { color: #ef4444; }
+.ast-na { color: var(--text-muted); font-style: italic; }
+
+.aec-excerpt { font-size: 11px; color: var(--text-secondary); line-height: 1.5; padding: 8px 10px; background: var(--bg-card); border-radius: var(--radius-md); border-left: 2px solid var(--brand-accent); margin-bottom: 8px; font-style: italic; word-break: break-word; }
+
+.aec-kws { display: flex; flex-wrap: wrap; gap: 4px; }
+.aec-kw-tag { display: inline-block; padding: 2px 8px; border-radius: var(--radius-full); font-size: 10px; font-weight: 700; background: rgba(99,102,241,0.1); color: var(--brand-accent); }
 
 @media (max-width: 900px) { .analytics-row { grid-template-columns: 1fr; } .explainer-grid { grid-template-columns: repeat(2, 1fr); } .tips-grid { grid-template-columns: 1fr; } .seo-br-name { width: 140px; } }
 @media (max-width: 768px) { .kw-stats { flex-direction: column; } .seo-score-row { flex-direction: column; text-align: center; } }
