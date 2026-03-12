@@ -197,8 +197,18 @@
         </div>
       </div>
     </div>
-    <div v-else-if="scanData.dataforseo_configured === false && scanData.score != null" class="dfs-not-configured">
-      <strong>📊 DataForSEO not configured</strong> — Add <code>DATAFORSEO_LOGIN</code> and <code>DATAFORSEO_PASSWORD</code> to your .env for real Google ranking data.
+    <div v-else-if="scanData.dataforseo_configured === false && scanData.score != null" class="card kw-card">
+      <div class="kw-card-header">
+        <h3 class="card-title">📊 Google SERP Data</h3>
+        <span class="text-xs text-muted">Not configured</span>
+      </div>
+      <div class="setup-steps">
+        <p class="setup-intro">To get <strong>real Google rankings, search volume, CPC, difficulty,</strong> and <strong>SERP features</strong>, connect DataForSEO:</p>
+        <div class="setup-step"><span class="step-num">1</span><div class="step-text">Sign up at <a href="https://dataforseo.com" target="_blank">dataforseo.com</a> (free $1 trial credit)</div></div>
+        <div class="setup-step"><span class="step-num">2</span><div class="step-text">Go to <strong>Dashboard → API Access</strong> to find your login and password</div></div>
+        <div class="setup-step"><span class="step-num">3</span><div class="step-text">Add to your server <code>.env.prod</code>:<br/><code>DATAFORSEO_LOGIN=your_email</code><br/><code>DATAFORSEO_PASSWORD=your_api_password</code></div></div>
+        <div class="setup-step"><span class="step-num">4</span><div class="step-text">Restart the server and re-scan — real SERP data will populate automatically</div></div>
+      </div>
     </div>
 
     <!-- Card 4: Geo SEO -->
@@ -238,20 +248,6 @@
               <div class="gt-text">{{ tip.tip }}</div>
               <code v-if="tip.tag" class="gt-tag">{{ tip.tag }}</code>
             </div>
-          </div>
-        </div>
-      </div>
-      <!-- Region Interest -->
-      <div class="geo-region-section" v-if="scanData.keywords?.length">
-        <div class="split-label" style="margin-top:16px;margin-bottom:10px">Keyword Interest by Region <span class="text-xs text-muted">— top keywords</span></div>
-        <div class="region-map">
-          <div v-for="region in geoRegions" :key="region.code" class="region-row">
-            <span class="region-flag">{{ region.flag }}</span>
-            <span class="region-name">{{ region.name }}</span>
-            <div class="region-bar-wrap">
-              <div class="region-bar" :style="{ width: Math.max(region.interest, 2) + '%', background: region.interest >= 60 ? '#22c55e' : region.interest >= 30 ? '#f59e0b' : '#6366f1' }"></div>
-            </div>
-            <span class="region-val">{{ region.interest }}</span>
           </div>
         </div>
       </div>
@@ -346,28 +342,6 @@ const avgPosition = computed(() => {
 const improved = computed(() => keywords.value.filter(k => k.rank_change > 0).length)
 const declined = computed(() => keywords.value.filter(k => k.rank_change < 0).length)
 
-// Simulated geo regions from trends data
-const geoRegions = computed(() => {
-  if (!scanData.value.trends) return []
-  const regions = [
-    { code: 'US', name: 'United States', flag: '🇺🇸' },
-    { code: 'GB', name: 'United Kingdom', flag: '🇬🇧' },
-    { code: 'AE', name: 'UAE', flag: '🇦🇪' },
-    { code: 'CA', name: 'Canada', flag: '🇨🇦' },
-    { code: 'AU', name: 'Australia', flag: '🇦🇺' },
-    { code: 'IN', name: 'India', flag: '🇮🇳' },
-    { code: 'DE', name: 'Germany', flag: '🇩🇪' },
-    { code: 'FR', name: 'France', flag: '🇫🇷' },
-  ]
-  // Use top keyword's interest as base, then vary by region
-  const trends = scanData.value.trends || {}
-  const topKw = Object.keys(trends)[0]
-  const baseInterest = topKw ? trends[topKw].interest || 50 : 50
-  return regions.map((r, i) => ({
-    ...r,
-    interest: Math.max(5, Math.min(100, baseInterest + Math.round((Math.sin(i * 2.1 + baseInterest) * 30)))),
-  }))
-})
 
 function cleanUrl(url) { if (!url) return ''; try { return new URL(url).pathname } catch { return url } }
 function cleanPagePath(url) { if (!url) return url; try { const u = new URL(url); return u.pathname === '/' ? '/ (Homepage)' : u.pathname } catch { return url } }
@@ -539,14 +513,15 @@ onMounted(async () => {
 .gt-text { font-size: 11px; color: var(--text-secondary); line-height: 1.5; }
 .gt-tag { display: block; margin-top: 4px; font-size: 10px; padding: 3px 6px; background: var(--bg-card); border-radius: 3px; color: var(--brand-accent); word-break: break-all; }
 
-/* Region bars */
-.region-map { display: flex; flex-direction: column; gap: 6px; }
-.region-row { display: flex; align-items: center; gap: 8px; }
-.region-flag { font-size: 16px; flex-shrink: 0; }
-.region-name { width: 100px; font-size: 11px; font-weight: 500; color: var(--text-primary); flex-shrink: 0; }
-.region-bar-wrap { flex: 1; height: 8px; background: var(--bg-input); border-radius: 4px; overflow: hidden; }
-.region-bar { height: 100%; border-radius: 4px; transition: width 0.5s; }
-.region-val { width: 28px; text-align: right; font-size: 11px; font-weight: 700; color: var(--text-primary); }
+/* Setup Steps */
+.setup-steps { padding: 4px 0; }
+.setup-intro { font-size: 13px; color: var(--text-secondary); margin: 0 0 14px; line-height: 1.5; }
+.setup-step { display: flex; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border-color); align-items: flex-start; }
+.setup-step:last-child { border-bottom: none; }
+.step-num { flex-shrink: 0; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; background: var(--brand-accent); color: white; }
+.step-text { font-size: 13px; color: var(--text-primary); line-height: 1.5; }
+.step-text a { color: var(--brand-accent); font-weight: 600; }
+.step-text code { font-size: 11px; background: var(--bg-surface); border: 1px solid var(--border-color); padding: 1px 5px; border-radius: 3px; color: var(--brand-accent); }
 
 /* AI Engine */
 .ai-engine-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
