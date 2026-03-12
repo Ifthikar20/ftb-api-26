@@ -282,20 +282,22 @@
           </div>
           <div class="fc-body">
             <div v-if="embedCode" class="embed-section">
-              <div class="embed-label">Paste this in your website's <code>&lt;head&gt;</code>:</div>
+              <div class="embed-label">Paste this in your website's <code>&lt;head&gt;</code> — one snippet for everything:</div>
               <div class="embed-code-wrap">
                 <pre class="embed-code">{{ embedCode }}</pre>
                 <button class="embed-copy" @click="copyEmbed" :class="{ copied: embedCopied }">{{ embedCopied ? '✓ Copied' : 'Copy' }}</button>
               </div>
               <div class="embed-features">
-                <div class="ef-title">What it auto-optimizes:</div>
+                <div class="ef-title">What it does:</div>
                 <div class="ef-list">
-                  <span class="ef-item">✓ Schema markup (JSON-LD)</span>
+                  <span class="ef-item">✓ Tracks visitors & clicks</span>
+                  <span class="ef-item">✓ Heatmap data</span>
+                  <span class="ef-item">✓ Schema markup</span>
                   <span class="ef-item">✓ Open Graph tags</span>
                   <span class="ef-item">✓ Canonical URLs</span>
                   <span class="ef-item">✓ hreflang tags</span>
                   <span class="ef-item">✓ Geo meta tags</span>
-                  <span class="ef-item">✓ Title & meta optimization</span>
+                  <span class="ef-item">✓ Title optimization</span>
                 </div>
               </div>
             </div>

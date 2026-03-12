@@ -29,6 +29,9 @@
           <span class="badge" :class="site.pixel_verified ? 'badge-success' : 'badge-warning'">
             {{ site.pixel_verified ? 'Pixel Active' : 'Pixel Pending' }}
           </span>
+          <button class="btn-delete-project" @click.stop="confirmDelete(site)" title="Delete project">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+          </button>
         </div>
         <div class="site-stats">
           <div class="site-stat">
@@ -77,6 +80,21 @@
         </form>
       </div>
     </div>
+
+    <!-- Delete Confirmation Modal -->
+    <div v-if="deleteTarget" class="modal-overlay" @click.self="deleteTarget = null">
+      <div class="modal-content slide-up">
+        <div class="modal-header">
+          <h2 class="modal-title">Delete Project</h2>
+          <button class="btn-icon btn-ghost" @click="deleteTarget = null">✕</button>
+        </div>
+        <p style="margin: 0 0 16px; color: var(--text-secondary); font-size: 13px;">Are you sure you want to delete <strong>{{ deleteTarget.name }}</strong>? This will remove all tracking data, analytics, and keywords. This cannot be undone.</p>
+        <div style="display: flex; gap: 8px; justify-content: flex-end;">
+          <button class="btn btn-secondary" @click="deleteTarget = null">Cancel</button>
+          <button class="btn btn-danger" @click="deleteWebsite" :disabled="deleting">{{ deleting ? 'Deleting...' : 'Delete' }}</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -89,6 +107,8 @@ const appStore = useAppStore()
 const websites = ref([])
 const showAddModal = ref(false)
 const adding = ref(false)
+const deleting = ref(false)
+const deleteTarget = ref(null)
 const newSite = reactive({ name: '', url: '', industry: '' })
 
 onMounted(async () => {
@@ -98,6 +118,22 @@ onMounted(async () => {
     appStore.setWebsites(websites.value)
   } catch { /* empty */ }
 })
+
+function confirmDelete(site) {
+  deleteTarget.value = site
+}
+
+async function deleteWebsite() {
+  if (!deleteTarget.value) return
+  deleting.value = true
+  try {
+    await websitesApi.delete(deleteTarget.value.id)
+    websites.value = websites.value.filter(s => s.id !== deleteTarget.value.id)
+    appStore.setWebsites(websites.value)
+    deleteTarget.value = null
+  } catch (e) { console.error('Delete failed', e) }
+  finally { deleting.value = false }
+}
 
 async function addWebsite() {
   adding.value = true
@@ -173,4 +209,36 @@ async function addWebsite() {
   flex-direction: column;
   gap: 4px;
 }
+
+.btn-delete-project {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+.btn-delete-project:hover {
+  border-color: #ef4444;
+  background: rgba(239,68,68,0.08);
+  color: #ef4444;
+}
+
+.btn-danger {
+  background: #ef4444;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: var(--radius-md);
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn-danger:hover { background: #dc2626; }
+.btn-danger:disabled { opacity: 0.5; }
 </style>

@@ -347,8 +347,8 @@ class SEOReportView(View):
 
 class SEOEmbedCodeView(APIView):
     """
-    GET — return the embed code snippet for this website.
-    Authenticated endpoint for the dashboard.
+    GET — return the COMBINED embed code (tracking pixel + SEO optimizer).
+    Single script tag that loads both.
     """
     permission_classes = [IsAuthenticated]
 
@@ -358,19 +358,23 @@ class SEOEmbedCodeView(APIView):
         except Website.DoesNotExist:
             return Response({"error": "Website not found"}, status=404)
 
-        script_url = request.build_absolute_uri(f"/api/v1/analytics/{website_id}/seo-script/")
+        base_url = request.build_absolute_uri("/")
+        pixel_url = f"{base_url}pixel/growthpilot.min.js"
+        seo_url = request.build_absolute_uri(f"/api/v1/analytics/{website_id}/seo-script/")
 
+        # Combined single embed — loads both pixel and SEO optimizer
         embed_code = (
-            f'<script src="{script_url}" '
-            f'data-site="{website_id}" '
-            f'id="fb-seo-optimizer" '
-            f'defer></script>'
+            f'<!-- FetchBot — Analytics + SEO Optimizer -->\n'
+            f'<script src="{pixel_url}" data-key="{website.pixel_key}"></script>\n'
+            f'<script src="{seo_url}" data-site="{website_id}" defer></script>'
         )
 
         return Response({
             "data": {
                 "embed_code": embed_code,
-                "script_url": script_url,
+                "pixel_url": pixel_url,
+                "seo_url": seo_url,
+                "pixel_key": str(website.pixel_key),
                 "website_id": str(website_id),
                 "website_url": website.url,
             }
