@@ -647,38 +647,259 @@
       </div>
 
       <!-- ═══════════ TAB 5: AI Insights ═══════════ -->
-      <div v-show="activeTab === 'insights'">
-        <div class="insights-grid">
-          <div v-for="(insight, i) in insightsData.insights || []" :key="i" class="insight-card" :class="'insight-' + insight.type">
-            <div class="insight-header">
-              <svg class="insight-type-icon" width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 5v3M8 10v1"/></svg>
-              <span class="insight-badge" :class="'ibadge-' + insight.type">{{ insight.type }}</span>
-              <span v-if="insight.metric" class="insight-metric">{{ insight.metric }}</span>
-            </div>
-            <h4 class="insight-title">{{ insight.title }}</h4>
-            <p class="insight-desc">{{ insight.description }}</p>
-            <div class="insight-action" v-if="insight.action">
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 7h12M8 2l5 5-5 5"/></svg>
-              {{ insight.action }}
+      <div v-show="activeTab === 'insights'" @click.self="showInsightPicker = false">
+
+        <!-- Empty State -->
+        <div v-if="!insightCards.length" class="ret-empty-state">
+          <div class="ret-empty-icon">
+            <svg width="48" height="48" viewBox="0 0 48 48" fill="none" stroke="var(--text-muted)" stroke-width="1.5">
+              <circle cx="24" cy="20" r="12"/><path d="M18 32v2a6 6 0 0012 0v-2"/><line x1="24" y1="38" x2="24" y2="42"/>
+            </svg>
+          </div>
+          <h3 class="ret-empty-title">Actionable Growth Insights</h3>
+          <p class="ret-empty-desc">Add widgets to see AI-generated recommendations for improving traffic, engagement, and conversions.</p>
+          <div class="ret-add-wrap">
+            <button class="btn btn-primary" @click.stop="showInsightPicker = !showInsightPicker">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:6px"><path d="M7 1v12M1 7h12"/></svg>
+              Add Widget
+            </button>
+            <div v-if="showInsightPicker" class="card-picker-dropdown card-picker-center" @click.stop>
+              <div class="card-picker-header">Choose a widget</div>
+              <div v-for="c in insightAvailableCards" :key="c.id" class="card-picker-item" :class="{ disabled: insightCards.includes(c.id) }" @click="addInsightCard(c.id)">
+                <div class="card-picker-icon" v-html="c.icon"></div>
+                <div class="card-picker-info">
+                  <div class="card-picker-name">{{ c.title }}</div>
+                  <div class="card-picker-desc">{{ c.desc }}</div>
+                </div>
+                <span v-if="insightCards.includes(c.id)" class="card-picker-check">✓</span>
+              </div>
             </div>
           </div>
         </div>
-        <div v-if="!insightsData.insights || !insightsData.insights.length" class="empty-state-card">
-          <svg width="48" height="48" viewBox="0 0 48 48" fill="none" stroke="var(--text-muted)" stroke-width="1.5" style="margin-bottom:16px"><circle cx="24" cy="24" r="16"/><path d="M18 28c2-4 4-8 6-8s4 4 6 8"/><circle cx="24" cy="18" r="3"/></svg>
-          <h3 class="empty-title">AI Insights need more data</h3>
-          <p class="empty-desc">Once you have enough traffic data, FetchBot AI will detect anomalies, spot trends, and suggest actionable improvements.</p>
+
+        <!-- Dynamic Card Grid -->
+        <div v-else>
+          <div class="ret-card-grid">
+            <template v-for="cid in insightCards" :key="cid">
+
+              <!-- Growth Actions -->
+              <div v-if="cid === 'growth_actions'" class="ret-dyn-card ret-full">
+                <button class="ret-card-close" @click="removeInsightCard(cid)">&times;</button>
+                <div class="card">
+                  <div class="card-header"><h3 class="card-title">🚀 Growth Actions</h3><span class="text-xs text-muted">Prioritized by impact</span></div>
+                  <div v-if="insightsData.actions && insightsData.actions.length">
+                    <div v-for="(a, i) in insightsData.actions" :key="i" class="growth-action-item">
+                      <div class="growth-action-priority" :class="'gap-' + a.priority">{{ a.priority }}</div>
+                      <div class="growth-action-content">
+                        <div class="growth-action-title">{{ a.action }}</div>
+                        <div class="growth-action-reason">{{ a.reason }}</div>
+                      </div>
+                      <div v-if="a.impact" class="growth-action-impact">{{ a.impact }}</div>
+                    </div>
+                  </div>
+                  <div v-else class="empty-inline">Collecting data to generate actions...</div>
+                </div>
+              </div>
+
+              <!-- Anomalies -->
+              <div v-if="cid === 'anomalies'" class="ret-dyn-card ret-half">
+                <button class="ret-card-close" @click="removeInsightCard(cid)">&times;</button>
+                <div class="card">
+                  <div class="card-header"><h3 class="card-title">⚡ Anomaly Detection</h3><span class="text-xs text-muted">Unusual patterns</span></div>
+                  <div v-if="anomalyInsights.length">
+                    <div v-for="(ins, i) in anomalyInsights" :key="i" class="insight-compact-item" :class="'ic-' + ins.type">
+                      <span class="insight-compact-badge" :class="'icb-' + ins.type">{{ ins.type }}</span>
+                      <div class="insight-compact-body">
+                        <div class="insight-compact-title">{{ ins.title }}</div>
+                        <div class="insight-compact-desc">{{ ins.description }}</div>
+                      </div>
+                      <span v-if="ins.metric" class="insight-compact-metric">{{ ins.metric }}</span>
+                    </div>
+                  </div>
+                  <div v-else class="empty-inline">No anomalies detected</div>
+                </div>
+              </div>
+
+              <!-- Content Performance -->
+              <div v-if="cid === 'content_perf'" class="ret-dyn-card ret-half">
+                <button class="ret-card-close" @click="removeInsightCard(cid)">&times;</button>
+                <div class="card">
+                  <div class="card-header"><h3 class="card-title">📄 Content Performance</h3><span class="text-xs text-muted">Top & underperforming pages</span></div>
+                  <div v-if="contentInsights.length">
+                    <div v-for="(ins, i) in contentInsights" :key="i" class="insight-compact-item" :class="'ic-' + ins.type">
+                      <span class="insight-compact-badge" :class="'icb-' + ins.type">{{ ins.type }}</span>
+                      <div class="insight-compact-body">
+                        <div class="insight-compact-title">{{ ins.title }}</div>
+                        <div class="insight-compact-desc">{{ ins.description }}</div>
+                        <div v-if="ins.action" class="insight-compact-action">→ {{ ins.action }}</div>
+                      </div>
+                    </div>
+                  </div>
+                  <div v-else class="empty-inline">Need more page data</div>
+                </div>
+              </div>
+
+              <!-- Engagement Health -->
+              <div v-if="cid === 'engagement_health'" class="ret-dyn-card ret-full">
+                <button class="ret-card-close" @click="removeInsightCard(cid)">&times;</button>
+                <div class="card">
+                  <div class="card-header"><h3 class="card-title">💡 Engagement Health</h3><span class="text-xs text-muted">Behavioral patterns & improvement areas</span></div>
+                  <div v-if="engagementInsights.length">
+                    <div v-for="(ins, i) in engagementInsights" :key="i" class="insight-compact-item" :class="'ic-' + ins.type">
+                      <span class="insight-compact-badge" :class="'icb-' + ins.type">{{ ins.type }}</span>
+                      <div class="insight-compact-body">
+                        <div class="insight-compact-title">{{ ins.title }}</div>
+                        <div class="insight-compact-desc">{{ ins.description }}</div>
+                        <div v-if="ins.action" class="insight-compact-action">→ {{ ins.action }}</div>
+                      </div>
+                      <span v-if="ins.metric" class="insight-compact-metric">{{ ins.metric }}</span>
+                    </div>
+                  </div>
+                  <div v-else class="empty-inline">Need more engagement data</div>
+                </div>
+              </div>
+
+            </template>
+
+            <!-- Inline + Add Widget -->
+            <div class="ret-dyn-card ret-add-inline">
+              <button class="ret-add-btn" @click.stop="showInsightPicker = !showInsightPicker">
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 3v14M3 10h14"/></svg>
+              </button>
+              <div v-if="showInsightPicker" class="card-picker-dropdown" @click.stop>
+                <div class="card-picker-header">Add Widget</div>
+                <div v-for="c in insightAvailableCards" :key="c.id" class="card-picker-item" :class="{ disabled: insightCards.includes(c.id) }" @click="addInsightCard(c.id)">
+                  <div class="card-picker-icon" v-html="c.icon"></div>
+                  <div class="card-picker-info">
+                    <div class="card-picker-name">{{ c.title }}</div>
+                    <div class="card-picker-desc">{{ c.desc }}</div>
+                  </div>
+                  <span v-if="insightCards.includes(c.id)" class="card-picker-check">✓</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══════════ TAB 6: Keywords ═══════════ -->
+      <div v-show="activeTab === 'keywords'" @click.self="showKeywordPicker = false">
+
+        <!-- Empty State -->
+        <div v-if="!keywordCards.length" class="ret-empty-state">
+          <div class="ret-empty-icon">
+            <svg width="48" height="48" viewBox="0 0 48 48" fill="none" stroke="var(--text-muted)" stroke-width="1.5">
+              <path d="M12 36l8-8M16 32l-4 4"/><circle cx="28" cy="20" r="12"/><path d="M24 16l4 8h-8z"/>
+            </svg>
+          </div>
+          <h3 class="ret-empty-title">AI-Guided Keywords</h3>
+          <p class="ret-empty-desc">Discover trending keywords, track rankings, and get AI-powered SEO recommendations for your site.</p>
+          <div class="ret-add-wrap">
+            <button class="btn btn-primary" @click.stop="showKeywordPicker = !showKeywordPicker">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:6px"><path d="M7 1v12M1 7h12"/></svg>
+              Add Widget
+            </button>
+            <div v-if="showKeywordPicker" class="card-picker-dropdown card-picker-center" @click.stop>
+              <div class="card-picker-header">Choose a widget</div>
+              <div v-for="c in keywordAvailableCards" :key="c.id" class="card-picker-item" :class="{ disabled: keywordCards.includes(c.id) }" @click="addKeywordCard(c.id)">
+                <div class="card-picker-icon" v-html="c.icon"></div>
+                <div class="card-picker-info">
+                  <div class="card-picker-name">{{ c.title }}</div>
+                  <div class="card-picker-desc">{{ c.desc }}</div>
+                </div>
+                <span v-if="keywordCards.includes(c.id)" class="card-picker-check">✓</span>
+              </div>
+            </div>
+          </div>
         </div>
 
-        <!-- Suggested Actions -->
-        <div v-if="insightsData.actions && insightsData.actions.length" class="card" style="margin-top:20px">
-          <div class="card-header"><h3 class="card-title">Suggested Actions</h3></div>
-          <div v-for="(a, i) in insightsData.actions" :key="i" class="action-item">
-            <span class="action-priority" :class="'ap-' + a.priority">{{ a.priority }}</span>
-            <div>
-              <div class="font-semibold text-sm">{{ a.action }}</div>
-              <div class="text-xs text-muted">{{ a.reason }}</div>
+        <!-- Dynamic Card Grid -->
+        <div v-else>
+          <div class="ret-card-grid">
+            <template v-for="cid in keywordCards" :key="cid">
+
+              <!-- Trending Now -->
+              <div v-if="cid === 'trending_keywords'" class="ret-dyn-card ret-half">
+                <button class="ret-card-close" @click="removeKeywordCard(cid)">&times;</button>
+                <div class="card">
+                  <div class="card-header"><h3 class="card-title">🔥 Trending Now</h3><span class="text-xs text-muted">Real-time trending searches</span></div>
+                  <div v-if="trendingKeywords.length" class="kw-trending-list">
+                    <div v-for="(kw, i) in trendingKeywords.slice(0, 10)" :key="i" class="kw-trending-item">
+                      <span class="kw-trending-rank">#{{ i + 1 }}</span>
+                      <span class="kw-trending-name">{{ kw.keyword || kw.title || kw }}</span>
+                      <span v-if="kw.traffic" class="kw-trending-traffic">{{ kw.traffic }}</span>
+                    </div>
+                  </div>
+                  <div v-else class="empty-inline">Loading trending keywords...</div>
+                </div>
+              </div>
+
+              <!-- Keyword Opportunities -->
+              <div v-if="cid === 'keyword_scores'" class="ret-dyn-card ret-half">
+                <button class="ret-card-close" @click="removeKeywordCard(cid)">&times;</button>
+                <div class="card">
+                  <div class="card-header"><h3 class="card-title">🎯 Keyword Opportunities</h3><span class="text-xs text-muted">AI-scored by potential</span></div>
+                  <div v-if="keywordScoresList.length" class="kw-scores-list">
+                    <div v-for="(kw, i) in keywordScoresList" :key="i" class="kw-score-item">
+                      <div class="kw-score-gauge" :class="'kw-grade-' + (kw.grade || 'C').charAt(0).toLowerCase()">{{ kw.score || 0 }}</div>
+                      <div class="kw-score-info">
+                        <div class="kw-score-keyword">{{ kw.keyword }}</div>
+                        <div class="kw-score-rec">{{ kw.recommendation || kw.grade_label || '' }}</div>
+                      </div>
+                      <span v-if="kw.grade" class="kw-score-grade" :class="'kw-grade-' + kw.grade.charAt(0).toLowerCase()">{{ kw.grade }}</span>
+                    </div>
+                  </div>
+                  <div v-else class="empty-inline">Add tracked keywords to see scores</div>
+                </div>
+              </div>
+
+              <!-- AI Suggestions -->
+              <div v-if="cid === 'keyword_suggestions'" class="ret-dyn-card ret-full">
+                <button class="ret-card-close" @click="removeKeywordCard(cid)">&times;</button>
+                <div class="card">
+                  <div class="card-header"><h3 class="card-title">🤖 AI Keyword Suggestions</h3><span class="text-xs text-muted">Based on your site content & industry</span></div>
+                  <div v-if="keywordSuggestionsList.length" class="kw-suggestions-grid">
+                    <div v-for="(kw, i) in keywordSuggestionsList" :key="i" class="kw-suggestion-chip">
+                      <span class="kw-suggestion-text">{{ kw.keyword || kw }}</span>
+                      <span v-if="kw.relevance" class="kw-suggestion-rel">{{ kw.relevance }}%</span>
+                      <span v-if="kw.source" class="kw-suggestion-src">{{ kw.source }}</span>
+                    </div>
+                  </div>
+                  <div v-else class="empty-inline">Analyzing your site for keyword opportunities...</div>
+                </div>
+              </div>
+
+              <!-- Tracked Keywords -->
+              <div v-if="cid === 'keyword_tracker'" class="ret-dyn-card ret-full">
+                <button class="ret-card-close" @click="removeKeywordCard(cid)">&times;</button>
+                <div class="card">
+                  <div class="card-header"><h3 class="card-title">📊 Tracked Keywords</h3><span class="text-xs text-muted">Monitor your rankings over time</span></div>
+                  <div class="kw-tracker-note">
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" style="flex-shrink:0"><circle cx="7" cy="7" r="6"/><path d="M7 4v3M7 9v1"/></svg>
+                    <span>Add keywords via the API to start tracking rank history. Scores refresh automatically.</span>
+                  </div>
+                </div>
+              </div>
+
+            </template>
+
+            <!-- Inline + Add Widget -->
+            <div class="ret-dyn-card ret-add-inline">
+              <button class="ret-add-btn" @click.stop="showKeywordPicker = !showKeywordPicker">
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 3v14M3 10h14"/></svg>
+              </button>
+              <div v-if="showKeywordPicker" class="card-picker-dropdown" @click.stop>
+                <div class="card-picker-header">Add Widget</div>
+                <div v-for="c in keywordAvailableCards" :key="c.id" class="card-picker-item" :class="{ disabled: keywordCards.includes(c.id) }" @click="addKeywordCard(c.id)">
+                  <div class="card-picker-icon" v-html="c.icon"></div>
+                  <div class="card-picker-info">
+                    <div class="card-picker-name">{{ c.title }}</div>
+                    <div class="card-picker-desc">{{ c.desc }}</div>
+                  </div>
+                  <span v-if="keywordCards.includes(c.id)" class="card-picker-check">✓</span>
+                </div>
+              </div>
             </div>
-            <span v-if="a.impact" class="text-sm font-semibold">{{ a.impact }}</span>
           </div>
         </div>
       </div>
@@ -800,6 +1021,7 @@ const tabs = [
   { id: 'retention', svg: '<path d="M1 8a7 7 0 0114 0M12 5l3 3-3 3"/><circle cx="8" cy="8" r="2"/>', label: 'Retention' },
   { id: 'flows', svg: '<path d="M1 4h4l3 4-3 4H1M15 4h-4l-3 4 3 4h4"/>', label: 'Flows' },
   { id: 'insights', svg: '<circle cx="8" cy="6" r="4"/><path d="M5 10v1a3 3 0 006 0v-1"/><line x1="8" y1="14" x2="8" y2="15"/>', label: 'AI Insights' },
+  { id: 'keywords', svg: '<circle cx="7" cy="7" r="5"/><path d="M11 11l3 3"/>', label: 'Keywords' },
   { id: 'events', svg: '<path d="M3 2h10v12H3zM6 5h4M6 8h4M6 11h2"/>', label: 'Events' },
 ]
 
@@ -909,6 +1131,98 @@ function removeFlowCard(id) {
   flowCards.value = flowCards.value.filter(c => c !== id)
   _saveFlowCards()
 }
+
+// ── Customizable Insight Cards ──
+const insightAvailableCards = [
+  { id: 'growth_actions', title: 'Growth Actions', desc: 'Prioritized action items ranked by expected impact', icon: '<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2l2 4h4l-3 3 1 5-4-2-4 2 1-5-3-3h4z"/></svg>', size: 'full' },
+  { id: 'anomalies', title: 'Anomaly Detection', desc: 'Traffic spikes, drops, and unusual behavioral patterns', icon: '<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 12l3-2 3 4 3-8 3 6"/></svg>', size: 'half' },
+  { id: 'content_perf', title: 'Content Performance', desc: 'Top and underperforming pages with improvement tips', icon: '<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="12" height="12" rx="2"/><path d="M5 6h6M5 9h4"/></svg>', size: 'half' },
+  { id: 'engagement_health', title: 'Engagement Health', desc: 'Bounce, depth, and return rate with improvement suggestions', icon: '<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2C4 2 1 8 1 8s3 6 7 6 7-6 7-6-3-6-7-6z"/><circle cx="8" cy="8" r="2"/></svg>', size: 'full' },
+]
+
+const _insightStorageKey = computed(() => `ftb_insight_cards_${store.activeWebsiteId}`)
+const insightCards = ref([])
+const showInsightPicker = ref(false)
+
+onMounted(() => {
+  try {
+    const saved = localStorage.getItem(_insightStorageKey.value)
+    if (saved) insightCards.value = JSON.parse(saved)
+  } catch {}
+})
+
+function _saveInsightCards() {
+  try { localStorage.setItem(_insightStorageKey.value, JSON.stringify(insightCards.value)) } catch {}
+}
+
+function addInsightCard(id) {
+  if (insightCards.value.includes(id)) return
+  insightCards.value.push(id)
+  _saveInsightCards()
+  showInsightPicker.value = false
+}
+
+function removeInsightCard(id) {
+  insightCards.value = insightCards.value.filter(c => c !== id)
+  _saveInsightCards()
+}
+
+// Computed: filter insights by category
+const allInsights = computed(() => insightsData.value?.insights || [])
+const anomalyInsights = computed(() => allInsights.value.filter(i => ['anomaly', 'warning', 'spike', 'drop'].includes(i.type)))
+const contentInsights = computed(() => allInsights.value.filter(i => ['content', 'opportunity', 'success'].includes(i.type)))
+const engagementInsights = computed(() => allInsights.value.filter(i => ['engagement', 'trend', 'info'].includes(i.type)))
+
+// ── Customizable Keyword Cards ──
+const keywordAvailableCards = [
+  { id: 'trending_keywords', title: 'Trending Now', desc: 'Real-time trending searches from Google Trends', icon: '<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 14l4-6 3 3 5-9"/></svg>', size: 'half' },
+  { id: 'keyword_scores', title: 'Keyword Opportunities', desc: 'AI-scored keywords with quick-win detection and grades', icon: '<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 4v4l3 2"/></svg>', size: 'half' },
+  { id: 'keyword_suggestions', title: 'AI Suggestions', desc: 'Auto-generated keywords from your site content and industry', icon: '<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 12l2-4h4l2 4M6 8V4l2-2 2 2v4"/></svg>', size: 'full' },
+  { id: 'keyword_tracker', title: 'Tracked Keywords', desc: 'Monitor keyword rankings and position changes over time', icon: '<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="12" height="12" rx="1"/><path d="M2 6h12M2 10h12M6 2v12M10 2v12"/></svg>', size: 'full' },
+]
+
+const _kwStorageKey = computed(() => `ftb_kw_cards_${store.activeWebsiteId}`)
+const keywordCards = ref([])
+const showKeywordPicker = ref(false)
+
+onMounted(() => {
+  try {
+    const saved = localStorage.getItem(_kwStorageKey.value)
+    if (saved) keywordCards.value = JSON.parse(saved)
+  } catch {}
+})
+
+function _saveKwCards() {
+  try { localStorage.setItem(_kwStorageKey.value, JSON.stringify(keywordCards.value)) } catch {}
+}
+
+function addKeywordCard(id) {
+  if (keywordCards.value.includes(id)) return
+  keywordCards.value.push(id)
+  _saveKwCards()
+  showKeywordPicker.value = false
+}
+
+function removeKeywordCard(id) {
+  keywordCards.value = keywordCards.value.filter(c => c !== id)
+  _saveKwCards()
+}
+
+// Computed: keyword data accessors
+const keywordsData = computed(() => cached.value.keywordsData || {})
+const trendingKeywords = computed(() => {
+  const t = keywordsData.value.trending
+  return Array.isArray(t) ? t : (t?.keywords || [])
+})
+const keywordScoresList = computed(() => {
+  const s = keywordsData.value.scores
+  return Array.isArray(s) ? s : (s?.scores || s?.keywords || [])
+})
+const keywordSuggestionsList = computed(() => {
+  const s = keywordsData.value.suggestions
+  return Array.isArray(s) ? s : (s?.suggestions || s?.keywords || [])
+})
+
 const flowData = computed(() => cached.value.flowData || {})
 const entryExitData = computed(() => cached.value.entryExitData || {})
 const insightsData = computed(() => cached.value.insightsData || {})
@@ -1918,6 +2232,63 @@ onBeforeUnmount(() => {
 .journey-more-btn:hover { background: var(--brand-accent); color: white; }
 .journey-collapse-btn { display: inline-flex; align-items: center; padding: 1px 8px; border: none; border-radius: var(--radius-full); background: var(--bg-surface); color: var(--text-muted); font-size: 10px; cursor: pointer; margin-left: 6px; transition: all 0.15s; }
 .journey-collapse-btn:hover { color: var(--text-primary); }
+
+/* ── Growth Actions ── */
+.growth-action-item { display: flex; align-items: flex-start; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border-color); }
+.growth-action-item:last-child { border-bottom: none; }
+.growth-action-priority { flex-shrink: 0; padding: 3px 10px; border-radius: var(--radius-full); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+.gap-high { background: rgba(239,68,68,0.12); color: #ef4444; }
+.gap-medium { background: rgba(245,158,11,0.12); color: #f59e0b; }
+.gap-low { background: rgba(34,197,94,0.12); color: #22c55e; }
+.growth-action-content { flex: 1; min-width: 0; }
+.growth-action-title { font-size: 13px; font-weight: 600; color: var(--text-primary); margin-bottom: 2px; }
+.growth-action-reason { font-size: 11px; color: var(--text-muted); line-height: 1.4; }
+.growth-action-impact { flex-shrink: 0; font-size: 12px; font-weight: 700; color: var(--brand-accent); white-space: nowrap; }
+
+/* ── Insight Compact Items ── */
+.insight-compact-item { display: flex; align-items: flex-start; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border-color); }
+.insight-compact-item:last-child { border-bottom: none; }
+.insight-compact-badge { flex-shrink: 0; padding: 2px 8px; border-radius: var(--radius-full); font-size: 9px; font-weight: 700; text-transform: uppercase; }
+.icb-anomaly, .icb-warning, .icb-spike { background: rgba(239,68,68,0.12); color: #ef4444; }
+.icb-drop { background: rgba(245,158,11,0.12); color: #f59e0b; }
+.icb-content, .icb-opportunity, .icb-success { background: rgba(34,197,94,0.12); color: #22c55e; }
+.icb-engagement, .icb-trend, .icb-info { background: rgba(99,102,241,0.12); color: var(--brand-accent); }
+.insight-compact-body { flex: 1; min-width: 0; }
+.insight-compact-title { font-size: 13px; font-weight: 600; color: var(--text-primary); margin-bottom: 2px; }
+.insight-compact-desc { font-size: 11px; color: var(--text-muted); line-height: 1.4; }
+.insight-compact-action { font-size: 11px; color: var(--brand-accent); font-weight: 600; margin-top: 4px; }
+.insight-compact-metric { flex-shrink: 0; font-size: 14px; font-weight: 700; color: var(--text-primary); }
+
+/* ── Keyword Cards ── */
+.kw-trending-list { padding: 4px 0; }
+.kw-trending-item { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border-color); }
+.kw-trending-item:last-child { border-bottom: none; }
+.kw-trending-rank { flex-shrink: 0; width: 28px; height: 28px; border-radius: 50%; background: var(--bg-surface); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: var(--text-muted); }
+.kw-trending-item:nth-child(-n+3) .kw-trending-rank { background: rgba(245,158,11,0.15); color: #f59e0b; }
+.kw-trending-name { flex: 1; font-size: 13px; font-weight: 500; color: var(--text-primary); }
+.kw-trending-traffic { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+
+.kw-scores-list { padding: 4px 0; }
+.kw-score-item { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border-color); }
+.kw-score-item:last-child { border-bottom: none; }
+.kw-score-gauge { flex-shrink: 0; width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; color: white; }
+.kw-grade-a { background: #22c55e; }
+.kw-grade-b { background: #3b82f6; }
+.kw-grade-c { background: #f59e0b; }
+.kw-grade-d, .kw-grade-f { background: #ef4444; }
+.kw-score-info { flex: 1; min-width: 0; }
+.kw-score-keyword { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+.kw-score-rec { font-size: 11px; color: var(--text-muted); line-height: 1.3; }
+.kw-score-grade { font-size: 14px; font-weight: 800; }
+
+.kw-suggestions-grid { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 0; }
+.kw-suggestion-chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: var(--radius-full); background: var(--bg-surface); border: 1px solid var(--border-color); transition: all 0.15s; cursor: default; }
+.kw-suggestion-chip:hover { border-color: var(--brand-accent); background: rgba(99,102,241,0.06); }
+.kw-suggestion-text { font-size: 12px; font-weight: 500; color: var(--text-primary); }
+.kw-suggestion-rel { font-size: 10px; font-weight: 700; color: var(--brand-accent); }
+.kw-suggestion-src { font-size: 9px; color: var(--text-muted); text-transform: uppercase; }
+
+.kw-tracker-note { display: flex; align-items: flex-start; gap: 10px; padding: 16px; background: var(--bg-surface); border-radius: var(--radius-md); font-size: 12px; color: var(--text-muted); line-height: 1.5; }
 
 /* ── Engagement ── */
 .engagement-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
