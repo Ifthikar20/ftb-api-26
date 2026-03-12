@@ -53,7 +53,13 @@ export const useAppStore = defineStore('app', () => {
 
     function setWebsites(list) {
         websites.value = list
-        if (!activeWebsite.value && list.length > 0) {
+        // If active website was deleted or doesn't exist in the new list, reset it
+        if (activeWebsite.value) {
+            const stillExists = list.find(w => w.id === activeWebsite.value.id)
+            if (!stillExists) {
+                activeWebsite.value = list.length > 0 ? list[0] : null
+            }
+        } else if (list.length > 0) {
             activeWebsite.value = list[0]
         }
     }
