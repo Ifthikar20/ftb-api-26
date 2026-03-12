@@ -943,6 +943,88 @@
                 </div>
               </div>
 
+              <!-- SEO Keyword Scanner -->
+              <div v-if="cid === 'seo_scanner'" class="ret-dyn-card ret-full">
+                <button class="ret-card-close" @click="removeKeywordCard(cid)">&times;</button>
+                <div class="card">
+                  <div class="card-header">
+                    <h3 class="card-title">🔍 SEO Keyword Scanner</h3>
+                    <button class="btn btn-primary btn-sm" @click="runKeywordScan" :disabled="scanLoading">
+                      {{ scanLoading ? 'Scanning...' : (scanData.score != null ? 'Re-scan' : 'Scan Site') }}
+                    </button>
+                  </div>
+
+                  <div v-if="scanData.score != null" class="seo-scanner-results">
+                    <!-- Score Gauge -->
+                    <div class="seo-score-row">
+                      <div class="seo-score-gauge" :class="scanData.score >= 70 ? 'sg-good' : scanData.score >= 40 ? 'sg-mid' : 'sg-bad'">
+                        <span class="seo-score-num">{{ scanData.score }}</span>
+                        <span class="seo-score-label">/ 100</span>
+                      </div>
+                      <div class="seo-score-meta">
+                        <div class="seo-score-verdict" :class="scanData.score >= 70 ? 'sv-good' : scanData.score >= 40 ? 'sv-mid' : 'sv-bad'">
+                          {{ scanData.score >= 70 ? 'Good' : scanData.score >= 40 ? 'Needs Work' : 'Poor' }}
+                        </div>
+                        <div class="text-xs text-muted">{{ scanData.page_meta?.word_count || 0 }} words • {{ scanData.keywords?.length || 0 }} keywords found</div>
+                        <div v-if="scanData.scanned_at" class="text-xs text-muted" style="margin-top:2px">Scanned {{ new Date(scanData.scanned_at).toLocaleString() }}</div>
+                      </div>
+                    </div>
+
+                    <!-- Score Breakdown -->
+                    <div class="seo-breakdown">
+                      <h4 class="seo-section-title">Score Breakdown</h4>
+                      <div v-for="(comp, key) in scanData.score_breakdown" :key="key" v-if="comp && comp.label" class="seo-br-item">
+                        <div class="seo-br-label">{{ comp.label }} <span class="text-xs text-muted">({{ comp.weight }}%)</span></div>
+                        <div class="seo-br-bar-wrap">
+                          <div class="seo-br-bar" :style="{ width: comp.score + '%' }" :class="comp.score >= 70 ? 'sb-good' : comp.score >= 40 ? 'sb-mid' : 'sb-bad'"></div>
+                        </div>
+                        <span class="seo-br-val">{{ comp.score }}</span>
+                      </div>
+                    </div>
+
+                    <!-- Extracted Keywords -->
+                    <div v-if="scanData.keywords?.length" class="seo-keywords-section">
+                      <h4 class="seo-section-title">Extracted Keywords</h4>
+                      <div class="seo-kw-table">
+                        <div class="seo-kw-hdr">
+                          <span>Keyword</span><span>Trend</span><span>Density</span><span>Found In</span>
+                        </div>
+                        <div v-for="(k, i) in scanData.keywords.slice(0, 10)" :key="i" class="seo-kw-row">
+                          <span class="seo-kw-word">{{ k.keyword }}</span>
+                          <span class="seo-kw-trend">
+                            <span class="seo-trend-dot" :class="(scanData.trends?.[k.keyword]?.trend || 'unknown') === 'rising' ? 'st-up' : (scanData.trends?.[k.keyword]?.trend || 'unknown') === 'declining' ? 'st-down' : 'st-flat'"></span>
+                            {{ scanData.trends?.[k.keyword]?.interest || 0 }}
+                          </span>
+                          <span :class="'seo-density ' + ('sd-' + k.density_status)">{{ k.density }}%</span>
+                          <span class="seo-kw-locs">
+                            <span v-for="l in k.locations" :key="l" class="seo-loc-pill">{{ l }}</span>
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Synonym Suggestions -->
+                    <div v-if="scanData.suggestions?.length" class="seo-synonyms-section">
+                      <h4 class="seo-section-title">💡 Better Alternatives</h4>
+                      <div class="seo-syn-table">
+                        <div class="seo-syn-hdr">
+                          <span>Your Keyword</span><span>→</span><span>Suggested</span><span>Improvement</span>
+                        </div>
+                        <div v-for="(s, i) in scanData.suggestions.slice(0, 8)" :key="i" class="seo-syn-row">
+                          <span class="seo-syn-orig">{{ s.original }}</span>
+                          <span class="seo-syn-arrow">→</span>
+                          <span class="seo-syn-alt">{{ s.suggested }}</span>
+                          <span class="seo-syn-delta">+{{ s.improvement }}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div v-else-if="scanData.error" class="empty-inline">{{ scanData.error }}</div>
+                  <div v-else class="empty-inline">Click scan to analyze your site's keywords and get optimization suggestions</div>
+                </div>
+              </div>
+
             </template>
 
             <!-- Inline + Add Widget -->
@@ -1244,6 +1326,7 @@ const keywordAvailableCards = [
   { id: 'keyword_tracker', title: 'Tracked Keywords', desc: 'Monitor keyword rankings and position changes over time', icon: '<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="12" height="12" rx="1"/><path d="M2 6h12M2 10h12M6 2v12M10 2v12"/></svg>', size: 'full' },
   { id: 'keyword_compare', title: 'Keyword Comparison', desc: 'Compare up to 5 keywords side-by-side using Google Trends', icon: '<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 14V4M6 14V2M10 14V6M14 14V8"/></svg>', size: 'full' },
   { id: 'related_keywords', title: 'Related Keywords', desc: 'Discover rising and top related queries for any keyword', icon: '<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="3"/><path d="M8 1v4M8 11v4M1 8h4M11 8h4"/></svg>', size: 'full' },
+  { id: 'seo_scanner', title: 'SEO Keyword Scanner', desc: 'Scan your site, compare keywords to Google Trends, get synonym suggestions + progressive SEO score', icon: '<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="5"/><path d="M11 11l3 3"/><path d="M5 7h4M7 5v4"/></svg>', size: 'full' },
 ]
 
 const _kwStorageKey = computed(() => `ftb_kw_cards_${store.activeWebsiteId}`)
@@ -1308,6 +1391,23 @@ async function fetchRelatedKeywords() {
     relatedData.value = { error: 'Failed to fetch related keywords' }
   } finally {
     relatedLoading.value = false
+  }
+}
+
+// Computed: keyword data accessors
+// ── SEO Keyword Scanner ──
+const scanData = ref({})
+const scanLoading = ref(false)
+
+async function runKeywordScan() {
+  scanLoading.value = true
+  try {
+    const res = await analyticsApi.keywordScanTrigger(store.activeWebsiteId)
+    scanData.value = res.data?.data || res.data || {}
+  } catch (e) {
+    scanData.value = { error: 'Scan failed — check your site URL is accessible' }
+  } finally {
+    scanLoading.value = false
   }
 }
 
@@ -2415,6 +2515,59 @@ onBeforeUnmount(() => {
 .kw-related-name { font-size: 12px; color: var(--text-primary); }
 .kw-related-value { font-size: 12px; font-weight: 700; color: var(--text-muted); }
 .kw-related-value.rising { color: #22c55e; }
+
+/* ── SEO Keyword Scanner ── */
+.seo-scanner-results { display: flex; flex-direction: column; gap: 20px; }
+.seo-section-title { font-size: 13px; font-weight: 700; color: var(--text-primary); margin: 0 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--border-color); }
+
+.seo-score-row { display: flex; align-items: center; gap: 20px; }
+.seo-score-gauge { width: 80px; height: 80px; border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center; border: 4px solid; flex-shrink: 0; }
+.sg-good { border-color: #22c55e; background: rgba(34,197,94,0.06); }
+.sg-mid { border-color: #f59e0b; background: rgba(245,158,11,0.06); }
+.sg-bad { border-color: #ef4444; background: rgba(239,68,68,0.06); }
+.seo-score-num { font-size: 24px; font-weight: 800; color: var(--text-primary); line-height: 1; }
+.seo-score-label { font-size: 10px; color: var(--text-muted); font-weight: 600; }
+.seo-score-meta { flex: 1; }
+.seo-score-verdict { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
+.sv-good { color: #22c55e; }
+.sv-mid { color: #f59e0b; }
+.sv-bad { color: #ef4444; }
+
+.seo-breakdown { display: flex; flex-direction: column; gap: 6px; }
+.seo-br-item { display: flex; align-items: center; gap: 10px; }
+.seo-br-label { width: 160px; font-size: 12px; color: var(--text-primary); flex-shrink: 0; }
+.seo-br-bar-wrap { flex: 1; height: 8px; background: var(--bg-surface); border-radius: 4px; overflow: hidden; }
+.seo-br-bar { height: 100%; border-radius: 4px; transition: width 0.4s ease; }
+.sb-good { background: #22c55e; }
+.sb-mid { background: #f59e0b; }
+.sb-bad { background: #ef4444; }
+.seo-br-val { width: 28px; text-align: right; font-size: 12px; font-weight: 700; color: var(--text-primary); }
+
+.seo-kw-table, .seo-syn-table { width: 100%; }
+.seo-kw-hdr, .seo-syn-hdr { display: grid; gap: 8px; padding: 6px 0; border-bottom: 2px solid var(--border-color); font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.5px; }
+.seo-kw-hdr { grid-template-columns: 2fr 1fr 1fr 2fr; }
+.seo-syn-hdr { grid-template-columns: 2fr 30px 2fr 1fr; }
+.seo-kw-row, .seo-syn-row { display: grid; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--border-color); align-items: center; font-size: 12px; }
+.seo-kw-row { grid-template-columns: 2fr 1fr 1fr 2fr; }
+.seo-syn-row { grid-template-columns: 2fr 30px 2fr 1fr; }
+.seo-kw-row:last-child, .seo-syn-row:last-child { border-bottom: none; }
+.seo-kw-word { font-weight: 600; color: var(--text-primary); }
+.seo-kw-trend { display: flex; align-items: center; gap: 4px; font-weight: 600; }
+.seo-trend-dot { width: 8px; height: 8px; border-radius: 50%; }
+.st-up { background: #22c55e; }
+.st-down { background: #ef4444; }
+.st-flat { background: #f59e0b; }
+.seo-density { font-weight: 600; }
+.sd-optimal { color: #22c55e; }
+.sd-low { color: #f59e0b; }
+.sd-high { color: #ef4444; }
+.seo-kw-locs { display: flex; flex-wrap: wrap; gap: 4px; }
+.seo-loc-pill { padding: 1px 6px; border-radius: var(--radius-full); font-size: 9px; font-weight: 700; text-transform: uppercase; background: rgba(99,102,241,0.1); color: var(--brand-accent); }
+
+.seo-syn-orig { color: var(--text-muted); font-weight: 500; }
+.seo-syn-arrow { color: var(--text-muted); text-align: center; }
+.seo-syn-alt { font-weight: 600; color: var(--brand-accent); }
+.seo-syn-delta { font-weight: 700; color: #22c55e; }
 
 /* ── Engagement ── */
 .engagement-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }

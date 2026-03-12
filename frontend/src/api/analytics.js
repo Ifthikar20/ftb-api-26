@@ -46,4 +46,6 @@ export default {
     keywordScores: (wid) => api.get(`/analytics/${wid}/keywords/scores/`),
     keywordSuggestions: (wid) => api.get(`/analytics/${wid}/keywords/suggestions/`),
     keywordInterest: (wid, data) => api.post(`/analytics/${wid}/keywords/interest/`, data),
+    keywordScan: (wid) => api.get(`/analytics/${wid}/keywords/scan/`),
+    keywordScanTrigger: (wid) => api.post(`/analytics/${wid}/keywords/scan/`),
 }
