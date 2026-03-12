@@ -273,6 +273,36 @@
           <div v-else class="fc-empty">Scan your website to see which pages were crawled and what keywords each page targets.</div>
         </div>
 
+        <!-- Dynamic SEO Optimizer -->
+        <div v-if="cardId === 'seo_optimizer'" class="card feature-card fc-highlight">
+          <div class="fc-head">
+            <div class="fc-icon">⚡</div>
+            <div class="fc-title-wrap"><h3 class="fc-title">Dynamic SEO Optimizer</h3><p class="fc-sub">Auto-optimize your live website</p></div>
+            <button class="fc-remove" @click="removeCard(cardId)" title="Remove">×</button>
+          </div>
+          <div class="fc-body">
+            <div v-if="embedCode" class="embed-section">
+              <div class="embed-label">Paste this in your website's <code>&lt;head&gt;</code>:</div>
+              <div class="embed-code-wrap">
+                <pre class="embed-code">{{ embedCode }}</pre>
+                <button class="embed-copy" @click="copyEmbed" :class="{ copied: embedCopied }">{{ embedCopied ? '✓ Copied' : 'Copy' }}</button>
+              </div>
+              <div class="embed-features">
+                <div class="ef-title">What it auto-optimizes:</div>
+                <div class="ef-list">
+                  <span class="ef-item">✓ Schema markup (JSON-LD)</span>
+                  <span class="ef-item">✓ Open Graph tags</span>
+                  <span class="ef-item">✓ Canonical URLs</span>
+                  <span class="ef-item">✓ hreflang tags</span>
+                  <span class="ef-item">✓ Geo meta tags</span>
+                  <span class="ef-item">✓ Title & meta optimization</span>
+                </div>
+              </div>
+            </div>
+            <div v-else class="fc-empty">Loading embed code...</div>
+          </div>
+        </div>
+
       </template>
     </div>
 
@@ -347,11 +377,15 @@ const availableCards = [
   { id: 'position_tracking', name: 'Position Tracking', desc: 'Monitor keyword rankings in Google and AI', icon: '📍' },
   { id: 'serp_data', name: 'Google SERP Data', desc: 'Real rankings, volume, CPC via DataForSEO', icon: '🔎' },
   { id: 'geo_seo', name: 'Geo SEO & Tagging', desc: 'Regional optimization and geo tag detection', icon: '🌍' },
+  { id: 'seo_optimizer', name: 'Dynamic SEO Optimizer', desc: 'Auto-optimize schema, OG, canonical on your live site', icon: '⚡' },
   { id: 'pages_scanned', name: 'Pages Scanned', desc: 'Per-page keyword breakdown', icon: '📑' },
 ]
 
 const defaultCards = ['site_audit', 'keyword_research', 'position_tracking', 'ai_analysis']
 const activeCards = ref([...defaultCards])
+
+const embedCode = ref('')
+const embedCopied = ref(false)
 
 function loadCards() {
   try { const saved = localStorage.getItem(STORAGE_KEY); if (saved) activeCards.value = JSON.parse(saved) } catch {}
@@ -424,8 +458,16 @@ onMounted(async () => {
   loadCards()
   await fetchKeywords()
   try { const res = await analyticsApi.keywordScan(props.websiteId); const d = res.data?.data || res.data || {}; if (d.score != null) scanData.value = d } catch (e) {}
+  // Fetch embed code
+  try { const res = await analyticsApi.seoEmbed(props.websiteId); embedCode.value = res.data?.data?.embed_code || '' } catch (e) {}
   loading.value = false
 })
+
+function copyEmbed() {
+  navigator.clipboard.writeText(embedCode.value)
+  embedCopied.value = true
+  setTimeout(() => embedCopied.value = false, 2000)
+}
 </script>
 
 <style scoped>
@@ -588,6 +630,21 @@ onMounted(async () => {
 .empty-guide-icon { font-size: 44px; margin-bottom: 10px; }
 .empty-guide h3 { font-size: var(--font-lg); color: var(--text-primary); margin: 0 0 8px; }
 .empty-guide p { font-size: var(--font-sm); color: var(--text-secondary); max-width: 400px; margin: 0 auto; line-height: 1.5; }
+
+/* Dynamic SEO Optimizer */
+.fc-highlight { border-left: 3px solid var(--brand-accent); }
+.embed-section { display: flex; flex-direction: column; gap: 10px; }
+.embed-label { font-size: 12px; color: var(--text-secondary); }
+.embed-label code { font-size: 11px; background: var(--bg-surface); padding: 1px 4px; border-radius: 2px; }
+.embed-code-wrap { position: relative; background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-md); overflow: hidden; }
+.embed-code { font-size: 10px; padding: 10px 12px; padding-right: 60px; margin: 0; overflow-x: auto; white-space: pre-wrap; word-break: break-all; color: var(--brand-accent); font-family: 'SF Mono', 'Fira Code', monospace; line-height: 1.5; }
+.embed-copy { position: absolute; top: 6px; right: 6px; font-size: 10px; padding: 3px 10px; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--bg-card); color: var(--text-primary); cursor: pointer; font-weight: 600; transition: all 0.15s; }
+.embed-copy:hover { border-color: var(--brand-accent); color: var(--brand-accent); }
+.embed-copy.copied { background: #22c55e; color: white; border-color: #22c55e; }
+.embed-features { padding: 8px 10px; background: var(--bg-surface); border-radius: var(--radius-md); }
+.ef-title { font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 6px; }
+.ef-list { display: flex; flex-wrap: wrap; gap: 4px; }
+.ef-item { font-size: 10px; padding: 2px 8px; background: rgba(34,197,94,0.08); color: #16a34a; border-radius: var(--radius-full); font-weight: 600; }
 
 /* Responsive */
 @media (max-width: 900px) { .cards-grid { grid-template-columns: 1fr; } .split-screen { grid-template-columns: 1fr; } .ai-engine-grid { grid-template-columns: 1fr; } .alt-grid { grid-template-columns: 1fr; } .comp-grid { grid-template-columns: 1fr; } }

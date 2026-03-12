@@ -48,4 +48,5 @@ export default {
     keywordInterest: (wid, data) => api.post(`/analytics/${wid}/keywords/interest/`, data),
     keywordScan: (wid) => api.get(`/analytics/${wid}/keywords/scan/`),
     keywordScanTrigger: (wid) => api.post(`/analytics/${wid}/keywords/scan/`),
+    seoEmbed: (wid) => api.get(`/analytics/${wid}/seo-embed/`),
 }

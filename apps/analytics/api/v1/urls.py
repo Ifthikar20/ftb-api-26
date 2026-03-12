@@ -3,6 +3,7 @@ from . import views
 from . import keyword_views
 from . import analytics_views
 from . import keyword_scan_views
+from . import dynamic_seo_views
 
 urlpatterns = [
     # Existing
@@ -35,4 +36,10 @@ urlpatterns = [
     path("<uuid:website_id>/visitors/<uuid:visitor_id>/timeline/", analytics_views.VisitorTimelineView.as_view(), name="analytics-visitor-timeline"),
     path("<uuid:website_id>/insights/", analytics_views.AIInsightsView.as_view(), name="analytics-insights"),
     path("<uuid:website_id>/live/", analytics_views.LiveEventsView.as_view(), name="analytics-live"),
+
+    # Dynamic SEO Optimization
+    path("<uuid:website_id>/seo-script/", dynamic_seo_views.SEOScriptView.as_view(), name="seo-script"),
+    path("<uuid:website_id>/seo-rules/", dynamic_seo_views.SEORulesView.as_view(), name="seo-rules"),
+    path("<uuid:website_id>/seo-report/", dynamic_seo_views.SEOReportView.as_view(), name="seo-report"),
+    path("<uuid:website_id>/seo-embed/", dynamic_seo_views.SEOEmbedCodeView.as_view(), name="seo-embed"),
 ]
