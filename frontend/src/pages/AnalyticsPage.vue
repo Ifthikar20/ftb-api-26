@@ -269,177 +269,184 @@
       </div>
 
       <!-- ═══════════ TAB 3: Retention ═══════════ -->
-      <div v-show="activeTab === 'retention'">
+      <div v-show="activeTab === 'retention'" @click.self="showCardPicker = false">
 
-        <!-- Engagement Score + New vs Returning row -->
-        <div class="analytics-row" style="margin-bottom:20px">
-
-          <!-- Engagement Score Ring -->
-          <div class="card engagement-score-card">
-            <div class="card-header">
-              <h3 class="card-title">Engagement Score</h3>
-              <span class="text-xs text-muted">Composite health metric</span>
-            </div>
-            <div class="engagement-ring-wrap">
-              <svg class="engagement-ring" viewBox="0 0 120 120">
-                <circle cx="60" cy="60" r="50" fill="none" stroke="var(--bg-surface)" stroke-width="8"/>
-                <circle cx="60" cy="60" r="50" fill="none"
-                  :stroke="engScoreColor"
-                  stroke-width="8" stroke-linecap="round"
-                  :stroke-dasharray="engDash"
-                  stroke-dashoffset="0"
-                  transform="rotate(-90 60 60)"
-                  class="ring-progress"/>
-              </svg>
-              <div class="engagement-ring-label">
-                <span class="eng-score-num">{{ engagementData.engagement_score || 0 }}</span>
-                <span class="eng-score-unit">/100</span>
-              </div>
-            </div>
-            <div class="eng-breakdown">
-              <div class="eng-factor">
-                <span class="eng-factor-label">Low Bounce</span>
-                <div class="eng-factor-bar"><div class="eng-factor-fill" :style="{ width: (100 - (engagementData.bounce_rate || 0)) + '%', background: 'var(--color-success)' }"></div></div>
-              </div>
-              <div class="eng-factor">
-                <span class="eng-factor-label">Depth</span>
-                <div class="eng-factor-bar"><div class="eng-factor-fill" :style="{ width: Math.min((engagementData.avg_pages_per_session || 0) / 5 * 100, 100) + '%', background: 'var(--color-info)' }"></div></div>
-              </div>
-              <div class="eng-factor">
-                <span class="eng-factor-label">Return Rate</span>
-                <div class="eng-factor-bar"><div class="eng-factor-fill" :style="{ width: (engagementData.returning_pct || 0) + '%', background: 'var(--brand-accent)' }"></div></div>
-              </div>
-            </div>
+        <!-- Empty State -->
+        <div v-if="!retentionCards.length" class="ret-empty-state">
+          <div class="ret-empty-icon">
+            <svg width="48" height="48" viewBox="0 0 48 48" fill="none" stroke="var(--text-muted)" stroke-width="1.5">
+              <rect x="6" y="6" width="36" height="36" rx="4"/><path d="M24 16v16M16 24h16"/>
+            </svg>
           </div>
-
-          <!-- New vs Returning Donut -->
-          <div class="card">
-            <div class="card-header">
-              <h3 class="card-title">New vs Returning</h3>
-              <span class="text-xs text-muted">{{ engagementData.total_visitors || 0 }} total visitors</span>
-            </div>
-            <div class="donut-wrap">
-              <svg class="donut-chart" viewBox="0 0 120 120">
-                <circle cx="60" cy="60" r="44" fill="none" stroke="var(--color-info)" stroke-width="14"
-                  :stroke-dasharray="newDonutDash"
-                  stroke-dashoffset="0"
-                  transform="rotate(-90 60 60)"
-                  class="donut-arc donut-new"/>
-                <circle cx="60" cy="60" r="44" fill="none" stroke="var(--color-success)" stroke-width="14"
-                  :stroke-dasharray="retDonutDash"
-                  :stroke-dashoffset="retDonutOffset"
-                  transform="rotate(-90 60 60)"
-                  class="donut-arc donut-ret"/>
-              </svg>
-              <div class="donut-center-label">
-                <span class="donut-big">{{ engagementData.returning_pct || 0 }}%</span>
-                <span class="donut-sub">returning</span>
+          <h3 class="ret-empty-title">Build Your Retention Dashboard</h3>
+          <p class="ret-empty-desc">Add widgets to track visitor engagement, retention, and behavior patterns.</p>
+          <div class="ret-add-wrap">
+            <button class="btn btn-primary" @click.stop="showCardPicker = !showCardPicker">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:6px"><path d="M7 1v12M1 7h12"/></svg>
+              Add Widget
+            </button>
+            <div v-if="showCardPicker" class="card-picker-dropdown card-picker-center" @click.stop>
+              <div class="card-picker-header">Choose a widget</div>
+              <div v-for="c in retAvailableCards" :key="c.id" class="card-picker-item" :class="{ disabled: retentionCards.includes(c.id) }" @click="addRetCard(c.id)">
+                <div class="card-picker-icon" v-html="c.icon"></div>
+                <div class="card-picker-info">
+                  <div class="card-picker-name">{{ c.title }}</div>
+                  <div class="card-picker-desc">{{ c.desc }}</div>
+                </div>
+                <span v-if="retentionCards.includes(c.id)" class="card-picker-check">✓</span>
               </div>
-            </div>
-            <div class="donut-legend">
-              <div class="legend-item"><span class="legend-dot" style="background:var(--color-info)"></span>New <b>{{ engagementData.new_visitors || 0 }}</b> ({{ engagementData.new_pct || 0 }}%)</div>
-              <div class="legend-item"><span class="legend-dot" style="background:var(--color-success)"></span>Returning <b>{{ engagementData.returning_visitors || 0 }}</b> ({{ engagementData.returning_pct || 0 }}%)</div>
             </div>
           </div>
         </div>
 
-        <!-- Stat Cards Row -->
-        <div class="ret-stat-grid">
-          <div class="ret-stat-card" :class="{ 'stat-danger': (engagementData.bounce_rate || 0) > 60 }">
-            <div class="ret-stat-icon">
-              <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 12l4-8 4 8"/><line x1="5.5" y1="9" x2="10.5" y2="9"/></svg>
+        <!-- Dynamic Card Grid -->
+        <div v-else class="ret-card-grid">
+          <template v-for="cid in retentionCards" :key="cid">
+
+            <!-- Engagement Score -->
+            <div v-if="cid === 'engagement_score'" class="ret-dyn-card ret-half">
+              <button class="ret-card-close" @click="removeRetCard(cid)" title="Remove">&times;</button>
+              <div class="card engagement-score-card">
+                <div class="card-header"><h3 class="card-title">Engagement Score</h3><span class="text-xs text-muted">Composite health metric</span></div>
+                <div class="engagement-ring-wrap">
+                  <svg class="engagement-ring" viewBox="0 0 120 120">
+                    <circle cx="60" cy="60" r="50" fill="none" stroke="var(--bg-surface)" stroke-width="8"/>
+                    <circle cx="60" cy="60" r="50" fill="none" :stroke="engScoreColor" stroke-width="8" stroke-linecap="round" :stroke-dasharray="engDash" stroke-dashoffset="0" transform="rotate(-90 60 60)" class="ring-progress"/>
+                  </svg>
+                  <div class="engagement-ring-label"><span class="eng-score-num">{{ engagementData.engagement_score || 0 }}</span><span class="eng-score-unit">/100</span></div>
+                </div>
+                <div class="eng-breakdown">
+                  <div class="eng-factor"><span class="eng-factor-label">Low Bounce</span><div class="eng-factor-bar"><div class="eng-factor-fill" :style="{ width: (100 - (engagementData.bounce_rate || 0)) + '%', background: 'var(--color-success)' }"></div></div></div>
+                  <div class="eng-factor"><span class="eng-factor-label">Depth</span><div class="eng-factor-bar"><div class="eng-factor-fill" :style="{ width: Math.min((engagementData.avg_pages_per_session || 0) / 5 * 100, 100) + '%', background: 'var(--color-info)' }"></div></div></div>
+                  <div class="eng-factor"><span class="eng-factor-label">Return Rate</span><div class="eng-factor-bar"><div class="eng-factor-fill" :style="{ width: (engagementData.returning_pct || 0) + '%', background: 'var(--brand-accent)' }"></div></div></div>
+                </div>
+              </div>
             </div>
-            <div class="ret-stat-value">{{ engagementData.bounce_rate || 0 }}%</div>
-            <div class="ret-stat-label">Bounce Rate</div>
-            <div class="ret-stat-hint">{{ (engagementData.bounce_rate || 0) > 50 ? 'Higher than ideal' : 'Healthy range' }}</div>
-          </div>
-          <div class="ret-stat-card">
-            <div class="ret-stat-icon">
-              <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="12" height="12" rx="2"/><path d="M5 6h6M5 8h4M5 10h5"/></svg>
+
+            <!-- New vs Returning -->
+            <div v-if="cid === 'new_vs_returning'" class="ret-dyn-card ret-half">
+              <button class="ret-card-close" @click="removeRetCard(cid)" title="Remove">&times;</button>
+              <div class="card">
+                <div class="card-header"><h3 class="card-title">New vs Returning</h3><span class="text-xs text-muted">{{ engagementData.total_visitors || 0 }} total</span></div>
+                <div class="donut-wrap">
+                  <svg class="donut-chart" viewBox="0 0 120 120">
+                    <circle cx="60" cy="60" r="44" fill="none" stroke="var(--color-info)" stroke-width="14" :stroke-dasharray="newDonutDash" stroke-dashoffset="0" transform="rotate(-90 60 60)" class="donut-arc"/>
+                    <circle cx="60" cy="60" r="44" fill="none" stroke="var(--color-success)" stroke-width="14" :stroke-dasharray="retDonutDash" :stroke-dashoffset="retDonutOffset" transform="rotate(-90 60 60)" class="donut-arc"/>
+                  </svg>
+                  <div class="donut-center-label"><span class="donut-big">{{ engagementData.returning_pct || 0 }}%</span><span class="donut-sub">returning</span></div>
+                </div>
+                <div class="donut-legend">
+                  <div class="legend-item"><span class="legend-dot" style="background:var(--color-info)"></span>New <b>{{ engagementData.new_visitors || 0 }}</b></div>
+                  <div class="legend-item"><span class="legend-dot" style="background:var(--color-success)"></span>Returning <b>{{ engagementData.returning_visitors || 0 }}</b></div>
+                </div>
+              </div>
             </div>
-            <div class="ret-stat-value">{{ engagementData.avg_pages_per_session || 0 }}</div>
-            <div class="ret-stat-label">Pages / Session</div>
-            <div class="ret-stat-hint">Average page depth</div>
-          </div>
-          <div class="ret-stat-card">
-            <div class="ret-stat-icon">
-              <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 4v4l3 2"/></svg>
+
+            <!-- Bounce Rate -->
+            <div v-if="cid === 'bounce_rate'" class="ret-dyn-card ret-quarter">
+              <button class="ret-card-close" @click="removeRetCard(cid)" title="Remove">&times;</button>
+              <div class="ret-stat-card" :class="{ 'stat-danger': (engagementData.bounce_rate || 0) > 60 }">
+                <div class="ret-stat-icon"><svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 12l4-8 4 8"/><line x1="5.5" y1="9" x2="10.5" y2="9"/></svg></div>
+                <div class="ret-stat-value">{{ engagementData.bounce_rate || 0 }}%</div>
+                <div class="ret-stat-label">Bounce Rate</div>
+                <div class="ret-stat-hint">{{ (engagementData.bounce_rate || 0) > 50 ? 'Higher than ideal' : 'Healthy range' }}</div>
+              </div>
             </div>
-            <div class="ret-stat-value">{{ formatDuration(engagementData.avg_session_duration_secs || 0) }}</div>
-            <div class="ret-stat-label">Avg Duration</div>
-            <div class="ret-stat-hint">Time per session</div>
-          </div>
-          <div class="ret-stat-card">
-            <div class="ret-stat-icon">
-              <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 12V4a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2z"/><path d="M5 8h6M8 5v6"/></svg>
+
+            <!-- Pages / Session -->
+            <div v-if="cid === 'pages_session'" class="ret-dyn-card ret-quarter">
+              <button class="ret-card-close" @click="removeRetCard(cid)" title="Remove">&times;</button>
+              <div class="ret-stat-card">
+                <div class="ret-stat-icon"><svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="12" height="12" rx="2"/><path d="M5 6h6M5 8h4M5 10h5"/></svg></div>
+                <div class="ret-stat-value">{{ engagementData.avg_pages_per_session || 0 }}</div>
+                <div class="ret-stat-label">Pages / Session</div>
+                <div class="ret-stat-hint">Average page depth</div>
+              </div>
             </div>
-            <div class="ret-stat-value">{{ engagementData.total_sessions || 0 }}</div>
-            <div class="ret-stat-label">Total Sessions</div>
-            <div class="ret-stat-hint">In selected period</div>
+
+            <!-- Avg Duration -->
+            <div v-if="cid === 'avg_duration'" class="ret-dyn-card ret-quarter">
+              <button class="ret-card-close" @click="removeRetCard(cid)" title="Remove">&times;</button>
+              <div class="ret-stat-card">
+                <div class="ret-stat-icon"><svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 4v4l3 2"/></svg></div>
+                <div class="ret-stat-value">{{ formatDuration(engagementData.avg_session_duration_secs || 0) }}</div>
+                <div class="ret-stat-label">Avg Duration</div>
+                <div class="ret-stat-hint">Time per session</div>
+              </div>
+            </div>
+
+            <!-- Total Sessions -->
+            <div v-if="cid === 'total_sessions'" class="ret-dyn-card ret-quarter">
+              <button class="ret-card-close" @click="removeRetCard(cid)" title="Remove">&times;</button>
+              <div class="ret-stat-card">
+                <div class="ret-stat-icon"><svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 12V4a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2z"/><path d="M5 8h6M8 5v6"/></svg></div>
+                <div class="ret-stat-value">{{ engagementData.total_sessions || 0 }}</div>
+                <div class="ret-stat-label">Total Sessions</div>
+                <div class="ret-stat-hint">In selected period</div>
+              </div>
+            </div>
+
+            <!-- Top Returning Visitors -->
+            <div v-if="cid === 'top_returners'" class="ret-dyn-card ret-full">
+              <button class="ret-card-close" @click="removeRetCard(cid)" title="Remove">&times;</button>
+              <div class="card">
+                <div class="card-header"><h3 class="card-title">Top Returning Visitors</h3><span class="text-xs text-muted">Most loyal by visit count</span></div>
+                <table v-if="engagementData.top_returners && engagementData.top_returners.length" class="data-table">
+                  <thead><tr><th>Visitor</th><th>Visits</th><th>Avg Pages</th><th>Device</th><th>Country</th><th>Last Seen</th></tr></thead>
+                  <tbody>
+                    <tr v-for="r in engagementData.top_returners" :key="r.hash" class="returner-row">
+                      <td><span class="visitor-hash">{{ r.hash }}...</span><span v-if="r.browser" class="badge badge-sm badge-outline" style="margin-left:6px">{{ r.browser }}</span></td>
+                      <td><span class="visit-count-badge">{{ r.visits }}</span></td>
+                      <td>{{ r.avg_pages }}</td><td>{{ r.device || '—' }}</td><td>{{ r.country || '—' }}</td>
+                      <td class="text-muted">{{ r.last_seen ? relativeTime(r.last_seen) : '—' }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+                <div v-else class="empty-inline">No returning visitors yet.</div>
+              </div>
+            </div>
+
+            <!-- Cohort Matrix -->
+            <div v-if="cid === 'cohort_matrix'" class="ret-dyn-card ret-full">
+              <button class="ret-card-close" @click="removeRetCard(cid)" title="Remove">&times;</button>
+              <div class="card">
+                <div class="card-header"><h3 class="card-title">Cohort Retention</h3><p class="card-subtitle">How many visitors return over time</p></div>
+                <div v-if="retentionData.rows && retentionData.rows.length" class="retention-matrix">
+                  <table class="data-table retention-table">
+                    <thead><tr><th>Cohort</th><th>Size</th><th v-for="w in maxRetentionWeeks" :key="w">Wk {{ w - 1 }}</th></tr></thead>
+                    <tbody>
+                      <tr v-for="row in retentionData.rows" :key="row.cohort">
+                        <td class="font-semibold">{{ row.cohort }}</td><td>{{ row.cohort_size }}</td>
+                        <td v-for="(w, i) in row.weeks" :key="i" :style="{ background: retentionColor(w.pct) }" class="retention-cell">{{ w.pct }}%</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <div v-else class="empty-inline">No retention data yet.</div>
+              </div>
+            </div>
+
+          </template>
+
+          <!-- Inline + Add Widget -->
+          <div class="ret-dyn-card ret-add-inline">
+            <button class="ret-add-btn" @click.stop="showCardPicker = !showCardPicker">
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 3v14M3 10h14"/></svg>
+            </button>
+            <div v-if="showCardPicker" class="card-picker-dropdown" @click.stop>
+              <div class="card-picker-header">Add Widget</div>
+              <div v-for="c in retAvailableCards" :key="c.id" class="card-picker-item" :class="{ disabled: retentionCards.includes(c.id) }" @click="addRetCard(c.id)">
+                <div class="card-picker-icon" v-html="c.icon"></div>
+                <div class="card-picker-info">
+                  <div class="card-picker-name">{{ c.title }}</div>
+                  <div class="card-picker-desc">{{ c.desc }}</div>
+                </div>
+                <span v-if="retentionCards.includes(c.id)" class="card-picker-check">✓</span>
+              </div>
+            </div>
           </div>
         </div>
 
-        <!-- Top Returning Visitors -->
-        <div class="card" style="margin-top:20px" v-if="engagementData.top_returners && engagementData.top_returners.length">
-          <div class="card-header">
-            <h3 class="card-title">Top Returning Visitors</h3>
-            <span class="text-xs text-muted">Most loyal visitors by visit count</span>
-          </div>
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>Visitor</th>
-                <th>Visits</th>
-                <th>Avg Pages</th>
-                <th>Device</th>
-                <th>Country</th>
-                <th>Last Seen</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="r in engagementData.top_returners" :key="r.hash" class="returner-row">
-                <td>
-                  <span class="visitor-hash">{{ r.hash }}...</span>
-                  <span v-if="r.browser" class="badge badge-sm badge-outline" style="margin-left:6px">{{ r.browser }}</span>
-                </td>
-                <td><span class="visit-count-badge">{{ r.visits }}</span></td>
-                <td>{{ r.avg_pages }}</td>
-                <td>{{ r.device || '—' }}</td>
-                <td>{{ r.country || '—' }}</td>
-                <td class="text-muted">{{ r.last_seen ? relativeTime(r.last_seen) : '—' }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <!-- Cohort Matrix -->
-        <div class="card" style="margin-top:20px">
-          <div class="card-header">
-            <h3 class="card-title">Cohort Retention</h3>
-            <p class="card-subtitle">How many visitors return over time</p>
-          </div>
-          <div v-if="retentionData.rows && retentionData.rows.length" class="retention-matrix">
-            <table class="data-table retention-table">
-              <thead>
-                <tr>
-                  <th>Cohort</th>
-                  <th>Size</th>
-                  <th v-for="w in maxRetentionWeeks" :key="w">Wk {{ w - 1 }}</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="row in retentionData.rows" :key="row.cohort">
-                  <td class="font-semibold">{{ row.cohort }}</td>
-                  <td>{{ row.cohort_size }}</td>
-                  <td v-for="(w, i) in row.weeks" :key="i" :style="{ background: retentionColor(w.pct) }" class="retention-cell">
-                    {{ w.pct }}%
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          <div v-else class="empty-inline">No retention data yet. Data appears after visitors return to your site.</div>
-        </div>
       </div>
 
       <!-- ═══════════ TAB 4: Flows ═══════════ -->
@@ -756,6 +763,46 @@ const funnelList = computed(() => cached.value.funnelList || [])
 const funnelResult = computed(() => cached.value.funnelResult)
 const retentionData = computed(() => cached.value.retentionData || {})
 const engagementData = computed(() => cached.value.engagementData || {})
+
+// ── Customizable Retention Cards ──
+const retAvailableCards = [
+  { id: 'engagement_score', title: 'Engagement Score', desc: 'Composite health score (0-100) from bounce, depth, and return rate', icon: '<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 4v4l3 2"/></svg>', size: 'half' },
+  { id: 'new_vs_returning', title: 'New vs Returning', desc: 'Donut chart showing first-time vs repeat visitor split', icon: '<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 2a6 6 0 010 12"/></svg>', size: 'half' },
+  { id: 'bounce_rate', title: 'Bounce Rate', desc: 'Percentage of single-page sessions', icon: '<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 12l4-8 4 8"/><line x1="5.5" y1="9" x2="10.5" y2="9"/></svg>', size: 'quarter' },
+  { id: 'pages_session', title: 'Pages / Session', desc: 'Average number of pages viewed per visit', icon: '<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="12" height="12" rx="2"/><path d="M5 6h6M5 8h4M5 10h5"/></svg>', size: 'quarter' },
+  { id: 'avg_duration', title: 'Avg Duration', desc: 'Average time visitors spend per session', icon: '<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 4v4l3 2"/></svg>', size: 'quarter' },
+  { id: 'total_sessions', title: 'Total Sessions', desc: 'Number of sessions in the selected period', icon: '<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 12V4a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2z"/><path d="M5 8h6M8 5v6"/></svg>', size: 'quarter' },
+  { id: 'top_returners', title: 'Top Returning Visitors', desc: 'Table of your most loyal repeat visitors', icon: '<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="5" r="3"/><path d="M3 14c0-3 2-5 5-5s5 2 5 5"/></svg>', size: 'full' },
+  { id: 'cohort_matrix', title: 'Cohort Retention', desc: 'Weekly retention heatmap by visitor cohort', icon: '<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="12" height="12" rx="1"/><path d="M2 6h12M2 10h12M6 2v12M10 2v12"/></svg>', size: 'full' },
+]
+
+const _retStorageKey = computed(() => `ftb_ret_cards_${store.activeWebsiteId}`)
+const retentionCards = ref([])
+const showCardPicker = ref(false)
+
+// Load from localStorage on mount
+onMounted(() => {
+  try {
+    const saved = localStorage.getItem(_retStorageKey.value)
+    if (saved) retentionCards.value = JSON.parse(saved)
+  } catch { /* ignore */ }
+})
+
+function _saveRetCards() {
+  try { localStorage.setItem(_retStorageKey.value, JSON.stringify(retentionCards.value)) } catch {}
+}
+
+function addRetCard(id) {
+  if (retentionCards.value.includes(id)) return
+  retentionCards.value.push(id)
+  _saveRetCards()
+  showCardPicker.value = false
+}
+
+function removeRetCard(id) {
+  retentionCards.value = retentionCards.value.filter(c => c !== id)
+  _saveRetCards()
+}
 const flowData = computed(() => cached.value.flowData || {})
 const entryExitData = computed(() => cached.value.entryExitData || {})
 const insightsData = computed(() => cached.value.insightsData || {})
@@ -1520,6 +1567,45 @@ onBeforeUnmount(() => {
 
 /* ── Retention ── */
 .retention-table { font-size: var(--font-xs); }
+/* ── Retention: Empty State ── */
+.ret-empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 300px; text-align: center; padding: 40px 20px; }
+.ret-empty-icon { margin-bottom: 16px; opacity: 0.5; }
+.ret-empty-title { font-size: 18px; font-weight: 700; color: var(--text-primary); margin: 0 0 8px; }
+.ret-empty-desc { font-size: 13px; color: var(--text-muted); margin: 0 0 24px; max-width: 360px; }
+.ret-add-wrap { position: relative; display: inline-block; }
+
+/* ── Card Picker Dropdown ── */
+.card-picker-dropdown { position: absolute; top: 100%; left: 0; z-index: 100; width: 320px; max-height: 400px; overflow-y: auto; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-lg); box-shadow: 0 12px 40px rgba(0,0,0,0.2); margin-top: 8px; animation: pickerFadeIn 0.15s ease; }
+.card-picker-center { left: 50%; transform: translateX(-50%); }
+@keyframes pickerFadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+.card-picker-header { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); padding: 12px 16px 8px; }
+.card-picker-item { display: flex; align-items: center; gap: 12px; padding: 10px 16px; cursor: pointer; transition: background 0.15s; }
+.card-picker-item:hover:not(.disabled) { background: var(--bg-surface); }
+.card-picker-item.disabled { opacity: 0.4; cursor: default; }
+.card-picker-icon { flex-shrink: 0; color: var(--brand-accent); }
+.card-picker-info { flex: 1; min-width: 0; }
+.card-picker-name { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+.card-picker-desc { font-size: 11px; color: var(--text-muted); line-height: 1.3; }
+.card-picker-check { color: var(--color-success); font-size: 14px; font-weight: 700; }
+
+/* ── Dynamic Card Grid ── */
+.ret-card-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+@media (max-width: 768px) { .ret-card-grid { grid-template-columns: repeat(2, 1fr); } }
+.ret-dyn-card { position: relative; animation: cardSlideIn 0.25s ease; }
+@keyframes cardSlideIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+.ret-half { grid-column: span 2; }
+.ret-quarter { grid-column: span 1; }
+.ret-full { grid-column: 1 / -1; }
+.ret-card-close { position: absolute; top: 8px; right: 8px; z-index: 5; width: 22px; height: 22px; border: none; border-radius: 50%; background: var(--bg-surface); color: var(--text-muted); font-size: 16px; line-height: 1; cursor: pointer; opacity: 0; transition: opacity 0.15s, background 0.15s, color 0.15s; display: flex; align-items: center; justify-content: center; }
+.ret-dyn-card:hover .ret-card-close { opacity: 1; }
+.ret-card-close:hover { background: var(--color-danger); color: white; }
+
+/* ── Add Widget Inline ── */
+.ret-add-inline { display: flex; align-items: center; justify-content: center; position: relative; min-height: 100px; border: 2px dashed var(--border-color); border-radius: var(--radius-lg); transition: border-color 0.2s; }
+.ret-add-inline:hover { border-color: var(--brand-accent); }
+.ret-add-btn { width: 40px; height: 40px; border-radius: 50%; border: 2px solid var(--border-color); background: transparent; color: var(--text-muted); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
+.ret-add-btn:hover { border-color: var(--brand-accent); color: var(--brand-accent); background: rgba(99,102,241,0.08); }
+
 /* ── Engagement Score Ring ── */
 .engagement-score-card { display: flex; flex-direction: column; }
 .engagement-ring-wrap { position: relative; display: flex; align-items: center; justify-content: center; padding: 16px 0; }
