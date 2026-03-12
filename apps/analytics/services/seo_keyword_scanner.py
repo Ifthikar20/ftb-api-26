@@ -41,7 +41,7 @@ class SEOKeywordScanner:
     @staticmethod
     def scan(*, website_url: str, website_id: str = "") -> dict:
         """
-        Full keyword scan: crawl → extract → score → suggest.
+        Full keyword scan: crawl ALL pages → extract → score → suggest.
         Returns complete scan results with SEO keyword score.
         """
         cache_key = f"seo_scan_{hashlib.md5(website_url.encode()).hexdigest()}"
@@ -51,57 +51,87 @@ class SEOKeywordScanner:
 
         try:
             # 1. Crawl the homepage
-            page_data = SEOKeywordScanner._crawl_page(website_url)
-            if not page_data:
+            homepage = SEOKeywordScanner._crawl_page(website_url)
+            if not homepage:
                 return {"error": "Could not reach website", "score": 0}
 
-            # 2. Extract keywords from page content
-            keywords = SEOKeywordScanner._extract_keywords(page_data)
+            # 2. Discover internal links and crawl sub-pages
+            parsed_base = urlparse(website_url)
+            base_domain = parsed_base.netloc.replace("www.", "")
+            internal_links = SEOKeywordScanner._discover_links(homepage, website_url)
+            logger.info(f"Discovered {len(internal_links)} internal links on {website_url}")
 
-            # 3. Get trend data for top keywords
+            all_pages = [{"url": website_url, "data": homepage}]
+            for link in internal_links[:10]:  # Crawl up to 10 sub-pages
+                try:
+                    sub_page = SEOKeywordScanner._crawl_page(link)
+                    if sub_page and sub_page.get("word_count", 0) > 20:
+                        all_pages.append({"url": link, "data": sub_page})
+                except Exception:
+                    continue
+
+            # 3. Merge all page data for unified keyword extraction
+            merged_data = SEOKeywordScanner._merge_page_data(all_pages)
+            keywords = SEOKeywordScanner._extract_keywords(merged_data)
+
+            # 4. Per-page keyword attribution
+            per_page = []
+            for pg in all_pages:
+                pg_kws = SEOKeywordScanner._extract_keywords(pg["data"])
+                per_page.append({
+                    "url": pg["url"],
+                    "title": pg["data"].get("title", ""),
+                    "word_count": pg["data"].get("word_count", 0),
+                    "h1": pg["data"].get("h1", []),
+                    "top_keywords": [k["keyword"] for k in pg_kws[:8]],
+                    "keyword_count": len(pg_kws),
+                })
+
+            # 5. Get trend data for top keywords
             keyword_trends = SEOKeywordScanner._get_trend_data(
                 [k["keyword"] for k in keywords[:10]]
             )
 
-            # 4. Find synonym suggestions via Google Trends related queries
+            # 6. Find synonym suggestions
             suggestions = SEOKeywordScanner._find_synonyms(keywords[:8], keyword_trends)
 
-            # 5. Calculate composite SEO keyword score
+            # 7. Calculate composite SEO keyword score
             score_breakdown = SEOKeywordScanner._calculate_score(
-                page_data, keywords, keyword_trends, suggestions
+                merged_data, keywords, keyword_trends, suggestions
             )
 
             result = {
                 "url": website_url,
                 "scanned_at": timezone.now().isoformat(),
+                "pages_scanned": len(all_pages),
                 "score": score_breakdown["total"],
                 "score_breakdown": score_breakdown,
                 "keywords": keywords[:15],
                 "trends": keyword_trends,
                 "suggestions": suggestions[:10],
+                "per_page": per_page,
                 "page_meta": {
-                    "title": page_data.get("title", ""),
-                    "meta_description": page_data.get("meta_description", ""),
-                    "h1": page_data.get("h1", []),
-                    "h2": page_data.get("h2", []),
-                    "h3": page_data.get("h3", []),
-                    "word_count": page_data.get("word_count", 0),
+                    "title": homepage.get("title", ""),
+                    "meta_description": homepage.get("meta_description", ""),
+                    "h1": homepage.get("h1", []),
+                    "h2": merged_data.get("h2", []),
+                    "h3": merged_data.get("h3", []),
+                    "word_count": merged_data.get("word_count", 0),
                 },
                 "geo_data": {
-                    "hreflang": page_data.get("hreflang", []),
-                    "og_locale": page_data.get("og_locale", ""),
-                    "geo_region": page_data.get("geo_region", ""),
-                    "geo_placename": page_data.get("geo_placename", ""),
-                    "has_geo_tags": bool(page_data.get("hreflang") or page_data.get("og_locale") or page_data.get("geo_region")),
-                    "tips": SEOKeywordScanner._geo_tips(page_data),
+                    "hreflang": homepage.get("hreflang", []),
+                    "og_locale": homepage.get("og_locale", ""),
+                    "geo_region": homepage.get("geo_region", ""),
+                    "geo_placename": homepage.get("geo_placename", ""),
+                    "has_geo_tags": bool(homepage.get("hreflang") or homepage.get("og_locale") or homepage.get("geo_region")),
+                    "tips": SEOKeywordScanner._geo_tips(homepage),
                 },
             }
 
-            # 6. Check AI engine rankings
+            # 8. Check AI engine rankings
             try:
-                domain = urlparse(website_url).netloc.replace("www.", "")
                 ai_rankings = SEOKeywordScanner._check_ai_rankings(
-                    [k["keyword"] for k in keywords[:6]], domain
+                    [k["keyword"] for k in keywords[:6]], base_domain
                 )
                 result["ai_rankings"] = ai_rankings
             except Exception as e:
@@ -114,6 +144,74 @@ class SEOKeywordScanner:
         except Exception as e:
             logger.error(f"SEO keyword scan failed for {website_url}: {e}")
             return {"error": str(e), "score": 0}
+
+    @staticmethod
+    def _discover_links(page_data: dict, base_url: str) -> list:
+        """Find internal links from the page's parsed soup."""
+        soup = page_data.get("soup")
+        if not soup:
+            return []
+
+        parsed_base = urlparse(base_url)
+        base_domain = parsed_base.netloc.replace("www.", "")
+        base_scheme = parsed_base.scheme or "https"
+        seen = set()
+        links = []
+
+        for a_tag in soup.find_all("a", href=True):
+            href = a_tag["href"].strip()
+            # Skip anchors, mailto, tel, javascript
+            if href.startswith(("#", "mailto:", "tel:", "javascript:")):
+                continue
+
+            # Resolve relative URLs
+            if href.startswith("/"):
+                href = f"{base_scheme}://{parsed_base.netloc}{href}"
+            elif not href.startswith("http"):
+                continue
+
+            parsed = urlparse(href)
+            link_domain = parsed.netloc.replace("www.", "")
+
+            # Only internal links
+            if link_domain != base_domain:
+                continue
+
+            # Normalize
+            clean = f"{parsed.scheme}://{parsed.netloc}{parsed.path}".rstrip("/")
+
+            # Skip duplicates, media, static files
+            if clean in seen or clean == base_url.rstrip("/"):
+                continue
+            if any(clean.endswith(ext) for ext in (".png", ".jpg", ".jpeg", ".gif", ".svg", ".css", ".js", ".pdf", ".zip")):
+                continue
+
+            seen.add(clean)
+            links.append(clean)
+
+        return links
+
+    @staticmethod
+    def _merge_page_data(pages: list) -> dict:
+        """Merge data from multiple crawled pages into one for keyword extraction."""
+        merged = {
+            "title": pages[0]["data"].get("title", ""),
+            "meta_description": pages[0]["data"].get("meta_description", ""),
+            "h1": [],
+            "h2": [],
+            "h3": [],
+            "words": [],
+            "word_count": 0,
+        }
+        for pg in pages:
+            d = pg["data"]
+            merged["h1"].extend(d.get("h1", []))
+            merged["h2"].extend(d.get("h2", []))
+            merged["h3"].extend(d.get("h3", []))
+            merged["words"].extend(d.get("words", []))
+            merged["word_count"] += d.get("word_count", 0)
+
+        return merged
 
     @staticmethod
     def _geo_tips(page_data: dict) -> list:

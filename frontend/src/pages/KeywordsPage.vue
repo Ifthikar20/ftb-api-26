@@ -39,7 +39,7 @@
           <div class="seo-verdict" :class="scanData.score >= 70 ? 'sv-good' : scanData.score >= 40 ? 'sv-mid' : 'sv-bad'">
             {{ scanData.score >= 70 ? 'Good' : scanData.score >= 40 ? 'Needs Work' : 'Poor' }}
           </div>
-          <div class="text-xs text-muted">{{ scanData.page_meta?.word_count || 0 }} words • {{ scanData.keywords?.length || 0 }} keywords • {{ keywords.length }} tracked</div>
+          <div class="text-xs text-muted">{{ scanData.pages_scanned || 1 }} pages • {{ scanData.page_meta?.word_count || 0 }} words • {{ scanData.keywords?.length || 0 }} keywords • {{ keywords.length }} tracked</div>
         </div>
         <div class="score-breakdown-mini">
           <div v-for="(comp, key) in scanData.score_breakdown" :key="key" v-if="comp && comp.label" class="sb-row">
@@ -59,7 +59,33 @@
 
     <!-- Auto-tracked Banner -->
     <div v-if="scanData.auto_tracked > 0" class="auto-tracked-banner">
-      ✅ Auto-tracked <strong>{{ scanData.auto_tracked }} keywords</strong> from your website scan.
+      ✅ Auto-tracked <strong>{{ scanData.auto_tracked }} keywords</strong> from {{ scanData.pages_scanned || 1 }} scanned pages.
+    </div>
+
+    <!-- Card: Pages Scanned -->
+    <div v-if="scanData.per_page?.length > 1" class="card kw-card">
+      <div class="kw-card-header">
+        <h3 class="card-title">📑 Pages Scanned ({{ scanData.per_page.length }})</h3>
+        <span class="text-xs text-muted">Keywords per page</span>
+      </div>
+      <div class="pages-list">
+        <div v-for="(pg, i) in scanData.per_page" :key="i" class="page-row">
+          <div class="page-row-left">
+            <span class="page-num">{{ i + 1 }}</span>
+            <div class="page-info">
+              <a :href="pg.url" target="_blank" class="page-url">{{ cleanPagePath(pg.url) }}</a>
+              <div class="page-title-text">{{ pg.title || 'Untitled' }}</div>
+            </div>
+          </div>
+          <div class="page-row-right">
+            <span class="page-stat">{{ pg.word_count }} words</span>
+            <span class="page-stat">{{ pg.keyword_count }} kw</span>
+          </div>
+          <div class="page-kws">
+            <span v-for="kw in pg.top_keywords.slice(0, 5)" :key="kw" class="page-kw-chip">{{ kw }}</span>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Card 2: Split-Screen Keywords -->
@@ -295,6 +321,7 @@ const geoRegions = computed(() => {
 })
 
 function cleanUrl(url) { if (!url) return ''; try { return new URL(url).pathname } catch { return url } }
+function cleanPagePath(url) { if (!url) return url; try { const u = new URL(url); return u.pathname === '/' ? '/ (Homepage)' : u.pathname } catch { return url } }
 function rankClass(rank) { if (!rank) return ''; if (rank <= 3) return 'rank-top3'; if (rank <= 10) return 'rank-top10'; if (rank <= 20) return 'rank-top20'; return 'rank-low' }
 function diffClass(d) { if (d < 30) return 'diff-easy'; if (d < 60) return 'diff-medium'; return 'diff-hard' }
 
@@ -506,6 +533,20 @@ onMounted(async () => {
 .modal-body { display: flex; flex-direction: column; gap: 4px; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
 .form-label { display: block; font-size: var(--font-sm); font-weight: 600; color: var(--text-primary); margin-bottom: 4px; }
+
+/* Pages List */
+.pages-list { display: flex; flex-direction: column; gap: 8px; }
+.page-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 10px 12px; background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-md); align-items: center; }
+.page-row-left { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.page-num { flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 800; background: var(--brand-accent); color: white; }
+.page-info { min-width: 0; }
+.page-url { font-size: 12px; font-weight: 600; color: var(--brand-accent); text-decoration: none; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.page-url:hover { text-decoration: underline; }
+.page-title-text { font-size: 10px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.page-row-right { display: flex; gap: 8px; flex-shrink: 0; }
+.page-stat { font-size: 10px; font-weight: 600; color: var(--text-secondary); background: var(--bg-card); padding: 2px 6px; border-radius: 3px; white-space: nowrap; }
+.page-kws { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 4px; }
+.page-kw-chip { font-size: 10px; padding: 1px 6px; border-radius: var(--radius-full); background: rgba(99,102,241,0.08); color: var(--brand-accent); font-weight: 600; }
 
 /* Responsive */
 @media (max-width: 900px) { .split-screen { grid-template-columns: 1fr; } .geo-grid { grid-template-columns: 1fr; } .ai-engine-grid { grid-template-columns: 1fr; } .alt-grid { grid-template-columns: 1fr; } }
