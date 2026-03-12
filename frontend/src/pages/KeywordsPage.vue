@@ -152,6 +152,55 @@
       </div>
     </div>
 
+    <!-- Card: DataForSEO SERP Insights -->
+    <div v-if="scanData.dataforseo?.length" class="card kw-card">
+      <div class="kw-card-header">
+        <h3 class="card-title">🔎 Google SERP Data <span class="text-xs text-muted" style="font-weight:400">(via DataForSEO)</span></h3>
+        <span class="text-xs text-muted">Real-time rankings</span>
+      </div>
+      <div class="serp-grid">
+        <div v-for="e in scanData.dataforseo" :key="e.keyword" class="serp-card">
+          <div class="serp-card-head">
+            <div class="serp-kw">{{ e.keyword }}</div>
+            <span v-if="e.position" class="rank-badge" :class="rankClass(e.position)">#{{ e.position }}</span>
+            <span v-else class="rank-badge rank-low">Not ranked</span>
+          </div>
+          <div class="serp-metrics">
+            <div class="serp-metric">
+              <span class="sm-label">Volume</span>
+              <span class="sm-value">{{ (e.volume || 0).toLocaleString() }}</span>
+            </div>
+            <div class="serp-metric">
+              <span class="sm-label">CPC</span>
+              <span class="sm-value">${{ (e.cpc || 0).toFixed(2) }}</span>
+            </div>
+            <div class="serp-metric">
+              <span class="sm-label">Difficulty</span>
+              <span class="sm-value">{{ e.difficulty || 0 }}/100</span>
+            </div>
+            <div class="serp-metric" v-if="e.competition_level">
+              <span class="sm-label">Competition</span>
+              <span class="sm-value sm-comp" :class="'comp-' + e.competition_level.toLowerCase()">{{ e.competition_level }}</span>
+            </div>
+          </div>
+          <div class="serp-diff-bar"><div class="serp-diff-fill" :style="{ width: (e.difficulty || 0) + '%' }" :class="diffClass(e.difficulty || 0)"></div></div>
+          <div v-if="e.serp_features?.length" class="serp-features">
+            <span v-for="f in e.serp_features.slice(0, 6)" :key="f" class="serp-feat-tag">{{ formatFeature(f) }}</span>
+          </div>
+          <div v-if="e.top_competitors?.length" class="serp-comps">
+            <div class="serp-comp-title">Top Competitors</div>
+            <div v-for="c in e.top_competitors.slice(0, 3)" :key="c.position" class="serp-comp-row">
+              <span class="serp-comp-pos">#{{ c.position }}</span>
+              <span class="serp-comp-domain">{{ c.domain }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div v-else-if="scanData.dataforseo_configured === false && scanData.score != null" class="dfs-not-configured">
+      <strong>📊 DataForSEO not configured</strong> — Add <code>DATAFORSEO_LOGIN</code> and <code>DATAFORSEO_PASSWORD</code> to your .env for real Google ranking data.
+    </div>
+
     <!-- Card 4: Geo SEO -->
     <div class="card kw-card" v-if="scanData.geo_data">
       <div class="kw-card-header">
@@ -324,6 +373,10 @@ function cleanUrl(url) { if (!url) return ''; try { return new URL(url).pathname
 function cleanPagePath(url) { if (!url) return url; try { const u = new URL(url); return u.pathname === '/' ? '/ (Homepage)' : u.pathname } catch { return url } }
 function rankClass(rank) { if (!rank) return ''; if (rank <= 3) return 'rank-top3'; if (rank <= 10) return 'rank-top10'; if (rank <= 20) return 'rank-top20'; return 'rank-low' }
 function diffClass(d) { if (d < 30) return 'diff-easy'; if (d < 60) return 'diff-medium'; return 'diff-hard' }
+function formatFeature(f) {
+  const map = { organic: 'Organic', paid: 'Ads', featured_snippet: 'Featured', people_also_ask: 'PAA', local_pack: 'Local', images: 'Images', video: 'Video', knowledge_graph: 'KG', carousel: 'Carousel', shopping: 'Shopping', top_stories: 'News', related_searches: 'Related' }
+  return map[f] || f.replace(/_/g, ' ')
+}
 
 const highlightedContent = computed(() => {
   const meta = scanData.value?.page_meta
@@ -547,6 +600,29 @@ onMounted(async () => {
 .page-stat { font-size: 10px; font-weight: 600; color: var(--text-secondary); background: var(--bg-card); padding: 2px 6px; border-radius: 3px; white-space: nowrap; }
 .page-kws { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 4px; }
 .page-kw-chip { font-size: 10px; padding: 1px 6px; border-radius: var(--radius-full); background: rgba(99,102,241,0.08); color: var(--brand-accent); font-weight: 600; }
+
+/* SERP Data Card */
+.serp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.serp-card { background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 14px; }
+.serp-card-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.serp-kw { font-size: 13px; font-weight: 700; color: var(--text-primary); }
+.serp-metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 8px; }
+.serp-metric { text-align: center; }
+.sm-label { display: block; font-size: 9px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.03em; }
+.sm-value { display: block; font-size: 13px; font-weight: 700; color: var(--text-primary); }
+.sm-comp { font-size: 10px; }
+.comp-low { color: #22c55e; } .comp-medium { color: #f59e0b; } .comp-high { color: #ef4444; }
+.serp-diff-bar { height: 4px; background: var(--bg-input); border-radius: 2px; overflow: hidden; margin-bottom: 8px; }
+.serp-diff-fill { height: 100%; border-radius: 2px; transition: width 0.4s; }
+.serp-features { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+.serp-feat-tag { font-size: 9px; padding: 2px 6px; border-radius: 3px; background: rgba(99,102,241,0.08); color: var(--brand-accent); font-weight: 600; text-transform: uppercase; letter-spacing: 0.02em; }
+.serp-comps { border-top: 1px solid var(--border-color); padding-top: 6px; }
+.serp-comp-title { font-size: 10px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; }
+.serp-comp-row { display: flex; gap: 6px; font-size: 11px; padding: 2px 0; }
+.serp-comp-pos { font-weight: 700; color: var(--text-primary); width: 20px; }
+.serp-comp-domain { color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dfs-not-configured { padding: 12px 16px; background: rgba(99,102,241,0.06); border: 1px solid rgba(99,102,241,0.15); border-radius: var(--radius-md); font-size: 12px; color: var(--text-secondary); margin-bottom: 16px; }
+.dfs-not-configured code { font-size: 11px; background: var(--bg-surface); padding: 1px 4px; border-radius: 3px; }
 
 /* Responsive */
 @media (max-width: 900px) { .split-screen { grid-template-columns: 1fr; } .geo-grid { grid-template-columns: 1fr; } .ai-engine-grid { grid-template-columns: 1fr; } .alt-grid { grid-template-columns: 1fr; } }
