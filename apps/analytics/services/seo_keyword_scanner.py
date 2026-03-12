@@ -9,7 +9,6 @@ from collections import Counter
 from urllib.parse import urlparse
 
 import requests
-from bs4 import BeautifulSoup
 from django.core.cache import cache
 from django.utils import timezone
 
@@ -101,6 +100,7 @@ class SEOKeywordScanner:
                 "User-Agent": "FetchBot-SEO/1.0 (Keyword Scanner)"
             })
             resp.raise_for_status()
+            from bs4 import BeautifulSoup
             soup = BeautifulSoup(resp.text, "html.parser")
 
             # Remove script, style, nav, footer elements

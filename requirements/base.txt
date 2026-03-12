@@ -58,6 +58,8 @@ celery[redis]==5.4.*
 Pillow==10.*
 python-slugify==8.*
 pytz==2024.*
+beautifulsoup4==4.*
+pytrends==4.*
 
 # Production
 gunicorn==23.*
