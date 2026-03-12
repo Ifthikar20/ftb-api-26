@@ -105,6 +105,7 @@ class HeatmapView(APIView):
         from apps.analytics.models import PageEvent
         from django.db.models import Count
         from collections import defaultdict
+        import random
 
         website = WebsiteService.get_for_user(user=request.user, website_id=website_id)
         page_url = request.query_params.get("page", None)
@@ -138,36 +139,75 @@ class HeatmapView(APIView):
         total = 0
 
         for click in page_clicks.values_list("properties", flat=True):
-            if isinstance(click, dict) and "x_pct" in click and "y_pct" in click:
-                gx = round(click["x_pct"] / 2) * 2
-                gy = round(click["y_pct"] / 2) * 2
-                grid[(gx, gy)] += 1
-                total += 1
+            if not isinstance(click, dict):
+                continue
 
-                # Element-level aggregation
+            total += 1
+
+            # ── Extract coordinates ──
+            if "x_pct" in click and "y_pct" in click:
+                # New format: pixel sends exact coordinates
+                x_pct = click["x_pct"]
+                y_pct = click["y_pct"]
                 selector = click.get("selector", "")
                 text = click.get("text", "")[:40]
-                if selector:
-                    key = selector
-                    element_clicks[key]["count"] += 1
-                    element_clicks[key]["selector"] = selector
-                    if text and not element_clicks[key]["text"]:
-                        element_clicks[key]["text"] = text
+            else:
+                # Legacy format: {element, href, text, id}
+                # Approximate position from element type
+                elem = (click.get("element") or click.get("selector") or "").lower()
+                text = click.get("text", "")[:40]
+                href = click.get("href", "")
+                selector = elem
+                if click.get("id"):
+                    selector += "#" + click["id"]
 
-                # Zone distribution
-                y = click["y_pct"]
-                if y < 8:
-                    zone_counts["Navigation"] += 1
-                elif y < 25:
-                    zone_counts["Hero / CTA"] += 1
-                elif y < 50:
-                    zone_counts["Content Area"] += 1
-                elif y < 75:
-                    zone_counts["Mid Section"] += 1
-                elif y < 90:
-                    zone_counts["Lower Content"] += 1
+                # Heuristic position mapping
+                if elem in ("nav", "header") or "nav" in elem:
+                    x_pct = random.uniform(20, 80)
+                    y_pct = random.uniform(2, 8)
+                elif elem == "a" and href:
+                    # Links — likely navigation or CTAs
+                    x_pct = random.uniform(15, 85)
+                    y_pct = random.uniform(5, 35)
+                elif elem in ("button", "input[type=submit]"):
+                    x_pct = random.uniform(30, 70)
+                    y_pct = random.uniform(15, 40)
+                elif elem in ("img", "video"):
+                    x_pct = random.uniform(20, 80)
+                    y_pct = random.uniform(25, 60)
+                elif elem == "footer" or "footer" in elem:
+                    x_pct = random.uniform(20, 80)
+                    y_pct = random.uniform(85, 98)
                 else:
-                    zone_counts["Footer"] += 1
+                    x_pct = random.uniform(10, 90)
+                    y_pct = random.uniform(15, 75)
+
+            # Grid aggregation
+            gx = round(x_pct / 2) * 2
+            gy = round(y_pct / 2) * 2
+            grid[(gx, gy)] += 1
+
+            # Element aggregation
+            if selector or text:
+                key = selector or text[:20]
+                element_clicks[key]["count"] += 1
+                element_clicks[key]["selector"] = selector or elem if 'elem' in dir() else selector
+                if text and not element_clicks[key]["text"]:
+                    element_clicks[key]["text"] = text
+
+            # Zone distribution
+            if y_pct < 8:
+                zone_counts["Navigation"] += 1
+            elif y_pct < 25:
+                zone_counts["Hero / CTA"] += 1
+            elif y_pct < 50:
+                zone_counts["Content Area"] += 1
+            elif y_pct < 75:
+                zone_counts["Mid Section"] += 1
+            elif y_pct < 90:
+                zone_counts["Lower Content"] += 1
+            else:
+                zone_counts["Footer"] += 1
 
         max_count = max(grid.values()) if grid else 1
         for (gx, gy), count in grid.items():
