@@ -881,6 +881,68 @@
                 </div>
               </div>
 
+              <!-- Keyword Comparison (Google Trends) -->
+              <div v-if="cid === 'keyword_compare'" class="ret-dyn-card ret-full">
+                <button class="ret-card-close" @click="removeKeywordCard(cid)">&times;</button>
+                <div class="card">
+                  <div class="card-header"><h3 class="card-title">📈 Keyword Comparison</h3><span class="text-xs text-muted">Google Trends side-by-side</span></div>
+                  <div class="kw-compare-input">
+                    <input v-model="compareInput" class="flow-filter-input" placeholder="e.g. react, vue, angular (comma separated)" @keydown.enter="fetchCompareKeywords" />
+                    <button class="btn btn-primary btn-sm" @click="fetchCompareKeywords" :disabled="compareLoading">{{ compareLoading ? 'Loading...' : 'Compare' }}</button>
+                  </div>
+                  <div v-if="compareData.data && compareData.data.length" class="kw-compare-results">
+                    <div class="kw-compare-legend">
+                      <span v-for="(kw, ki) in compareData.keywords" :key="ki" class="kw-compare-legend-item">
+                        <span class="kw-legend-dot" :style="{ background: compareColors[ki] }"></span>
+                        {{ kw }}
+                      </span>
+                    </div>
+                    <div class="kw-compare-chart">
+                      <div v-for="(point, pi) in compareData.data" :key="pi" class="kw-compare-bar-group">
+                        <div class="kw-compare-bars">
+                          <div v-for="(kw, ki) in compareData.keywords" :key="ki" class="kw-compare-bar" :style="{ height: (point[kw] || 0) + '%', background: compareColors[ki] }" :title="kw + ': ' + (point[kw] || 0)"></div>
+                        </div>
+                        <span class="kw-compare-date">{{ point.date ? point.date.slice(5) : '' }}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div v-else-if="compareData.note || compareData.error" class="empty-inline">{{ compareData.note || compareData.error }}</div>
+                  <div v-else class="empty-inline">Enter keywords above and click Compare</div>
+                </div>
+              </div>
+
+              <!-- Related Keywords -->
+              <div v-if="cid === 'related_keywords'" class="ret-dyn-card ret-full">
+                <button class="ret-card-close" @click="removeKeywordCard(cid)">&times;</button>
+                <div class="card">
+                  <div class="card-header"><h3 class="card-title">🔗 Related Keywords</h3><span class="text-xs text-muted">Rising & top queries from Google Trends</span></div>
+                  <div class="kw-compare-input">
+                    <input v-model="relatedInput" class="flow-filter-input" placeholder="Enter a keyword to explore..." @keydown.enter="fetchRelatedKeywords" />
+                    <button class="btn btn-primary btn-sm" @click="fetchRelatedKeywords" :disabled="relatedLoading">{{ relatedLoading ? 'Loading...' : 'Explore' }}</button>
+                  </div>
+                  <div v-if="relatedData.rising && relatedData.rising.length || relatedData.top && relatedData.top.length" class="kw-related-results">
+                    <div class="kw-related-cols">
+                      <div class="kw-related-col" v-if="relatedData.rising && relatedData.rising.length">
+                        <h4 class="kw-related-heading">🚀 Rising</h4>
+                        <div v-for="(r, i) in relatedData.rising" :key="'r'+i" class="kw-related-item">
+                          <span class="kw-related-name">{{ r.keyword }}</span>
+                          <span class="kw-related-value rising">+{{ r.value }}%</span>
+                        </div>
+                      </div>
+                      <div class="kw-related-col" v-if="relatedData.top && relatedData.top.length">
+                        <h4 class="kw-related-heading">⭐ Top</h4>
+                        <div v-for="(t, i) in relatedData.top" :key="'t'+i" class="kw-related-item">
+                          <span class="kw-related-name">{{ t.keyword }}</span>
+                          <span class="kw-related-value">{{ t.value }}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div v-else-if="relatedData.note || relatedData.error" class="empty-inline">{{ relatedData.note || relatedData.error }}</div>
+                  <div v-else class="empty-inline">Enter a keyword above and click Explore</div>
+                </div>
+              </div>
+
             </template>
 
             <!-- Inline + Add Widget -->
@@ -992,6 +1054,7 @@
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAnalyticsStore } from '@/stores/analytics'
+import analyticsApi from '@/api/analytics'
 import { Line, Bar, Doughnut, Radar, PolarArea } from 'vue-chartjs'
 import {
   Chart as ChartJS,
@@ -1179,6 +1242,8 @@ const keywordAvailableCards = [
   { id: 'keyword_scores', title: 'Keyword Opportunities', desc: 'AI-scored keywords with quick-win detection and grades', icon: '<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 4v4l3 2"/></svg>', size: 'half' },
   { id: 'keyword_suggestions', title: 'AI Suggestions', desc: 'Auto-generated keywords from your site content and industry', icon: '<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 12l2-4h4l2 4M6 8V4l2-2 2 2v4"/></svg>', size: 'full' },
   { id: 'keyword_tracker', title: 'Tracked Keywords', desc: 'Monitor keyword rankings and position changes over time', icon: '<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="12" height="12" rx="1"/><path d="M2 6h12M2 10h12M6 2v12M10 2v12"/></svg>', size: 'full' },
+  { id: 'keyword_compare', title: 'Keyword Comparison', desc: 'Compare up to 5 keywords side-by-side using Google Trends', icon: '<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 14V4M6 14V2M10 14V6M14 14V8"/></svg>', size: 'full' },
+  { id: 'related_keywords', title: 'Related Keywords', desc: 'Discover rising and top related queries for any keyword', icon: '<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="3"/><path d="M8 1v4M8 11v4M1 8h4M11 8h4"/></svg>', size: 'full' },
 ]
 
 const _kwStorageKey = computed(() => `ftb_kw_cards_${store.activeWebsiteId}`)
@@ -1206,6 +1271,44 @@ function addKeywordCard(id) {
 function removeKeywordCard(id) {
   keywordCards.value = keywordCards.value.filter(c => c !== id)
   _saveKwCards()
+}
+
+// ── Google Trends Comparison ──
+const compareInput = ref('')
+const compareData = ref({})
+const compareLoading = ref(false)
+const compareColors = ['#6366f1', '#f59e0b', '#22c55e', '#ef4444', '#3b82f6']
+
+const relatedInput = ref('')
+const relatedData = ref({})
+const relatedLoading = ref(false)
+
+async function fetchCompareKeywords() {
+  const kws = compareInput.value.split(',').map(k => k.trim()).filter(Boolean)
+  if (!kws.length) return
+  compareLoading.value = true
+  try {
+    const res = await analyticsApi.keywordInterest(store.activeWebsiteId, { keywords: kws.slice(0, 5) })
+    compareData.value = res.data?.data || res.data || {}
+  } catch (e) {
+    compareData.value = { error: 'Failed to fetch comparison data' }
+  } finally {
+    compareLoading.value = false
+  }
+}
+
+async function fetchRelatedKeywords() {
+  const kw = relatedInput.value.trim()
+  if (!kw) return
+  relatedLoading.value = true
+  try {
+    const res = await analyticsApi.keywordInterest(store.activeWebsiteId, { keywords: [kw], related: true })
+    relatedData.value = res.data?.data || res.data || {}
+  } catch (e) {
+    relatedData.value = { error: 'Failed to fetch related keywords' }
+  } finally {
+    relatedLoading.value = false
+  }
 }
 
 // Computed: keyword data accessors
@@ -2289,6 +2392,29 @@ onBeforeUnmount(() => {
 .kw-suggestion-src { font-size: 9px; color: var(--text-muted); text-transform: uppercase; }
 
 .kw-tracker-note { display: flex; align-items: flex-start; gap: 10px; padding: 16px; background: var(--bg-surface); border-radius: var(--radius-md); font-size: 12px; color: var(--text-muted); line-height: 1.5; }
+
+/* ── Keyword Comparison Chart ── */
+.kw-compare-input { display: flex; gap: 8px; margin-bottom: 16px; }
+.kw-compare-input .flow-filter-input { flex: 1; }
+.btn-sm { padding: 6px 14px; font-size: 12px; }
+.kw-compare-legend { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 12px; }
+.kw-compare-legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; color: var(--text-primary); }
+.kw-legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.kw-compare-chart { display: flex; align-items: flex-end; gap: 2px; height: 120px; padding: 8px 0; overflow-x: auto; }
+.kw-compare-bar-group { display: flex; flex-direction: column; align-items: center; flex: 1; min-width: 24px; }
+.kw-compare-bars { display: flex; align-items: flex-end; gap: 1px; height: 100px; }
+.kw-compare-bar { width: 8px; min-height: 2px; border-radius: 2px 2px 0 0; transition: height 0.3s ease; }
+.kw-compare-date { font-size: 8px; color: var(--text-muted); margin-top: 4px; white-space: nowrap; }
+
+/* ── Related Keywords ── */
+.kw-related-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+@media (max-width: 640px) { .kw-related-cols { grid-template-columns: 1fr; } }
+.kw-related-heading { font-size: 13px; font-weight: 700; margin: 0 0 8px; color: var(--text-primary); }
+.kw-related-item { display: flex; align-items: center; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--border-color); }
+.kw-related-item:last-child { border-bottom: none; }
+.kw-related-name { font-size: 12px; color: var(--text-primary); }
+.kw-related-value { font-size: 12px; font-weight: 700; color: var(--text-muted); }
+.kw-related-value.rising { color: #22c55e; }
 
 /* ── Engagement ── */
 .engagement-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
