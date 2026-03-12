@@ -147,23 +147,17 @@ class SEOKeywordScanner:
 
     @staticmethod
     def _discover_links(page_data: dict, base_url: str) -> list:
-        """Find internal links from the page's parsed soup."""
-        soup = page_data.get("soup")
-        if not soup:
-            return []
-
+        """Find internal links from raw_links extracted before decomposition."""
+        raw_links = page_data.get("raw_links", [])
         parsed_base = urlparse(base_url)
         base_domain = parsed_base.netloc.replace("www.", "")
         base_scheme = parsed_base.scheme or "https"
         seen = set()
         links = []
 
-        for a_tag in soup.find_all("a", href=True):
-            href = a_tag["href"].strip()
-            # Skip anchors, mailto, tel, javascript
-            if href.startswith(("#", "mailto:", "tel:", "javascript:")):
+        for href in raw_links:
+            if not href or href.startswith(("#", "mailto:", "tel:", "javascript:")):
                 continue
-
             # Resolve relative URLs
             if href.startswith("/"):
                 href = f"{base_scheme}://{parsed_base.netloc}{href}"
@@ -172,15 +166,10 @@ class SEOKeywordScanner:
 
             parsed = urlparse(href)
             link_domain = parsed.netloc.replace("www.", "")
-
-            # Only internal links
             if link_domain != base_domain:
                 continue
 
-            # Normalize
             clean = f"{parsed.scheme}://{parsed.netloc}{parsed.path}".rstrip("/")
-
-            # Skip duplicates, media, static files
             if clean in seen or clean == base_url.rstrip("/"):
                 continue
             if any(clean.endswith(ext) for ext in (".png", ".jpg", ".jpeg", ".gif", ".svg", ".css", ".js", ".pdf", ".zip")):
@@ -247,7 +236,7 @@ class SEOKeywordScanner:
         """Fetch and parse page content."""
         try:
             resp = requests.get(url, timeout=15, headers={
-                "User-Agent": "FetchBot-SEO/1.0 (Keyword Scanner)"
+                "User-Agent": "Mozilla/5.0 (compatible; FetchBot/1.0; +https://fetchbot.ai)"
             })
             resp.raise_for_status()
             from bs4 import BeautifulSoup
@@ -276,8 +265,12 @@ class SEOKeywordScanner:
             if geo_pn:
                 geo_placename = geo_pn.get("content", "")
 
-            # Remove script, style, nav, footer elements
-            for tag in soup(["script", "style", "nav", "footer", "header", "noscript"]):
+            # ── Extract ALL links BEFORE decomposing anything ──
+            raw_links = [a["href"].strip() for a in soup.find_all("a", href=True)]
+            soup_for_links = soup  # Keep full soup for link discovery
+
+            # Remove only scripts/styles for content extraction
+            for tag in soup(["script", "style", "noscript"]):
                 tag.decompose()
 
             # Extract structured content
@@ -311,7 +304,8 @@ class SEOKeywordScanner:
                 "body_text": body_text,
                 "words": words,
                 "word_count": word_count,
-                "soup": soup,
+                "soup": soup_for_links,
+                "raw_links": raw_links,
                 "hreflang": hreflang_tags,
                 "og_locale": og_locale,
                 "geo_region": geo_region,
@@ -325,57 +319,103 @@ class SEOKeywordScanner:
     def _extract_keywords(page_data: dict) -> list:
         """
         Extract keywords using weighted frequency scoring.
+        Extracts both single words AND two-word phrases (bigrams).
         Title keywords get 5x weight, H1 3x, H2 2x, meta 3x, body 1x.
         """
         weighted_counts = Counter()
         all_words = page_data.get("words", [])
 
-        # Tokenize and clean
         def tokenize(text):
             words = re.findall(r"[a-zA-Z]{3,}", text.lower())
             return [w for w in words if w not in STOP_WORDS and len(w) > 2]
 
-        # Title keywords (5x weight)
-        for w in tokenize(page_data.get("title", "")):
+        def bigrams(text):
+            """Extract two-word phrases from text."""
+            words = re.findall(r"[a-zA-Z]{3,}", text.lower())
+            phrases = []
+            for i in range(len(words) - 1):
+                w1, w2 = words[i], words[i + 1]
+                if w1 not in STOP_WORDS and w2 not in STOP_WORDS and len(w1) > 2 and len(w2) > 2:
+                    phrases.append(f"{w1} {w2}")
+            return phrases
+
+        # Title (5x weight)
+        title = page_data.get("title", "")
+        for w in tokenize(title):
             weighted_counts[w] += 5
+        for bg in bigrams(title):
+            weighted_counts[bg] += 6
 
         # Meta description (3x weight)
-        for w in tokenize(page_data.get("meta_description", "")):
+        meta = page_data.get("meta_description", "")
+        for w in tokenize(meta):
             weighted_counts[w] += 3
+        for bg in bigrams(meta):
+            weighted_counts[bg] += 4
 
         # H1 headings (3x weight)
         for h in page_data.get("h1", []):
             for w in tokenize(h):
                 weighted_counts[w] += 3
+            for bg in bigrams(h):
+                weighted_counts[bg] += 4
 
         # H2 headings (2x weight)
         for h in page_data.get("h2", []):
             for w in tokenize(h):
                 weighted_counts[w] += 2
+            for bg in bigrams(h):
+                weighted_counts[bg] += 3
 
         # H3 headings (1.5x weight)
         for h in page_data.get("h3", []):
             for w in tokenize(h):
                 weighted_counts[w] += 1.5
+            for bg in bigrams(h):
+                weighted_counts[bg] += 2
 
         # Body text (1x weight)
-        for w in tokenize(" ".join(all_words)):
+        body = " ".join(all_words)
+        for w in tokenize(body):
             weighted_counts[w] += 1
+        for bg in bigrams(body):
+            weighted_counts[bg] += 1.5
+
+        # Remove single words that are part of higher-scoring bigrams
+        bigram_words = set()
+        for phrase in weighted_counts:
+            if " " in phrase:
+                for w in phrase.split():
+                    bigram_words.add(w)
 
         # Calculate density for each keyword
         total_words = max(page_data.get("word_count", 1), 1)
-        body_counter = Counter(tokenize(" ".join(all_words)))
+        body_counter = Counter(tokenize(body))
 
         keywords = []
-        for word, score in weighted_counts.most_common(30):
-            count = body_counter.get(word, 0)
-            density = round((count / total_words) * 100, 2)
+        for word, score in weighted_counts.most_common(40):
+            # If single word is absorbed into a bigram with higher score, skip
+            if " " not in word and word in bigram_words:
+                best_bigram_score = max(
+                    (s for p, s in weighted_counts.items() if " " in p and word in p.split()),
+                    default=0
+                )
+                if best_bigram_score > score:
+                    continue
+
+            if " " in word:
+                # Bigram density: count phrase occurrences
+                count = body.lower().count(word)
+                density = round((count / max(total_words // 2, 1)) * 100, 2)
+            else:
+                count = body_counter.get(word, 0)
+                density = round((count / total_words) * 100, 2)
 
             # Check where keyword appears
             locations = []
-            if word in page_data.get("title", "").lower():
+            if word in title.lower():
                 locations.append("title")
-            if word in page_data.get("meta_description", "").lower():
+            if word in (page_data.get("meta_description", "") or "").lower():
                 locations.append("meta")
             for h in page_data.get("h1", []):
                 if word in h.lower():
@@ -392,12 +432,16 @@ class SEOKeywordScanner:
                 "count": count,
                 "density": density,
                 "locations": locations,
+                "is_phrase": " " in word,
                 "density_status": (
                     "optimal" if 1.0 <= density <= 3.0
                     else "low" if density < 1.0
                     else "high"
                 ),
             })
+
+            if len(keywords) >= 20:
+                break
 
         return keywords
 
