@@ -110,10 +110,91 @@
         </div>
       </div>
 
-      <!-- Top Click Zones Table -->
+      <!-- Zone Distribution -->
+      <div class="hm-grid" style="margin-top:20px">
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">🗺️ Zone Distribution</h3>
+            <span class="text-xs text-muted">Where clicks concentrate</span>
+          </div>
+          <div class="zone-bars">
+            <div v-for="z in zones" :key="z.zone" class="zone-row">
+              <span class="zone-name">{{ z.zone }}</span>
+              <div class="zone-bar-wrap">
+                <div class="zone-bar-fill" :style="{ width: z.pct + '%', background: zoneColor(z.pct) }"></div>
+              </div>
+              <span class="zone-pct">{{ z.pct }}%</span>
+              <span class="zone-count">{{ z.clicks }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Top Clicked Elements -->
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">🖱️ Top Clicked Elements</h3>
+            <span class="text-xs text-muted">{{ topElements.length }} elements tracked</span>
+          </div>
+          <div v-if="topElements.length" class="element-list">
+            <div v-for="(el, i) in topElements.slice(0, 10)" :key="i" class="element-row">
+              <span class="element-rank">#{{ i + 1 }}</span>
+              <div class="element-info">
+                <code class="element-selector">{{ el.selector }}</code>
+                <span v-if="el.text" class="element-text">{{ el.text }}</span>
+              </div>
+              <span class="element-clicks">{{ el.count }}</span>
+            </div>
+          </div>
+          <div v-else class="empty-inline">No element data available.</div>
+        </div>
+      </div>
+
+      <!-- AI Insights -->
       <div class="card" style="margin-top:20px">
         <div class="card-header">
-          <h3 class="card-title">Top Click Zones</h3>
+          <h3 class="card-title">🧠 AI Insights</h3>
+          <button v-if="!aiInsights.length" class="btn btn-primary btn-sm" @click="fetchInsights" :disabled="insightsLoading">
+            {{ insightsLoading ? 'Analyzing...' : 'Generate AI Insights' }}
+          </button>
+          <button v-else class="btn btn-secondary btn-sm" @click="fetchInsights" :disabled="insightsLoading">
+            {{ insightsLoading ? 'Analyzing...' : 'Refresh' }}
+          </button>
+        </div>
+
+        <!-- Loading shimmer -->
+        <div v-if="insightsLoading" class="insights-shimmer">
+          <div class="shimmer-card" v-for="n in 3" :key="n">
+            <div class="shimmer-line w70"></div>
+            <div class="shimmer-line w100"></div>
+            <div class="shimmer-line w50"></div>
+          </div>
+        </div>
+
+        <!-- Insight cards -->
+        <div v-else-if="aiInsights.length" class="insights-grid">
+          <div v-for="(ins, i) in aiInsights" :key="i" class="insight-card" :class="'insight-' + (ins.type || 'info')">
+            <div class="insight-icon">
+              <span v-if="ins.type === 'success'">✅</span>
+              <span v-else-if="ins.type === 'warning'">⚠️</span>
+              <span v-else-if="ins.type === 'danger'">🔴</span>
+              <span v-else-if="ins.type === 'opportunity'">💡</span>
+              <span v-else>📊</span>
+            </div>
+            <div class="insight-body">
+              <div class="insight-title">{{ ins.title }}</div>
+              <div class="insight-text">{{ ins.insight }}</div>
+              <div v-if="ins.action" class="insight-action">→ {{ ins.action }}</div>
+            </div>
+          </div>
+        </div>
+
+        <div v-else class="empty-inline">Click <strong>Generate AI Insights</strong> to get actionable recommendations based on your click data.</div>
+      </div>
+
+      <!-- Top Click Points -->
+      <div class="card" style="margin-top:20px">
+        <div class="card-header">
+          <h3 class="card-title">📍 Click Points</h3>
           <span class="text-xs text-muted">{{ points.length }} aggregated points</span>
         </div>
         <table class="data-table">
@@ -161,6 +242,10 @@ const fetchError = ref(null)
 const showMarkers = ref(false)
 const heatOpacity = ref(0.4)
 const iframeLoading = ref(true)
+const zones = ref([])
+const topElements = ref([])
+const aiInsights = ref([])
+const insightsLoading = ref(false)
 
 const viewportRef = ref(null)
 const heatCanvas = ref(null)
@@ -191,6 +276,13 @@ function dotColor(intensity) {
   if (intensity < 0.6) return 'rgba(234,179,8,0.8)'
   if (intensity < 0.8) return 'rgba(249,115,22,0.8)'
   return 'rgba(239,68,68,0.9)'
+}
+
+function zoneColor(pct) {
+  if (pct >= 40) return '#ef4444'
+  if (pct >= 25) return '#f59e0b'
+  if (pct >= 10) return '#22c55e'
+  return '#6366f1'
 }
 
 // ── Gaussian Heatmap Rendering ──
@@ -296,12 +388,27 @@ async function fetchHeatmap() {
     pages.value = d.pages || []
     points.value = d.points || []
     totalClicks.value = d.total_clicks || 0
+    zones.value = d.zones || []
+    topElements.value = d.top_elements || []
     if (!selectedPage.value && d.selected_page) {
       selectedPage.value = d.selected_page
     }
   } catch (e) {
     console.error('Heatmap fetch error', e)
     fetchError.value = e?.response?.data?.detail || e?.message || 'Failed to load heatmap data'
+  }
+}
+
+async function fetchInsights() {
+  insightsLoading.value = true
+  try {
+    const { data } = await analyticsApi.heatmap(props.websiteId, { page: selectedPage.value, insights: 1 })
+    const d = data?.data || data
+    aiInsights.value = d.ai_insights || []
+  } catch (e) {
+    console.error('Insights fetch error', e)
+  } finally {
+    insightsLoading.value = false
   }
 }
 
@@ -449,9 +556,56 @@ watch(points, () => nextTick(() => drawHeatmap()))
 .empty-guide-snippet code { font-size: var(--font-xs); color: var(--brand-accent); font-family: 'SF Mono', 'Fira Code', monospace; }
 .empty-guide-hint { font-size: var(--font-xs); color: var(--text-muted); }
 
+/* Grid layout */
+.hm-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+
+/* Zone Distribution */
+.zone-bars { display: flex; flex-direction: column; gap: 8px; }
+.zone-row { display: flex; align-items: center; gap: 10px; }
+.zone-name { width: 100px; font-size: 12px; font-weight: 500; color: var(--text-primary); flex-shrink: 0; }
+.zone-bar-wrap { flex: 1; height: 8px; background: var(--bg-input); border-radius: 4px; overflow: hidden; }
+.zone-bar-fill { height: 100%; border-radius: 4px; transition: width 0.5s ease; }
+.zone-pct { width: 40px; text-align: right; font-size: 12px; font-weight: 700; color: var(--text-primary); }
+.zone-count { width: 36px; text-align: right; font-size: 11px; color: var(--text-muted); }
+
+/* Element List */
+.element-list { display: flex; flex-direction: column; }
+.element-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border-color); }
+.element-row:last-child { border-bottom: none; }
+.element-rank { flex-shrink: 0; width: 28px; height: 28px; border-radius: 50%; background: var(--bg-surface); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: var(--text-muted); }
+.element-row:nth-child(-n+3) .element-rank { background: rgba(99,102,241,0.12); color: var(--brand-accent); }
+.element-info { flex: 1; min-width: 0; }
+.element-selector { font-size: 11px; font-family: 'SF Mono', 'Fira Code', monospace; color: var(--brand-accent); background: rgba(99,102,241,0.06); padding: 2px 6px; border-radius: 3px; display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.element-text { display: block; font-size: 11px; color: var(--text-muted); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.element-clicks { flex-shrink: 0; font-size: 14px; font-weight: 700; color: var(--text-primary); }
+
+/* AI Insights */
+.insights-grid { display: flex; flex-direction: column; gap: 12px; }
+.insight-card { display: flex; gap: 12px; padding: 14px; border-radius: var(--radius-md); border-left: 4px solid var(--border-color); background: var(--bg-surface); }
+.insight-success { border-left-color: #22c55e; }
+.insight-warning { border-left-color: #f59e0b; }
+.insight-danger { border-left-color: #ef4444; }
+.insight-opportunity { border-left-color: #6366f1; }
+.insight-info { border-left-color: #3b82f6; }
+.insight-icon { font-size: 20px; flex-shrink: 0; line-height: 1; }
+.insight-body { flex: 1; min-width: 0; }
+.insight-title { font-size: 13px; font-weight: 700; color: var(--text-primary); margin-bottom: 4px; }
+.insight-text { font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
+.insight-action { font-size: 11px; font-weight: 600; color: var(--brand-accent); margin-top: 6px; }
+
+/* Shimmer loading */
+.insights-shimmer { display: flex; flex-direction: column; gap: 12px; }
+.shimmer-card { padding: 14px; border-radius: var(--radius-md); background: var(--bg-surface); display: flex; flex-direction: column; gap: 8px; }
+.shimmer-line { height: 12px; border-radius: 4px; background: linear-gradient(90deg, var(--bg-input) 25%, var(--bg-surface) 50%, var(--bg-input) 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; }
+.w70 { width: 70%; }
+.w100 { width: 100%; }
+.w50 { width: 50%; }
+@keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
 @media (max-width: 768px) {
   .heatmap-stats { flex-direction: column; }
   .heatmap-viewport { height: 400px; }
   .heatmap-iframe { width: 1024px; height: 768px; transform: scale(0.4); }
+  .hm-grid { grid-template-columns: 1fr; }
 }
 </style>

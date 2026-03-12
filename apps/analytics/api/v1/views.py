@@ -106,8 +106,9 @@ class HeatmapView(APIView):
         from django.db.models import Count
         from collections import defaultdict
 
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        website = WebsiteService.get_for_user(user=request.user, website_id=website_id)
         page_url = request.query_params.get("page", None)
+        include_insights = request.query_params.get("insights", "0") == "1"
 
         clicks_qs = PageEvent.objects.filter(
             website_id=website_id, event_type="click"
@@ -132,14 +133,41 @@ class HeatmapView(APIView):
 
         # Aggregate click points — group nearby coordinates
         grid = defaultdict(int)
+        element_clicks = defaultdict(lambda: {"count": 0, "text": "", "selector": ""})
+        zone_counts = defaultdict(int)
         total = 0
+
         for click in page_clicks.values_list("properties", flat=True):
             if isinstance(click, dict) and "x_pct" in click and "y_pct" in click:
-                # Round to nearest 2% for grouping
                 gx = round(click["x_pct"] / 2) * 2
                 gy = round(click["y_pct"] / 2) * 2
                 grid[(gx, gy)] += 1
                 total += 1
+
+                # Element-level aggregation
+                selector = click.get("selector", "")
+                text = click.get("text", "")[:40]
+                if selector:
+                    key = selector
+                    element_clicks[key]["count"] += 1
+                    element_clicks[key]["selector"] = selector
+                    if text and not element_clicks[key]["text"]:
+                        element_clicks[key]["text"] = text
+
+                # Zone distribution
+                y = click["y_pct"]
+                if y < 8:
+                    zone_counts["Navigation"] += 1
+                elif y < 25:
+                    zone_counts["Hero / CTA"] += 1
+                elif y < 50:
+                    zone_counts["Content Area"] += 1
+                elif y < 75:
+                    zone_counts["Mid Section"] += 1
+                elif y < 90:
+                    zone_counts["Lower Content"] += 1
+                else:
+                    zone_counts["Footer"] += 1
 
         max_count = max(grid.values()) if grid else 1
         for (gx, gy), count in grid.items():
@@ -149,9 +177,115 @@ class HeatmapView(APIView):
                 "intensity": round(count / max_count, 2),
             })
 
-        return Response({
+        # Top clicked elements
+        top_elements = sorted(
+            element_clicks.values(),
+            key=lambda e: -e["count"]
+        )[:15]
+
+        # Zone distribution as percentages
+        zones = []
+        for zone_name in ["Navigation", "Hero / CTA", "Content Area", "Mid Section", "Lower Content", "Footer"]:
+            cnt = zone_counts.get(zone_name, 0)
+            zones.append({
+                "zone": zone_name,
+                "clicks": cnt,
+                "pct": round((cnt / max(total, 1)) * 100, 1),
+            })
+
+        result = {
             "pages": top_pages,
             "selected_page": page_url,
             "total_clicks": total,
             "points": sorted(points, key=lambda p: -p["count"]),
-        })
+            "top_elements": top_elements,
+            "zones": zones,
+        }
+
+        # AI Insights (only when requested to save API costs)
+        if include_insights and total > 0:
+            result["ai_insights"] = self._generate_insights(
+                zones, top_elements, total, page_url, website
+            )
+
+        return Response(result)
+
+    @staticmethod
+    def _generate_insights(zones, top_elements, total_clicks, page_url, website):
+        """Use Claude to generate actionable heatmap insights."""
+        try:
+            from django.conf import settings
+            import anthropic
+
+            api_key = getattr(settings, "ANTHROPIC_API_KEY", "")
+            if not api_key:
+                return []
+
+            zone_summary = "\n".join(
+                f"- {z['zone']}: {z['pct']}% of clicks ({z['clicks']} clicks)"
+                for z in zones if z["clicks"] > 0
+            )
+
+            element_summary = "\n".join(
+                f"- {e['selector']}: {e['count']} clicks" +
+                (f" (text: \"{e['text']}\")" if e.get("text") else "")
+                for e in top_elements[:10]
+            )
+
+            prompt = f"""Analyze this heatmap click data for {page_url} and provide 4-5 short, actionable UX insights.
+
+CLICK DISTRIBUTION BY ZONE:
+{zone_summary}
+
+TOP CLICKED ELEMENTS:
+{element_summary}
+
+TOTAL CLICKS: {total_clicks}
+
+For each insight, provide:
+1. A short title (5-8 words)
+2. A 1-2 sentence explanation with specific data
+3. An action recommendation
+4. A type: "success" (good patterns), "warning" (areas to improve), "opportunity" (growth potential), or "danger" (problems)
+
+Format each insight as:
+TITLE: [title]
+TYPE: [type]
+INSIGHT: [explanation]
+ACTION: [recommendation]
+---"""
+
+            client = anthropic.Anthropic(api_key=api_key)
+            response = client.messages.create(
+                model="claude-sonnet-4-20250514",
+                max_tokens=600,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            text = response.content[0].text if response.content else ""
+
+            # Parse insights
+            insights = []
+            for block in text.split("---"):
+                block = block.strip()
+                if not block:
+                    continue
+                insight = {}
+                for line in block.split("\n"):
+                    line = line.strip()
+                    if line.startswith("TITLE:"):
+                        insight["title"] = line[6:].strip()
+                    elif line.startswith("TYPE:"):
+                        insight["type"] = line[5:].strip().lower()
+                    elif line.startswith("INSIGHT:"):
+                        insight["insight"] = line[8:].strip()
+                    elif line.startswith("ACTION:"):
+                        insight["action"] = line[7:].strip()
+                if insight.get("title"):
+                    insights.append(insight)
+
+            return insights[:5]
+
+        except Exception as e:
+            import logging
+            logging.getLogger("apps").warning(f"Heatmap AI insights failed: {e}")
+            return []
