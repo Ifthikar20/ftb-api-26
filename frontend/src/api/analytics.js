@@ -21,6 +21,7 @@ export default {
     // Retention
     retention: (wid, params) => api.get(`/analytics/${wid}/retention/`, { params }),
     retentionCurve: (wid, params) => api.get(`/analytics/${wid}/retention/curve/`, { params }),
+    engagement: (wid, params) => api.get(`/analytics/${wid}/retention/engagement/`, { params }),
 
     // Flows
     flows: (wid, params) => api.get(`/analytics/${wid}/flows/`, { params }),

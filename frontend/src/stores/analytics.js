@@ -24,7 +24,7 @@ export const useAnalyticsStore = defineStore('analytics', () => {
                 stats: [], chartData: [], topPages: [], sources: [], devices: [],
                 countries: [], realtimeVisitors: 0, noData: false,
                 funnelList: [], funnelResult: null,
-                retentionData: {}, flowData: {}, entryExitData: {},
+                retentionData: {}, engagementData: {}, flowData: {}, entryExitData: {},
                 journeys: [], liveEvents: [],
                 insightsData: {}, visitorList: [], timelineEvents: [],
                 _ts: {},
@@ -143,8 +143,12 @@ export const useAnalyticsStore = defineStore('analytics', () => {
         wid = wid || activeWebsiteId.value
         if (!wid || !isStale('retention', wid)) return
         try {
-            const res = await analyticsApi.retention(wid, { weeks: 8 })
-            _key(wid).retentionData = res.data?.data || res.data || {}
+            const [retRes, engRes] = await Promise.all([
+                analyticsApi.retention(wid, { weeks: 8 }),
+                analyticsApi.engagement(wid, { period: activePeriod.value }),
+            ])
+            _key(wid).retentionData = retRes.data?.data || retRes.data || {}
+            _key(wid).engagementData = engRes.data?.data || engRes.data || {}
             _key(wid)._ts.retention = Date.now()
         } catch { /* keep cached */ }
     }

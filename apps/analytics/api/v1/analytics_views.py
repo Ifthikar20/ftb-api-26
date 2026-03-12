@@ -95,6 +95,19 @@ class RetentionCurveView(APIView):
         return Response(data)
 
 
+class EngagementMetricsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, website_id):
+        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        from apps.analytics.services.retention_service import RetentionService
+        period = request.query_params.get("period", "30d")
+        data = RetentionService.get_engagement_metrics(
+            website_id=website_id, period=period
+        )
+        return Response(data)
+
+
 class FlowView(APIView):
     permission_classes = [IsAuthenticated]
 

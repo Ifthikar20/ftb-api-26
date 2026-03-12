@@ -113,3 +113,120 @@ class RetentionService:
             curve.append({"week": offset, "avg_retention_pct": avg})
 
         return curve
+
+    @staticmethod
+    def get_engagement_metrics(*, website_id: str, period: str = "30d") -> dict:
+        """
+        Compute engagement and retention metrics:
+        - New vs returning visitors
+        - Bounce rate
+        - Avg pages per session
+        - Avg session duration
+        - Engagement score
+        """
+        from apps.analytics.models import Session
+        from django.db.models import Avg, Sum, F
+
+        start, end = get_date_range(period)
+
+        # ── Visitor counts ──
+        total_visitors = Visitor.objects.filter(
+            website_id=website_id,
+            first_seen__lte=end,
+        ).count()
+
+        new_visitors = Visitor.objects.filter(
+            website_id=website_id,
+            first_seen__range=(start, end),
+        ).count()
+
+        returning_visitors = Visitor.objects.filter(
+            website_id=website_id,
+            first_seen__lt=start,
+            last_seen__range=(start, end),
+        ).count()
+
+        # Also count visitors who visited multiple times within the period
+        multi_visit = Visitor.objects.filter(
+            website_id=website_id,
+            first_seen__range=(start, end),
+            visit_count__gt=1,
+        ).count()
+
+        returning_total = returning_visitors + multi_visit
+
+        # ── Session metrics ──
+        sessions_in_period = Session.objects.filter(
+            visitor__website_id=website_id,
+            started_at__range=(start, end),
+        )
+
+        total_sessions = sessions_in_period.count()
+        bounced_sessions = sessions_in_period.filter(page_count__lte=1).count()
+        bounce_rate = round(bounced_sessions / max(total_sessions, 1) * 100, 1)
+
+        avg_pages = sessions_in_period.aggregate(
+            avg=Avg("page_count")
+        )["avg"] or 0
+
+        # Avg duration (from sessions that have ended)
+        ended_sessions = sessions_in_period.filter(ended_at__isnull=False)
+        durations = []
+        for s in ended_sessions[:200]:
+            if s.ended_at and s.started_at:
+                durations.append((s.ended_at - s.started_at).total_seconds())
+        avg_duration = round(sum(durations) / max(len(durations), 1))
+
+        # ── Engagement score (0-100) ──
+        # Weighted: low bounce (40%), pages/session (30%), return rate (30%)
+        bounce_score = max(0, (100 - bounce_rate)) * 0.4
+        pages_score = min(avg_pages / 5, 1.0) * 30
+        return_rate = returning_total / max(total_visitors, 1) * 100
+        return_score = min(return_rate, 100) * 0.3
+        engagement_score = round(bounce_score + pages_score + return_score)
+
+        # ── Top returning visitors ──
+        top_returners = list(
+            Visitor.objects.filter(
+                website_id=website_id,
+                visit_count__gt=1,
+            )
+            .order_by("-visit_count", "-last_seen")[:10]
+            .values(
+                "fingerprint_hash", "visit_count", "last_seen",
+                "device_type", "geo_country", "browser", "os",
+            )
+        )
+
+        returner_list = []
+        for v in top_returners:
+            # Get avg pages per visit for this visitor
+            visitor_sessions = Session.objects.filter(
+                visitor__fingerprint_hash=v["fingerprint_hash"],
+                visitor__website_id=website_id,
+            )
+            v_avg_pages = visitor_sessions.aggregate(avg=Avg("page_count"))["avg"] or 0
+            returner_list.append({
+                "hash": (v["fingerprint_hash"] or "")[:12],
+                "visits": v["visit_count"],
+                "last_seen": v["last_seen"].isoformat() if v["last_seen"] else None,
+                "device": v["device_type"] or "",
+                "country": v["geo_country"] or "",
+                "browser": v["browser"] or "",
+                "avg_pages": round(v_avg_pages, 1),
+            })
+
+        return {
+            "total_visitors": total_visitors,
+            "new_visitors": new_visitors,
+            "returning_visitors": returning_total,
+            "new_pct": round(new_visitors / max(total_visitors, 1) * 100, 1),
+            "returning_pct": round(returning_total / max(total_visitors, 1) * 100, 1),
+            "total_sessions": total_sessions,
+            "bounce_rate": bounce_rate,
+            "avg_pages_per_session": round(avg_pages, 1),
+            "avg_session_duration_secs": avg_duration,
+            "engagement_score": engagement_score,
+            "top_returners": returner_list,
+        }
+

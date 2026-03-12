@@ -270,7 +270,150 @@
 
       <!-- ═══════════ TAB 3: Retention ═══════════ -->
       <div v-show="activeTab === 'retention'">
-        <div class="card">
+
+        <!-- Engagement Score + New vs Returning row -->
+        <div class="analytics-row" style="margin-bottom:20px">
+
+          <!-- Engagement Score Ring -->
+          <div class="card engagement-score-card">
+            <div class="card-header">
+              <h3 class="card-title">Engagement Score</h3>
+              <span class="text-xs text-muted">Composite health metric</span>
+            </div>
+            <div class="engagement-ring-wrap">
+              <svg class="engagement-ring" viewBox="0 0 120 120">
+                <circle cx="60" cy="60" r="50" fill="none" stroke="var(--bg-surface)" stroke-width="8"/>
+                <circle cx="60" cy="60" r="50" fill="none"
+                  :stroke="engScoreColor"
+                  stroke-width="8" stroke-linecap="round"
+                  :stroke-dasharray="engDash"
+                  stroke-dashoffset="0"
+                  transform="rotate(-90 60 60)"
+                  class="ring-progress"/>
+              </svg>
+              <div class="engagement-ring-label">
+                <span class="eng-score-num">{{ engagementData.engagement_score || 0 }}</span>
+                <span class="eng-score-unit">/100</span>
+              </div>
+            </div>
+            <div class="eng-breakdown">
+              <div class="eng-factor">
+                <span class="eng-factor-label">Low Bounce</span>
+                <div class="eng-factor-bar"><div class="eng-factor-fill" :style="{ width: (100 - (engagementData.bounce_rate || 0)) + '%', background: 'var(--color-success)' }"></div></div>
+              </div>
+              <div class="eng-factor">
+                <span class="eng-factor-label">Depth</span>
+                <div class="eng-factor-bar"><div class="eng-factor-fill" :style="{ width: Math.min((engagementData.avg_pages_per_session || 0) / 5 * 100, 100) + '%', background: 'var(--color-info)' }"></div></div>
+              </div>
+              <div class="eng-factor">
+                <span class="eng-factor-label">Return Rate</span>
+                <div class="eng-factor-bar"><div class="eng-factor-fill" :style="{ width: (engagementData.returning_pct || 0) + '%', background: 'var(--brand-accent)' }"></div></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- New vs Returning Donut -->
+          <div class="card">
+            <div class="card-header">
+              <h3 class="card-title">New vs Returning</h3>
+              <span class="text-xs text-muted">{{ engagementData.total_visitors || 0 }} total visitors</span>
+            </div>
+            <div class="donut-wrap">
+              <svg class="donut-chart" viewBox="0 0 120 120">
+                <circle cx="60" cy="60" r="44" fill="none" stroke="var(--color-info)" stroke-width="14"
+                  :stroke-dasharray="newDonutDash"
+                  stroke-dashoffset="0"
+                  transform="rotate(-90 60 60)"
+                  class="donut-arc donut-new"/>
+                <circle cx="60" cy="60" r="44" fill="none" stroke="var(--color-success)" stroke-width="14"
+                  :stroke-dasharray="retDonutDash"
+                  :stroke-dashoffset="retDonutOffset"
+                  transform="rotate(-90 60 60)"
+                  class="donut-arc donut-ret"/>
+              </svg>
+              <div class="donut-center-label">
+                <span class="donut-big">{{ engagementData.returning_pct || 0 }}%</span>
+                <span class="donut-sub">returning</span>
+              </div>
+            </div>
+            <div class="donut-legend">
+              <div class="legend-item"><span class="legend-dot" style="background:var(--color-info)"></span>New <b>{{ engagementData.new_visitors || 0 }}</b> ({{ engagementData.new_pct || 0 }}%)</div>
+              <div class="legend-item"><span class="legend-dot" style="background:var(--color-success)"></span>Returning <b>{{ engagementData.returning_visitors || 0 }}</b> ({{ engagementData.returning_pct || 0 }}%)</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Stat Cards Row -->
+        <div class="ret-stat-grid">
+          <div class="ret-stat-card" :class="{ 'stat-danger': (engagementData.bounce_rate || 0) > 60 }">
+            <div class="ret-stat-icon">
+              <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 12l4-8 4 8"/><line x1="5.5" y1="9" x2="10.5" y2="9"/></svg>
+            </div>
+            <div class="ret-stat-value">{{ engagementData.bounce_rate || 0 }}%</div>
+            <div class="ret-stat-label">Bounce Rate</div>
+            <div class="ret-stat-hint">{{ (engagementData.bounce_rate || 0) > 50 ? 'Higher than ideal' : 'Healthy range' }}</div>
+          </div>
+          <div class="ret-stat-card">
+            <div class="ret-stat-icon">
+              <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="12" height="12" rx="2"/><path d="M5 6h6M5 8h4M5 10h5"/></svg>
+            </div>
+            <div class="ret-stat-value">{{ engagementData.avg_pages_per_session || 0 }}</div>
+            <div class="ret-stat-label">Pages / Session</div>
+            <div class="ret-stat-hint">Average page depth</div>
+          </div>
+          <div class="ret-stat-card">
+            <div class="ret-stat-icon">
+              <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 4v4l3 2"/></svg>
+            </div>
+            <div class="ret-stat-value">{{ formatDuration(engagementData.avg_session_duration_secs || 0) }}</div>
+            <div class="ret-stat-label">Avg Duration</div>
+            <div class="ret-stat-hint">Time per session</div>
+          </div>
+          <div class="ret-stat-card">
+            <div class="ret-stat-icon">
+              <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 12V4a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2z"/><path d="M5 8h6M8 5v6"/></svg>
+            </div>
+            <div class="ret-stat-value">{{ engagementData.total_sessions || 0 }}</div>
+            <div class="ret-stat-label">Total Sessions</div>
+            <div class="ret-stat-hint">In selected period</div>
+          </div>
+        </div>
+
+        <!-- Top Returning Visitors -->
+        <div class="card" style="margin-top:20px" v-if="engagementData.top_returners && engagementData.top_returners.length">
+          <div class="card-header">
+            <h3 class="card-title">Top Returning Visitors</h3>
+            <span class="text-xs text-muted">Most loyal visitors by visit count</span>
+          </div>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Visitor</th>
+                <th>Visits</th>
+                <th>Avg Pages</th>
+                <th>Device</th>
+                <th>Country</th>
+                <th>Last Seen</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="r in engagementData.top_returners" :key="r.hash" class="returner-row">
+                <td>
+                  <span class="visitor-hash">{{ r.hash }}...</span>
+                  <span v-if="r.browser" class="badge badge-sm badge-outline" style="margin-left:6px">{{ r.browser }}</span>
+                </td>
+                <td><span class="visit-count-badge">{{ r.visits }}</span></td>
+                <td>{{ r.avg_pages }}</td>
+                <td>{{ r.device || '—' }}</td>
+                <td>{{ r.country || '—' }}</td>
+                <td class="text-muted">{{ r.last_seen ? relativeTime(r.last_seen) : '—' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Cohort Matrix -->
+        <div class="card" style="margin-top:20px">
           <div class="card-header">
             <h3 class="card-title">Cohort Retention</h3>
             <p class="card-subtitle">How many visitors return over time</p>
@@ -612,6 +755,7 @@ const noData = computed(() => cached.value.noData)
 const funnelList = computed(() => cached.value.funnelList || [])
 const funnelResult = computed(() => cached.value.funnelResult)
 const retentionData = computed(() => cached.value.retentionData || {})
+const engagementData = computed(() => cached.value.engagementData || {})
 const flowData = computed(() => cached.value.flowData || {})
 const entryExitData = computed(() => cached.value.entryExitData || {})
 const insightsData = computed(() => cached.value.insightsData || {})
@@ -1155,6 +1299,56 @@ function retentionColor(pct) {
   return 'transparent'
 }
 
+// ── Engagement Score Ring ──
+const engScoreColor = computed(() => {
+  const s = engagementData.value.engagement_score || 0
+  if (s >= 60) return 'var(--color-success)'
+  if (s >= 40) return 'var(--color-info)'
+  if (s >= 20) return 'var(--color-warning)'
+  return 'var(--color-danger)'
+})
+
+const engDash = computed(() => {
+  const circ = 2 * Math.PI * 50 // r=50
+  const score = engagementData.value.engagement_score || 0
+  const filled = circ * score / 100
+  return `${filled} ${circ - filled}`
+})
+
+// ── New vs Returning Donut ──
+const donutCirc = 2 * Math.PI * 44 // r=44
+
+const newDonutDash = computed(() => {
+  const pct = engagementData.value.new_pct || 0
+  const filled = donutCirc * pct / 100
+  return `${filled} ${donutCirc - filled}`
+})
+
+const retDonutDash = computed(() => {
+  const pct = engagementData.value.returning_pct || 0
+  const filled = donutCirc * pct / 100
+  return `${filled} ${donutCirc - filled}`
+})
+
+const retDonutOffset = computed(() => {
+  const newPct = engagementData.value.new_pct || 0
+  return `-${donutCirc * newPct / 100}`
+})
+
+// ── Relative time helper ──
+function relativeTime(iso) {
+  if (!iso) return '—'
+  const diff = Date.now() - new Date(iso).getTime()
+  const mins = Math.floor(diff / 60000)
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins}m ago`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24) return `${hrs}h ago`
+  const days = Math.floor(hrs / 24)
+  if (days < 7) return `${days}d ago`
+  return `${Math.floor(days / 7)}w ago`
+}
+
 // ── Store-backed actions ──
 function switchTab(tabId) {
   store.switchTab(tabId)
@@ -1326,6 +1520,43 @@ onBeforeUnmount(() => {
 
 /* ── Retention ── */
 .retention-table { font-size: var(--font-xs); }
+/* ── Engagement Score Ring ── */
+.engagement-score-card { display: flex; flex-direction: column; }
+.engagement-ring-wrap { position: relative; display: flex; align-items: center; justify-content: center; padding: 16px 0; }
+.engagement-ring { width: 130px; height: 130px; }
+.ring-progress { transition: stroke-dasharray 1s ease; }
+.engagement-ring-label { position: absolute; text-align: center; }
+.eng-score-num { font-size: 32px; font-weight: 700; color: var(--text-primary); }
+.eng-score-unit { font-size: 13px; color: var(--text-muted); margin-left: 2px; }
+.eng-breakdown { padding: 0 8px; display: flex; flex-direction: column; gap: 8px; }
+.eng-factor { display: flex; align-items: center; gap: 8px; }
+.eng-factor-label { font-size: 11px; color: var(--text-muted); min-width: 72px; }
+.eng-factor-bar { flex: 1; height: 6px; background: var(--bg-surface); border-radius: var(--radius-full); overflow: hidden; }
+.eng-factor-fill { height: 100%; border-radius: var(--radius-full); transition: width 0.8s ease; }
+
+/* ── Donut Chart ── */
+.donut-wrap { position: relative; display: flex; align-items: center; justify-content: center; padding: 16px 0; }
+.donut-chart { width: 140px; height: 140px; }
+.donut-arc { transition: stroke-dasharray 0.8s ease, stroke-dashoffset 0.8s ease; }
+.donut-center-label { position: absolute; text-align: center; }
+.donut-big { font-size: 26px; font-weight: 700; color: var(--text-primary); display: block; }
+.donut-sub { font-size: 11px; color: var(--text-muted); }
+.donut-legend { display: flex; gap: 20px; justify-content: center; padding-top: 8px; }
+.legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-secondary); }
+.legend-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+/* ── Retention Stat Grid ── */
+.ret-stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+@media (max-width: 768px) { .ret-stat-grid { grid-template-columns: repeat(2, 1fr); } }
+.ret-stat-card { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 20px; text-align: center; transition: transform 0.2s, box-shadow 0.2s; cursor: default; }
+.ret-stat-card:hover { transform: translateY(-2px); box-shadow: 0 4px 20px rgba(0,0,0,0.12); }
+.ret-stat-card.stat-danger { border-color: rgba(231,76,60,0.3); }
+.ret-stat-icon { margin-bottom: 8px; color: var(--text-muted); }
+.ret-stat-value { font-size: 28px; font-weight: 700; color: var(--text-primary); line-height: 1.1; }
+.ret-stat-label { font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-top: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+.ret-stat-hint { font-size: 10px; color: var(--text-muted); margin-top: 4px; }
+.visit-count-badge { display: inline-block; background: var(--brand-accent); color: white; font-weight: 700; font-size: 12px; padding: 2px 8px; border-radius: var(--radius-full); min-width: 28px; text-align: center; }
+.returner-row:hover { background: var(--bg-surface); }
 .retention-cell { text-align: center; font-weight: 600; font-size: 11px; min-width: 50px; }
 
 /* ── Flows: Insights Grid ── */
