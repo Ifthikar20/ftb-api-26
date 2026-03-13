@@ -11,4 +11,6 @@ export default {
     compare: (wid, params) => api.get(`/audits/${wid}/compare/`, { params }),
     getSchedule: (wid) => api.get(`/audits/${wid}/schedule/`),
     updateSchedule: (wid, data) => api.put(`/audits/${wid}/schedule/`, data),
+    grader: (wid) => api.get(`/audits/${wid}/grader/`),
+    graderDeploy: (wid, issueId) => api.patch(`/audits/${wid}/grader/${issueId}/deploy/`),
 }

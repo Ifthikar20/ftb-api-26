@@ -28,6 +28,15 @@ def run_website_audit(self, website_id: str, audit_id: str):
 
         result = AuditOrchestrator.execute(website_id=website_id, audit=audit)
 
+        # Run SEO Grader for per-page analysis
+        try:
+            from apps.audits.services.seo_grader import SEOGrader
+            from apps.websites.models import Website
+            website = Website.objects.get(id=website_id)
+            SEOGrader.run(website=website, audit=audit)
+        except Exception as grader_exc:
+            logger.warning(f"SEO Grader failed for {website_id}: {grader_exc}")
+
         audit.status = "completed"
         audit.completed_at = timezone.now()
         audit.overall_score = result["overall_score"]
