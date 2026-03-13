@@ -538,12 +538,9 @@ onMounted(async () => {
 /* Page Content */
 .page-content {
   flex: 1;
-  padding: 28px;
-  padding-left: 40px;
-  padding-right: 40px;
+  padding: 32px;
   background: var(--bg-page-tint);
   min-height: calc(100vh - var(--topbar-height));
-  max-width: 1400px;
 }
 
 /* Responsive */
