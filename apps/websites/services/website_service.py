@@ -15,12 +15,19 @@ class WebsiteService:
     @staticmethod
     def create(*, user, url: str, name: str, industry: str = "") -> Website:
         """Add a new website for a user."""
-        # Plan limit check disabled for testing
-        # limit = PLAN_WEBSITE_LIMITS.get(user.plan, 1)
-        # if Website.objects.filter(user=user).count() >= limit:
-        #     raise PlanLimitExceeded(f"Your plan allows up to {limit} website(s).")
-
         validated_url = validate_website_url(url)
+
+        # Check if a soft-deleted website with the same URL exists — restore it
+        existing = Website.all_objects.filter(user=user, url=validated_url, is_deleted=True).first()
+        if existing:
+            existing.is_deleted = False
+            existing.deleted_at = None
+            existing.deleted_by = None
+            existing.name = name
+            existing.industry = industry or existing.industry
+            existing.save()
+            audit_log("website.restored", user=user, metadata={"website_id": str(existing.id)})
+            return existing
 
         website = Website.objects.create(
             user=user, url=validated_url, name=name, industry=industry

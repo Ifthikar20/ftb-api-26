@@ -21,7 +21,7 @@ class WebsiteSerializer(serializers.ModelSerializer):
 class WebsiteCreateSerializer(serializers.Serializer):
     url = serializers.URLField()
     name = serializers.CharField(max_length=200)
-    industry = serializers.CharField(max_length=100, required=False, default="")
+    industry = serializers.CharField(max_length=100, required=False, allow_blank=True, default="")
 
 
 class WebsiteUpdateSerializer(serializers.Serializer):
