@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { useAppStore } from '@/stores/app'
 
 /* ── Helper: wrap a protected route in AppLayout ── */
 const protect = (path, name, component, props = false) => ({
@@ -107,6 +108,15 @@ router.beforeEach(async (to, from, next) => {
     // If guest visits a guest-only page but is already logged in, go to dashboard
     if (to.meta.guest && auth.isAuthenticated) {
         return next({ name: 'dashboard' })
+    }
+
+    // Guard: project-specific pages require an active project
+    const projectPages = ['analytics', 'leads', 'competitors', 'audits', 'heatmap', 'keywords', 'strategy', 'agents', 'website-detail']
+    if (projectPages.includes(to.name) && auth.isAuthenticated) {
+        const app = useAppStore()
+        if (!app.activeWebsite) {
+            return next({ name: 'websites' })
+        }
     }
 
     next()

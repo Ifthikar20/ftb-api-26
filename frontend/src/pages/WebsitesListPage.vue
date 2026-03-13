@@ -169,6 +169,10 @@ async function renameWebsite() {
 }
 
 function confirmDelete(site) {
+  if (websites.value.length <= 1) {
+    alert('You must have at least one project. Add a new project before deleting this one.')
+    return
+  }
   deleteTarget.value = site
 }
 
