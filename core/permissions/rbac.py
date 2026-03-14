@@ -7,7 +7,8 @@ ROLE_HIERARCHY = {
     "viewer": 20,
 }
 
-PLAN_FEATURES = {
+# Base platform features per tier (non-integration features)
+_BASE_PLAN_FEATURES = {
     "starter": [
         "audit", "basic_analytics", "basic_leads", "competitors_3",
     ],
@@ -21,6 +22,65 @@ PLAN_FEATURES = {
         "white_label", "dedicated_support",
     ],
 }
+
+
+def _build_plan_features() -> dict[str, list[str]]:
+    """Build PLAN_FEATURES by merging base features with integration entitlements."""
+    from core.integrations import get_registry
+    registry = get_registry()
+    result = {}
+    for plan, base_features in _BASE_PLAN_FEATURES.items():
+        result[plan] = list(base_features) + registry.feature_keys_for(plan)
+    return result
+
+
+# Lazy-loaded to avoid import cycles with Django settings
+_plan_features_cache = None
+
+
+def get_plan_features() -> dict[str, list[str]]:
+    global _plan_features_cache
+    if _plan_features_cache is None:
+        _plan_features_cache = _build_plan_features()
+    return _plan_features_cache
+
+
+# Backwards-compatible module-level access — rebuilt once on first import
+class _PlanFeaturesProxy(dict):
+    """Lazy dict that builds itself on first access."""
+    _loaded = False
+
+    def _ensure_loaded(self):
+        if not self._loaded:
+            self.update(get_plan_features())
+            self._loaded = True
+
+    def __getitem__(self, key):
+        self._ensure_loaded()
+        return super().__getitem__(key)
+
+    def get(self, key, default=None):
+        self._ensure_loaded()
+        return super().get(key, default)
+
+    def __contains__(self, key):
+        self._ensure_loaded()
+        return super().__contains__(key)
+
+    def items(self):
+        self._ensure_loaded()
+        return super().items()
+
+    def values(self):
+        self._ensure_loaded()
+        return super().values()
+
+    def keys(self):
+        self._ensure_loaded()
+        return super().keys()
+
+
+PLAN_FEATURES = _PlanFeaturesProxy()
 
 
 class IsWebsiteOwner(BasePermission):

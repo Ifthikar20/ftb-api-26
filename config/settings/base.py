@@ -287,6 +287,14 @@ SENTRY_DSN = env("SENTRY_DSN", default="")
 DATAFORSEO_LOGIN = env("DATAFORSEO_LOGIN", default="")
 DATAFORSEO_PASSWORD = env("DATAFORSEO_PASSWORD", default="")
 
+# ── INTEGRATION CREDENTIALS ──
+# Managed centrally via core.integrations.registry — setting names referenced there.
+HUBSPOT_CLIENT_ID = env("HUBSPOT_CLIENT_ID", default="")
+HUBSPOT_CLIENT_SECRET = env("HUBSPOT_CLIENT_SECRET", default="")
+SEMRUSH_API_KEY = env("SEMRUSH_API_KEY", default="")
+SLACK_CLIENT_ID = env("SLACK_CLIENT_ID", default="")
+SLACK_CLIENT_SECRET = env("SLACK_CLIENT_SECRET", default="")
+
 # ── LOGGING ──
 LOGGING = {
     "version": 1,

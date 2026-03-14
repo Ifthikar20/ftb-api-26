@@ -336,18 +336,42 @@ Everything runs on the default queue. Slow external API calls block pixel aggreg
 If Semrush goes down, every crawl task retries and backs up the queue.
 - **Fix:** Redis-based circuit breaker: closed → open (after 5 failures, fail-fast 60s) → half-open (test 1 request).
 
-### Updated PLAN_FEATURES
+### Centralized Integration Config (Implemented)
+
+All integration configuration is now centralized in `core/integrations/`:
+
 ```python
-# core/permissions/rbac.py
-PLAN_FEATURES = {
-    "starter": [..., "slack_webhook"],
-    "growth":  [..., "hubspot_basic", "google_ads", "webhooks_basic",
-                "competitor_intelligence", "slack_app"],
-    "scale":   [..., "hubspot_advanced", "google_ads_advanced",
-                "webhooks_advanced", "competitor_intelligence_advanced",
-                "slack_advanced"],
-}
+from core.integrations import get_registry
+
+# Get an integration's config
+registry = get_registry()
+config = registry.get("hubspot")
+
+# Check entitlement
+config.is_enabled_for(user.plan)            # True/False
+config.get_limit(user.plan, "competitors")  # tier-specific limit
+
+# Load credentials (resolved from Django settings)
+creds = config.get_credentials()            # {"client_id": "...", ...}
+
+# Permission checks in views
+from core.permissions.feature_flags import user_has_integration
+if user_has_integration(user, "hubspot"):
+    ...
+
+# DRF permission class (existing, now auto-populated)
+class RequiresHubspot(PlanFeatureRequired):
+    required_feature = "hubspot_basic"
 ```
+
+`PLAN_FEATURES` in `rbac.py` is now auto-built from base platform features + the registry's
+per-tier `feature_key` values. No manual sync needed — add an integration to the registry
+and its feature keys are automatically included in the correct tiers.
+
+Each `IntegrationConfig` defines: credentials (OAuth or API key setting names), per-tier
+entitlements with limits, rate limits, Celery queue, and webhook events. The `Integration`
+model derives its `INTEGRATION_TYPES` choices from the registry and adds `token_expires_at`,
+`metadata` (JSON), and `last_synced_at` fields.
 
 ---
 
@@ -373,7 +397,9 @@ PLAN_FEATURES = {
 | `apps/websites/models.py` | Integration model shell + unused WebsiteSettings fields |
 | `apps/notifications/services/slack_service.py` | Dead code to wire up |
 | `apps/notifications/services/email_service.py` | Dead code to wire up |
-| `core/permissions/rbac.py` | PLAN_FEATURES gating for all tiers |
+| `core/integrations/registry.py` | Central registry — single source of truth for all integration config |
+| `core/integrations/config.py` | IntegrationConfig dataclass — credentials, entitlements, limits |
+| `core/permissions/rbac.py` | PLAN_FEATURES (auto-built from registry) |
 | `apps/leads/services/lead_service.py` | Status updates with no side effects |
 | `apps/strategy/services/strategy_generator.py` | Prompt enrichment with ad/competitor data |
 | `config/celery.py` | Beat schedule + queue topology changes |
