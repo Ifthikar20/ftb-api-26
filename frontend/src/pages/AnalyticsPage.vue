@@ -56,6 +56,41 @@
       <!-- ═══════════ TAB 1: Overview ═══════════ -->
       <div v-show="activeTab === 'overview' && !noData" @click.self="showOverviewPicker = false">
 
+        <!-- Vendor Integration Bar -->
+        <div class="vendor-bar">
+          <div class="vendor-bar-label">Integrations</div>
+          <div class="vendor-icons">
+            <div class="vendor-chip" :class="{ connected: integrationStatus.pixel }">
+              <div class="vendor-icon-wrap" style="background: #6366f1">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#fff" stroke-width="1.5"><rect x="2" y="2" width="12" height="12" rx="2"/><path d="M6 6l4 4M10 6l-4 4"/></svg>
+              </div>
+              <span class="vendor-name">FetchBot Pixel</span>
+              <span class="vendor-dot" :class="integrationStatus.pixel ? 'dot-on' : 'dot-off'"></span>
+            </div>
+            <div class="vendor-chip" :class="{ connected: integrationStatus.ga }">
+              <div class="vendor-icon-wrap" style="background: #F5A623">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#fff" stroke-width="1.5"><rect x="2" y="9" width="3" height="5" rx="1"/><rect x="6.5" y="5" width="3" height="9" rx="1"/><rect x="11" y="2" width="3" height="12" rx="1"/></svg>
+              </div>
+              <span class="vendor-name">Google Analytics</span>
+              <span class="vendor-dot" :class="integrationStatus.ga ? 'dot-on' : 'dot-off'"></span>
+            </div>
+            <div class="vendor-chip" :class="{ connected: integrationStatus.gsc }">
+              <div class="vendor-icon-wrap" style="background: #4285F4">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#fff" stroke-width="1.5"><circle cx="7" cy="7" r="4"/><path d="M10 10l4 4"/></svg>
+              </div>
+              <span class="vendor-name">Search Console</span>
+              <span class="vendor-dot" :class="integrationStatus.gsc ? 'dot-on' : 'dot-off'"></span>
+            </div>
+            <div class="vendor-chip" :class="{ connected: integrationStatus.facebook }">
+              <div class="vendor-icon-wrap" style="background: #1877F2">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="#fff"><path d="M9.5 3H11V1h-1.5C8.1 1 7 2.1 7 3.5V5H5v2h2v7h2V7h1.5L11 5H9V3.5c0-.3.2-.5.5-.5z"/></svg>
+              </div>
+              <span class="vendor-name">Facebook Ads</span>
+              <span class="vendor-dot" :class="integrationStatus.facebook ? 'dot-on' : 'dot-off'"></span>
+            </div>
+          </div>
+        </div>
+
         <!-- KPI Cards -->
         <div class="kpi-grid">
           <div class="kpi-card" v-for="stat in stats" :key="stat.label">
@@ -72,6 +107,7 @@
               </span>
             </div>
             <div class="kpi-value">{{ stat.value }}</div>
+            <div class="kpi-period">Last {{ periodLabel }}</div>
           </div>
         </div>
 
@@ -919,6 +955,7 @@ import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAnalyticsStore } from '@/stores/analytics'
 import analyticsApi from '@/api/analytics'
+import dashboardApi from '@/api/dashboard'
 import { Line, Bar, Doughnut, Radar, PolarArea } from 'vue-chartjs'
 import {
   Chart as ChartJS,
@@ -979,6 +1016,29 @@ const devices = computed(() => cached.value.devices || [])
 const countries = computed(() => cached.value.countries || [])
 const realtimeVisitors = computed(() => cached.value.realtimeVisitors || 0)
 const noData = computed(() => cached.value.noData)
+
+// ── Integration status ──
+const integrationStatus = ref({ pixel: false, ga: false, gsc: false, facebook: false })
+
+const PERIOD_LABELS = { '5m': '5 min', '15m': '15 min', '30m': '30 min', '1h': '1 hour', '6h': '6 hours', '24h': '24 hours', '7d': '7 days', '30d': '30 days', '90d': '90 days' }
+const periodLabel = computed(() => PERIOD_LABELS[period.value] || period.value)
+
+onMounted(async () => {
+  try {
+    const { data } = await dashboardApi.get()
+    const d = data?.data || data
+    if (d?.integrations) {
+      integrationStatus.value.pixel = d.integrations.pixel?.installed || false
+      const svc = d.integrations.services || []
+      svc.forEach(s => {
+        if (s.type === 'ga') integrationStatus.value.ga = s.connected
+        if (s.type === 'gsc') integrationStatus.value.gsc = s.connected
+        if (s.type === 'facebook') integrationStatus.value.facebook = s.connected
+      })
+    }
+  } catch { /* silently fail — icon bar will show all gray */ }
+})
+
 const funnelList = computed(() => cached.value.funnelList || [])
 const funnelResult = computed(() => cached.value.funnelResult)
 const retentionData = computed(() => cached.value.retentionData || {})
@@ -1845,6 +1905,19 @@ onBeforeUnmount(() => {
 .trend-up { color: var(--color-success); background: var(--color-success-bg); }
 .trend-down { color: var(--color-danger); background: var(--color-danger-bg); }
 .kpi-value { font-family: var(--font-display); font-size: var(--font-3xl); color: var(--text-primary); line-height: 1.1; }
+.kpi-period { font-size: 11px; color: var(--text-muted); margin-top: 4px; font-weight: 500; }
+
+/* ── Vendor Integration Bar ── */
+.vendor-bar { display: flex; align-items: center; gap: 16px; margin-bottom: 20px; padding: 12px 16px; background: #ffffff; border: 1px solid var(--border-color); border-radius: var(--radius-lg); }
+.vendor-bar-label { font-size: 12px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap; }
+.vendor-icons { display: flex; gap: 10px; flex-wrap: wrap; }
+.vendor-chip { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: var(--radius-full); background: var(--bg-surface); border: 1px solid var(--border-color); transition: all 0.15s; cursor: default; }
+.vendor-chip.connected { border-color: rgba(34, 197, 94, 0.3); background: rgba(34, 197, 94, 0.05); }
+.vendor-icon-wrap { width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.vendor-name { font-size: 12px; font-weight: 600; color: var(--text-secondary); white-space: nowrap; }
+.vendor-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.dot-on { background: #22c55e; box-shadow: 0 0 6px rgba(34, 197, 94, 0.4); }
+.dot-off { background: #d1d5db; }
 
 /* ── Chart ── */
 .chart-card { margin-bottom: 24px; }
