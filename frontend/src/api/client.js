@@ -97,8 +97,19 @@ api.interceptors.response.use(
             }
         }
 
-        // ── Extract user-friendly message ──
+        // ── 429 Rate Limited — auto-retry with exponential backoff ──
         const status = error.response?.status || 0
+        if (status === 429) {
+            if (!originalRequest._retryCount) originalRequest._retryCount = 0
+            if (originalRequest._retryCount < 2) {
+                originalRequest._retryCount++
+                const delay = originalRequest._retryCount * 2000
+                await new Promise(r => setTimeout(r, delay))
+                return api(originalRequest)
+            }
+        }
+
+        // ── Extract user-friendly message ──
         const serverMessage = error.response?.data?.error?.message
 
         // Use the server's friendly message if it exists, otherwise use our fallback
