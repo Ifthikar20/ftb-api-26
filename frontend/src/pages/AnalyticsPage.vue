@@ -113,7 +113,7 @@
                 <table class="data-table">
                   <thead><tr><th>Page</th><th style="text-align:right">Views</th></tr></thead>
                   <tbody>
-                    <tr v-for="(page, i) in topPages" :key="i">
+                    <tr v-for="(page, i) in topPages.slice(0, 5)" :key="i">
                       <td><span class="page-rank">{{ i + 1 }}</span> {{ page.url }}</td>
                       <td style="text-align:right" class="font-semibold">{{ page.views }}</td>
                     </tr>
@@ -1457,28 +1457,28 @@ const trafficChartData = computed(() => ({
     {
       label: 'Visitors',
       data: chartData.value.map(d => d.visitors || 0),
-      borderColor: '#5B8DEF',
-      backgroundColor: 'rgba(91, 141, 239, 0.08)',
+      borderColor: '#F5A623',
+      backgroundColor: 'rgba(245, 166, 35, 0.12)',
       fill: true,
       tension: 0.4,
       borderWidth: 2.5,
       pointRadius: 0,
       pointHoverRadius: 5,
-      pointHoverBackgroundColor: '#5B8DEF',
+      pointHoverBackgroundColor: '#F5A623',
       pointHoverBorderColor: '#fff',
       pointHoverBorderWidth: 2,
     },
     {
       label: 'Page Views',
       data: chartData.value.map(d => d.pageviews || 0),
-      borderColor: '#3498db',
-      backgroundColor: 'rgba(52, 152, 219, 0.05)',
+      borderColor: '#3B82F6',
+      backgroundColor: 'rgba(59, 130, 246, 0.08)',
       fill: true,
       tension: 0.4,
       borderWidth: 2,
       pointRadius: 0,
       pointHoverRadius: 4,
-      pointHoverBackgroundColor: '#3498db',
+      pointHoverBackgroundColor: '#3B82F6',
       pointHoverBorderColor: '#fff',
       pointHoverBorderWidth: 2,
     },
