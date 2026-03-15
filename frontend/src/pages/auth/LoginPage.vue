@@ -34,6 +34,9 @@
       <p class="auth-switch">
         Don't have an account? <router-link to="/register">Create one</router-link>
       </p>
+      <p class="auth-switch" style="margin-top: -8px">
+        <router-link to="/" style="font-weight: 500;">← Back to Home</router-link>
+      </p>
     </form>
   </AuthLayout>
 </template>

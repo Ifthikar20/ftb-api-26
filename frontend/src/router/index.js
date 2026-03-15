@@ -16,7 +16,7 @@ const routes = [
         path: '/',
         name: 'landing',
         component: () => import('@/pages/LandingPage.vue'),
-        meta: { guest: true }
+        meta: { public: true }
     },
     {
         path: '/welcome',
@@ -105,7 +105,12 @@ router.beforeEach(async (to, from, next) => {
         return next({ name: 'login', query: { redirect: to.fullPath } })
     }
 
-    // If guest visits a guest-only page but is already logged in, go to dashboard
+    // Public pages (like landing) are accessible to everyone
+    if (to.meta.public) {
+        return next()
+    }
+
+    // If guest visits a guest-only page (login/register) but is already logged in, go to dashboard
     if (to.meta.guest && auth.isAuthenticated) {
         return next({ name: 'dashboard' })
     }
