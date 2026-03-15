@@ -8,16 +8,17 @@ security_logger = logging.getLogger("security")
 
 # Rate limit tiers — requests per window
 RATE_LIMITS = {
-    "default": {"requests": 120, "window": 60},       # 120/min for normal browsing
-    "api": {"requests": 60, "window": 60},             # 60/min for API calls
-    "auth": {"requests": 5, "window": 60},             # 5/min for login attempts
-    "sensitive": {"requests": 10, "window": 60},       # 10/min for password resets, etc.
+    "default": {"requests": 600, "window": 60},       # 600/min for normal browsing
+    "api": {"requests": 300, "window": 60},            # 300/min for API calls
+    "auth": {"requests": 20, "window": 60},            # 20/min for login/register
+    "sensitive": {"requests": 10, "window": 60},       # 10/min for password resets
 }
 
 # Path prefix → tier mapping
 PATH_TIERS = {
     "/api/v1/auth/login": "auth",
     "/api/v1/auth/register": "auth",
+    "/api/v1/auth/refresh": "default",                 # refresh must NOT count as auth
     "/api/v1/auth/forgot-password": "sensitive",
     "/api/v1/auth/reset-password": "sensitive",
     "/api/v1/agents/": "api",
@@ -28,7 +29,7 @@ PATH_TIERS = {
 }
 
 # Paths exempt from rate limiting
-EXEMPT_PATHS = ["/health/", "/admin/", "/__debug__/", "/api/schema/"]
+EXEMPT_PATHS = ["/health/", "/admin/", "/__debug__/", "/api/schema/", "/static/", "/media/"]
 
 
 class AdaptiveRateLimitMiddleware:
@@ -58,8 +59,9 @@ class AdaptiveRateLimitMiddleware:
         current = cache.get(cache_key, 0)
 
         # Check if this IP has a history of violations (adaptive escalation)
-        violations = cache.get(violation_key, 0)
-        effective_limit = max(limit_config["requests"] // (1 + violations), 3)
+        # Cap violations at 3 so effective limit never drops below 25%
+        violations = min(cache.get(violation_key, 0), 3)
+        effective_limit = max(limit_config["requests"] // (1 + violations), 10)
 
         if current >= effective_limit:
             # Record violation
