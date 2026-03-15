@@ -196,10 +196,38 @@ class DashboardView(APIView):
             {'label': 'Competitor Intel', 'desc': 'See what changed this week', 'to': '/websites'},
         ]
 
+        # Integration status
+        from apps.websites.models import Integration
+        integration_types = [
+            ('ga', 'Google Analytics'),
+            ('gsc', 'Google Search Console'),
+            ('facebook', 'Facebook Ads'),
+        ]
+        services = []
+        for itype, label in integration_types:
+            integration = Integration.objects.filter(website=website, type=itype, is_active=True).first() if website else None
+            services.append({
+                'type': itype,
+                'label': label,
+                'connected': integration is not None,
+                'connected_at': integration.connected_at.strftime('%b %d, %Y') if integration else None,
+            })
+
+        integrations = {
+            'pixel': {
+                'installed': website.pixel_verified if website else False,
+                'verified': website.pixel_verified if website else False,
+                'verified_at': website.pixel_verified_at.strftime('%b %d, %Y') if website and website.pixel_verified_at else None,
+                'pixel_key': str(website.pixel_key) if website else None,
+            },
+            'services': services,
+        }
+
         return Response({
             'stats': stats,
             'brief': brief_text,
             'actions': actions,
             'activity': activity,
             'quick_actions': quick_actions,
+            'integrations': integrations,
         })
