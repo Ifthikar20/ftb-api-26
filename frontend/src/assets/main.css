@@ -15,6 +15,17 @@
   box-sizing: border-box;
 }
 
+/* Remove default focus outline on click, keep for keyboard nav */
+*:focus {
+  outline: none;
+}
+
+*:focus-visible {
+  outline: 2px solid var(--brand-accent, #5B8DEF);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm, 8px);
+}
+
 /* ════════════════════════════════════════
    Light Mode (default)
    ════════════════════════════════════════ */

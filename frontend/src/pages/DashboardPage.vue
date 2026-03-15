@@ -45,7 +45,15 @@ const actions = ref([])
 const activity = ref([])
 const quickActions = ref([])
 const agentRuns = ref([])
-const integrations = ref({ pixel: {}, services: [] })
+const DEFAULT_INTEGRATIONS = {
+  pixel: { installed: false, verified: false, verified_at: null, pixel_key: null },
+  services: [
+    { type: 'ga', label: 'Google Analytics', connected: false, connected_at: null },
+    { type: 'gsc', label: 'Google Search Console', connected: false, connected_at: null },
+    { type: 'facebook', label: 'Facebook Ads', connected: false, connected_at: null },
+  ],
+}
+const integrations = ref({ ...DEFAULT_INTEGRATIONS })
 
 onMounted(async () => {
   try {
@@ -59,7 +67,14 @@ onMounted(async () => {
     actions.value = d.actions || []
     activity.value = d.activity || []
     quickActions.value = d.quick_actions || []
-    integrations.value = d.integrations || { pixel: {}, services: [] }
+    integrations.value = d.integrations
+      ? {
+          pixel: { ...DEFAULT_INTEGRATIONS.pixel, ...d.integrations.pixel },
+          services: d.integrations.services?.length
+            ? d.integrations.services
+            : DEFAULT_INTEGRATIONS.services,
+        }
+      : { ...DEFAULT_INTEGRATIONS }
     agentRuns.value = (agentRes.data || agentRes || []).slice(0, 3)
   } catch (e) {
     console.error('Dashboard load error', e)
