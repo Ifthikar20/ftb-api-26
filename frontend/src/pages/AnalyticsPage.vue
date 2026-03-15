@@ -1058,16 +1058,29 @@ const overviewAvailableCards = [
   { id: 'countries', title: 'Top Countries', desc: 'Visitor breakdown by country', icon: '<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M2 8h12M8 2c-2 2-2 10 0 12M8 2c2 2 2 10 0 12"/></svg>', size: 'half' },
 ]
 
-const OV_DEFAULT = ['traffic', 'sources', 'pages', 'live']
+const OV_DEFAULT = ['traffic', 'sources', 'pages', 'countries']
+const OV_VERSION = 2  // bump to reset all users to defaults
 const _ovStorageKey = computed(() => `ftb_ov_cards_${store.activeWebsiteId}`)
+const _ovVersionKey = computed(() => `ftb_ov_ver_${store.activeWebsiteId}`)
 const overviewCards = ref([...OV_DEFAULT])
 const showOverviewPicker = ref(false)
 
-// Load overview cards from localStorage on mount
+// Load overview cards from localStorage on mount (with version guard)
+const VALID_OV_IDS = new Set(overviewAvailableCards.map(c => c.id))
 onMounted(() => {
   try {
-    const saved = localStorage.getItem(_ovStorageKey.value)
-    if (saved) overviewCards.value = JSON.parse(saved)
+    const ver = parseInt(localStorage.getItem(_ovVersionKey.value) || '0', 10)
+    if (ver >= OV_VERSION) {
+      const saved = localStorage.getItem(_ovStorageKey.value)
+      if (saved) {
+        const parsed = JSON.parse(saved).filter(id => VALID_OV_IDS.has(id))
+        if (parsed.length) overviewCards.value = parsed
+      }
+    } else {
+      // Old version or first time — reset to defaults
+      localStorage.setItem(_ovVersionKey.value, String(OV_VERSION))
+      localStorage.setItem(_ovStorageKey.value, JSON.stringify(OV_DEFAULT))
+    }
   } catch { /* ignore */ }
 })
 
