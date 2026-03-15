@@ -152,33 +152,15 @@
           </div>
         </div>
 
-        <!-- Devices + Countries Row -->
-        <div class="analytics-row">
+        <!-- Devices + Browsers + OS Row -->
+        <div class="analytics-row" style="grid-template-columns: 1fr 1fr 1fr;">
           <div class="card">
-            <div class="card-header"><h3 class="card-title">Devices</h3></div>
+            <div class="card-header"><h3 class="card-title">Device Types</h3></div>
             <div class="chart-container" style="height:200px;position:relative" v-if="devices.length">
               <Doughnut :data="devicesChartData" :options="devicesChartOptions" />
             </div>
             <div v-else class="empty-inline">No device data yet</div>
           </div>
-          <div class="card">
-            <div class="card-header"><h3 class="card-title">Top Countries</h3></div>
-            <div class="country-list" v-if="countries.length">
-              <div v-for="(c, i) in countries" :key="i" class="country-item">
-                <div class="country-rank">{{ i + 1 }}</div>
-                <div class="country-info">
-                  <span class="country-name">{{ c.name }}</span>
-                  <div class="country-bar-wrap"><div class="country-bar" :style="{ width: c.pct + '%' }"></div></div>
-                </div>
-                <span class="font-semibold">{{ c.visitors }}</span>
-              </div>
-            </div>
-            <div v-else class="empty-inline">No geo data yet</div>
-          </div>
-        </div>
-
-        <!-- Browsers + Live Events Row -->
-        <div class="analytics-row">
           <div class="card">
             <div class="card-header"><h3 class="card-title">Browsers</h3></div>
             <div v-if="browserData.length" class="browser-list">
@@ -192,6 +174,38 @@
               </div>
             </div>
             <div v-else class="empty-inline">No browser data yet</div>
+          </div>
+          <div class="card">
+            <div class="card-header"><h3 class="card-title">Operating Systems</h3></div>
+            <div v-if="operatingSystems.length" class="browser-list">
+              <div v-for="(os, i) in operatingSystems" :key="i" class="browser-item">
+                <div class="browser-info">
+                  <svg class="browser-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="12" height="10" rx="2"/><path d="M5 13v1M11 13v1M4 13h8"/></svg>
+                  <span class="browser-name">{{ os.name }}</span>
+                </div>
+                <div class="browser-bar-wrap"><div class="browser-bar" :style="{ width: os.pct + '%', background: browserColors[(i + 2) % browserColors.length] }"></div></div>
+                <span class="browser-pct">{{ os.pct }}%</span>
+              </div>
+            </div>
+            <div v-else class="empty-inline">No OS data yet</div>
+          </div>
+        </div>
+
+        <!-- Countries + Live Events Row -->
+        <div class="analytics-row">
+          <div class="card">
+            <div class="card-header"><h3 class="card-title">Top Countries</h3></div>
+            <div class="country-list" v-if="countries.length">
+              <div v-for="(c, i) in countries" :key="i" class="country-item">
+                <div class="country-rank">{{ i + 1 }}</div>
+                <div class="country-info">
+                  <span class="country-name">{{ c.name }}</span>
+                  <div class="country-bar-wrap"><div class="country-bar" :style="{ width: c.pct + '%' }"></div></div>
+                </div>
+                <span class="font-semibold">{{ c.visitors }}</span>
+              </div>
+            </div>
+            <div v-else class="empty-inline">No geo data yet</div>
           </div>
           <div class="card">
             <div class="card-header">
@@ -1066,7 +1080,8 @@ const visitorList = computed(() => cached.value.visitorList || [])
 const timelineEvents = computed(() => cached.value.timelineEvents || [])
 
 // ── Extended analytics data ──
-const browserData = computed(() => cached.value.browserData || cached.value.browsers || [])
+const browserData = computed(() => cached.value.browserData || [])
+const operatingSystems = computed(() => cached.value.operatingSystems || [])
 const liveEvents = computed(() => cached.value.liveEvents || [])
 const journeys = computed(() => cached.value.journeys || [])
 const browserColors = ['#5B8DEF', '#34D399', '#A78BFA', '#F59E0B', '#6B7280', '#EC4899']

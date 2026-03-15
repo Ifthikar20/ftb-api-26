@@ -21,7 +21,7 @@ export const useAnalyticsStore = defineStore('analytics', () => {
         const k = wid || activeWebsiteId.value
         if (!cache.value[k]) {
             cache.value[k] = {
-                stats: [], chartData: [], topPages: [], sources: [], devices: [],
+                stats: [], chartData: [], topPages: [], sources: [], devices: [], browserData: [], operatingSystems: [],
                 countries: [], realtimeVisitors: 0, noData: false,
                 funnelList: [], funnelResult: null,
                 retentionData: {}, engagementData: {}, flowData: {}, entryExitData: {},
@@ -100,7 +100,10 @@ export const useAnalyticsStore = defineStore('analytics', () => {
                 color: sourceColors[i % sourceColors.length],
             }))
 
-            c.devices = unwrapArr(devicesRes)
+            const devData = unwrap(devicesRes)
+            c.devices = Array.isArray(devData) ? devData : (devData.devices || [])
+            c.browserData = devData.browsers || []
+            c.operatingSystems = devData.operating_systems || []
             c.countries = unwrapArr(countriesRes)
             c.realtimeVisitors = o.realtime || 0
             c.noData = !c.chartData.length && !c.topPages.length && !c.sources.length

@@ -77,32 +77,74 @@ class DailyStatsService:
         return days
 
     @staticmethod
-    def get_device_breakdown(*, website_id: str, period: str = "30d") -> list:
-        """Return device type distribution."""
+    def get_device_breakdown(*, website_id: str, period: str = "30d") -> dict:
+        """Return device type, browser, and OS distribution."""
         start, end = get_date_range(period)
-        qs = (
-            Visitor.objects.filter(
-                website_id=website_id, last_seen__range=(start, end)
-            )
-            .values("device_type")
+        base_qs = Visitor.objects.filter(
+            website_id=website_id, last_seen__range=(start, end)
+        )
+
+        # Device type breakdown
+        device_qs = (
+            base_qs.values("device_type")
             .annotate(count=Count("id"))
             .order_by("-count")
         )
-        total = sum(r["count"] for r in qs) or 1
+        device_total = sum(r["count"] for r in device_qs) or 1
         colors = {
             "desktop": "var(--brand-accent)",
             "mobile": "var(--text-primary)",
             "tablet": "var(--text-muted)",
         }
-        return [
+        devices = [
             {
                 "name": r["device_type"].capitalize() if r["device_type"] else "Unknown",
                 "count": r["count"],
-                "pct": round(r["count"] / total * 100, 1),
+                "pct": round(r["count"] / device_total * 100, 1),
                 "color": colors.get(r["device_type"], "var(--text-muted)"),
             }
-            for r in qs
+            for r in device_qs
         ]
+
+        # Browser breakdown
+        browser_qs = (
+            base_qs.exclude(browser="")
+            .values("browser")
+            .annotate(count=Count("id"))
+            .order_by("-count")[:8]
+        )
+        browser_total = sum(r["count"] for r in browser_qs) or 1
+        browsers = [
+            {
+                "name": r["browser"] or "Unknown",
+                "count": r["count"],
+                "pct": round(r["count"] / browser_total * 100, 1),
+            }
+            for r in browser_qs
+        ]
+
+        # OS breakdown
+        os_qs = (
+            base_qs.exclude(os="")
+            .values("os")
+            .annotate(count=Count("id"))
+            .order_by("-count")[:8]
+        )
+        os_total = sum(r["count"] for r in os_qs) or 1
+        operating_systems = [
+            {
+                "name": r["os"] or "Unknown",
+                "count": r["count"],
+                "pct": round(r["count"] / os_total * 100, 1),
+            }
+            for r in os_qs
+        ]
+
+        return {
+            "devices": devices,
+            "browsers": browsers,
+            "operating_systems": operating_systems,
+        }
 
     @staticmethod
     def get_country_breakdown(*, website_id: str, period: str = "30d", limit: int = 10) -> list:
