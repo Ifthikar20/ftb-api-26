@@ -83,3 +83,30 @@ class ScoringConfig(TimestampMixin):
 
     def __str__(self):
         return f"ScoringConfig({self.website.name})"
+
+
+class LeadEmail(TimestampMixin):
+    """Emails sent to leads from the FetchBot platform."""
+
+    STATUS_CHOICES = [
+        ("sent", "Sent"),
+        ("failed", "Failed"),
+        ("bounced", "Bounced"),
+    ]
+
+    lead = models.ForeignKey(Lead, on_delete=models.CASCADE, related_name="emails")
+    sent_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="sent_lead_emails"
+    )
+    subject = models.CharField(max_length=500)
+    body = models.TextField()
+    to_email = models.EmailField()
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="sent")
+    sent_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "leads_leademail"
+        ordering = ["-sent_at"]
+
+    def __str__(self):
+        return f"Email to {self.to_email} — {self.subject[:40]}"

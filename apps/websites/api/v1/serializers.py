@@ -8,9 +8,9 @@ class WebsiteSerializer(serializers.ModelSerializer):
     class Meta:
         model = Website
         fields = [
-            "id", "url", "name", "industry", "pixel_key", "pixel_verified",
-            "pixel_verified_at", "crawl_status", "is_active", "pixel_snippet",
-            "created_at", "updated_at",
+            "id", "url", "name", "industry", "platform_type", "onboarding_completed",
+            "pixel_key", "pixel_verified", "pixel_verified_at", "crawl_status",
+            "is_active", "pixel_snippet", "created_at", "updated_at",
         ]
         read_only_fields = ["id", "pixel_key", "pixel_verified", "pixel_verified_at", "crawl_status"]
 
@@ -22,6 +22,10 @@ class WebsiteCreateSerializer(serializers.Serializer):
     url = serializers.URLField()
     name = serializers.CharField(max_length=200)
     industry = serializers.CharField(max_length=100, required=False, allow_blank=True, default="")
+    platform_type = serializers.ChoiceField(
+        choices=["shopify", "wordpress", "woocommerce", "custom"],
+        required=False, default="custom"
+    )
 
 
 class WebsiteUpdateSerializer(serializers.Serializer):

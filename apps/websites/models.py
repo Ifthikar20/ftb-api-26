@@ -10,7 +10,14 @@ from core.utils.constants import UserRole
 
 
 class Website(SoftDeleteMixin, TimestampMixin):
-    """A website tracked by GrowthPilot."""
+    """A website tracked by FetchBot."""
+
+    PLATFORM_TYPES = [
+        ("shopify", "Shopify"),
+        ("wordpress", "WordPress"),
+        ("woocommerce", "WooCommerce"),
+        ("custom", "Custom / Other"),
+    ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(
@@ -22,6 +29,8 @@ class Website(SoftDeleteMixin, TimestampMixin):
     pixel_key = models.UUIDField(default=uuid.uuid4, unique=True, db_index=True)
     pixel_verified = models.BooleanField(default=False)
     pixel_verified_at = models.DateTimeField(null=True, blank=True)
+    platform_type = models.CharField(max_length=20, choices=PLATFORM_TYPES, default="custom", blank=True)
+    onboarding_completed = models.BooleanField(default=False)
     crawl_status = models.CharField(max_length=20, default="pending")
     is_active = models.BooleanField(default=True)
 
@@ -75,6 +84,7 @@ class Integration(TimestampMixin):
         ("ga", "Google Analytics"),
         ("gsc", "Google Search Console"),
         ("facebook", "Facebook Ads"),
+        ("shopify", "Shopify"),
     ]
 
     website = models.ForeignKey(Website, on_delete=models.CASCADE, related_name="integrations")

@@ -13,7 +13,7 @@ logger = logging.getLogger("apps")
 
 class WebsiteService:
     @staticmethod
-    def create(*, user, url: str, name: str, industry: str = "") -> Website:
+    def create(*, user, url: str, name: str, industry: str = "", platform_type: str = "custom") -> Website:
         """Add a new website for a user."""
         validated_url = validate_website_url(url)
 
@@ -25,12 +25,14 @@ class WebsiteService:
             existing.deleted_by = None
             existing.name = name
             existing.industry = industry or existing.industry
+            existing.platform_type = platform_type
             existing.save()
             audit_log("website.restored", user=user, metadata={"website_id": str(existing.id)})
             return existing
 
         website = Website.objects.create(
-            user=user, url=validated_url, name=name, industry=industry
+            user=user, url=validated_url, name=name, industry=industry,
+            platform_type=platform_type,
         )
         WebsiteSettings.objects.create(website=website)
         audit_log("website.created", user=user, metadata={"website_id": str(website.id)})

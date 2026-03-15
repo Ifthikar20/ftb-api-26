@@ -13,4 +13,6 @@ export default {
     segments: (wid) => api.get(`/leads/${wid}/segments/`),
     createSegment: (wid, data) => api.post(`/leads/${wid}/segments/`, data),
     aiSearch: (wid, data) => api.post(`/leads/${wid}/ai-search/`, data),
+    sendEmail: (wid, lid, data) => api.post(`/leads/${wid}/${lid}/email/`, data),
+    getEmails: (wid, lid) => api.get(`/leads/${wid}/${lid}/email/`),
 }

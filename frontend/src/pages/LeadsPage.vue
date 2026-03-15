@@ -134,7 +134,7 @@
             <span class="badge badge-info" style="margin-top:8px">📧 Recommended: Email</span>
           </div>
           <div style="display:flex;gap:8px;margin-top:16px">
-            <button class="btn btn-primary btn-sm" style="flex:1">📧 Send Email</button>
+            <button class="btn btn-primary btn-sm" style="flex:1" @click="openEmailCompose(selectedLead)">📧 Send Email</button>
             <button class="btn btn-secondary btn-sm" style="flex:1">📋 Add Note</button>
           </div>
         </div>
@@ -286,6 +286,46 @@
       </div>
     </template>
   </div>
+
+    <!-- ══════════ Email Compose Modal ══════════ -->
+    <div v-if="showEmailModal" class="modal-overlay" @click.self="showEmailModal = false">
+      <div class="modal-content slide-up" style="max-width: 540px">
+        <div class="modal-header">
+          <h2 class="modal-title">📧 Send Email</h2>
+          <button class="btn-icon btn-ghost" @click="showEmailModal = false">✕</button>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:14px">
+          <div class="form-group">
+            <label class="form-label">To</label>
+            <input class="form-input" :value="emailToAddress" disabled style="opacity:0.7" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Subject</label>
+            <input v-model="emailSubject" class="form-input" placeholder="Follow up on your visit" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Message</label>
+            <textarea v-model="emailBody" class="form-input" rows="6" placeholder="Hi there, I noticed you visited our pricing page..."></textarea>
+          </div>
+          <button class="btn btn-primary w-full" :disabled="emailSending || !emailSubject || !emailBody" @click="sendEmail">
+            {{ emailSending ? 'Sending...' : 'Send Email' }}
+          </button>
+          <div v-if="emailSent" class="email-sent-msg">✅ Email sent successfully!</div>
+          <div v-if="emailError" class="email-error-msg">❌ {{ emailError }}</div>
+        </div>
+        <!-- Email History -->
+        <div v-if="emailHistory.length" style="margin-top:20px;border-top:1px solid var(--border-color);padding-top:16px">
+          <h4 style="font-size:var(--font-xs);text-transform:uppercase;letter-spacing:0.1em;color:var(--text-muted);margin:0 0 10px">Previous Emails</h4>
+          <div v-for="em in emailHistory" :key="em.id" class="email-history-item">
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <span style="font-weight:600;font-size:var(--font-sm)">{{ em.subject }}</span>
+              <span class="badge" :class="em.status === 'sent' ? 'badge-success' : 'badge-danger'" style="font-size:9px">{{ em.status }}</span>
+            </div>
+            <div class="text-xs text-muted" style="margin-top:2px">{{ new Date(em.sent_at).toLocaleString() }}</div>
+          </div>
+        </div>
+      </div>
+    </div>
 </template>
 
 <script setup>
@@ -583,7 +623,6 @@ async function runAISearch() {
 }
 
 function addAILeadToTable(lead) {
-  // Add to local leads array for now
   leads.value.unshift({
     id: 'ai-' + Date.now(),
     name: lead.name,
@@ -593,6 +632,56 @@ function addAILeadToTable(lead) {
     status: 'new',
     source: 'AI Finder',
   })
+}
+
+// ── Email Compose ──
+const showEmailModal = ref(false)
+const emailSubject = ref('')
+const emailBody = ref('')
+const emailSending = ref(false)
+const emailSent = ref(false)
+const emailError = ref('')
+const emailHistory = ref([])
+const emailLeadTarget = ref(null)
+
+const emailToAddress = computed(() => emailLeadTarget.value?.email || 'No email')
+
+async function openEmailCompose(lead) {
+  emailLeadTarget.value = lead
+  emailSubject.value = ''
+  emailBody.value = ''
+  emailSent.value = false
+  emailError.value = ''
+  emailHistory.value = []
+  showEmailModal.value = true
+  // Load email history
+  try {
+    const { data } = await leadsApi.getEmails(websiteId, lead.id)
+    emailHistory.value = data || []
+  } catch { /* ignore */ }
+}
+
+async function sendEmail() {
+  if (!emailSubject.value || !emailBody.value || !emailLeadTarget.value) return
+  emailSending.value = true
+  emailSent.value = false
+  emailError.value = ''
+  try {
+    await leadsApi.sendEmail(websiteId, emailLeadTarget.value.id, {
+      subject: emailSubject.value,
+      body: emailBody.value,
+    })
+    emailSent.value = true
+    emailSubject.value = ''
+    emailBody.value = ''
+    // Refresh history
+    const { data } = await leadsApi.getEmails(websiteId, emailLeadTarget.value.id)
+    emailHistory.value = data || []
+  } catch (e) {
+    emailError.value = e.response?.data?.error || 'Failed to send email'
+  } finally {
+    emailSending.value = false
+  }
 }
 </script>
 
@@ -915,4 +1004,9 @@ function addAILeadToTable(lead) {
   padding: 40px 20px;
   color: var(--text-muted);
 }
+
+/* ── Email Compose ── */
+.email-sent-msg { text-align: center; padding: 8px; color: var(--color-success); font-size: var(--font-sm); font-weight: 600; }
+.email-error-msg { text-align: center; padding: 8px; color: var(--color-danger); font-size: var(--font-sm); }
+.email-history-item { padding: 10px 12px; background: var(--bg-surface); border-radius: var(--radius-sm); margin-bottom: 8px; }
 </style>

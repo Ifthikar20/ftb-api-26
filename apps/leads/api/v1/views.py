@@ -93,3 +93,40 @@ class AILeadFinderView(APIView):
 
         result = AILeadFinder.search(prompt)
         return Response(result)
+
+
+class LeadEmailView(APIView):
+    """Send emails to leads and view email history."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, website_id, lead_id):
+        """Send an email to a lead."""
+        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        subject = request.data.get("subject", "").strip()
+        body = request.data.get("body", "").strip()
+        if not subject or not body:
+            return Response(
+                {"error": "Subject and body are required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        from apps.leads.services.email_service import LeadEmailService
+
+        try:
+            email_record = LeadEmailService.send_email(
+                lead_id=lead_id, subject=subject, body=body, sent_by=request.user
+            )
+            return Response({
+                "success": True,
+                "status": email_record.status,
+                "email_id": email_record.id,
+            }, status=status.HTTP_201_CREATED)
+        except ValueError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    def get(self, request, website_id, lead_id):
+        """Get email history for a lead."""
+        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        from apps.leads.services.email_service import LeadEmailService
+
+        emails = LeadEmailService.get_email_history(lead_id=lead_id)
+        return Response(emails)
