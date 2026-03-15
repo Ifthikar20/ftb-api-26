@@ -54,11 +54,11 @@
       </div>
 
       <!-- ═══════════ TAB 1: Overview ═══════════ -->
-      <div v-show="activeTab === 'overview' && !noData">
+      <div v-show="activeTab === 'overview' && !noData" @click.self="showOverviewPicker = false">
 
-        <!-- KPI Cards with tooltips -->
+        <!-- KPI Cards -->
         <div class="kpi-grid">
-          <div class="kpi-card" v-for="stat in stats" :key="stat.label" :class="stat.highlight ? 'kpi-highlight' : ''">
+          <div class="kpi-card" v-for="stat in stats" :key="stat.label">
             <div class="kpi-header">
               <span class="kpi-label">
                 {{ stat.label }}
@@ -75,154 +75,185 @@
           </div>
         </div>
 
-        <!-- Traffic Charts Row -->
-        <div class="analytics-row chart-animate">
-          <div class="card chart-card" style="flex:1.5">
-            <div class="card-header">
-              <div>
-                <h3 class="card-title">Traffic Overview</h3>
-                <p class="card-subtitle">Visitor sessions over time</p>
-              </div>
-            </div>
-            <div class="chart-container" style="height:280px;position:relative">
-              <Line v-if="chartData.length" :data="trafficChartData" :options="trafficChartOptions" />
-              <div v-else class="empty-inline">No chart data yet</div>
-            </div>
-          </div>
-          <div class="card chart-card chart-animate-delay">
-            <div class="card-header">
-              <div>
-                <h3 class="card-title">Live Activity</h3>
-                <p class="card-subtitle">Recent visitor events in real-time</p>
-              </div>
-              <span class="live-badge"><span class="live-pulse"></span>LIVE</span>
-            </div>
-            <div class="live-feed" v-if="liveEvents.length">
-              <div v-for="ev in liveEvents.slice(0, 10)" :key="ev.id" class="live-feed-item">
-                <span class="badge badge-sm" :class="eventBadge(ev.event_type)">{{ ev.event_type }}</span>
-                <span class="live-feed-url truncate">{{ cleanPath(ev.url) }}</span>
-                <span class="text-xs text-muted">{{ formatTime(ev.timestamp) }}</span>
-              </div>
-            </div>
-            <div v-else class="empty-inline" style="padding:40px 20px">
-              <p style="margin:0;font-size:var(--font-sm)">No live events in the last 2 minutes.</p>
-              <p class="text-xs text-muted" style="margin-top:6px">Events appear here as visitors interact with your site.</p>
-            </div>
-          </div>
-        </div>
+        <!-- Dynamic Card Grid -->
+        <div class="ret-card-grid">
+          <template v-for="cid in overviewCards" :key="cid">
 
-        <!-- Sources + Pages Row -->
-        <div class="analytics-row">
-          <div class="card">
-            <div class="card-header"><h3 class="card-title">Top Sources</h3></div>
-            <div class="chart-container" style="height:220px;position:relative" v-if="sources.length">
-              <Bar :data="sourcesChartData" :options="sourcesChartOptions" />
-            </div>
-            <div v-else class="empty-inline">No source data yet</div>
-          </div>
-          <div class="card">
-            <div class="card-header"><h3 class="card-title">Top Pages</h3></div>
-            <table class="data-table">
-              <thead><tr><th>Page</th><th style="text-align:right">Views</th></tr></thead>
-              <tbody>
-                <tr v-for="(page, i) in topPages" :key="i">
-                  <td><span class="page-rank">{{ i + 1 }}</span> {{ page.url }}</td>
-                  <td style="text-align:right" class="font-semibold">{{ page.views }}</td>
-                </tr>
-              </tbody>
-            </table>
-            <div v-if="!topPages.length" class="empty-inline">No page data yet</div>
-          </div>
-        </div>
-
-        <!-- Engagement Radar + Source Polar Row -->
-        <div class="analytics-row">
-          <div class="card">
-            <div class="card-header"><h3 class="card-title">Engagement Score</h3></div>
-            <div class="chart-container" style="height:250px;position:relative">
-              <Radar :data="radarChartData" :options="radarChartOptions" />
-            </div>
-          </div>
-          <div class="card">
-            <div class="card-header"><h3 class="card-title">Source Distribution</h3></div>
-            <div class="chart-container" style="height:250px;position:relative" v-if="sources.length">
-              <PolarArea :data="polarChartData" :options="polarChartOptions" />
-            </div>
-            <div v-else class="empty-inline">No source data yet</div>
-          </div>
-        </div>
-
-        <!-- Devices + Browsers + OS Row -->
-        <div class="analytics-row" style="grid-template-columns: 1fr 1fr 1fr;">
-          <div class="card">
-            <div class="card-header"><h3 class="card-title">Device Types</h3></div>
-            <div class="chart-container" style="height:200px;position:relative" v-if="devices.length">
-              <Doughnut :data="devicesChartData" :options="devicesChartOptions" />
-            </div>
-            <div v-else class="empty-inline">No device data yet</div>
-          </div>
-          <div class="card">
-            <div class="card-header"><h3 class="card-title">Browsers</h3></div>
-            <div v-if="browserData.length" class="browser-list">
-              <div v-for="(b, i) in browserData" :key="i" class="browser-item">
-                <div class="browser-info">
-                  <svg class="browser-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M2 8h12M8 2c-2 2-2 10 0 12M8 2c2 2 2 10 0 12"/></svg>
-                  <span class="browser-name">{{ b.name }}</span>
+            <!-- Traffic Overview -->
+            <div v-if="cid === 'traffic'" class="ret-dyn-card ret-full">
+              <button class="ret-card-close" @click="removeOverviewCard(cid)" title="Remove">&times;</button>
+              <div class="card chart-card">
+                <div class="card-header">
+                  <div><h3 class="card-title">Traffic Overview</h3><p class="card-subtitle">Visitor sessions over time</p></div>
                 </div>
-                <div class="browser-bar-wrap"><div class="browser-bar" :style="{ width: b.pct + '%', background: browserColors[i % browserColors.length] }"></div></div>
-                <span class="browser-pct">{{ b.pct }}%</span>
-              </div>
-            </div>
-            <div v-else class="empty-inline">No browser data yet</div>
-          </div>
-          <div class="card">
-            <div class="card-header"><h3 class="card-title">Operating Systems</h3></div>
-            <div v-if="operatingSystems.length" class="browser-list">
-              <div v-for="(os, i) in operatingSystems" :key="i" class="browser-item">
-                <div class="browser-info">
-                  <svg class="browser-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="12" height="10" rx="2"/><path d="M5 13v1M11 13v1M4 13h8"/></svg>
-                  <span class="browser-name">{{ os.name }}</span>
+                <div class="chart-container" style="height:260px;position:relative">
+                  <Line v-if="chartData.length" :data="trafficChartData" :options="trafficChartOptions" />
+                  <div v-else class="empty-inline">No chart data yet</div>
                 </div>
-                <div class="browser-bar-wrap"><div class="browser-bar" :style="{ width: os.pct + '%', background: browserColors[(i + 2) % browserColors.length] }"></div></div>
-                <span class="browser-pct">{{ os.pct }}%</span>
               </div>
             </div>
-            <div v-else class="empty-inline">No OS data yet</div>
-          </div>
-        </div>
 
-        <!-- Countries + Live Events Row -->
-        <div class="analytics-row">
-          <div class="card">
-            <div class="card-header"><h3 class="card-title">Top Countries</h3></div>
-            <div class="country-list" v-if="countries.length">
-              <div v-for="(c, i) in countries" :key="i" class="country-item">
-                <div class="country-rank">{{ i + 1 }}</div>
-                <div class="country-info">
-                  <span class="country-name">{{ c.name }}</span>
-                  <div class="country-bar-wrap"><div class="country-bar" :style="{ width: c.pct + '%' }"></div></div>
+            <!-- Top Sources -->
+            <div v-if="cid === 'sources'" class="ret-dyn-card ret-half">
+              <button class="ret-card-close" @click="removeOverviewCard(cid)" title="Remove">&times;</button>
+              <div class="card">
+                <div class="card-header"><h3 class="card-title">Top Sources</h3></div>
+                <div class="chart-container" style="height:200px;position:relative" v-if="sources.length">
+                  <Bar :data="sourcesChartData" :options="sourcesChartOptions" />
                 </div>
-                <span class="font-semibold">{{ c.visitors }}</span>
+                <div v-else class="empty-inline">No source data yet</div>
               </div>
             </div>
-            <div v-else class="empty-inline">No geo data yet</div>
-          </div>
-          <div class="card">
-            <div class="card-header">
-              <h3 class="card-title">Live Events</h3>
-              <div v-if="realtimeVisitors > 0" class="realtime-badge">
-                <span class="realtime-dot"></span>
-                <span>{{ realtimeVisitors }} active</span>
+
+            <!-- Top Pages -->
+            <div v-if="cid === 'pages'" class="ret-dyn-card ret-half">
+              <button class="ret-card-close" @click="removeOverviewCard(cid)" title="Remove">&times;</button>
+              <div class="card">
+                <div class="card-header"><h3 class="card-title">Top Pages</h3></div>
+                <table class="data-table">
+                  <thead><tr><th>Page</th><th style="text-align:right">Views</th></tr></thead>
+                  <tbody>
+                    <tr v-for="(page, i) in topPages" :key="i">
+                      <td><span class="page-rank">{{ i + 1 }}</span> {{ page.url }}</td>
+                      <td style="text-align:right" class="font-semibold">{{ page.views }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+                <div v-if="!topPages.length" class="empty-inline">No page data yet</div>
               </div>
             </div>
-            <div v-if="liveEvents.length" class="live-feed">
-              <div v-for="(ev, i) in liveEvents.slice(0, 8)" :key="i" class="live-event">
-                <span class="live-event-type" :class="eventBadge(ev.event_type)">{{ ev.event_type }}</span>
-                <span class="live-event-url">{{ ev.page || ev.url || '--' }}</span>
-                <span class="live-event-time">{{ formatTime(ev.timestamp) }}</span>
+
+            <!-- Live Activity -->
+            <div v-if="cid === 'live'" class="ret-dyn-card ret-half">
+              <button class="ret-card-close" @click="removeOverviewCard(cid)" title="Remove">&times;</button>
+              <div class="card">
+                <div class="card-header">
+                  <div><h3 class="card-title">Live Activity</h3><p class="card-subtitle">Real-time events</p></div>
+                  <span class="live-badge"><span class="live-pulse"></span>LIVE</span>
+                </div>
+                <div class="live-feed" v-if="liveEvents.length">
+                  <div v-for="ev in liveEvents.slice(0, 8)" :key="ev.id" class="live-feed-item">
+                    <span class="badge badge-sm" :class="eventBadge(ev.event_type)">{{ ev.event_type }}</span>
+                    <span class="live-feed-url truncate">{{ cleanPath(ev.url) }}</span>
+                    <span class="text-xs text-muted">{{ formatTime(ev.timestamp) }}</span>
+                  </div>
+                </div>
+                <div v-else class="empty-inline" style="padding:30px 20px">
+                  <p style="margin:0;font-size:var(--font-sm)">No live events in the last 2 minutes.</p>
+                </div>
               </div>
             </div>
-            <div v-else class="empty-inline">No live events yet — data will appear as visitors browse your site</div>
+
+            <!-- Engagement Score -->
+            <div v-if="cid === 'engagement'" class="ret-dyn-card ret-half">
+              <button class="ret-card-close" @click="removeOverviewCard(cid)" title="Remove">&times;</button>
+              <div class="card">
+                <div class="card-header"><h3 class="card-title">Engagement Score</h3></div>
+                <div class="chart-container" style="height:220px;position:relative">
+                  <Radar :data="radarChartData" :options="radarChartOptions" />
+                </div>
+              </div>
+            </div>
+
+            <!-- Source Distribution -->
+            <div v-if="cid === 'source_polar'" class="ret-dyn-card ret-half">
+              <button class="ret-card-close" @click="removeOverviewCard(cid)" title="Remove">&times;</button>
+              <div class="card">
+                <div class="card-header"><h3 class="card-title">Source Distribution</h3></div>
+                <div class="chart-container" style="height:220px;position:relative" v-if="sources.length">
+                  <PolarArea :data="polarChartData" :options="polarChartOptions" />
+                </div>
+                <div v-else class="empty-inline">No source data yet</div>
+              </div>
+            </div>
+
+            <!-- Device Types -->
+            <div v-if="cid === 'devices'" class="ret-dyn-card ret-half">
+              <button class="ret-card-close" @click="removeOverviewCard(cid)" title="Remove">&times;</button>
+              <div class="card">
+                <div class="card-header"><h3 class="card-title">Device Types</h3></div>
+                <div class="chart-container" style="height:180px;position:relative" v-if="devices.length">
+                  <Doughnut :data="devicesChartData" :options="devicesChartOptions" />
+                </div>
+                <div v-else class="empty-inline">No device data yet</div>
+              </div>
+            </div>
+
+            <!-- Browsers -->
+            <div v-if="cid === 'browsers'" class="ret-dyn-card ret-half">
+              <button class="ret-card-close" @click="removeOverviewCard(cid)" title="Remove">&times;</button>
+              <div class="card">
+                <div class="card-header"><h3 class="card-title">Browsers</h3></div>
+                <div v-if="browserData.length" class="browser-list">
+                  <div v-for="(b, i) in browserData" :key="i" class="browser-item">
+                    <div class="browser-info">
+                      <svg class="browser-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M2 8h12M8 2c-2 2-2 10 0 12M8 2c2 2 2 10 0 12"/></svg>
+                      <span class="browser-name">{{ b.name }}</span>
+                    </div>
+                    <div class="browser-bar-wrap"><div class="browser-bar" :style="{ width: b.pct + '%', background: browserColors[i % browserColors.length] }"></div></div>
+                    <span class="browser-pct">{{ b.pct }}%</span>
+                  </div>
+                </div>
+                <div v-else class="empty-inline">No browser data yet</div>
+              </div>
+            </div>
+
+            <!-- Operating Systems -->
+            <div v-if="cid === 'os'" class="ret-dyn-card ret-half">
+              <button class="ret-card-close" @click="removeOverviewCard(cid)" title="Remove">&times;</button>
+              <div class="card">
+                <div class="card-header"><h3 class="card-title">Operating Systems</h3></div>
+                <div v-if="operatingSystems.length" class="browser-list">
+                  <div v-for="(os, i) in operatingSystems" :key="i" class="browser-item">
+                    <div class="browser-info">
+                      <svg class="browser-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="12" height="10" rx="2"/><path d="M5 13v1M11 13v1M4 13h8"/></svg>
+                      <span class="browser-name">{{ os.name }}</span>
+                    </div>
+                    <div class="browser-bar-wrap"><div class="browser-bar" :style="{ width: os.pct + '%', background: browserColors[(i + 2) % browserColors.length] }"></div></div>
+                    <span class="browser-pct">{{ os.pct }}%</span>
+                  </div>
+                </div>
+                <div v-else class="empty-inline">No OS data yet</div>
+              </div>
+            </div>
+
+            <!-- Countries -->
+            <div v-if="cid === 'countries'" class="ret-dyn-card ret-half">
+              <button class="ret-card-close" @click="removeOverviewCard(cid)" title="Remove">&times;</button>
+              <div class="card">
+                <div class="card-header"><h3 class="card-title">Top Countries</h3></div>
+                <div class="country-list" v-if="countries.length">
+                  <div v-for="(c, i) in countries" :key="i" class="country-item">
+                    <div class="country-rank">{{ i + 1 }}</div>
+                    <div class="country-info">
+                      <span class="country-name">{{ c.name }}</span>
+                      <div class="country-bar-wrap"><div class="country-bar" :style="{ width: c.pct + '%' }"></div></div>
+                    </div>
+                    <span class="font-semibold">{{ c.visitors }}</span>
+                  </div>
+                </div>
+                <div v-else class="empty-inline">No geo data yet</div>
+              </div>
+            </div>
+
+          </template>
+
+          <!-- Add Widget Button -->
+          <div class="ret-dyn-card ret-add-inline">
+            <button class="ret-add-btn" @click.stop="showOverviewPicker = !showOverviewPicker">
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 3v14M3 10h14"/></svg>
+            </button>
+            <div v-if="showOverviewPicker" class="card-picker-dropdown" @click.stop>
+              <div class="card-picker-header">Add Widget</div>
+              <div v-for="c in overviewAvailableCards" :key="c.id" class="card-picker-item" :class="{ disabled: overviewCards.includes(c.id) }" @click="addOverviewCard(c.id)">
+                <div class="card-picker-icon" v-html="c.icon"></div>
+                <div class="card-picker-info">
+                  <div class="card-picker-name">{{ c.title }}</div>
+                  <div class="card-picker-desc">{{ c.desc }}</div>
+                </div>
+                <span v-if="overviewCards.includes(c.id)" class="card-picker-check">✓</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -952,6 +983,50 @@ const funnelList = computed(() => cached.value.funnelList || [])
 const funnelResult = computed(() => cached.value.funnelResult)
 const retentionData = computed(() => cached.value.retentionData || {})
 const engagementData = computed(() => cached.value.engagementData || {})
+
+// ── Customizable Overview Cards ──
+const overviewAvailableCards = [
+  { id: 'traffic', title: 'Traffic Overview', desc: 'Line chart of visitor sessions over time', icon: '<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 14V6l4-4 4 4 4-4v12" stroke-linejoin="round"/></svg>', size: 'full' },
+  { id: 'sources', title: 'Top Sources', desc: 'Bar chart of traffic sources', icon: '<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="8" width="3" height="6"/><rect x="6" y="4" width="3" height="10"/><rect x="11" y="1" width="3" height="13"/></svg>', size: 'half' },
+  { id: 'pages', title: 'Top Pages', desc: 'Most visited pages ranked by views', icon: '<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="12" height="12" rx="2"/><path d="M5 6h6M5 8h4M5 10h5"/></svg>', size: 'half' },
+  { id: 'live', title: 'Live Activity', desc: 'Real-time visitor events feed', icon: '<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="3"/><path d="M4.5 4.5a5 5 0 017 0M11.5 11.5a5 5 0 01-7 0"/></svg>', size: 'half' },
+  { id: 'engagement', title: 'Engagement Score', desc: 'Radar chart of engagement metrics', icon: '<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 4v4l3 2"/></svg>', size: 'half' },
+  { id: 'source_polar', title: 'Source Distribution', desc: 'Polar area chart of source breakdown', icon: '<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 2v6h6"/></svg>', size: 'half' },
+  { id: 'devices', title: 'Device Types', desc: 'Doughnut chart of desktop/mobile/tablet', icon: '<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="2" width="14" height="10" rx="2"/><path d="M5 14h6"/></svg>', size: 'half' },
+  { id: 'browsers', title: 'Browsers', desc: 'Bar list of browser distribution', icon: '<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M2 8h12M8 2c-2 2-2 10 0 12"/></svg>', size: 'half' },
+  { id: 'os', title: 'Operating Systems', desc: 'Bar list of OS distribution', icon: '<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="12" height="10" rx="2"/><path d="M5 13v1M11 13v1"/></svg>', size: 'half' },
+  { id: 'countries', title: 'Top Countries', desc: 'Visitor breakdown by country', icon: '<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M2 8h12M8 2c-2 2-2 10 0 12M8 2c2 2 2 10 0 12"/></svg>', size: 'half' },
+]
+
+const OV_DEFAULT = ['traffic', 'sources', 'pages', 'live']
+const _ovStorageKey = computed(() => `ftb_ov_cards_${store.activeWebsiteId}`)
+const overviewCards = ref([...OV_DEFAULT])
+const showOverviewPicker = ref(false)
+
+// Load overview cards from localStorage on mount
+onMounted(() => {
+  try {
+    const saved = localStorage.getItem(_ovStorageKey.value)
+    if (saved) overviewCards.value = JSON.parse(saved)
+  } catch { /* ignore */ }
+})
+
+function _saveOvCards() {
+  try { localStorage.setItem(_ovStorageKey.value, JSON.stringify(overviewCards.value)) } catch {}
+}
+
+function addOverviewCard(id) {
+  if (!overviewCards.value.includes(id)) {
+    overviewCards.value.push(id)
+    _saveOvCards()
+  }
+  showOverviewPicker.value = false
+}
+
+function removeOverviewCard(id) {
+  overviewCards.value = overviewCards.value.filter(c => c !== id)
+  _saveOvCards()
+}
 
 // ── Customizable Retention Cards ──
 const retAvailableCards = [
@@ -1761,7 +1836,7 @@ onBeforeUnmount(() => {
 
 /* ── KPI Grid ── */
 .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px; margin-bottom: 24px; }
-.kpi-card { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 20px; transition: all var(--transition-base); }
+.kpi-card { background: #ffffff; border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 16px; transition: all var(--transition-base); }
 .kpi-card:hover { border-color: var(--border-hover); box-shadow: var(--shadow-sm); }
 .kpi-highlight { border-color: var(--brand-accent); background: linear-gradient(135deg, var(--bg-card) 0%, rgba(91, 141, 239, 0.04) 100%); }
 .kpi-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
