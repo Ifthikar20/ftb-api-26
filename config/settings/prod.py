@@ -3,15 +3,34 @@ import os
 
 DEBUG = False
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
-ADMINS = [("Ops Team", env("OPS_EMAIL", default="ops@growthpilot.io"))]  # noqa: F405
-SERVER_EMAIL = env("SERVER_EMAIL", default="noreply@growthpilot.io")  # noqa: F405
+ADMINS = [("Ops Team", env("OPS_EMAIL", default="ops@fetchbot.ai"))]  # noqa: F405
+SERVER_EMAIL = env("SERVER_EMAIL", default="noreply@fetchbot.ai")  # noqa: F405
 
-# Enforce SSL for DB
+# ── Email Backend (SMTP — works with SES, SendGrid, Mailgun, etc.) ──
+EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+EMAIL_HOST = env("EMAIL_HOST", default="")  # noqa: F405
+EMAIL_PORT = env.int("EMAIL_PORT", default=587)  # noqa: F405
+EMAIL_HOST_USER = env("EMAIL_HOST_USER", default="")  # noqa: F405
+EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")  # noqa: F405
+EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=True)  # noqa: F405
+DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="FetchBot <noreply@fetchbot.ai>")  # noqa: F405
+
+# If no EMAIL_HOST configured, fall back to console to avoid errors
+if not EMAIL_HOST:
+    EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+
+# ── Trusted Origins (Cloudflare → Nginx → Django) ──
+CSRF_TRUSTED_ORIGINS = [
+    "https://fetchbot.ai",
+    "https://www.fetchbot.ai",
+]
+
+# DB SSL — configurable: use "require" for managed DBs (RDS), "prefer" for Docker internal
+DB_SSLMODE = env("DB_SSLMODE", default="prefer")  # noqa: F405
 DATABASES["default"]["OPTIONS"] = {  # noqa: F405
-    "sslmode": "require",
+    "sslmode": DB_SSLMODE,
     "connect_timeout": 10,
 }
-DATABASES["default"]["OPTIONS"]["sslmode"] = "require"  # noqa: F405
 
 # AWS S3 Storage
 DEFAULT_FILE_STORAGE = "storages.backends.s3boto3.S3Boto3Storage"
@@ -24,7 +43,7 @@ AWS_S3_CUSTOM_DOMAIN = f"{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com"
 AWS_DEFAULT_ACL = "private"
 AWS_S3_FILE_OVERWRITE = False
 
-LOG_DIR = "/var/log/growthpilot"
+LOG_DIR = os.environ.get("LOG_DIR", "/app/logs")
 os.makedirs(LOG_DIR, exist_ok=True)
 
 LOGGING["handlers"].update(  # noqa: F405

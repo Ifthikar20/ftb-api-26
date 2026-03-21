@@ -1,0 +1,18 @@
+# ── Stage 1: Build Vue app ──
+FROM node:20-alpine AS build
+
+WORKDIR /app
+
+COPY frontend/package.json ./
+RUN npm install
+
+COPY frontend/ .
+RUN npm run build
+
+# ── Stage 2: Copy dist to shared volume ──
+FROM alpine:3.19
+
+COPY --from=build /app/dist /app/dist
+
+# This container exits after copying — it's a build-only service
+CMD ["echo", "Frontend build complete"]

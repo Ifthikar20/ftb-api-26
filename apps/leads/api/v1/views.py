@@ -86,59 +86,56 @@ class LeadExportView(APIView):
         return response
 
 
-class LeadSegmentListView(APIView):
+class AILeadFinderView(APIView):
+    """AI-powered lead discovery — search LinkedIn & Twitter via natural language."""
     permission_classes = [IsAuthenticated]
-
-    def get(self, request, website_id):
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
-        segments = LeadSegment.objects.filter(website_id=website_id).order_by("-created_at")
-        serializer = LeadSegmentSerializer(segments, many=True)
-        return Response(serializer.data)
 
     def post(self, request, website_id):
         WebsiteService.get_for_user(user=request.user, website_id=website_id)
-        serializer = LeadSegmentSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        serializer.save(website_id=website_id, created_by=request.user)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+        prompt = request.data.get("prompt", "").strip()
+        if not prompt:
+            return Response(
+                {"error": "A search prompt is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        from apps.leads.services.ai_lead_finder import AILeadFinder
+
+        result = AILeadFinder.search(prompt)
+        return Response(result)
 
 
-class LeadSegmentDetailView(APIView):
+class LeadEmailView(APIView):
+    """Send emails to leads and view email history."""
     permission_classes = [IsAuthenticated]
 
-    def _get_segment(self, website_id, segment_id):
+    def post(self, request, website_id, lead_id):
+        """Send an email to a lead."""
+        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        subject = request.data.get("subject", "").strip()
+        body = request.data.get("body", "").strip()
+        if not subject or not body:
+            return Response(
+                {"error": "Subject and body are required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        from apps.leads.services.email_service import LeadEmailService
+
         try:
-            return LeadSegment.objects.get(id=segment_id, website_id=website_id)
-        except LeadSegment.DoesNotExist:
-            raise ResourceNotFound("Segment not found.")
+            email_record = LeadEmailService.send_email(
+                lead_id=lead_id, subject=subject, body=body, sent_by=request.user
+            )
+            return Response({
+                "success": True,
+                "status": email_record.status,
+                "email_id": email_record.id,
+            }, status=status.HTTP_201_CREATED)
+        except ValueError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
-    def put(self, request, website_id, segment_id):
+    def get(self, request, website_id, lead_id):
+        """Get email history for a lead."""
         WebsiteService.get_for_user(user=request.user, website_id=website_id)
-        segment = self._get_segment(website_id, segment_id)
-        serializer = LeadSegmentSerializer(segment, data=request.data, partial=True)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        return Response(serializer.data)
+        from apps.leads.services.email_service import LeadEmailService
 
-    def delete(self, request, website_id, segment_id):
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
-        segment = self._get_segment(website_id, segment_id)
-        segment.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
-
-
-class ScoringConfigView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def get(self, request, website_id):
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
-        config, _ = ScoringConfig.objects.get_or_create(website_id=website_id)
-        return Response(ScoringConfigSerializer(config).data)
-
-    def put(self, request, website_id):
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
-        config, _ = ScoringConfig.objects.get_or_create(website_id=website_id)
-        serializer = ScoringConfigSerializer(config, data=request.data, partial=True)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        return Response(serializer.data)
+        emails = LeadEmailService.get_email_history(lead_id=lead_id)
+        return Response(emails)

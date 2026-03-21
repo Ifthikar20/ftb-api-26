@@ -65,6 +65,7 @@ class PageEvent(TimestampMixin):
         ("click", "Click"),
         ("form_submit", "Form Submit"),
         ("scroll", "Scroll"),
+        ("session_end", "Session End"),
         ("custom", "Custom"),
     ]
 
@@ -111,3 +112,45 @@ class CustomFunnel(TimestampMixin):
 
     def __str__(self):
         return f"Funnel({self.name})"
+
+
+class TrackedKeyword(TimestampMixin):
+    """A keyword being tracked for rank monitoring."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    website = models.ForeignKey(
+        "websites.Website", on_delete=models.CASCADE, related_name="tracked_keywords"
+    )
+    keyword = models.CharField(max_length=300, db_index=True)
+    target_url = models.URLField(max_length=2000, blank=True)
+    current_rank = models.IntegerField(null=True, blank=True)
+    previous_rank = models.IntegerField(null=True, blank=True)
+    best_rank = models.IntegerField(null=True, blank=True)
+    search_volume = models.IntegerField(default=0)
+    difficulty = models.IntegerField(default=0)  # 0-100
+
+    class Meta:
+        db_table = "analytics_trackedkeyword"
+        unique_together = [("website", "keyword")]
+
+    def __str__(self):
+        return f"Keyword({self.keyword} #{self.current_rank})"
+
+
+class KeywordRankHistory(models.Model):
+    """Daily rank snapshot for a tracked keyword."""
+
+    tracked_keyword = models.ForeignKey(
+        TrackedKeyword, on_delete=models.CASCADE, related_name="history"
+    )
+    rank = models.IntegerField(null=True, blank=True)
+    date = models.DateField(db_index=True)
+    serp_features = models.JSONField(default=list, blank=True)
+
+    class Meta:
+        db_table = "analytics_keywordrankhistory"
+        unique_together = [("tracked_keyword", "date")]
+        ordering = ["-date"]
+
+    def __str__(self):
+        return f"Rank({self.tracked_keyword.keyword} #{self.rank} on {self.date})"

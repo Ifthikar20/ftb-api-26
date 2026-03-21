@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FetchBot — Lead Intelligence Pipeline</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Inter', sans-serif; background: #0b0e14; color: #e2e8f0; min-height: 100vh; overflow-x: hidden; }
+
+  /* ── Layout ── */
+  .app { display: flex; height: 100vh; }
+  .sidebar { width: 220px; background: #10131a; border-right: 1px solid #1e2330; padding: 20px 12px; flex-shrink: 0; }
+  .brand { display: flex; align-items: center; gap: 10px; padding: 0 8px 20px; }
+  .brand-mark { width: 30px; height: 30px; background: #e2e8f0; color: #0b0e14; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 11px; }
+  .brand-name { font-size: 18px; font-weight: 400; letter-spacing: -0.02em; }
+  .nav-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: #4a5568; padding: 16px 8px 8px; }
+  .nav-link { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 8px; font-size: 13px; color: #718096; cursor: pointer; transition: all 0.15s; text-decoration: none; }
+  .nav-link:hover { color: #e2e8f0; background: rgba(255,255,255,0.04); }
+  .nav-link.active { color: #e2e8f0; background: rgba(99,102,241,0.12); font-weight: 600; }
+
+  .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  .topbar { height: 56px; background: #10131a; border-bottom: 1px solid #1e2330; display: flex; align-items: center; padding: 0 28px; gap: 16px; }
+  .breadcrumb { font-size: 13px; color: #718096; }
+  .breadcrumb span { color: #e2e8f0; font-weight: 600; }
+  .view-toggle { margin-left: auto; display: flex; gap: 4px; background: #1a1d27; border-radius: 8px; padding: 3px; }
+  .view-btn { padding: 6px 14px; border-radius: 6px; border: none; font-size: 12px; font-weight: 600; color: #718096; background: transparent; cursor: pointer; transition: all 0.15s; }
+  .view-btn.active { background: #6366f1; color: #fff; }
+
+  .content { flex: 1; display: flex; overflow: hidden; }
+
+  /* ── Pipeline Canvas ── */
+  .canvas { flex: 1; padding: 32px; position: relative; overflow: auto; }
+
+  /* SVG connections */
+  .connections { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; }
+  .conn-line { stroke: #2d3348; stroke-width: 2; fill: none; opacity: 0.6; }
+  .conn-line.active { stroke: #6366f1; opacity: 1; stroke-width: 2.5; }
+
+  /* Nodes */
+  .node { position: absolute; border-radius: 14px; padding: 16px 20px; cursor: pointer; transition: all 0.25s; z-index: 1; border: 1px solid #1e2330; }
+  .node:hover { transform: translateY(-2px); box-shadow: 0 8px 32px rgba(0,0,0,0.4); }
+  .node.selected { border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,0.2); }
+
+  .node-source { background: linear-gradient(135deg, #151822, #1a1d27); top: 60px; left: 60px; min-width: 180px; }
+  .node-hot { background: linear-gradient(135deg, #1a1510, #1f1915); border-color: #f59e0b33; top: 40px; left: 340px; min-width: 170px; }
+  .node-warm { background: linear-gradient(135deg, #15171a, #1a1d22); top: 180px; left: 340px; min-width: 170px; }
+  .node-cold { background: linear-gradient(135deg, #12151c, #161a24); top: 310px; left: 340px; min-width: 170px; }
+  .node-saas { background: linear-gradient(135deg, #10151e, #151c28); top: 10px; left: 610px; min-width: 155px; }
+  .node-health { background: linear-gradient(135deg, #101a15, #152018); border-color: #10b98133; top: 130px; left: 610px; min-width: 155px; }
+  .node-email { background: linear-gradient(135deg, #15101e, #1c1528); top: 250px; left: 610px; min-width: 155px; }
+
+  .node-icon { font-size: 22px; margin-bottom: 6px; }
+  .node-title { font-size: 13px; font-weight: 700; color: #e2e8f0; }
+  .node-count { font-size: 22px; font-weight: 800; color: #fff; margin-top: 2px; }
+  .node-sub { font-size: 11px; color: #718096; margin-top: 2px; }
+  .node-badge { display: inline-block; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 20px; margin-top: 6px; }
+  .badge-hot { background: #f59e0b22; color: #f59e0b; }
+  .badge-warm { background: #eab30822; color: #eab308; }
+  .badge-cold { background: #64748b22; color: #64748b; }
+  .badge-segment { background: #6366f122; color: #818cf8; }
+  .badge-action { background: #8b5cf622; color: #a78bfa; }
+
+  /* ── Detail Panel ── */
+  .detail-panel { width: 380px; background: #10131a; border-left: 1px solid #1e2330; overflow-y: auto; padding: 0; flex-shrink: 0; animation: slideIn 0.3s ease; }
+  @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+  .panel-header { padding: 24px 24px 0; }
+  .panel-close { float: right; background: none; border: none; color: #718096; cursor: pointer; font-size: 18px; }
+  .profile-card { padding: 24px; border-bottom: 1px solid #1e2330; }
+  .profile-top { display: flex; gap: 14px; align-items: center; }
+  .avatar { width: 48px; height: 48px; border-radius: 50%; background: linear-gradient(135deg, #6366f1, #8b5cf6); display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 16px; color: #fff; flex-shrink: 0; }
+  .profile-name { font-size: 16px; font-weight: 700; }
+  .profile-title { font-size: 12px; color: #718096; margin-top: 2px; }
+  .profile-company { font-size: 12px; color: #a78bfa; margin-top: 1px; }
+
+  /* Success Gauge */
+  .gauge-section { padding: 20px 24px; border-bottom: 1px solid #1e2330; text-align: center; }
+  .gauge-container { position: relative; width: 140px; height: 80px; margin: 0 auto 8px; }
+  .gauge-bg { fill: none; stroke: #1e2330; stroke-width: 10; }
+  .gauge-fill { fill: none; stroke: url(#gaugeGradient); stroke-width: 10; stroke-linecap: round; transition: stroke-dashoffset 1s ease; }
+  .gauge-value { font-size: 28px; font-weight: 800; color: #10b981; }
+  .gauge-label { font-size: 11px; color: #718096; margin-top: 2px; }
+  .channel-badge { display: inline-block; margin-top: 10px; padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 700; background: #6366f122; color: #818cf8; }
+
+  /* Correlation Nodes */
+  .section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: #4a5568; padding: 16px 24px 8px; }
+  .correlation-list { padding: 0 24px 16px; }
+  .corr-item { display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: #151822; border-radius: 8px; margin-bottom: 6px; font-size: 12px; }
+  .corr-icon { font-size: 14px; width: 20px; text-align: center; flex-shrink: 0; }
+  .corr-text { flex: 1; color: #cbd5e1; }
+  .corr-impact { font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px; }
+  .impact-pos { background: #10b98122; color: #10b981; }
+  .impact-neg { background: #ef444422; color: #ef4444; }
+
+  /* Company Intel */
+  .company-card { margin: 0 24px 16px; background: #151822; border-radius: 10px; padding: 14px; border: 1px solid #1e2330; }
+  .company-header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .company-icon { width: 28px; height: 28px; background: #1e2330; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 14px; }
+  .company-name { font-size: 13px; font-weight: 700; }
+  .company-domain { font-size: 11px; color: #6366f1; }
+  .company-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .company-stat { background: #0b0e14; border-radius: 6px; padding: 8px; }
+  .company-stat-label { font-size: 9px; color: #4a5568; text-transform: uppercase; letter-spacing: 0.05em; }
+  .company-stat-value { font-size: 12px; font-weight: 700; color: #e2e8f0; margin-top: 2px; }
+
+  /* Actions */
+  .actions { padding: 16px 24px 24px; display: flex; gap: 8px; }
+  .btn { flex: 1; padding: 10px; border-radius: 8px; border: none; font-size: 13px; font-weight: 700; cursor: pointer; transition: all 0.15s; display: flex; align-items: center; justify-content: center; gap: 6px; }
+  .btn-primary { background: #6366f1; color: #fff; }
+  .btn-primary:hover { background: #5558e6; }
+  .btn-secondary { background: #1e2330; color: #cbd5e1; }
+  .btn-secondary:hover { background: #252a3a; }
+
+  /* Responsive */
+  @media (max-width: 1100px) { .sidebar { display: none; } }
+  @media (max-width: 900px) { .detail-panel { width: 320px; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="brand"><div class="brand-mark">FB</div><div class="brand-name">FetchBot</div></div>
+    <div class="nav-label">Overview</div>
+    <a class="nav-link" href="#">📊 Dashboard</a>
+    <a class="nav-link" href="#">🌐 Projects</a>
+    <div class="nav-label">Intelligence</div>
+    <a class="nav-link" href="#">📈 Analytics</a>
+    <a class="nav-link active" href="#">👥 Leads</a>
+    <a class="nav-link" href="#">🏆 Competitors</a>
+    <a class="nav-link" href="#">🔎 Audits</a>
+    <a class="nav-link" href="#">🔥 Heatmaps</a>
+    <a class="nav-link" href="#">📊 Keywords</a>
+    <a class="nav-link" href="#">⭐ Strategy</a>
+    <a class="nav-link" href="#">🤖 Agents</a>
+    <div class="nav-label">Account</div>
+    <a class="nav-link" href="#">💳 Billing</a>
+    <a class="nav-link" href="#">⚙️ Settings</a>
+  </div>
+
+  <div class="main">
+    <!-- Topbar -->
+    <div class="topbar">
+      <div class="breadcrumb">Leads › <span>Pipeline View</span></div>
+      <div class="view-toggle">
+        <button class="view-btn">Table</button>
+        <button class="view-btn active">Pipeline</button>
+        <button class="view-btn">Segments</button>
+      </div>
+    </div>
+
+    <div class="content">
+      <!-- Pipeline Canvas -->
+      <div class="canvas" id="canvas">
+        <!-- SVG Connections -->
+        <svg class="connections" width="900" height="450">
+          <defs>
+            <linearGradient id="gaugeGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" style="stop-color:#6366f1" />
+              <stop offset="100%" style="stop-color:#10b981" />
+            </linearGradient>
+          </defs>
+          <!-- Source → Hot -->
+          <path class="conn-line active" d="M240,100 C290,100 290,75 340,75" />
+          <!-- Source → Warm -->
+          <path class="conn-line" d="M240,100 C290,100 290,220 340,220" />
+          <!-- Source → Cold -->
+          <path class="conn-line" d="M240,120 C290,150 290,350 340,350" />
+          <!-- Hot → SaaS -->
+          <path class="conn-line" d="M510,75 C560,75 560,50 610,50" />
+          <!-- Hot → Healthcare -->
+          <path class="conn-line active" d="M510,75 C560,75 560,170 610,170" />
+          <!-- Warm → Email action -->
+          <path class="conn-line" d="M510,220 C560,220 560,290 610,290" />
+        </svg>
+
+        <!-- Source Node -->
+        <div class="node node-source" onclick="selectNode(this)">
+          <div class="node-icon">🌐</div>
+          <div class="node-title">All Visitors</div>
+          <div class="node-count">847</div>
+          <div class="node-sub">Last 30 days</div>
+        </div>
+
+        <!-- Hot Leads -->
+        <div class="node node-hot selected" onclick="selectNode(this)">
+          <div class="node-icon">🔥</div>
+          <div class="node-title">Hot Leads</div>
+          <div class="node-count">23</div>
+          <div class="node-badge badge-hot">Score ≥ 70</div>
+        </div>
+
+        <!-- Warm Leads -->
+        <div class="node node-warm" onclick="selectNode(this)">
+          <div class="node-icon">🌤</div>
+          <div class="node-title">Warm Leads</div>
+          <div class="node-count">45</div>
+          <div class="node-badge badge-warm">Score 30-69</div>
+        </div>
+
+        <!-- Cold Leads -->
+        <div class="node node-cold" onclick="selectNode(this)">
+          <div class="node-icon">🧊</div>
+          <div class="node-title">Cold Leads</div>
+          <div class="node-count">189</div>
+          <div class="node-badge badge-cold">Score < 30</div>
+        </div>
+
+        <!-- SaaS Segment -->
+        <div class="node node-saas" onclick="selectNode(this)">
+          <div class="node-icon">💻</div>
+          <div class="node-title">SaaS Companies</div>
+          <div class="node-count">12</div>
+          <div class="node-badge badge-segment">Industry filter</div>
+        </div>
+
+        <!-- Healthcare Segment -->
+        <div class="node node-health selected" onclick="selectNode(this)">
+          <div class="node-icon">🏥</div>
+          <div class="node-title">Healthcare</div>
+          <div class="node-count">8</div>
+          <div class="node-badge badge-segment">Industry filter</div>
+        </div>
+
+        <!-- Email Action -->
+        <div class="node node-email" onclick="selectNode(this)">
+          <div class="node-icon">📧</div>
+          <div class="node-title">Email Outreach</div>
+          <div class="node-count">18</div>
+          <div class="node-badge badge-action">Pending send</div>
+        </div>
+      </div>
+
+      <!-- Detail Panel -->
+      <div class="detail-panel">
+        <div class="profile-card">
+          <div class="profile-top">
+            <div class="avatar">SJ</div>
+            <div>
+              <div class="profile-name">Sarah Johnson</div>
+              <div class="profile-title">VP of Marketing</div>
+              <div class="profile-company">HealthTech Solutions Inc.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Success Gauge -->
+        <div class="gauge-section">
+          <div class="gauge-container">
+            <svg viewBox="0 0 140 80" width="140" height="80">
+              <path class="gauge-bg" d="M15,75 A55,55 0 0,1 125,75" />
+              <path class="gauge-fill" d="M15,75 A55,55 0 0,1 125,75" stroke-dasharray="173" stroke-dashoffset="47" />
+            </svg>
+          </div>
+          <div class="gauge-value">73%</div>
+          <div class="gauge-label">ML Success Prediction</div>
+          <div class="channel-badge">📧 Recommended: Email</div>
+        </div>
+
+        <!-- Correlation Nodes -->
+        <div class="section-title">Why This Lead Will Convert</div>
+        <div class="correlation-list">
+          <div class="corr-item">
+            <span class="corr-icon">✅</span>
+            <span class="corr-text">Visited /pricing 3 times in 7 days</span>
+            <span class="corr-impact impact-pos">+22%</span>
+          </div>
+          <div class="corr-item">
+            <span class="corr-icon">✅</span>
+            <span class="corr-text">Company matches target ICP</span>
+            <span class="corr-impact impact-pos">+18%</span>
+          </div>
+          <div class="corr-item">
+            <span class="corr-icon">✅</span>
+            <span class="corr-text">Senior role (VP level)</span>
+            <span class="corr-impact impact-pos">+15%</span>
+          </div>
+          <div class="corr-item">
+            <span class="corr-icon">✅</span>
+            <span class="corr-text">12 min avg read time on blog</span>
+            <span class="corr-impact impact-pos">+12%</span>
+          </div>
+          <div class="corr-item">
+            <span class="corr-icon">⚠️</span>
+            <span class="corr-text">No form submission yet</span>
+            <span class="corr-impact impact-neg">-8%</span>
+          </div>
+          <div class="corr-item">
+            <span class="corr-icon">📈</span>
+            <span class="corr-text">Visit frequency increasing (2→5→8)</span>
+            <span class="corr-impact impact-pos">+14%</span>
+          </div>
+        </div>
+
+        <!-- Company Intelligence -->
+        <div class="section-title">Company Intelligence</div>
+        <div class="company-card">
+          <div class="company-header">
+            <div class="company-icon">🏢</div>
+            <div>
+              <div class="company-name">HealthTech Solutions</div>
+              <div class="company-domain">healthtech-solutions.com</div>
+            </div>
+          </div>
+          <div class="company-stats">
+            <div class="company-stat">
+              <div class="company-stat-label">Employees</div>
+              <div class="company-stat-value">50-200</div>
+            </div>
+            <div class="company-stat">
+              <div class="company-stat-label">Funding</div>
+              <div class="company-stat-value">Series A ($12M)</div>
+            </div>
+            <div class="company-stat">
+              <div class="company-stat-label">Industry</div>
+              <div class="company-stat-value">Healthcare IT</div>
+            </div>
+            <div class="company-stat">
+              <div class="company-stat-label">Hiring</div>
+              <div class="company-stat-value">3 marketing</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="actions">
+          <button class="btn btn-primary">📧 Send Email</button>
+          <button class="btn btn-secondary">📋 Add Note</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function selectNode(el) {
+  document.querySelectorAll('.node').forEach(n => n.classList.remove('selected'));
+  el.classList.add('selected');
+}
+</script>
+</body>
+</html>

@@ -73,3 +73,31 @@ class LeadNotFound(ResourceNotFound):
 class StrategyNotFound(ResourceNotFound):
     def __init__(self):
         super().__init__("Strategy not found.")
+
+
+class DomainOwnershipRequired(GrowthPilotException):
+    def __init__(self):
+        super().__init__(
+            "You can only run services on websites you own. Please verify ownership first.",
+            code="domain_ownership_required",
+            status_code=403,
+        )
+
+
+class RateLimited(GrowthPilotException):
+    def __init__(self):
+        super().__init__(
+            "You're making requests too quickly. Please wait a moment and try again.",
+            code="rate_limited",
+            status_code=429,
+        )
+
+
+class SuspiciousInput(GrowthPilotException):
+    def __init__(self):
+        super().__init__(
+            "Your request was blocked for security reasons.",
+            code="suspicious_input",
+            status_code=400,
+        )
+

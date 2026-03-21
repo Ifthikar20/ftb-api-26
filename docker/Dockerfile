@@ -20,6 +20,7 @@ RUN pip install -r requirements/prod.txt
 COPY . .
 
 RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser
+RUN mkdir -p /app/logs
 RUN chown -R appuser:appgroup /app
 USER appuser
 
@@ -29,9 +30,10 @@ EXPOSE 8000
 
 CMD ["gunicorn", "config.wsgi:application", \
      "--bind", "0.0.0.0:8000", \
-     "--workers", "4", \
-     "--threads", "2", \
-     "--worker-class", "gthread", \
+     "--workers", "2", \
+     "--worker-class", "sync", \
      "--timeout", "120", \
+     "--max-requests", "1000", \
+     "--max-requests-jitter", "50", \
      "--access-logfile", "-", \
      "--error-logfile", "-"]

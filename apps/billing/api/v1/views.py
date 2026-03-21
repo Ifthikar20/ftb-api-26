@@ -1,3 +1,5 @@
+import logging
+
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -8,8 +10,11 @@ from apps.billing.services.stripe_service import StripeService
 from apps.billing.services.plan_service import PlanService
 from apps.billing.services.usage_service import UsageService
 
+logger = logging.getLogger("apps")
+
 
 class BillingOverviewView(APIView):
+    """Current subscription, plan details, and usage."""
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
@@ -23,15 +28,18 @@ class BillingOverviewView(APIView):
         usage = UsageService.get_current_usage(user=request.user)
 
         return Response({
-            "plan": request.user.plan,
+            "plan": getattr(request.user, "plan", "starter"),
             "plan_details": plan_data,
             "subscription_status": subscription.status if subscription else "none",
-            "current_period_end": subscription.current_period_end if subscription else None,
+            "current_period_end": subscription.current_period_end.isoformat() if subscription and subscription.current_period_end else None,
+            "cancel_at_period_end": subscription.cancel_at_period_end if subscription else False,
+            "stripe_customer_id": bool(subscription.stripe_customer_id) if subscription else False,
             "usage": usage,
         })
 
 
 class PlansView(APIView):
+    """List all available plans."""
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
@@ -39,38 +47,76 @@ class PlansView(APIView):
 
 
 class CheckoutView(APIView):
+    """Create a Stripe checkout session for upgrading/subscribing."""
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
         plan = request.data.get("plan", "growth")
-        success_url = request.data.get("success_url", "https://app.growthpilot.io/billing/success")
-        cancel_url = request.data.get("cancel_url", "https://app.growthpilot.io/billing")
+        annual = request.data.get("annual", False)
 
-        url = StripeService.create_checkout_session(
-            user=request.user,
-            plan=plan,
-            success_url=success_url,
-            cancel_url=cancel_url,
-        )
-        return Response({"checkout_url": url})
+        # Validate plan
+        valid_plans = ["starter", "growth", "scale"]
+        if plan not in valid_plans:
+            return Response(
+                {"success": False, "error": {"code": "invalid_plan", "message": "Please select a valid plan."}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Build URLs from request origin (secure — never hardcode domains)
+        origin = request.META.get("HTTP_ORIGIN", request.META.get("HTTP_REFERER", ""))
+        if not origin:
+            origin = "https://app.fetchbot.io"
+        origin = origin.rstrip("/")
+
+        success_url = f"{origin}/billing?checkout=success"
+        cancel_url = f"{origin}/billing?checkout=canceled"
+
+        try:
+            url = StripeService.create_checkout_session(
+                user=request.user,
+                plan=plan,
+                annual=bool(annual),
+                success_url=success_url,
+                cancel_url=cancel_url,
+            )
+            return Response({"success": True, "data": {"checkout_url": url}})
+        except Exception as e:
+            logger.error(f"Checkout creation failed: {e}")
+            return Response(
+                {"success": False, "error": {"code": "checkout_failed", "message": str(e) if hasattr(e, 'message') else "We couldn't start the checkout. Please try again."}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
 
 class PortalView(APIView):
+    """Create a Stripe customer portal session for managing subscription."""
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        return_url = request.data.get("return_url", "https://app.growthpilot.io/billing")
-        url = StripeService.create_portal_session(user=request.user, return_url=return_url)
-        return Response({"portal_url": url})
+        origin = request.META.get("HTTP_ORIGIN", request.META.get("HTTP_REFERER", ""))
+        if not origin:
+            origin = "https://app.fetchbot.io"
+        return_url = f"{origin.rstrip('/')}/billing"
+
+        try:
+            url = StripeService.create_portal_session(user=request.user, return_url=return_url)
+            return Response({"success": True, "data": {"portal_url": url}})
+        except Exception as e:
+            logger.error(f"Portal creation failed: {e}")
+            return Response(
+                {"success": False, "error": {"code": "portal_failed", "message": "We couldn't open the billing portal. Please try again."}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
 
 class InvoiceListView(APIView):
+    """List all invoices for the current user."""
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
         try:
             subscription = request.user.subscription
-            invoices = Invoice.objects.filter(subscription=subscription)
+            invoices = Invoice.objects.filter(subscription=subscription).order_by("-created_at")[:20]
             data = [
                 {
                     "id": str(inv.id),
@@ -78,18 +124,32 @@ class InvoiceListView(APIView):
                     "currency": inv.currency,
                     "status": inv.status,
                     "invoice_pdf": inv.invoice_pdf,
+                    "period_start": inv.period_start.isoformat() if inv.period_start else None,
+                    "period_end": inv.period_end.isoformat() if inv.period_end else None,
                     "created_at": inv.created_at.isoformat(),
                 }
                 for inv in invoices
             ]
         except Subscription.DoesNotExist:
             data = []
-        return Response(data)
+        return Response({"success": True, "data": data})
 
 
 class UsageView(APIView):
+    """Current billing period usage metrics."""
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
         usage = UsageService.get_current_usage(user=request.user)
-        return Response(usage)
+        limits = StripeService.get_plan_limits(getattr(request.user, "plan", "starter"))
+
+        # Combine usage with limits for the frontend
+        metrics = []
+        for metric, limit in limits.items():
+            metrics.append({
+                "metric": metric,
+                "count": usage.get(metric, 0),
+                "limit": limit,
+            })
+
+        return Response({"success": True, "data": metrics})

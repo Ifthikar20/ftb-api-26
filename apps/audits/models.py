@@ -59,6 +59,49 @@ class AuditIssue(TimestampMixin):
         return f"Issue({self.severity}: {self.title[:50]})"
 
 
+class SEOGraderIssue(TimestampMixin):
+    """Per-page SEO issue with original value and suggested fix."""
+
+    CATEGORIES = [
+        ("page_title", "Page Title"),
+        ("meta_description", "Meta Description"),
+        ("image_alt", "Image Alt Text"),
+        ("h1_length", "H1 Length"),
+        ("h2_length", "H2 Length"),
+        ("heading_optimization", "Heading Optimizations"),
+        ("canonical_link", "Canonical Link"),
+        ("og_title", "OG Title"),
+        ("og_description", "OG Description"),
+        ("og_url", "OG URL"),
+        ("twitter_title", "Twitter Title"),
+        ("twitter_description", "Twitter Description"),
+        ("twitter_site", "Twitter Site"),
+        ("twitter_card", "Twitter Card"),
+        ("lang_missing", "Lang Missing"),
+        ("meta_keywords", "Meta Keywords"),
+        ("internal_linking", "Internal Linking Suggestions"),
+        ("organization_schema", "Organization Schema"),
+        ("missing_keywords", "Missing Keywords"),
+        ("link_issues", "Issues with Links"),
+    ]
+
+    audit = models.ForeignKey(Audit, on_delete=models.CASCADE, related_name="grader_issues")
+    category = models.CharField(max_length=50)
+    page_url = models.CharField(max_length=500)
+    original_value = models.TextField(blank=True, default="")
+    original_length = models.IntegerField(default=0)
+    suggested_fix = models.TextField(blank=True, default="")
+    suggested_length = models.IntegerField(default=0)
+    deployed = models.BooleanField(default=False)
+
+    class Meta:
+        db_table = "audits_seograderissue"
+        ordering = ["category", "page_url"]
+
+    def __str__(self):
+        return f"GraderIssue({self.category}: {self.page_url[:40]})"
+
+
 class AuditSchedule(models.Model):
     """Automated audit schedule configuration."""
 

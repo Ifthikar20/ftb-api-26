@@ -57,6 +57,7 @@ LOCAL_APPS = [
     "apps.strategy",
     "apps.notifications",
     "apps.billing",
+    "apps.agents",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -98,9 +99,9 @@ REST_FRAMEWORK = {
         "core.interceptors.throttling.SustainedRateThrottle",
     ],
     "DEFAULT_THROTTLE_RATES": {
-        "burst": "60/min",
-        "sustained": "1000/hour",
-        "auth": "5/min",
+        "burst": "500/min",
+        "sustained": "20000/hour",
+        "auth": "60/min",
         "password_reset": "3/hour",
         "ai_generation": "10/hour",
         "pixel_ingest": "10000/min",
@@ -121,8 +122,8 @@ REST_FRAMEWORK = {
 
 # ── JWT CONFIG ──
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=15),
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
+    "ACCESS_TOKEN_LIFETIME": timedelta(hours=24),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=30),
     "ROTATE_REFRESH_TOKENS": True,
     "BLACKLIST_AFTER_ROTATION": True,
     "UPDATE_LAST_LOGIN": True,
@@ -278,8 +279,16 @@ FIELD_ENCRYPTION_KEY = env("FIELD_ENCRYPTION_KEY", default="")
 # ── EXTERNAL SERVICES ──
 OPENAI_API_KEY = env("OPENAI_API_KEY", default="")
 ANTHROPIC_API_KEY = env("ANTHROPIC_API_KEY", default="")
+GOOGLE_SEARCH_API_KEY = env("GOOGLE_SEARCH_API_KEY", default="")
+GOOGLE_SEARCH_ENGINE_ID = env("GOOGLE_SEARCH_ENGINE_ID", default="")
 STRIPE_SECRET_KEY = env("STRIPE_SECRET_KEY", default="")
 STRIPE_WEBHOOK_SECRET = env("STRIPE_WEBHOOK_SECRET", default="")
+STRIPE_STARTER_PRICE_ID = env("STRIPE_STARTER_PRICE_ID", default="")
+STRIPE_GROWTH_PRICE_ID = env("STRIPE_GROWTH_PRICE_ID", default="")
+STRIPE_SCALE_PRICE_ID = env("STRIPE_SCALE_PRICE_ID", default="")
+STRIPE_STARTER_ANNUAL_PRICE_ID = env("STRIPE_STARTER_ANNUAL_PRICE_ID", default="")
+STRIPE_GROWTH_ANNUAL_PRICE_ID = env("STRIPE_GROWTH_ANNUAL_PRICE_ID", default="")
+STRIPE_SCALE_ANNUAL_PRICE_ID = env("STRIPE_SCALE_ANNUAL_PRICE_ID", default="")
 SENDGRID_API_KEY = env("SENDGRID_API_KEY", default="")
 GOOGLE_OAUTH_CLIENT_ID = env("GOOGLE_OAUTH_CLIENT_ID", default="")
 GOOGLE_OAUTH_CLIENT_SECRET = env("GOOGLE_OAUTH_CLIENT_SECRET", default="")

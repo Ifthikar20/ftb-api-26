@@ -120,6 +120,93 @@ class Command(BaseCommand):
                     )
         self.stdout.write(f"  Analytics: {len(visitors)} visitors, sessions, events")
 
+        # ── Heatmap Click Events ──
+        click_zones = [
+            # Nav bar area
+            {"x_range": (5, 95), "y_range": (1, 5), "weight": 30},
+            # Hero CTA button
+            {"x_range": (30, 70), "y_range": (25, 35), "weight": 40},
+            # Feature cards
+            {"x_range": (10, 90), "y_range": (45, 60), "weight": 25},
+            # Pricing section
+            {"x_range": (15, 85), "y_range": (65, 80), "weight": 20},
+            # Footer
+            {"x_range": (5, 95), "y_range": (90, 98), "weight": 10},
+            # Sidebar nav
+            {"x_range": (1, 10), "y_range": (10, 90), "weight": 15},
+        ]
+        heatmap_pages = [
+            f"https://demo.example.com{p}" for p in ["/", "/pricing", "/features", "/blog"]
+        ]
+        click_count = 0
+        for page in heatmap_pages:
+            for zone in click_zones:
+                for _ in range(zone["weight"]):
+                    x = random.uniform(zone["x_range"][0], zone["x_range"][1])
+                    y = random.uniform(zone["y_range"][0], zone["y_range"][1])
+                    x += random.gauss(0, 3)
+                    y += random.gauss(0, 2)
+                    x = max(0, min(100, x))
+                    y = max(0, min(100, y))
+                    v = random.choice(visitors[:20])
+                    PageEvent.objects.create(
+                        visitor=v,
+                        website=website,
+                        url=page,
+                        event_type="click",
+                        properties={
+                            "x_pct": round(x, 1),
+                            "y_pct": round(y, 1),
+                            "selector": random.choice(["a.nav-link", "button.cta", "div.card", "a.footer-link", "h2"]),
+                            "viewport_w": 1440,
+                            "viewport_h": 900,
+                        },
+                        timestamp=now - timedelta(days=random.randint(0, 30), hours=random.randint(0, 23)),
+                    )
+                    click_count += 1
+        self.stdout.write(f"  Heatmap: {click_count} click events across {len(heatmap_pages)} pages")
+
+        # ── Keyword Rank Tracking ──
+        from apps.analytics.models import TrackedKeyword, KeywordRankHistory
+
+        keyword_data = [
+            {"keyword": "growth hacking tools", "search_volume": 8200, "difficulty": 45, "base_rank": 12},
+            {"keyword": "website analytics platform", "search_volume": 6400, "difficulty": 62, "base_rank": 8},
+            {"keyword": "seo audit tool", "search_volume": 14000, "difficulty": 58, "base_rank": 15},
+            {"keyword": "lead scoring software", "search_volume": 5400, "difficulty": 38, "base_rank": 6},
+            {"keyword": "competitor analysis tool", "search_volume": 9800, "difficulty": 52, "base_rank": 22},
+            {"keyword": "marketing automation", "search_volume": 22000, "difficulty": 72, "base_rank": 35},
+            {"keyword": "privacy analytics", "search_volume": 3200, "difficulty": 25, "base_rank": 4},
+            {"keyword": "ai marketing strategy", "search_volume": 4100, "difficulty": 42, "base_rank": 18},
+            {"keyword": "content calendar tool", "search_volume": 7600, "difficulty": 48, "base_rank": 11},
+            {"keyword": "visitor identification", "search_volume": 2900, "difficulty": 33, "base_rank": 9},
+        ]
+        for kd in keyword_data:
+            base = kd.pop("base_rank")
+            kw, _ = TrackedKeyword.objects.get_or_create(
+                website=website,
+                keyword=kd["keyword"],
+                defaults={
+                    **kd,
+                    "target_url": f"https://demo.example.com/{kd['keyword'].replace(' ', '-')}",
+                },
+            )
+            ranks = []
+            for d in range(30, -1, -1):
+                rank = max(1, base + random.randint(-3, 3))
+                base = rank
+                ranks.append(rank)
+                KeywordRankHistory.objects.get_or_create(
+                    tracked_keyword=kw,
+                    date=date.today() - timedelta(days=d),
+                    defaults={"rank": rank, "serp_features": random.choice([[], ["featured_snippet"], ["people_also_ask"], ["video"]])},
+                )
+            kw.current_rank = ranks[-1]
+            kw.previous_rank = ranks[-2] if len(ranks) > 1 else None
+            kw.best_rank = min(ranks)
+            kw.save()
+        self.stdout.write(f"  Keywords: {len(keyword_data)} tracked with 30-day history")
+
         # ── Leads ──
         from apps.leads.models import Lead
 

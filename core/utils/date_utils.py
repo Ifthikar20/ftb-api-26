@@ -9,8 +9,8 @@ def get_date_range(period: str, start_date=None, end_date=None) -> Tuple[datetim
     """Parse a period string into start/end datetimes."""
     now = timezone.now()
 
-    if period == "today":
-        start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    if period == "today" or period == "24h":
+        start = now - timedelta(hours=24)
         end = now
     elif period == "7d":
         start = now - timedelta(days=7)

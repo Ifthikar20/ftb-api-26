@@ -57,7 +57,7 @@ class AnalyticsService:
     def get_traffic_sources(*, website_id: str, period: str = "30d") -> list:
         """Return traffic source breakdown."""
         start, end = get_date_range(period)
-        return list(
+        raw = list(
             Session.objects.filter(
                 visitor__website_id=website_id,
                 started_at__range=(start, end),
@@ -66,6 +66,24 @@ class AnalyticsService:
             .annotate(count=Count("id"))
             .order_by("-count")
         )
+        # Normalize sources: localhost, empty, None → 'Direct'
+        IGNORE_SOURCES = {'localhost', 'localhost:5173', 'localhost:8000', '127.0.0.1', ''}
+        merged = {}
+        for r in raw:
+            source = (r.get("source") or "").strip().lower()
+            if source in IGNORE_SOURCES or not source:
+                source = "Direct"
+            else:
+                # Capitalize nicely
+                source = source.replace("www.", "").split("/")[0]
+                source = source.title() if "." not in source else source
+            medium = r.get("medium") or "none"
+            key = f"{source}|{medium}"
+            if key in merged:
+                merged[key]["count"] += r["count"]
+            else:
+                merged[key] = {"source": source, "medium": medium, "count": r["count"]}
+        return sorted(merged.values(), key=lambda x: -x["count"])
 
     @staticmethod
     def get_realtime_snapshot(*, website_id: str) -> dict:

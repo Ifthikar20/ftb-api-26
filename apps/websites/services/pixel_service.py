@@ -31,7 +31,7 @@ PIXEL_JS_TEMPLATE = """
 
 class PixelService:
     @staticmethod
-    def get_snippet(*, website: Website, endpoint: str = "https://api.growthpilot.io/api/v1/track/") -> str:
+    def get_snippet(*, website: Website, endpoint: str = "https://fetchbot.ai/api/v1/track/") -> str:
         """Return the JavaScript snippet to embed on the tracked site."""
         return PIXEL_JS_TEMPLATE.format(pixel_key=str(website.pixel_key), endpoint=endpoint)
 

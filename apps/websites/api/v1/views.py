@@ -29,26 +29,26 @@ class WebsiteListCreateView(APIView):
         return Response(serializer.data)
 
     def post(self, request):
-        # Enforce plan-based project limit
-        current_count = Website.objects.filter(user=request.user).count()
-        plan_id = "starter"
-        try:
-            plan_id = request.user.subscription.plan
-        except Exception:
-            pass
-        plan_config = next((p for p in PLANS if p["id"] == plan_id), PLANS[0])
-        max_projects = plan_config["limits"].get("websites", 1)
-        if max_projects != -1 and current_count >= max_projects:
-            return Response(
-                {
-                    "error": "project_limit_reached",
-                    "message": f"Your {plan_config['name']} plan allows up to {max_projects} project(s). Upgrade to add more.",
-                    "current": current_count,
-                    "limit": max_projects,
-                    "plan": plan_id,
-                },
-                status=status.HTTP_403_FORBIDDEN,
-            )
+        # Plan limit check disabled for testing — re-enable for production
+        # current_count = Website.objects.filter(user=request.user).count()
+        # plan_id = "starter"
+        # try:
+        #     plan_id = request.user.subscription.plan
+        # except Exception:
+        #     pass
+        # plan_config = next((p for p in PLANS if p["id"] == plan_id), PLANS[0])
+        # max_projects = plan_config["limits"].get("websites", 1)
+        # if max_projects != -1 and current_count >= max_projects:
+        #     return Response(
+        #         {
+        #             "error": "project_limit_reached",
+        #             "message": f"Your {plan_config['name']} plan allows up to {max_projects} project(s). Upgrade to add more.",
+        #             "current": current_count,
+        #             "limit": max_projects,
+        #             "plan": plan_id,
+        #         },
+        #         status=status.HTTP_403_FORBIDDEN,
+        #     )
         serializer = WebsiteCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         website = WebsiteService.create(user=request.user, **serializer.validated_data)
@@ -196,10 +196,38 @@ class DashboardView(APIView):
             {'label': 'Competitor Intel', 'desc': 'See what changed this week', 'to': '/websites'},
         ]
 
+        # Integration status
+        from apps.websites.models import Integration
+        integration_types = [
+            ('ga', 'Google Analytics'),
+            ('gsc', 'Google Search Console'),
+            ('facebook', 'Facebook Ads'),
+        ]
+        services = []
+        for itype, label in integration_types:
+            integration = Integration.objects.filter(website=website, type=itype, is_active=True).first() if website else None
+            services.append({
+                'type': itype,
+                'label': label,
+                'connected': integration is not None,
+                'connected_at': integration.connected_at.strftime('%b %d, %Y') if integration else None,
+            })
+
+        integrations = {
+            'pixel': {
+                'installed': website.pixel_verified if website else False,
+                'verified': website.pixel_verified if website else False,
+                'verified_at': website.pixel_verified_at.strftime('%b %d, %Y') if website and website.pixel_verified_at else None,
+                'pixel_key': str(website.pixel_key) if website else None,
+            },
+            'services': services,
+        }
+
         return Response({
             'stats': stats,
             'brief': brief_text,
             'actions': actions,
             'activity': activity,
             'quick_actions': quick_actions,
+            'integrations': integrations,
         })
