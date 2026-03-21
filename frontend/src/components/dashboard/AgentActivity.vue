@@ -1,7 +1,7 @@
 <template>
   <div class="card">
     <div class="card-header">
-      <h3 class="card-title">🤖 Agent Activity</h3>
+      <h3 class="card-title">Agent Activity</h3>
       <span class="text-sm text-muted">Latest runs</span>
     </div>
     <div v-if="runs.length" class="activity-list">

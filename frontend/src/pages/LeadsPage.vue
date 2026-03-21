@@ -49,7 +49,7 @@
           </tbody>
         </table>
         <div v-if="leads.length === 0" class="empty-guide">
-          <div style="font-size:40px;margin-bottom:12px">👤</div>
+          <div style="margin-bottom:12px;display:flex;justify-content:center"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="1.5"><circle cx="12" cy="7" r="4"/><path d="M5.5 21c0-3.5 3-6 6.5-6s6.5 2.5 6.5 6"/></svg></div>
           <h3 style="margin:0 0 8px;color:var(--text-primary)">No leads captured yet</h3>
           <p style="font-size:var(--font-sm);color:var(--text-secondary);max-width:400px;margin:0 auto;line-height:1.6">Leads are automatically captured when visitors interact with forms on your tracked website.</p>
         </div>
@@ -74,7 +74,7 @@
               draggable="true"
               @dragstart="onDragStart($event, c)"
             >
-              <span class="cs-item-icon">{{ c.emoji }}</span>
+              <span class="cs-item-icon" v-html="c.icon"></span>
               <div class="cs-item-info">
                 <div class="cs-item-name">{{ c.label }}</div>
                 <div class="cs-item-desc">{{ c.desc }}</div>
@@ -131,11 +131,11 @@
             </svg>
             <div style="font-family:var(--font-display);font-size:var(--font-2xl);color:var(--color-success)">{{ selectedLead.score }}%</div>
             <div class="text-xs text-muted">ML Success Prediction</div>
-            <span class="badge badge-info" style="margin-top:8px">📧 Recommended: Email</span>
+            <span class="badge badge-info" style="margin-top:8px"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" style="vertical-align:-2px;margin-right:4px"><rect x="1" y="3" width="14" height="10" rx="1.5"/><path d="M1 4l7 5 7-5"/></svg>Recommended: Email</span>
           </div>
           <div style="display:flex;gap:8px;margin-top:16px">
-            <button class="btn btn-primary btn-sm" style="flex:1" @click="openEmailCompose(selectedLead)">📧 Send Email</button>
-            <button class="btn btn-secondary btn-sm" style="flex:1">📋 Add Note</button>
+            <button class="btn btn-primary btn-sm" style="flex:1" @click="openEmailCompose(selectedLead)"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" style="vertical-align:-2px;margin-right:4px"><rect x="1" y="3" width="14" height="10" rx="1.5"/><path d="M1 4l7 5 7-5"/></svg>Send Email</button>
+            <button class="btn btn-secondary btn-sm" style="flex:1"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" style="vertical-align:-2px;margin-right:4px"><rect x="3" y="1" width="10" height="14" rx="1.5"/><path d="M6 5h4M6 8h4M6 11h2"/></svg>Add Note</button>
           </div>
         </div>
 
@@ -143,7 +143,7 @@
           <div class="card-header"><h3 class="card-title" style="font-size:var(--font-xs);text-transform:uppercase;letter-spacing:0.1em;color:var(--text-muted)">Why This Lead Will Convert</h3></div>
           <div class="corr-list">
             <div class="corr-row" v-for="c in correlations" :key="c.text">
-              <span style="font-size:14px;width:18px;text-align:center;flex-shrink:0">{{ c.positive ? '✅' : '⚠️' }}</span>
+              <span style="width:10px;height:10px;border-radius:50%;flex-shrink:0" :style="{ background: c.positive ? 'var(--color-success)' : 'var(--color-warning)' }"></span>
               <span style="flex:1;font-size:var(--font-sm);color:var(--text-primary)">{{ c.text }}</span>
               <span class="badge" :class="c.positive ? 'badge-success' : 'badge-danger'" style="font-size:9px;padding:2px 6px">{{ c.impact }}</span>
             </div>
@@ -153,7 +153,7 @@
         <div class="card">
           <div class="card-header"><h3 class="card-title" style="font-size:var(--font-xs);text-transform:uppercase;letter-spacing:0.1em;color:var(--text-muted)">Company Intelligence</h3></div>
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
-            <div class="avatar" style="width:28px;height:28px;font-size:11px;border-radius:8px">🏢</div>
+            <div style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;background:var(--bg-surface);border-radius:8px"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="var(--text-secondary)" stroke-width="1.5"><rect x="2" y="3" width="12" height="11" rx="1"/><path d="M5 3V1.5h6V3M5 7h2M9 7h2M5 10h2M9 10h2"/></svg></div>
             <div>
               <div style="font-weight:700;font-size:var(--font-sm)">{{ selectedLead.company || 'Unknown' }}</div>
               <div class="text-xs" style="color:var(--brand-accent)">{{ companyDomain }}</div>
@@ -291,8 +291,8 @@
     <div v-if="showEmailModal" class="modal-overlay" @click.self="showEmailModal = false">
       <div class="modal-content slide-up" style="max-width: 540px">
         <div class="modal-header">
-          <h2 class="modal-title">📧 Send Email</h2>
-          <button class="btn-icon btn-ghost" @click="showEmailModal = false">✕</button>
+          <h2 class="modal-title"><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" style="vertical-align:-3px;margin-right:6px"><rect x="1" y="3" width="14" height="10" rx="1.5"/><path d="M1 4l7 5 7-5"/></svg>Send Email</h2>
+          <button class="btn-icon btn-ghost" @click="showEmailModal = false"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4l8 8M12 4l-8 8"/></svg></button>
         </div>
         <div style="display:flex;flex-direction:column;gap:14px">
           <div class="form-group">
@@ -310,8 +310,8 @@
           <button class="btn btn-primary w-full" :disabled="emailSending || !emailSubject || !emailBody" @click="sendEmail">
             {{ emailSending ? 'Sending...' : 'Send Email' }}
           </button>
-          <div v-if="emailSent" class="email-sent-msg">✅ Email sent successfully!</div>
-          <div v-if="emailError" class="email-error-msg">❌ {{ emailError }}</div>
+          <div v-if="emailSent" class="email-sent-msg"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--color-success);margin-right:6px;vertical-align:1px"></span>Email sent successfully!</div>
+          <div v-if="emailError" class="email-error-msg"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--color-danger);margin-right:6px;vertical-align:1px"></span>{{ emailError }}</div>
         </div>
         <!-- Email History -->
         <div v-if="emailHistory.length" style="margin-top:20px;border-top:1px solid var(--border-color);padding-top:16px">
@@ -364,40 +364,40 @@ const aiMeta = ref({})
 // ── Connector catalog (drag from sidebar) ──
 const connectorCatalog = {
   'Data Sources': [
-    { id: 'gsc',       emoji: '📊', label: 'Search Console', desc: 'Keyword & click data',     badgeClass: 'badge-success' },
-    { id: 'ga4',       emoji: '📈', label: 'GA4',            desc: 'Traffic & attribution',    badgeClass: 'badge-warning' },
-    { id: 'shopify',   emoji: '🛍', label: 'Shopify',        desc: 'Customer & order data',    badgeClass: 'badge-success' },
-    { id: 'webhooks',  emoji: '🔗', label: 'Webhooks',       desc: 'Custom event ingestion',   badgeClass: 'badge-neutral' },
+    { id: 'gsc',       icon: '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#22c55e"></span>', label: 'Search Console', desc: 'Keyword & click data',     badgeClass: 'badge-success' },
+    { id: 'ga4',       icon: '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#f59e0b"></span>', label: 'GA4',            desc: 'Traffic & attribution',    badgeClass: 'badge-warning' },
+    { id: 'shopify',   icon: '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#22c55e"></span>', label: 'Shopify',        desc: 'Customer & order data',    badgeClass: 'badge-success' },
+    { id: 'webhooks',  icon: '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#94a3b8"></span>', label: 'Webhooks',       desc: 'Custom event ingestion',   badgeClass: 'badge-neutral' },
   ],
   'Enrichment': [
-    { id: 'clearbit',  emoji: '🔍', label: 'Clearbit',       desc: 'Firmographic enrichment',  badgeClass: 'badge-info' },
-    { id: 'apollo',    emoji: '🚀', label: 'Apollo.io',      desc: 'Contact DB & tech stack',  badgeClass: 'badge-accent' },
-    { id: 'linkedin',  emoji: '💼', label: 'LinkedIn',       desc: 'Profile & company intel',  badgeClass: 'badge-info' },
-    { id: 'zoominfo',  emoji: '🔬', label: 'ZoomInfo',       desc: 'Enterprise B2B data',      badgeClass: 'badge-info' },
+    { id: 'clearbit',  icon: '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#3b82f6"></span>', label: 'Clearbit',       desc: 'Firmographic enrichment',  badgeClass: 'badge-info' },
+    { id: 'apollo',    icon: '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#5B8DEF"></span>', label: 'Apollo.io',      desc: 'Contact DB & tech stack',  badgeClass: 'badge-accent' },
+    { id: 'linkedin',  icon: '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#3b82f6"></span>', label: 'LinkedIn',       desc: 'Profile & company intel',  badgeClass: 'badge-info' },
+    { id: 'zoominfo',  icon: '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#3b82f6"></span>', label: 'ZoomInfo',       desc: 'Enterprise B2B data',      badgeClass: 'badge-info' },
   ],
   'Outreach': [
-    { id: 'email',     emoji: '📧', label: 'Email',          desc: 'Campaigns & drip flows',   badgeClass: 'badge-info' },
-    { id: 'sms',       emoji: '💬', label: 'SMS (Twilio)',    desc: 'Text follow-ups',          badgeClass: 'badge-info' },
-    { id: 'whatsapp',  emoji: '💚', label: 'WhatsApp',       desc: 'Conversational outreach',  badgeClass: 'badge-success' },
-    { id: 'linkedin-mail', emoji: '✉️', label: 'LinkedIn InMail', desc: 'Direct messaging',   badgeClass: 'badge-info' },
+    { id: 'email',     icon: '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#3b82f6"></span>', label: 'Email',          desc: 'Campaigns & drip flows',   badgeClass: 'badge-info' },
+    { id: 'sms',       icon: '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#3b82f6"></span>', label: 'SMS (Twilio)',    desc: 'Text follow-ups',          badgeClass: 'badge-info' },
+    { id: 'whatsapp',  icon: '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#22c55e"></span>', label: 'WhatsApp',       desc: 'Conversational outreach',  badgeClass: 'badge-success' },
+    { id: 'linkedin-mail', icon: '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#3b82f6"></span>', label: 'LinkedIn InMail', desc: 'Direct messaging',   badgeClass: 'badge-info' },
   ],
   'Advertising': [
-    { id: 'facebook',  emoji: '📘', label: 'Facebook Ads',   desc: 'Retarget audiences',       badgeClass: 'badge-info' },
-    { id: 'google-ads',emoji: '🔎', label: 'Google Ads',     desc: 'Customer Match & display', badgeClass: 'badge-warning' },
-    { id: 'pinterest', emoji: '📌', label: 'Pinterest',      desc: 'Promoted pin campaigns',   badgeClass: 'badge-danger' },
-    { id: 'instagram', emoji: '📷', label: 'Instagram Ads',  desc: 'Story & reel ads',         badgeClass: 'badge-accent' },
-    { id: 'tiktok',    emoji: '🎵', label: 'TikTok Ads',     desc: 'Video ad campaigns',       badgeClass: 'badge-neutral' },
+    { id: 'facebook',  icon: '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#3b82f6"></span>', label: 'Facebook Ads',   desc: 'Retarget audiences',       badgeClass: 'badge-info' },
+    { id: 'google-ads',icon: '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#f59e0b"></span>', label: 'Google Ads',     desc: 'Customer Match & display', badgeClass: 'badge-warning' },
+    { id: 'pinterest', icon: '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#ef4444"></span>', label: 'Pinterest',      desc: 'Promoted pin campaigns',   badgeClass: 'badge-danger' },
+    { id: 'instagram', icon: '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#5B8DEF"></span>', label: 'Instagram Ads',  desc: 'Story & reel ads',         badgeClass: 'badge-accent' },
+    { id: 'tiktok',    icon: '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#94a3b8"></span>', label: 'TikTok Ads',     desc: 'Video ad campaigns',       badgeClass: 'badge-neutral' },
   ],
   'CRM & Automation': [
-    { id: 'hubspot',   emoji: '🟠', label: 'HubSpot',        desc: 'Two-way CRM sync',        badgeClass: 'badge-warning' },
-    { id: 'salesforce', emoji: '☁️', label: 'Salesforce',     desc: 'Enterprise CRM sync',     badgeClass: 'badge-info' },
-    { id: 'slack',     emoji: '💜', label: 'Slack',           desc: 'Real-time lead alerts',   badgeClass: 'badge-accent' },
-    { id: 'zapier',    emoji: '⚡', label: 'Zapier',          desc: 'Universal automation',    badgeClass: 'badge-warning' },
+    { id: 'hubspot',   icon: '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#f59e0b"></span>', label: 'HubSpot',        desc: 'Two-way CRM sync',        badgeClass: 'badge-warning' },
+    { id: 'salesforce', icon: '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#3b82f6"></span>', label: 'Salesforce',     desc: 'Enterprise CRM sync',     badgeClass: 'badge-info' },
+    { id: 'slack',     icon: '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#5B8DEF"></span>', label: 'Slack',           desc: 'Real-time lead alerts',   badgeClass: 'badge-accent' },
+    { id: 'zapier',    icon: '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#f59e0b"></span>', label: 'Zapier',          desc: 'Universal automation',    badgeClass: 'badge-warning' },
   ],
   'AI & Intelligence': [
-    { id: 'anthropic', emoji: '🤖', label: 'Claude AI',      desc: 'AI email drafting',        badgeClass: 'badge-accent' },
-    { id: 'openai',    emoji: '✨', label: 'OpenAI',          desc: 'Content generation',      badgeClass: 'badge-success' },
-    { id: 'mixpanel',  emoji: '🟣', label: 'Mixpanel',       desc: 'Product analytics',       badgeClass: 'badge-accent' },
+    { id: 'anthropic', icon: '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#5B8DEF"></span>', label: 'Claude AI',      desc: 'AI email drafting',        badgeClass: 'badge-accent' },
+    { id: 'openai',    icon: '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#22c55e"></span>', label: 'OpenAI',          desc: 'Content generation',      badgeClass: 'badge-success' },
+    { id: 'mixpanel',  icon: '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#5B8DEF"></span>', label: 'Mixpanel',       desc: 'Product analytics',       badgeClass: 'badge-accent' },
   ],
 }
 
@@ -420,17 +420,17 @@ const companyDomain = computed(() => {
 
 // ── Vue Flow: Nodes (extended pipeline) ──
 const nodes = ref([
-  { id: 'source',   type: 'pipeline', position: { x: 0,    y: 140 }, data: { nodeType: 'source',  emoji: '🌐', label: 'All Visitors',   count: 0 } },
-  { id: 'hot',      type: 'pipeline', position: { x: 280,  y: 10 },  data: { nodeType: 'hot',     emoji: '🔥', label: 'Hot Leads',      count: 0, badge: 'Score ≥ 70', badgeClass: 'badge-danger' } },
-  { id: 'warm',     type: 'pipeline', position: { x: 280,  y: 170 }, data: { nodeType: 'warm',    emoji: '🌤', label: 'Warm Leads',     count: 0, badge: 'Score 30–69', badgeClass: 'badge-warning' } },
-  { id: 'cold',     type: 'pipeline', position: { x: 280,  y: 330 }, data: { nodeType: 'cold',    emoji: '🧊', label: 'Cold Leads',     count: 0, badge: 'Score < 30', badgeClass: 'badge-neutral' } },
-  { id: 'saas',     type: 'pipeline', position: { x: 540,  y: 0 },   data: { nodeType: 'saas',    emoji: '💻', label: 'SaaS',           count: 0, badge: 'Industry', badgeClass: 'badge-info' } },
-  { id: 'health',   type: 'pipeline', position: { x: 540,  y: 150 }, data: { nodeType: 'health',  emoji: '🏥', label: 'Healthcare',     count: 0, badge: 'Industry', badgeClass: 'badge-success' } },
-  { id: 'enrich',   type: 'pipeline', position: { x: 800,  y: 20 },  data: { nodeType: 'action',  emoji: '🔍', label: 'Enrich Profile', count: 0, badge: 'Auto', badgeClass: 'badge-accent' } },
-  { id: 'score',    type: 'pipeline', position: { x: 800,  y: 170 }, data: { nodeType: 'action',  emoji: '🧠', label: 'ML Score',       count: 0, badge: 'AI Model', badgeClass: 'badge-accent' } },
-  { id: 'campaign', type: 'pipeline', position: { x: 1060, y: 20 },  data: { nodeType: 'action',  emoji: '📧', label: 'Send Campaign',  count: 0, badge: 'Outreach', badgeClass: 'badge-accent' } },
-  { id: 'nurture',  type: 'pipeline', position: { x: 1060, y: 170 }, data: { nodeType: 'action',  emoji: '🔄', label: 'Nurture Flow',   count: 0, badge: 'Automated', badgeClass: 'badge-accent' } },
-  { id: 'convert',  type: 'pipeline', position: { x: 1060, y: 320 }, data: { nodeType: 'health',  emoji: '✅', label: 'Converted',       count: 0, badge: 'Customer', badgeClass: 'badge-success' } },
+  { id: 'source',   type: 'pipeline', position: { x: 0,    y: 140 }, data: { nodeType: 'source',  icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>', label: 'All Visitors',   count: 0 } },
+  { id: 'hot',      type: 'pipeline', position: { x: 280,  y: 10 },  data: { nodeType: 'hot',     icon: '<span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#ef4444;box-shadow:0 0 6px rgba(239,68,68,0.5)"></span>', label: 'Hot Leads',      count: 0, badge: 'Score ≥ 70', badgeClass: 'badge-danger' } },
+  { id: 'warm',     type: 'pipeline', position: { x: 280,  y: 170 }, data: { nodeType: 'warm',    icon: '<span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#f59e0b;box-shadow:0 0 6px rgba(245,158,11,0.4)"></span>', label: 'Warm Leads',     count: 0, badge: 'Score 30–69', badgeClass: 'badge-warning' } },
+  { id: 'cold',     type: 'pipeline', position: { x: 280,  y: 330 }, data: { nodeType: 'cold',    icon: '<span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#94a3b8"></span>', label: 'Cold Leads',     count: 0, badge: 'Score < 30', badgeClass: 'badge-neutral' } },
+  { id: 'saas',     type: 'pipeline', position: { x: 540,  y: 0 },   data: { nodeType: 'saas',    icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M7 20h10M12 18v2"/></svg>', label: 'SaaS',           count: 0, badge: 'Industry', badgeClass: 'badge-info' } },
+  { id: 'health',   type: 'pipeline', position: { x: 540,  y: 150 }, data: { nodeType: 'health',  icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2v4m0 0H4m4 0h4M16 12h4m-4 0h-4m4 0V8m0 4v4"/><rect x="3" y="3" width="18" height="18" rx="2"/></svg>', label: 'Healthcare',     count: 0, badge: 'Industry', badgeClass: 'badge-success' } },
+  { id: 'enrich',   type: 'pipeline', position: { x: 800,  y: 20 },  data: { nodeType: 'action',  icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>', label: 'Enrich Profile', count: 0, badge: 'Auto', badgeClass: 'badge-accent' } },
+  { id: 'score',    type: 'pipeline', position: { x: 800,  y: 170 }, data: { nodeType: 'action',  icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2a10 10 0 1 0 10 10"/><path d="M12 6v6l4 2"/></svg>', label: 'ML Score',       count: 0, badge: 'AI Model', badgeClass: 'badge-accent' } },
+  { id: 'campaign', type: 'pipeline', position: { x: 1060, y: 20 },  data: { nodeType: 'action',  icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 7l10 7 10-7"/></svg>', label: 'Send Campaign',  count: 0, badge: 'Outreach', badgeClass: 'badge-accent' } },
+  { id: 'nurture',  type: 'pipeline', position: { x: 1060, y: 170 }, data: { nodeType: 'action',  icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 12a9 9 0 1 1-6.22-8.56"/><path d="M21 3v9h-9"/></svg>', label: 'Nurture Flow',   count: 0, badge: 'Automated', badgeClass: 'badge-accent' } },
+  { id: 'convert',  type: 'pipeline', position: { x: 1060, y: 320 }, data: { nodeType: 'health',  icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>', label: 'Converted',       count: 0, badge: 'Customer', badgeClass: 'badge-success' } },
 ])
 
 const edges = ref([
@@ -505,7 +505,7 @@ function onDrop(event) {
     position,
     data: {
       nodeType: 'connector',
-      emoji: draggedConnector.emoji,
+      icon: draggedConnector.icon,
       label: draggedConnector.label,
       count: undefined,
       badge: 'Connector',

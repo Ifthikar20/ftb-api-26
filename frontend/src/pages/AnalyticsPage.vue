@@ -767,7 +767,7 @@
               <div v-if="cid === 'growth_actions'" class="ret-dyn-card ret-full">
                 <button class="ret-card-close" @click="removeInsightCard(cid)">&times;</button>
                 <div class="card">
-                  <div class="card-header"><h3 class="card-title">🚀 Growth Actions</h3><span class="text-xs text-muted">Prioritized by impact</span></div>
+                  <div class="card-header"><h3 class="card-title">Growth Actions</h3><span class="text-xs text-muted">Prioritized by impact</span></div>
                   <div v-if="insightsData.actions && insightsData.actions.length">
                     <div v-for="(a, i) in insightsData.actions" :key="i" class="growth-action-item">
                       <div class="growth-action-priority" :class="'gap-' + a.priority">{{ a.priority }}</div>
@@ -786,7 +786,7 @@
               <div v-if="cid === 'anomalies'" class="ret-dyn-card ret-half">
                 <button class="ret-card-close" @click="removeInsightCard(cid)">&times;</button>
                 <div class="card">
-                  <div class="card-header"><h3 class="card-title">⚡ Anomaly Detection</h3><span class="text-xs text-muted">Unusual patterns</span></div>
+                  <div class="card-header"><h3 class="card-title">Anomaly Detection</h3><span class="text-xs text-muted">Unusual patterns</span></div>
                   <div v-if="anomalyInsights.length">
                     <div v-for="(ins, i) in anomalyInsights" :key="i" class="insight-compact-item" :class="'ic-' + ins.type">
                       <span class="insight-compact-badge" :class="'icb-' + ins.type">{{ ins.type }}</span>
@@ -805,7 +805,7 @@
               <div v-if="cid === 'content_perf'" class="ret-dyn-card ret-half">
                 <button class="ret-card-close" @click="removeInsightCard(cid)">&times;</button>
                 <div class="card">
-                  <div class="card-header"><h3 class="card-title">📄 Content Performance</h3><span class="text-xs text-muted">Top & underperforming pages</span></div>
+                  <div class="card-header"><h3 class="card-title">Content Performance</h3><span class="text-xs text-muted">Top & underperforming pages</span></div>
                   <div v-if="contentInsights.length">
                     <div v-for="(ins, i) in contentInsights" :key="i" class="insight-compact-item" :class="'ic-' + ins.type">
                       <span class="insight-compact-badge" :class="'icb-' + ins.type">{{ ins.type }}</span>
@@ -824,7 +824,7 @@
               <div v-if="cid === 'engagement_health'" class="ret-dyn-card ret-full">
                 <button class="ret-card-close" @click="removeInsightCard(cid)">&times;</button>
                 <div class="card">
-                  <div class="card-header"><h3 class="card-title">💡 Engagement Health</h3><span class="text-xs text-muted">Behavioral patterns & improvement areas</span></div>
+                  <div class="card-header"><h3 class="card-title">Engagement Health</h3><span class="text-xs text-muted">Behavioral patterns & improvement areas</span></div>
                   <div v-if="engagementInsights.length">
                     <div v-for="(ins, i) in engagementInsights" :key="i" class="insight-compact-item" :class="'ic-' + ins.type">
                       <span class="insight-compact-badge" :class="'icb-' + ins.type">{{ ins.type }}</span>

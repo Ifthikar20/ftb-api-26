@@ -8,7 +8,7 @@ AGENT_CONFIGS = {
     "opportunity_finder": {
         "name": "Opportunity Finder",
         "description": "Scans your analytics and keywords to find growth opportunities you're missing.",
-        "icon": "🎯",
+        "icon": "target",
         "system_prompt": (
             "You are the Opportunity Finder agent for FetchBot. Your job is to analyze a website's "
             "analytics and keyword data to find actionable growth opportunities.\n\n"
@@ -37,7 +37,7 @@ AGENT_CONFIGS = {
     "campaign_runner": {
         "name": "Campaign Runner",
         "description": "Plans and schedules a multi-week content campaign based on your data.",
-        "icon": "📝",
+        "icon": "document",
         "system_prompt": (
             "You are the Campaign Runner agent for FetchBot. Your job is to plan a data-driven "
             "content campaign for a website.\n\n"
@@ -70,7 +70,7 @@ AGENT_CONFIGS = {
     "competitor_watcher": {
         "name": "Competitor Watcher",
         "description": "Monitors your competitors for changes and suggests counter-actions.",
-        "icon": "🕵️",
+        "icon": "eye",
         "system_prompt": (
             "You are the Competitor Watcher agent for FetchBot. Your job is to monitor "
             "competitor activity and recommend responses.\n\n"
@@ -96,7 +96,7 @@ AGENT_CONFIGS = {
     "anomaly_responder": {
         "name": "Anomaly Responder",
         "description": "Investigates traffic anomalies and recommends quick fixes.",
-        "icon": "🔥",
+        "icon": "alert",
         "system_prompt": (
             "You are the Anomaly Responder agent for FetchBot. You are triggered when a "
             "significant traffic change is detected.\n\n"

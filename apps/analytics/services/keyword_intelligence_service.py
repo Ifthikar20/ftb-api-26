@@ -253,18 +253,18 @@ class KeywordIntelligenceService:
     @staticmethod
     def _get_recommendation(score, rank, difficulty, volume):
         if rank and 11 <= rank <= 20 and difficulty < 50:
-            return "🎯 Quick Win — This keyword is on page 2. Small SEO improvements could push it to page 1 for significant traffic gains."
+            return "Quick Win — This keyword is on page 2. Small SEO improvements could push it to page 1 for significant traffic gains."
         if rank and rank <= 3:
-            return "🛡️ Defend Position — You're in the top 3. Focus on maintaining freshness and building more backlinks."
+            return "Defend Position — You're in the top 3. Focus on maintaining freshness and building more backlinks."
         if rank and rank <= 10 and volume >= 1000:
-            return "📈 Optimize — Already on page 1 with good volume. Optimize title, meta description, and content to climb to top 3."
+            return "Optimize — Already on page 1 with good volume. Optimize title, meta description, and content to climb to top 3."
         if not rank and difficulty < 30 and volume >= 500:
-            return "🌱 New Opportunity — Not yet ranking for this easy keyword with decent volume. Create targeted content."
+            return "New Opportunity — Not yet ranking for this easy keyword with decent volume. Create targeted content."
         if difficulty >= 70:
-            return "⚔️ Competitive — High difficulty keyword. Consider long-tail variations or building topical authority first."
+            return "Competitive — High difficulty keyword. Consider long-tail variations or building topical authority first."
         if volume < 100:
-            return "🔬 Niche — Low volume but may have high conversion intent. Good for targeted landing pages."
-        return "📊 Monitor — Track this keyword and look for content opportunities to improve your position."
+            return "Niche — Low volume but may have high conversion intent. Good for targeted landing pages."
+        return "Monitor — Track this keyword and look for content opportunities to improve your position."
 
     @staticmethod
     def score_keywords_bulk(*, website_id: str) -> list:

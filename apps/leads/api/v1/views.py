@@ -104,6 +104,69 @@ class AILeadFinderView(APIView):
         return Response(result)
 
 
+class ScoringConfigView(APIView):
+    """Get or update per-website lead scoring configuration."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, website_id):
+        website = WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        config, _ = ScoringConfig.objects.get_or_create(
+            website=website, defaults={"threshold": 70, "weights": {}}
+        )
+        return Response(ScoringConfigSerializer(config).data)
+
+    def put(self, request, website_id):
+        website = WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        config, _ = ScoringConfig.objects.get_or_create(
+            website=website, defaults={"threshold": 70, "weights": {}}
+        )
+        serializer = ScoringConfigSerializer(config, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(ScoringConfigSerializer(config).data)
+
+
+class LeadSegmentListView(APIView):
+    """List and create lead segments for a website."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, website_id):
+        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        segments = LeadSegment.objects.filter(website_id=website_id).order_by("-created_at")
+        return Response(LeadSegmentSerializer(segments, many=True).data)
+
+    def post(self, request, website_id):
+        website = WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        serializer = LeadSegmentSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save(website=website, created_by=request.user)
+        return Response(LeadSegmentSerializer(serializer.instance).data, status=status.HTTP_201_CREATED)
+
+
+class LeadSegmentDetailView(APIView):
+    """Update or delete a single lead segment."""
+    permission_classes = [IsAuthenticated]
+
+    def _get_segment(self, user, website_id, segment_id):
+        WebsiteService.get_for_user(user=user, website_id=website_id)
+        try:
+            return LeadSegment.objects.get(id=segment_id, website_id=website_id)
+        except LeadSegment.DoesNotExist:
+            raise ResourceNotFound("Segment not found.")
+
+    def put(self, request, website_id, segment_id):
+        segment = self._get_segment(request.user, website_id, segment_id)
+        serializer = LeadSegmentSerializer(segment, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(LeadSegmentSerializer(segment).data)
+
+    def delete(self, request, website_id, segment_id):
+        segment = self._get_segment(request.user, website_id, segment_id)
+        segment.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
 class LeadEmailView(APIView):
     """Send emails to leads and view email history."""
     permission_classes = [IsAuthenticated]

@@ -72,7 +72,7 @@ class AIInsightsService:
             if ratio >= 1.5:
                 insights.append({
                     "type": "opportunity",
-                    "icon": "📈",
+                    "icon": "trend-up",
                     "title": "Traffic Spike Detected",
                     "description": f"Today's pageviews ({today_pv}) are {round(ratio, 1)}x your 7-day average ({round(avg_pv)}). Something is driving traffic — check your sources.",
                     "action": "View traffic sources to identify what's working",
@@ -81,7 +81,7 @@ class AIInsightsService:
             elif ratio <= 0.5 and avg_pv >= 5:
                 insights.append({
                     "type": "warning",
-                    "icon": "📉",
+                    "icon": "trend-down",
                     "title": "Traffic Drop Detected",
                     "description": f"Today's pageviews ({today_pv}) are only {round(ratio * 100)}% of your 7-day average ({round(avg_pv)}). Check for issues.",
                     "action": "Run a site audit to check for technical issues",
@@ -103,7 +103,7 @@ class AIInsightsService:
         if avg_vis > 0 and today_vis / avg_vis >= 1.5:
             insights.append({
                 "type": "opportunity",
-                "icon": "🆕",
+                "icon": "new",
                 "title": "New Visitor Surge",
                 "description": f"You have {today_vis} unique visitors today vs your daily average of {round(avg_vis)}. New audiences are discovering your site.",
                 "action": "Check which pages they're landing on",
@@ -138,7 +138,7 @@ class AIInsightsService:
             if top_pct > 70:
                 insights.append({
                     "type": "warning",
-                    "icon": "⚠️",
+                    "icon": "alert",
                     "title": "Over-Reliance on Single Traffic Source",
                     "description": f"{top_pct}% of your traffic comes from '{top['source'] or 'direct'}'. Diversify your channels to reduce risk.",
                     "action": "Consider investing in SEO, social media, or paid acquisition",
@@ -150,7 +150,7 @@ class AIInsightsService:
             if not organic and total > 10:
                 insights.append({
                     "type": "opportunity",
-                    "icon": "🔍",
+                    "icon": "search",
                     "title": "No Organic Search Traffic",
                     "description": "You're not getting any traffic from search engines. SEO optimization could unlock a major growth channel.",
                     "action": "Run an SEO audit and start optimizing your content",
@@ -183,7 +183,7 @@ class AIInsightsService:
             if pages[0]["views"] >= pages[1]["views"] * 5:
                 insights.append({
                     "type": "info",
-                    "icon": "📝",
+                    "icon": "content",
                     "title": "Content Concentration",
                     "description": f"Your top page gets {pages[0]['views']} views while the next page gets only {pages[1]['views']}. Create more content to distribute traffic.",
                     "action": "Create content similar to your top-performing page",
@@ -212,7 +212,7 @@ class AIInsightsService:
             if deep_pct < 20 and total_scrolls > 10:
                 insights.append({
                     "type": "warning",
-                    "icon": "📜",
+                    "icon": "scroll",
                     "title": "Low Scroll Engagement",
                     "description": f"Only {deep_pct}% of visitors scroll past 75% of your pages. Content above the fold may not be compelling enough.",
                     "action": "Improve above-the-fold content and add compelling CTAs higher on the page",
@@ -221,7 +221,7 @@ class AIInsightsService:
             elif deep_pct > 60:
                 insights.append({
                     "type": "info",
-                    "icon": "✨",
+                    "icon": "star",
                     "title": "Excellent Scroll Depth",
                     "description": f"{deep_pct}% of visitors read 75%+ of your content. Your content strategy is working well.",
                     "action": "Keep creating similar content and add CTAs at scroll depth sweet spots",
@@ -246,7 +246,7 @@ class AIInsightsService:
             if clicks_per_view < 1 and pv_count > 20:
                 insights.append({
                     "type": "warning",
-                    "icon": "🖱️",
+                    "icon": "click",
                     "title": "Low Click Engagement",
                     "description": f"Visitors average only {clicks_per_view} clicks per pageview. Consider adding more interactive elements and clearer CTAs.",
                     "action": "Review your heatmap data to see where visitors are (or aren't) clicking",

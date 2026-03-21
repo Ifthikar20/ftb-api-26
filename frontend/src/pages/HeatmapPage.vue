@@ -20,7 +20,7 @@
     <template v-else>
       <!-- Empty State -->
       <div v-if="!pages.length" class="empty-guide">
-        <div class="empty-guide-icon">🔥</div>
+        <div class="empty-guide-icon"><svg width="48" height="48" viewBox="0 0 48 48" fill="none" stroke="var(--text-muted)" stroke-width="1.5"><circle cx="24" cy="24" r="16"/><path d="M16 28l4-4 4 4 4-8 4 4"/></svg></div>
         <h3>No click data yet</h3>
         <p>Once visitors interact with your tracked website, click positions will appear here as a heatmap. Install the tracking pixel to start collecting data.</p>
         <div class="empty-guide-snippet">
@@ -124,7 +124,7 @@
         <!-- Zone Distribution -->
         <div class="card">
           <div class="card-header">
-            <h3 class="card-title">🗺️ Zone Distribution</h3>
+            <h3 class="card-title">Zone Distribution</h3>
             <span class="text-xs text-muted">Where clicks concentrate</span>
           </div>
           <div class="zone-bars">
@@ -142,7 +142,7 @@
         <!-- Top Clicked Elements -->
         <div class="card">
           <div class="card-header">
-            <h3 class="card-title">🖱️ Top Clicked Elements</h3>
+            <h3 class="card-title">Top Clicked Elements</h3>
             <span class="text-xs text-muted">{{ topElements.length }} elements</span>
           </div>
           <div v-if="topElements.length" class="element-list">
@@ -162,7 +162,7 @@
       <!-- AI Insights -->
       <div class="card">
         <div class="card-header">
-          <h3 class="card-title">🧠 AI Insights</h3>
+          <h3 class="card-title"><svg class="icon-sparkle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5l-10 14M2 12h20M5 17l14-10"/></svg> AI Insights</h3>
           <button v-if="!aiInsights.length" class="btn btn-primary btn-sm" @click="fetchInsights" :disabled="insightsLoading">
             {{ insightsLoading ? 'Analyzing...' : 'Generate AI Insights' }}
           </button>
@@ -182,11 +182,11 @@
         <div v-else-if="aiInsights.length" class="insights-grid">
           <div v-for="(ins, i) in aiInsights" :key="i" class="insight-card" :class="'insight-' + (ins.type || 'info')">
             <div class="insight-icon">
-              <span v-if="ins.type === 'success'">✅</span>
-              <span v-else-if="ins.type === 'warning'">⚠️</span>
-              <span v-else-if="ins.type === 'danger'">🔴</span>
-              <span v-else-if="ins.type === 'opportunity'">💡</span>
-              <span v-else>📊</span>
+              <span v-if="ins.type === 'success'" class="dot-success" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#22c55e"></span>
+              <span v-else-if="ins.type === 'warning'" class="dot-warning" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#f59e0b"></span>
+              <span v-else-if="ins.type === 'danger'" class="dot-danger" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#ef4444"></span>
+              <span v-else-if="ins.type === 'opportunity'" class="dot-opportunity" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#6366f1"></span>
+              <span v-else class="dot-info" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#3b82f6"></span>
             </div>
             <div class="insight-body">
               <div class="insight-title">{{ ins.title }}</div>
@@ -202,7 +202,7 @@
       <!-- Click Points Table -->
       <div class="card">
         <div class="card-header">
-          <h3 class="card-title">📍 Click Points</h3>
+          <h3 class="card-title">Click Points</h3>
           <span class="text-xs text-muted">{{ points.length }} points</span>
         </div>
         <div class="table-responsive">

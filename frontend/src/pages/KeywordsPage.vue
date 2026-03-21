@@ -21,7 +21,7 @@
 
     <!-- Empty State -->
     <div v-if="!activeCards.length && !scanData.score && !keywords.length" class="empty-guide">
-      <div class="empty-guide-icon">📊</div>
+      <div class="empty-guide-icon"><svg width="48" height="48" viewBox="0 0 48 48" fill="none" stroke="var(--text-muted)" stroke-width="1.5"><rect x="8" y="6" width="32" height="36" rx="4"/><path d="M16 18h16M16 26h10M16 34h14"/></svg></div>
       <h3>Build your SEO dashboard</h3>
       <p>Click the <strong>+</strong> button to add feature cards, or <strong>Scan Website</strong> to start analyzing your SEO.</p>
     </div>
@@ -33,7 +33,7 @@
         <!-- Site Audit -->
         <div v-if="cardId === 'site_audit'" class="card feature-card">
           <div class="fc-head">
-            <div class="fc-icon">🔍</div>
+            <div class="fc-icon"><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="5"/><path d="M11 11l3 3"/></svg></div>
             <div class="fc-title-wrap"><h3 class="fc-title">Site Audit</h3><p class="fc-sub">Audit your site for visibility blockers</p></div>
             <button class="fc-remove" @click="removeCard(cardId)" title="Remove">×</button>
           </div>
@@ -57,7 +57,7 @@
         <!-- Keyword Research -->
         <div v-if="cardId === 'keyword_research'" class="card feature-card">
           <div class="fc-head">
-            <div class="fc-icon">🔑</div>
+            <div class="fc-icon"><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 12V4l4 4 4-4v8"/></svg></div>
             <div class="fc-title-wrap"><h3 class="fc-title">Keyword Research</h3><p class="fc-sub">Target the best keywords with AI</p></div>
             <button class="fc-remove" @click="removeCard(cardId)" title="Remove">×</button>
           </div>
@@ -91,7 +91,7 @@
         <!-- AI Analysis -->
         <div v-if="cardId === 'ai_analysis'" class="card feature-card">
           <div class="fc-head">
-            <div class="fc-icon">🤖</div>
+            <div class="fc-icon"><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="12" height="12" rx="2"/><circle cx="6" cy="7" r="2"/><circle cx="10" cy="7" r="2"/><path d="M5 11h6"/></svg></div>
             <div class="fc-title-wrap"><h3 class="fc-title">AI Analysis</h3><p class="fc-sub">Measure and grow your AI visibility</p></div>
             <button class="fc-remove" @click="removeCard(cardId)" title="Remove">×</button>
           </div>
@@ -115,7 +115,7 @@
         <!-- Competitive Research -->
         <div v-if="cardId === 'competitive'" class="card feature-card">
           <div class="fc-head">
-            <div class="fc-icon">⚔️</div>
+            <div class="fc-icon"><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4l4 4-4 4M8 4l4 4-4 4"/></svg></div>
             <div class="fc-title-wrap"><h3 class="fc-title">Competitive Research</h3><p class="fc-sub">Outperform your competitors</p></div>
             <button class="fc-remove" @click="removeCard(cardId)" title="Remove">×</button>
           </div>
@@ -136,7 +136,7 @@
         <!-- Content Ideas -->
         <div v-if="cardId === 'content_ideas'" class="card feature-card">
           <div class="fc-head">
-            <div class="fc-icon">💡</div>
+            <div class="fc-icon"><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="5" r="3"/><path d="M5 10v1a3 3 0 006 0v-1"/><line x1="8" y1="14" x2="8" y2="15"/></svg></div>
             <div class="fc-title-wrap"><h3 class="fc-title">Content Ideas</h3><p class="fc-sub">Optimize content for full search coverage</p></div>
             <button class="fc-remove" @click="removeCard(cardId)" title="Remove">×</button>
           </div>
@@ -156,7 +156,7 @@
         <!-- Position Tracking -->
         <div v-if="cardId === 'position_tracking'" class="card feature-card">
           <div class="fc-head">
-            <div class="fc-icon">📍</div>
+            <div class="fc-icon"><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="6" r="4"/><path d="M8 10v4M6 14h4"/></svg></div>
             <div class="fc-title-wrap"><h3 class="fc-title">Position Tracking</h3><p class="fc-sub">Monitor visibility in Google and AI</p></div>
             <button class="fc-remove" @click="removeCard(cardId)" title="Remove">×</button>
           </div>
@@ -187,7 +187,7 @@
         <!-- SERP Data (DataForSEO) -->
         <div v-if="cardId === 'serp_data'" class="card feature-card">
           <div class="fc-head">
-            <div class="fc-icon">🔎</div>
+            <div class="fc-icon"><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="5"/><path d="M11 11l3 3"/><circle cx="7" cy="7" r="2"/></svg></div>
             <div class="fc-title-wrap"><h3 class="fc-title">Google SERP Data</h3><p class="fc-sub">Real-time rankings via DataForSEO</p></div>
             <button class="fc-remove" @click="removeCard(cardId)" title="Remove">×</button>
           </div>
@@ -224,7 +224,7 @@
         <!-- Geo SEO -->
         <div v-if="cardId === 'geo_seo'" class="card feature-card">
           <div class="fc-head">
-            <div class="fc-icon">🌍</div>
+            <div class="fc-icon"><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M2 8h12M8 2c-2 2-2 10 0 12M8 2c2 2 2 10 0 12"/></svg></div>
             <div class="fc-title-wrap"><h3 class="fc-title">Geo SEO & Tagging</h3><p class="fc-sub">Regional optimization</p></div>
             <button class="fc-remove" @click="removeCard(cardId)" title="Remove">×</button>
           </div>
@@ -233,7 +233,7 @@
               {{ scanData.geo_data.has_geo_tags ? '✓ Geo Tags Found' : '✗ No Geo Tags Detected' }}
             </div>
             <div v-for="(tip, i) in (scanData.geo_data.tips || [])" :key="i" class="geo-tip-card" :class="'gt-' + tip.type" style="margin-top:6px">
-              <span class="gt-icon">{{ tip.type === 'success' ? '✅' : tip.type === 'warning' ? '⚠️' : 'ℹ️' }}</span>
+              <span class="gt-icon"><span :style="{ display:'inline-block', width:'8px', height:'8px', borderRadius:'50%', background: tip.type === 'success' ? '#22c55e' : tip.type === 'warning' ? '#f59e0b' : '#6366f1' }"></span></span>
               <div class="gt-body">
                 <div class="gt-text">{{ tip.tip }}</div>
                 <code v-if="tip.tag" class="gt-tag">{{ tip.tag }}</code>
@@ -246,7 +246,7 @@
         <!-- Pages Scanned -->
         <div v-if="cardId === 'pages_scanned'" class="card feature-card">
           <div class="fc-head">
-            <div class="fc-icon">📑</div>
+            <div class="fc-icon"><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="12" height="12" rx="2"/><path d="M5 6h6M5 9h4M5 12h5"/></svg></div>
             <div class="fc-title-wrap"><h3 class="fc-title">Pages Scanned</h3><p class="fc-sub">Per-page keyword breakdown</p></div>
             <button class="fc-remove" @click="removeCard(cardId)" title="Remove">×</button>
           </div>
@@ -371,16 +371,16 @@ const scanLoading = ref(false)
 // Card system
 const STORAGE_KEY = 'ftb_kw_cards'
 const availableCards = [
-  { id: 'site_audit', name: 'Site Audit', desc: 'Scan for SEO issues and get your health score', icon: '🔍' },
-  { id: 'keyword_research', name: 'Keyword Research', desc: 'Discover keyword ideas with search volume and difficulty', icon: '🔑' },
-  { id: 'ai_analysis', name: 'AI Analysis', desc: 'Track your visibility across AI engines', icon: '🤖' },
-  { id: 'competitive', name: 'Competitive Research', desc: 'Compare your site against top competitors', icon: '⚔️' },
-  { id: 'content_ideas', name: 'Content Ideas', desc: 'Find trending topics and keyword alternatives', icon: '💡' },
-  { id: 'position_tracking', name: 'Position Tracking', desc: 'Monitor keyword rankings in Google and AI', icon: '📍' },
-  { id: 'serp_data', name: 'Google SERP Data', desc: 'Real rankings, volume, CPC via DataForSEO', icon: '🔎' },
-  { id: 'geo_seo', name: 'Geo SEO & Tagging', desc: 'Regional optimization and geo tag detection', icon: '🌍' },
-  { id: 'seo_optimizer', name: 'Dynamic SEO Optimizer', desc: 'Auto-optimize schema, OG, canonical on your live site', icon: '⚡' },
-  { id: 'pages_scanned', name: 'Pages Scanned', desc: 'Per-page keyword breakdown', icon: '📑' },
+  { id: 'site_audit', name: 'Site Audit', desc: 'Scan for SEO issues and get your health score', icon: 'SA' },
+  { id: 'keyword_research', name: 'Keyword Research', desc: 'Discover keyword ideas with search volume and difficulty', icon: 'KR' },
+  { id: 'ai_analysis', name: 'AI Analysis', desc: 'Track your visibility across AI engines', icon: 'AI' },
+  { id: 'competitive', name: 'Competitive Research', desc: 'Compare your site against top competitors', icon: 'CR' },
+  { id: 'content_ideas', name: 'Content Ideas', desc: 'Find trending topics and keyword alternatives', icon: 'CI' },
+  { id: 'position_tracking', name: 'Position Tracking', desc: 'Monitor keyword rankings in Google and AI', icon: 'PT' },
+  { id: 'serp_data', name: 'Google SERP Data', desc: 'Real rankings, volume, CPC via DataForSEO', icon: 'SD' },
+  { id: 'geo_seo', name: 'Geo SEO & Tagging', desc: 'Regional optimization and geo tag detection', icon: 'GS' },
+  { id: 'seo_optimizer', name: 'Dynamic SEO Optimizer', desc: 'Auto-optimize schema, OG, canonical on your live site', icon: 'SO' },
+  { id: 'pages_scanned', name: 'Pages Scanned', desc: 'Per-page keyword breakdown', icon: 'PS' },
 ]
 
 const defaultCards = ['site_audit', 'keyword_research', 'position_tracking', 'ai_analysis']

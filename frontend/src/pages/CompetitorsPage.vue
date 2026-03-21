@@ -28,7 +28,7 @@
           </tbody>
         </table>
         <div v-if="competitors.length === 0" class="empty-guide">
-          <div style="font-size:40px;margin-bottom:12px">🏆</div>
+          <div style="font-size:40px;margin-bottom:12px"><svg width="48" height="48" viewBox="0 0 48 48" fill="none" stroke="var(--text-muted)" stroke-width="1.5"><path d="M14 8h20v14a10 10 0 01-20 0V8z"/><path d="M14 12H8a4 4 0 000 8h6M34 12h6a4 4 0 010 8h-6"/><path d="M18 32h12M24 26v6"/></svg></div>
           <h3 style="margin:0 0 8px;color:var(--text-primary)">No competitors tracked</h3>
           <p style="font-size:var(--font-sm);color:var(--text-secondary);max-width:400px;margin:0 auto;line-height:1.6">Click "+ Add Competitor" to start monitoring rival websites. Track their traffic, domain authority, content changes, and keyword gaps.</p>
         </div>

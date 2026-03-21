@@ -1,7 +1,7 @@
 <template>
   <div class="pipeline-node" :class="[`type-${data.nodeType}`, { selected: selected }]">
     <Handle v-if="data.nodeType !== 'source'" type="target" :position="Position.Left" />
-    <div class="pn-emoji">{{ data.emoji }}</div>
+    <div class="pn-emoji" v-html="data.icon || ''"></div>
     <div class="pn-label">{{ data.label }}</div>
     <div class="pn-count" v-if="data.count !== undefined">{{ data.count }}</div>
     <span v-if="data.badge" class="badge" :class="data.badgeClass || 'badge-neutral'" style="margin-top:4px;font-size:10px">{{ data.badge }}</span>

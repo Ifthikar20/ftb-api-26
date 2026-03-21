@@ -43,7 +43,7 @@
 
     <!-- Approval Cards -->
     <div v-if="pausedRuns.length" class="approval-section">
-      <h3 class="section-title">⏸ Awaiting Your Approval</h3>
+      <h3 class="section-title">Awaiting Your Approval</h3>
       <div class="approval-cards">
         <div v-for="run in pausedRuns" :key="run.id" class="approval-card">
           <div class="approval-header">
@@ -77,7 +77,7 @@
 
       <div v-if="loading" class="loading-state">Loading agent activity...</div>
       <div v-else-if="!filteredRuns.length" class="empty-state">
-        <div class="empty-icon">🤖</div>
+        <div class="empty-icon"><svg width="48" height="48" viewBox="0 0 48 48" fill="none" stroke="var(--text-muted)" stroke-width="1.5"><rect x="12" y="8" width="24" height="28" rx="4"/><circle cx="19" cy="20" r="3"/><circle cx="29" cy="20" r="3"/><path d="M18 30h12"/></svg></div>
         <div>No agent runs yet. Click <strong>+ Run Agent</strong> to start your first one.</div>
       </div>
       <div v-else class="activity-feed">
@@ -192,13 +192,13 @@ const pausedCount = computed(() => pausedRuns.value.length)
 const totalSteps = computed(() => runs.value.reduce((s, r) => s + (r.steps_count || 0), 0))
 
 const iconMap = {
-  opportunity_finder: '🎯',
-  campaign_runner: '📝',
-  competitor_watcher: '🕵️',
-  anomaly_responder: '🔥',
+  opportunity_finder: 'OF',
+  campaign_runner: 'CR',
+  competitor_watcher: 'CW',
+  anomaly_responder: 'AR',
 }
 
-function getIcon(type) { return iconMap[type] || '🤖' }
+function getIcon(type) { return iconMap[type] || 'AI' }
 
 function statusClass(s) {
   const map = {

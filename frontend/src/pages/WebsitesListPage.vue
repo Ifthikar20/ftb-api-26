@@ -120,29 +120,29 @@
         <!-- Step 3: Pixel Installation -->
         <div v-if="wizardStep === 3" class="wizard-body">
           <div v-if="newSite.platform_type === 'shopify'" class="pixel-instructions">
-            <div class="pixel-icon" style="background: #96bf48">🛍️</div>
+            <div class="pixel-icon" style="background: #96bf48"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg></div>
             <h4>Shopify Integration</h4>
             <p>Add this script to your Shopify theme. Go to <strong>Online Store → Themes → Edit Code → theme.liquid</strong> and paste before <code>&lt;/head&gt;</code>:</p>
           </div>
           <div v-else-if="newSite.platform_type === 'wordpress'" class="pixel-instructions">
-            <div class="pixel-icon" style="background: #21759b">📝</div>
+            <div class="pixel-icon" style="background: #21759b"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 8h10M7 12h7M7 16h9"/></svg></div>
             <h4>WordPress Installation</h4>
             <p>Install via <strong>Appearance → Theme Editor → header.php</strong> or use a plugin like <em>Insert Headers and Footers</em>. Paste before <code>&lt;/head&gt;</code>:</p>
           </div>
           <div v-else-if="newSite.platform_type === 'woocommerce'" class="pixel-instructions">
-            <div class="pixel-icon" style="background: #7f54b3">🛒</div>
+            <div class="pixel-icon" style="background: #7f54b3"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5"><circle cx="10" cy="19" r="2"/><circle cx="18" cy="19" r="2"/><path d="M2 3h3l2.5 12h11l2.5-8H7"/></svg></div>
             <h4>WooCommerce Installation</h4>
             <p>Same as WordPress — add to your theme's <code>header.php</code> or use a header script plugin. Paste before <code>&lt;/head&gt;</code>:</p>
           </div>
           <div v-else class="pixel-instructions">
-            <div class="pixel-icon" style="background: #6366f1">✨</div>
+            <div class="pixel-icon" style="background: #6366f1"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5"><path d="M12 2l3 7h7l-5.5 4 2 7L12 16l-6.5 4 2-7L2 9h7z"/></svg></div>
             <h4>Custom Installation</h4>
             <p>Add this script to every page of your website. Paste it into your HTML <code>&lt;head&gt;</code> section:</p>
           </div>
 
           <div class="pixel-snippet-box">
             <code class="pixel-code">{{ pixelSnippet }}</code>
-            <button class="pixel-copy-btn" @click="copyPixel">{{ copied ? '✓ Copied!' : '📋 Copy' }}</button>
+            <button class="pixel-copy-btn" @click="copyPixel">{{ copied ? 'Copied!' : 'Copy' }}</button>
           </div>
 
           <div class="wizard-nav">
@@ -215,10 +215,10 @@ const copied = ref(false)
 const newSite = reactive({ name: '', url: '', industry: '', platform_type: 'custom' })
 
 const platforms = [
-  { id: 'shopify', name: 'Shopify', desc: 'E-commerce on Shopify', color: '#96bf48', icon: '🛍️' },
-  { id: 'wordpress', name: 'WordPress', desc: 'Blog or CMS', color: '#21759b', icon: '📝' },
-  { id: 'woocommerce', name: 'WooCommerce', desc: 'WordPress + E-commerce', color: '#7f54b3', icon: '🛒' },
-  { id: 'custom', name: 'Custom / Other', desc: 'Any other platform', color: '#6366f1', icon: '✨' },
+  { id: 'shopify', name: 'Shopify', desc: 'E-commerce on Shopify', color: '#96bf48', icon: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg>' },
+  { id: 'wordpress', name: 'WordPress', desc: 'Blog or CMS', color: '#21759b', icon: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 8h10M7 12h7M7 16h9"/></svg>' },
+  { id: 'woocommerce', name: 'WooCommerce', desc: 'WordPress + E-commerce', color: '#7f54b3', icon: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5"><circle cx="10" cy="19" r="2"/><circle cx="18" cy="19" r="2"/><path d="M2 3h3l2.5 12h11l2.5-8H7"/></svg>' },
+  { id: 'custom', name: 'Custom / Other', desc: 'Any other platform', color: '#6366f1', icon: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5"><path d="M12 2l3 7h7l-5.5 4 2 7L12 16l-6.5 4 2-7L2 9h7z"/></svg>' },
 ]
 
 const pixelSnippet = computed(() => {

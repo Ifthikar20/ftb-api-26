@@ -37,6 +37,6 @@ class EmailService:
 
         EmailService.send_email(
             to=user.email,
-            subject=f"🔥 Hot lead detected — Score {lead.score}",
+            subject=f"Hot lead detected — Score {lead.score}",
             html_content=f"<p>A new hot lead with score {lead.score} was detected on your website.</p>",
         )

@@ -19,7 +19,7 @@
           <div class="help-content">
             <!-- Quick Start -->
             <div class="help-section">
-              <h4>🚀 Quick Start</h4>
+              <h4>Quick Start</h4>
               <div class="help-step">
                 <span class="step-num">1</span>
                 <div>
@@ -52,7 +52,7 @@
 
             <!-- Contextual Help -->
             <div class="help-section">
-              <h4>📖 Page Guide</h4>
+              <h4>Page Guide</h4>
               <div v-for="item in pageHelp" :key="item.page" class="help-item" :class="{ active: isCurrentPage(item.page) }">
                 <div class="help-item-header" @click="expandedItem = expandedItem === item.page ? '' : item.page">
                   <span>{{ item.icon }} {{ item.label }}</span>
@@ -64,7 +64,7 @@
 
             <!-- Reset Onboarding -->
             <div class="help-section">
-              <button class="help-reset-btn" @click="resetOnboarding">🔄 Replay Onboarding Tour</button>
+              <button class="help-reset-btn" @click="resetOnboarding">Replay Onboarding Tour</button>
             </div>
           </div>
         </div>
@@ -82,14 +82,14 @@ const open = ref(false)
 const expandedItem = ref('')
 
 const pageHelp = [
-  { page: 'analytics', icon: '📈', label: 'Analytics', help: 'See real-time visitor data, traffic sources, top pages, and device breakdown. Data appears once you install the tracking pixel on your website.' },
-  { page: 'heatmap', icon: '🔥', label: 'Heatmaps', help: 'Visualize where visitors click on your pages. Requires the tracking pixel to capture click coordinates. Hotter colors = more clicks.' },
-  { page: 'keywords', icon: '🔑', label: 'Keywords', help: 'Track your search engine rankings for specific keywords. Add keywords manually and monitor their position over time.' },
-  { page: 'leads', icon: '👤', label: 'Leads', help: 'Captured visitor and form submission data. Leads are created when visitors interact with forms on your tracked site.' },
-  { page: 'competitors', icon: '🏆', label: 'Competitors', help: 'Monitor competitor websites. Add competitor URLs to track their changes, keyword gaps, and SEO movements.' },
-  { page: 'audits', icon: '🔍', label: 'Audits', help: 'Run a full SEO, performance, mobile, security, and content audit on your website. Click "Run Audit" to scan your site right now.' },
-  { page: 'strategy', icon: '⭐', label: 'Strategy', help: 'AI-generated marketing strategy based on your audit results and analytics data.' },
-  { page: 'billing', icon: '💳', label: 'Billing', help: 'Manage your subscription, view usage, and compare plan features.' },
+  { page: 'analytics', icon: '', label: 'Analytics', help: 'See real-time visitor data, traffic sources, top pages, and device breakdown. Data appears once you install the tracking pixel on your website.' },
+  { page: 'heatmap', icon: '', label: 'Heatmaps', help: 'Visualize where visitors click on your pages. Requires the tracking pixel to capture click coordinates. Hotter colors = more clicks.' },
+  { page: 'keywords', icon: '', label: 'Keywords', help: 'Track your search engine rankings for specific keywords. Add keywords manually and monitor their position over time.' },
+  { page: 'leads', icon: '', label: 'Leads', help: 'Captured visitor and form submission data. Leads are created when visitors interact with forms on your tracked site.' },
+  { page: 'competitors', icon: '', label: 'Competitors', help: 'Monitor competitor websites. Add competitor URLs to track their changes, keyword gaps, and SEO movements.' },
+  { page: 'audits', icon: '', label: 'Audits', help: 'Run a full SEO, performance, mobile, security, and content audit on your website. Click "Run Audit" to scan your site right now.' },
+  { page: 'strategy', icon: '', label: 'Strategy', help: 'AI-generated marketing strategy based on your audit results and analytics data.' },
+  { page: 'billing', icon: '', label: 'Billing', help: 'Manage your subscription, view usage, and compare plan features.' },
 ]
 
 function isCurrentPage(page) {

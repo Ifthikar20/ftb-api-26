@@ -3,7 +3,7 @@
     <!-- ═══ Nav ═══ -->
     <nav class="nav" :class="{ scrolled }">
       <div class="wrap nav-row">
-        <router-link to="/welcome" class="brand">
+        <router-link to="/" class="brand">
           <svg width="32" height="32" viewBox="0 0 28 28" fill="none"><circle cx="14" cy="14" r="14" fill="#131718"/><path d="M9 10h4v8H9z M15 7h4v11h-4z" fill="#fff"/></svg>
           <span class="brand-name">FetchBot</span>
         </router-link>
@@ -149,7 +149,7 @@
           <svg width="24" height="24" viewBox="0 0 28 28" fill="none"><circle cx="14" cy="14" r="14" fill="#131718"/><path d="M9 10h4v8H9z M15 7h4v11h-4z" fill="#fff"/></svg>
           <span>FetchBot</span>
         </div>
-        <span class="footer-copy">2025 FetchBot. Privacy. Terms.</span>
+        <span class="footer-copy">2026 FetchBot. Privacy. Terms.</span>
       </div>
     </footer>
   </div>
