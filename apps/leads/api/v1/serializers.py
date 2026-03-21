@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from apps.leads.models import Lead, LeadNote, LeadSegment
+from apps.leads.models import Lead, LeadNote, LeadSegment, ScoringConfig
 
 
 class LeadSerializer(serializers.ModelSerializer):
@@ -31,3 +31,10 @@ class LeadSegmentSerializer(serializers.ModelSerializer):
         model = LeadSegment
         fields = ["id", "name", "rules", "created_at"]
         read_only_fields = ["id", "created_at"]
+
+
+class ScoringConfigSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ScoringConfig
+        fields = ["id", "weights", "threshold", "ml_model_version", "updated_at"]
+        read_only_fields = ["id", "updated_at"]

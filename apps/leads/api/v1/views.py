@@ -4,10 +4,17 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework import status
 
+from apps.leads.models import LeadSegment, ScoringConfig
 from apps.leads.services.lead_service import LeadService
-from apps.leads.api.v1.serializers import LeadSerializer, LeadNoteSerializer
+from apps.leads.api.v1.serializers import (
+    LeadSerializer,
+    LeadNoteSerializer,
+    LeadSegmentSerializer,
+    ScoringConfigSerializer,
+)
 from apps.websites.services.website_service import WebsiteService
 from core.interceptors.pagination import StandardPagination
+from core.exceptions import ResourceNotFound
 
 
 class LeadListView(APIView):
@@ -34,8 +41,10 @@ class HotLeadsView(APIView):
     def get(self, request, website_id):
         WebsiteService.get_for_user(user=request.user, website_id=website_id)
         leads = LeadService.get_leads(website_id=website_id, min_score=70)
-        serializer = LeadSerializer(leads, many=True)
-        return Response(serializer.data)
+        paginator = StandardPagination()
+        page = paginator.paginate_queryset(leads, request)
+        serializer = LeadSerializer(page, many=True)
+        return paginator.get_paginated_response(serializer.data)
 
 
 class LeadDetailView(APIView):

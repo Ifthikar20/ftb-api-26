@@ -78,7 +78,7 @@ class WebsiteMembership(TimestampMixin):
 
 
 class Integration(TimestampMixin):
-    """External service integrations (Google Analytics, Search Console, etc.)"""
+    """External service integrations — types driven by core.integrations registry."""
 
     INTEGRATION_TYPES = [
         ("ga", "Google Analytics"),
@@ -91,7 +91,10 @@ class Integration(TimestampMixin):
     type = models.CharField(max_length=20, choices=INTEGRATION_TYPES)
     access_token = EncryptedTextField(blank=True)
     refresh_token = EncryptedTextField(blank=True)
+    token_expires_at = models.DateTimeField(null=True, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)  # e.g. customer_id, channel_id
     connected_at = models.DateTimeField(auto_now_add=True)
+    last_synced_at = models.DateTimeField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
 
     class Meta:
@@ -100,3 +103,23 @@ class Integration(TimestampMixin):
 
     def __str__(self):
         return f"{self.get_type_display()} — {self.website.name}"
+
+    @property
+    def config(self):
+        """Get this integration's config from the registry."""
+        from core.integrations import get_registry
+        return get_registry().get(self.type)
+
+    def is_token_expired(self) -> bool:
+        if not self.token_expires_at:
+            return False
+        from django.utils import timezone
+        return timezone.now() >= self.token_expires_at
+
+    def needs_token_refresh(self, buffer_seconds: int = 900) -> bool:
+        """Check if token needs refresh (default: 15 min before expiry)."""
+        if not self.token_expires_at:
+            return False
+        from django.utils import timezone
+        from datetime import timedelta
+        return timezone.now() >= (self.token_expires_at - timedelta(seconds=buffer_seconds))
