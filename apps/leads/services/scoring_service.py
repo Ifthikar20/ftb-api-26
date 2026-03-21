@@ -12,22 +12,32 @@ DEFAULT_WEIGHTS = {
     "high_scroll_depth": 5,
 }
 
+HIGH_SCROLL_DEPTH_THRESHOLD = 75  # percent
+
 
 class ScoringService:
     @staticmethod
     def compute_score(*, visitor) -> int:
         """Compute lead score from visitor behavior."""
         from apps.analytics.models import PageEvent
+        from apps.leads.models import ScoringConfig
 
         events = PageEvent.objects.filter(visitor=visitor)
-        weights = DEFAULT_WEIGHTS
+
+        # Use per-website scoring weights if configured
+        try:
+            config = ScoringConfig.objects.get(website_id=visitor.website_id)
+            weights = {**DEFAULT_WEIGHTS, **config.weights} if config.weights else DEFAULT_WEIGHTS
+        except ScoringConfig.DoesNotExist:
+            weights = DEFAULT_WEIGHTS
 
         score = 0
-        pageview_count = events.filter(event_type="pageview").count()
+        pageview_events = events.filter(event_type="pageview")
+        pageview_count = pageview_events.count()
         score += pageview_count * weights["page_views"]
 
         # High-intent pages
-        for event in events.filter(event_type="pageview"):
+        for event in pageview_events:
             url_lower = event.url.lower()
             if "pricing" in url_lower:
                 score += weights["pricing_page_visit"]
@@ -39,6 +49,18 @@ class ScoringService:
 
         if visitor.visit_count > 1:
             score += weights["return_visit"]
+
+        # Time on site (sum of time_on_page_ms across all events, convert to minutes)
+        time_on_page_total_ms = (
+            events.filter(time_on_page_ms__isnull=False)
+            .values_list("time_on_page_ms", flat=True)
+        )
+        total_minutes = sum(time_on_page_total_ms) / 60000 if time_on_page_total_ms else 0
+        score += int(total_minutes) * weights["time_on_site_min"]
+
+        # High scroll depth (any event with scroll_depth >= threshold)
+        if events.filter(scroll_depth__gte=HIGH_SCROLL_DEPTH_THRESHOLD).exists():
+            score += weights["high_scroll_depth"]
 
         return min(score, 100)
 
