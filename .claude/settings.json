@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.command' | grep -qE '(runserver|npm (start|run dev)|yarn (start|dev)|uvicorn|gunicorn|manage\\.py runserver|python -m|flask run|fastapi run|django.*run|celery worker|celery beat)' && echo '{\"continue\": false, \"stopReason\": \"Running or starting the application is not permitted in this environment. Implement and test logic without starting a server.\"}' || true",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}
