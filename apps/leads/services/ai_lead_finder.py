@@ -121,6 +121,7 @@ class AILeadFinder:
                             '  "name": "Full Name",\n'
                             '  "title": "Job Title",\n'
                             '  "company": "Company Name",\n'
+                            '  "company_url": "https://company-website.com",\n'
                             '  "email": "realistic professional email based on name and company domain",\n'
                             '  "phone": "realistic phone number with area code, or empty string if unknown",\n'
                             '  "location": "City, State/Country",\n'
