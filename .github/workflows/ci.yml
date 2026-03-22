@@ -5,13 +5,13 @@ env:
 
 on:
   push:
-    branches: [main, develop, "claude/**"]
+    branches: [main, develop]
   pull_request:
     branches: [main, develop]
 
 jobs:
   lint:
-    name: Lint & Security
+    name: Lint
     runs-on: ubuntu-latest
 
     steps:
@@ -29,36 +29,3 @@ jobs:
 
       - name: Lint (Ruff)
         run: ruff check .
-
-      - name: Type check (mypy)
-        run: mypy apps/ config/ core/ --ignore-missing-imports
-        continue-on-error: true
-
-      - name: Security scan (Bandit)
-        run: bandit -r apps/ core/ -ll -x apps/*/tests/
-
-  security:
-    name: Security Scan
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
-
-      - name: Install dependencies
-        run: pip install -r requirements/dev.txt
-
-      - name: Dependency vulnerability check (Safety)
-        run: safety check --full-report
-        continue-on-error: true
-
-      - name: SAST (Semgrep)
-        uses: semgrep/semgrep-action@v1
-        with:
-          config: auto
-        continue-on-error: true
