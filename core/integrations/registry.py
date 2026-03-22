@@ -199,6 +199,93 @@ GOOGLE_SEARCH_CONSOLE = IntegrationConfig(
     scale=TierEntitlement(enabled=True, feature_key="full_analytics"),
 )
 
+MAILCHIMP = IntegrationConfig(
+    name="mailchimp",
+    display_name="Mailchimp",
+    auth_type="api_key",
+    api_key=ApiKeyConfig(
+        api_key_setting="MAILCHIMP_API_KEY",
+    ),
+    starter=TierEntitlement(enabled=False),
+    growth=TierEntitlement(
+        enabled=True,
+        feature_key="mailchimp",
+        limits={"max_contacts": 5000, "campaigns_per_month": 10},
+    ),
+    scale=TierEntitlement(
+        enabled=True,
+        feature_key="mailchimp_advanced",
+        limits={"max_contacts": None, "campaigns_per_month": None, "automation": True},
+    ),
+    rate_limit=RateLimitConfig(
+        requests_per_second=10.0,
+        celery_rate_limit="10/s",
+    ),
+    celery_queue="integrations",
+    webhook_events=["campaign.sent"],
+)
+
+GOOGLE_DRIVE = IntegrationConfig(
+    name="google_drive",
+    display_name="Google Drive",
+    auth_type="oauth2",
+    oauth=OAuthConfig(
+        client_id_setting="GOOGLE_OAUTH_CLIENT_ID",
+        client_secret_setting="GOOGLE_OAUTH_CLIENT_SECRET",
+        scopes=[
+            "https://www.googleapis.com/auth/drive.file",
+            "https://www.googleapis.com/auth/spreadsheets",
+        ],
+        token_url="https://oauth2.googleapis.com/token",
+        authorize_url="https://accounts.google.com/o/oauth2/v2/auth",
+    ),
+    starter=TierEntitlement(enabled=False),
+    growth=TierEntitlement(
+        enabled=True,
+        feature_key="google_drive",
+        limits={"export_formats": ["leads", "campaigns"]},
+    ),
+    scale=TierEntitlement(
+        enabled=True,
+        feature_key="google_drive_advanced",
+        limits={"export_formats": ["leads", "campaigns", "analytics"], "auto_sync": True},
+    ),
+    rate_limit=RateLimitConfig(
+        requests_per_second=5.0,
+        celery_rate_limit="5/s",
+    ),
+    celery_queue="integrations",
+)
+
+CANVA = IntegrationConfig(
+    name="canva",
+    display_name="Canva",
+    auth_type="oauth2",
+    oauth=OAuthConfig(
+        client_id_setting="CANVA_CLIENT_ID",
+        client_secret_setting="CANVA_CLIENT_SECRET",
+        scopes=["design:content:read", "design:meta:read"],
+        token_url="https://api.canva.com/rest/v1/oauth/token",
+        authorize_url="https://www.canva.com/api/oauth/authorize",
+    ),
+    starter=TierEntitlement(enabled=False),
+    growth=TierEntitlement(
+        enabled=True,
+        feature_key="canva",
+        limits={"design_links": True},
+    ),
+    scale=TierEntitlement(
+        enabled=True,
+        feature_key="canva_advanced",
+        limits={"design_links": True, "design_import": True},
+    ),
+    rate_limit=RateLimitConfig(
+        requests_per_second=2.0,
+        celery_rate_limit="2/s",
+    ),
+    celery_queue="integrations",
+)
+
 
 class IntegrationRegistry:
     """Central registry for all integration configurations.
@@ -273,6 +360,7 @@ def get_registry() -> IntegrationRegistry:
         for config in [
             HUBSPOT, GOOGLE_ADS, SEMRUSH, SLACK, WEBHOOKS,
             GOOGLE_ANALYTICS, GOOGLE_SEARCH_CONSOLE,
+            MAILCHIMP, GOOGLE_DRIVE, CANVA,
         ]:
             _registry.register(config)
     return _registry

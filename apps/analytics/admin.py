@@ -1,5 +1,5 @@
 from django.contrib import admin
-from apps.analytics.models import Visitor, PageEvent, Session
+from apps.analytics.models import Visitor, PageEvent, Session, TrackedLink, LinkClick
 
 
 @admin.register(Visitor)
@@ -15,3 +15,18 @@ class PageEventAdmin(admin.ModelAdmin):
     list_display = ("event_type", "url", "visitor", "timestamp")
     list_filter = ("event_type",)
     readonly_fields = ("id", "timestamp")
+
+
+@admin.register(TrackedLink)
+class TrackedLinkAdmin(admin.ModelAdmin):
+    list_display = ("id", "website", "tracking_key", "destination_url", "click_count", "conversion_count", "created_at")
+    search_fields = ("tracking_key", "destination_url", "website__name")
+    readonly_fields = ("id", "tracking_key", "created_at", "updated_at")
+    ordering = ("-created_at",)
+
+
+@admin.register(LinkClick)
+class LinkClickAdmin(admin.ModelAdmin):
+    list_display = ("id", "tracked_link", "ip_address", "converted", "clicked_at")
+    list_filter = ("converted",)
+    readonly_fields = ("id", "clicked_at")

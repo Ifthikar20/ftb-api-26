@@ -1,5 +1,5 @@
 from django.contrib import admin
-from apps.websites.models import Website, WebsiteMembership, Integration
+from apps.websites.models import Website, WebsiteMembership, Integration, WebhookEndpoint
 
 
 @admin.register(Website)
@@ -18,3 +18,11 @@ class WebsiteMembershipAdmin(admin.ModelAdmin):
 @admin.register(Integration)
 class IntegrationAdmin(admin.ModelAdmin):
     list_display = ("website", "type", "is_active", "connected_at")
+
+
+@admin.register(WebhookEndpoint)
+class WebhookEndpointAdmin(admin.ModelAdmin):
+    list_display = ("id", "website", "url", "is_active", "events", "failure_count", "created_at")
+    list_filter = ("is_active",)
+    search_fields = ("url", "website__name")
+    readonly_fields = ("id", "created_at", "updated_at", "last_triggered_at")

@@ -59,3 +59,24 @@ class NotificationService:
     @staticmethod
     def get_unread_count(*, user) -> int:
         return Notification.objects.filter(user=user, read=False).count()
+
+    @staticmethod
+    def fire_hot_lead(*, user, lead) -> None:
+        """Create hot-lead in-app notification, email alert, and Slack alert."""
+        from apps.notifications.services.email_service import EmailService
+        from apps.notifications.services.slack_service import SlackService
+
+        NotificationService.create(
+            user=user,
+            notification_type="hot_lead",
+            title=f"Hot lead detected \u2014 score {lead.score}",
+            message=(
+                f"A visitor on {lead.website.name} reached a lead score of {lead.score}. "
+                f"Company: {lead.company or 'unknown'}."
+            ),
+            data={"lead_id": str(lead.id), "score": lead.score, "website_id": str(lead.website_id)},
+            action_url=f"/leads/{lead.website_id}/{lead.id}/",
+        )
+
+        EmailService.send_hot_lead_alert(user=user, lead=lead)
+        SlackService.send_hot_lead_alert(user=user, lead=lead)

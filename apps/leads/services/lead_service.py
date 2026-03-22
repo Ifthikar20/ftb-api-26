@@ -1,6 +1,7 @@
 import csv
 import io
 import logging
+from io import BytesIO
 
 from core.logging.audit_logger import audit_log
 from core.exceptions import ResourceNotFound
@@ -31,6 +32,25 @@ class LeadService:
         lead.status = status
         lead.save(update_fields=["status", "updated_at"])
         audit_log("lead.status_updated", user=user, metadata={"lead_id": str(lead.id), "status": status})
+
+        # Dispatch outbound webhook for downstream integrations
+        try:
+            from apps.websites.services.webhook_service import WebhookService
+            WebhookService.dispatch(
+                website=lead.website,
+                event="lead.status_changed",
+                payload={
+                    "lead_id": str(lead.id),
+                    "status": status,
+                    "score": lead.score,
+                    "email": lead.email,
+                    "company": lead.company,
+                    "website_id": str(lead.website_id),
+                },
+            )
+        except Exception as e:
+            logger.warning("Webhook dispatch failed for lead.status_changed: %s", e)
+
         return lead
 
     @staticmethod
@@ -42,10 +62,53 @@ class LeadService:
         leads = Lead.objects.filter(website_id=website_id).select_related("visitor")
         output = io.StringIO()
         writer = csv.writer(output)
-        writer.writerow(["ID", "Score", "Status", "Email", "Company", "Source", "Created At"])
+        writer.writerow(["ID", "Score", "Status", "Email", "Name", "Company", "Source", "Country", "Created At"])
         for lead in leads:
             writer.writerow([
-                str(lead.id), lead.score, lead.status, lead.email,
-                lead.company, lead.source, lead.created_at.isoformat(),
+                str(lead.id), lead.score, lead.status, lead.email, lead.name,
+                lead.company, lead.source,
+                lead.visitor.geo_country if lead.visitor else "",
+                lead.created_at.isoformat(),
             ])
+        return output.getvalue()
+
+    @staticmethod
+    def export_xlsx(*, website_id: str) -> bytes:
+        """Export leads as an Excel (.xlsx) workbook. Returns raw bytes."""
+        try:
+            import openpyxl
+            from openpyxl.styles import Font, PatternFill
+        except ImportError:
+            raise RuntimeError(
+                "openpyxl is not installed. Run: pip install openpyxl"
+            )
+
+        leads = Lead.objects.filter(website_id=website_id).select_related("visitor")
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Leads"
+
+        headers = ["ID", "Score", "Status", "Email", "Name", "Company", "Source", "Country", "Created At"]
+        header_font = Font(bold=True)
+        header_fill = PatternFill(fill_type="solid", fgColor="4472C4")
+
+        for col_idx, header in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col_idx, value=header)
+            cell.font = header_font
+            cell.fill = header_fill
+
+        for row_idx, lead in enumerate(leads, 2):
+            ws.cell(row=row_idx, column=1, value=str(lead.id))
+            ws.cell(row=row_idx, column=2, value=lead.score)
+            ws.cell(row=row_idx, column=3, value=lead.status)
+            ws.cell(row=row_idx, column=4, value=lead.email)
+            ws.cell(row=row_idx, column=5, value=lead.name)
+            ws.cell(row=row_idx, column=6, value=lead.company)
+            ws.cell(row=row_idx, column=7, value=lead.source)
+            ws.cell(row=row_idx, column=8, value=lead.visitor.geo_country if lead.visitor else "")
+            ws.cell(row=row_idx, column=9, value=lead.created_at.isoformat())
+
+        output = BytesIO()
+        wb.save(output)
         return output.getvalue()
