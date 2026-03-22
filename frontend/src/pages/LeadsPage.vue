@@ -121,27 +121,35 @@
               <th style="width:90px">Links</th>
             </tr>
           </thead>
-          <tbody>
+          <TransitionGroup name="table-row" tag="tbody">
             <tr v-for="(lead, i) in sortedTableLeads" :key="lead._rowId || i"
                 :class="{ 'row-selected': aiSelected.includes(i) }"
+                :style="{ '--row-delay': i * 50 + 'ms' }"
                 @click="aiResults.length ? toggleAiSelect(i) : openLeadDetail(lead)"
-                style="cursor:pointer">
+                class="lead-row">
               <td v-if="aiResults.length" @click.stop>
                 <input type="checkbox" class="ai-check" :checked="aiSelected.includes(i)" @change="toggleAiSelect(i)" />
               </td>
               <td>
-                <div class="lead-name">{{ lead.name || 'Anonymous' }}</div>
-                <div class="text-xs text-muted">{{ lead.title || '' }}</div>
+                <div class="lead-name-cell">
+                  <div class="lead-avatar-sm">{{ (lead.name || 'A').charAt(0).toUpperCase() }}</div>
+                  <div>
+                    <div class="lead-name">{{ lead.name || 'Anonymous' }}</div>
+                    <div class="lead-title">{{ lead.title || '' }}</div>
+                  </div>
+                </div>
               </td>
               <td>
-                <div class="text-sm">{{ lead.company || '--' }}</div>
-                <a v-if="lead.website || lead.company_url" :href="lead.website || lead.company_url" target="_blank" class="text-xs" style="color:var(--brand-accent);text-decoration:none" @click.stop>
-                  {{ (lead.website || lead.company_url || '').replace(/^https?:\/\//, '') }}
-                </a>
+                <div class="company-cell">
+                  <span class="company-name">{{ lead.company || '--' }}</span>
+                  <a v-if="lead.website || lead.company_url" :href="lead.website || lead.company_url" target="_blank" class="company-url" @click.stop>
+                    {{ (lead.website || lead.company_url || '').replace(/^https?:\/\//, '') }}
+                  </a>
+                </div>
               </td>
-              <td><span class="text-sm" :style="lead.email ? 'color:var(--brand-accent)' : ''">{{ lead.email || '--' }}</span></td>
+              <td><span class="email-cell" :class="{ 'has-email': lead.email }">{{ lead.email || '--' }}</span></td>
               <td class="text-sm text-muted">{{ lead.phone || '--' }}</td>
-              <td class="text-sm text-muted">{{ lead.location || '--' }}</td>
+              <td><span class="location-cell">{{ lead.location || '--' }}</span></td>
               <td>
                 <span class="score-badge" :class="(lead.relevance_score || lead.score) >= 80 ? 'score-hot' : (lead.relevance_score || lead.score) >= 60 ? 'score-warm' : 'score-cold'">
                   {{ lead.relevance_score || lead.score || 0 }}
@@ -149,25 +157,30 @@
               </td>
               <td><span class="source-badge" :class="'source-' + (lead.source || 'ai')">{{ (lead.source || lead.status || 'ai').toUpperCase() }}</span></td>
               <td @click.stop>
-                <div style="display:flex;gap:4px">
-                  <a v-if="lead.linkedin_url" :href="lead.linkedin_url" target="_blank" class="ai-social-link li" style="padding:3px 5px">
+                <div class="links-cell">
+                  <a v-if="lead.linkedin_url" :href="lead.linkedin_url" target="_blank" class="ai-social-link li">
                     <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M0 1.146C0 .513.526 0 1.175 0h13.65C15.474 0 16 .513 16 1.146v13.708c0 .633-.526 1.146-1.175 1.146H1.175C.526 16 0 15.487 0 14.854V1.146zm4.943 12.248V6.169H2.542v7.225h2.401zm-1.2-8.212c.837 0 1.358-.554 1.358-1.248-.015-.709-.52-1.248-1.342-1.248-.822 0-1.359.54-1.359 1.248 0 .694.521 1.248 1.327 1.248h.016zm4.908 8.212V9.359c0-.216.016-.432.08-.586.173-.431.568-.878 1.232-.878.869 0 1.216.662 1.216 1.634v3.865h2.401V9.25c0-2.22-1.184-3.252-2.764-3.252-1.274 0-1.845.7-2.165 1.193V6.169H6.29c.032.68 0 7.225 0 7.225h2.361z"/></svg>
                   </a>
-                  <a v-if="lead.twitter_url" :href="lead.twitter_url" target="_blank" class="ai-social-link tw" style="padding:3px 5px">
+                  <a v-if="lead.twitter_url" :href="lead.twitter_url" target="_blank" class="ai-social-link tw">
                     <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M5.026 15c6.038 0 9.341-5.003 9.341-9.334 0-.14 0-.282-.006-.422A6.685 6.685 0 0016 3.542a6.658 6.658 0 01-1.889.518 3.301 3.301 0 001.447-1.817 6.533 6.533 0 01-2.087.793A3.286 3.286 0 007.875 6.03 9.325 9.325 0 011.114 2.1 3.323 3.323 0 002.13 6.574A3.203 3.203 0 01.64 6.14v.04a3.288 3.288 0 002.632 3.218 3.203 3.203 0 01-.865.115c-.212 0-.418-.02-.62-.058a3.283 3.283 0 003.067 2.277A6.588 6.588 0 01.78 13.58a6.32 6.32 0 01-.78-.045A9.344 9.344 0 005.026 15z"/></svg>
                   </a>
-                  <a v-if="lead.website || lead.company_url" :href="lead.website || lead.company_url" target="_blank" class="ai-social-link" style="padding:3px 5px;color:var(--text-secondary)">
+                  <a v-if="lead.website || lead.company_url" :href="lead.website || lead.company_url" target="_blank" class="ai-social-link web-link">
                     <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M2 8h12M8 2a10 10 0 0 1 3 6 10 10 0 0 1-3 6 10 10 0 0 1-3-6 10 10 0 0 1 3-6z"/></svg>
                   </a>
                 </div>
               </td>
             </tr>
-          </tbody>
+          </TransitionGroup>
         </table>
         <div v-if="allTableLeads.length === 0 && !aiSearching" class="empty-guide">
-          <div style="margin-bottom:12px;display:flex;justify-content:center"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="1.5"><circle cx="12" cy="7" r="4"/><path d="M5.5 21c0-3.5 3-6 6.5-6s6.5 2.5 6.5 6"/></svg></div>
-          <h3 style="margin:0 0 8px;color:var(--text-primary)">No leads yet</h3>
-          <p style="font-size:var(--font-sm);color:var(--text-secondary);max-width:400px;margin:0 auto;line-height:1.6">Use the AI prompt above to discover leads, or they'll appear here as visitors interact with your site.</p>
+          <div class="empty-icon-wrap">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="1.2">
+              <circle cx="12" cy="7" r="4"/><path d="M5.5 21c0-3.5 3-6 6.5-6s6.5 2.5 6.5 6"/>
+              <path d="M17 10l2 2-2 2M17 12H14" stroke-linecap="round" opacity="0.5"/>
+            </svg>
+          </div>
+          <h3 class="empty-title">No leads yet</h3>
+          <p class="empty-desc">Use the AI prompt above to discover leads, or they'll appear here as visitors interact with your site.</p>
         </div>
       </div>
 
@@ -493,6 +506,11 @@ const connectorCatalog = computed(() => {
   const hasSomeLead = pipelineLeads.length > 0
 
   const catalog = {
+    'Import / Export': [
+      { id: 'gdrive',    icon: '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#4285f4"></span>', label: 'Google Drive',   desc: 'Import CSV/Sheets',        badgeClass: 'badge-info' },
+      { id: 'excel',     icon: '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#217346"></span>', label: 'Excel Export',    desc: 'Download as .xlsx',        badgeClass: 'badge-success' },
+      { id: 'csv-import',icon: '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#94a3b8"></span>', label: 'CSV Upload',     desc: 'Bulk import contacts',     badgeClass: 'badge-neutral' },
+    ],
     'Data Sources': [
       { id: 'gsc',       icon: '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#22c55e"></span>', label: 'Search Console', desc: 'Keyword & click data',     badgeClass: 'badge-success' },
       { id: 'ga4',       icon: '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#f59e0b"></span>', label: 'GA4',            desc: 'Traffic & attribution',    badgeClass: 'badge-warning' },
@@ -826,11 +844,54 @@ async function sendEmail() {
 
 <style scoped>
 .loading-state { text-align: center; padding: 80px 20px; font-size: var(--font-md); color: var(--text-muted); }
-.lead-name { font-weight: 600; color: var(--text-primary); }
-.score-badge { display: inline-block; padding: 3px 10px; border-radius: var(--radius-full); font-size: var(--font-xs); font-weight: 700; }
-.score-hot  { background: rgba(231, 76, 60, 0.12); color: var(--color-danger); }
-.score-warm { background: rgba(243, 156, 18, 0.12); color: var(--color-warning); }
+.lead-name { font-weight: 600; color: var(--text-primary); font-size: var(--font-sm); }
+.lead-title { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
+.score-badge { display: inline-block; padding: 4px 12px; border-radius: var(--radius-full); font-size: var(--font-xs); font-weight: 700; min-width: 36px; text-align: center; }
+.score-hot  { background: rgba(231, 76, 60, 0.1); color: var(--color-danger); }
+.score-warm { background: rgba(243, 156, 18, 0.1); color: var(--color-warning); }
 .score-cold { background: var(--bg-surface); color: var(--text-muted); }
+
+/* ── Modern Lead Table Cells ── */
+.lead-name-cell { display: flex; align-items: center; gap: 10px; }
+.lead-avatar-sm {
+  width: 30px; height: 30px;
+  border-radius: var(--radius-full);
+  background: linear-gradient(135deg, var(--brand-accent), #7c5bf0);
+  color: #fff; font-size: 11px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  letter-spacing: 0.02em;
+}
+.company-cell { line-height: 1.4; }
+.company-name { font-size: var(--font-sm); color: var(--text-primary); font-weight: 500; }
+.company-url { display: block; font-size: 11px; color: var(--brand-accent); text-decoration: none; margin-top: 1px; }
+.company-url:hover { text-decoration: underline; }
+.email-cell { font-size: var(--font-sm); color: var(--text-muted); }
+.email-cell.has-email { color: var(--brand-accent); }
+.location-cell { font-size: var(--font-sm); color: var(--text-muted); }
+.links-cell { display: flex; gap: 4px; }
+.ai-social-link.web-link { padding: 3px 5px; color: var(--text-secondary); }
+
+/* ── Table Row Animations ── */
+@keyframes row-enter {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.lead-row {
+  cursor: pointer;
+  animation: row-enter 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: var(--row-delay, 0ms);
+}
+.table-row-enter-active { animation: row-enter 0.3s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.table-row-leave-active { transition: opacity 0.2s, transform 0.2s; }
+.table-row-leave-to { opacity: 0; transform: translateX(-12px); }
+.table-row-move { transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1); }
+
+/* ── Empty State ── */
+.empty-guide { text-align: center; padding: 56px 20px; }
+.empty-icon-wrap { margin-bottom: 16px; display: flex; justify-content: center; opacity: 0.6; }
+.empty-title { margin: 0 0 8px; color: var(--text-primary); font-size: var(--font-md); font-weight: 600; }
+.empty-desc { font-size: var(--font-sm); color: var(--text-secondary); max-width: 380px; margin: 0 auto; line-height: 1.6; }
 
 /* ══════════════════════════════════════
    Pipeline Wrapper
@@ -1192,15 +1253,30 @@ async function sendEmail() {
 }
 
 .ai-data-table td {
-  padding: 10px 12px;
+  padding: 12px 14px;
   border-bottom: 1px solid var(--border-color);
   vertical-align: middle;
 }
+.ai-data-table th {
+  background: var(--bg-surface);
+  padding: 11px 14px;
+  text-align: left;
+  font-weight: 600;
+  font-size: var(--font-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  border-bottom: 2px solid var(--border-color);
+  white-space: nowrap;
+}
 .ai-data-table tbody tr {
   cursor: pointer;
-  transition: background 0.12s;
+  transition: background 0.15s ease, box-shadow 0.15s ease;
 }
-.ai-data-table tbody tr:hover { background: var(--bg-hover); }
+.ai-data-table tbody tr:hover {
+  background: var(--bg-hover);
+  box-shadow: inset 3px 0 0 var(--brand-accent);
+}
 .ai-data-table tbody tr.row-selected { background: rgba(91, 141, 239, 0.06); }
 .ai-data-table tbody tr.row-selected:hover { background: rgba(91, 141, 239, 0.1); }
 
@@ -1211,12 +1287,6 @@ async function sendEmail() {
   accent-color: var(--brand-accent);
 }
 
-.lead-name {
-  font-weight: 600;
-  font-size: var(--font-sm);
-  color: var(--text-primary);
-}
-
 .ai-reason-panel {
   margin-top: 16px;
   padding: 16px 20px;
@@ -1225,7 +1295,7 @@ async function sendEmail() {
 
 .source-badge {
   display: inline-block;
-  padding: 2px 6px;
+  padding: 3px 8px;
   border-radius: var(--radius-sm);
   font-size: 9px;
   font-weight: 700;
