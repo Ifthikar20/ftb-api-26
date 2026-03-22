@@ -1,4 +1,3 @@
-import logging
 from celery import shared_task
 from celery.utils.log import get_task_logger
 
@@ -18,6 +17,7 @@ logger = get_task_logger(__name__)
 def run_website_audit(self, website_id: str, audit_id: str):
     """Execute a full website audit asynchronously."""
     from django.utils import timezone
+
     from apps.audits.models import Audit
     from apps.audits.services.audit_orchestrator import AuditOrchestrator
 
@@ -57,13 +57,13 @@ def run_website_audit(self, website_id: str, audit_id: str):
             audit.save(update_fields=["status"])
         except Exception:
             pass
-        raise self.retry(exc=exc)
+        raise self.retry(exc=exc) from None
 
 
 @shared_task(name="apps.audits.tasks.run_scheduled_audits")
 def run_scheduled_audits():
     """Run audits for all websites with active schedules."""
-    from apps.audits.models import AuditSchedule, Audit
+    from apps.audits.models import Audit, AuditSchedule
 
     for schedule in AuditSchedule.objects.filter(is_active=True):
         if not Audit.objects.filter(

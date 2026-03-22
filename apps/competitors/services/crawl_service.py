@@ -1,4 +1,5 @@
 import logging
+
 from django.utils import timezone
 
 from apps.competitors.models import Competitor, CompetitorSnapshot

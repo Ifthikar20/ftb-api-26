@@ -6,18 +6,16 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.websites.api.v1.serializers import (
+    WebsiteCreateSerializer,
+    WebsiteSerializer,
+    WebsiteSettingsSerializer,
+    WebsiteUpdateSerializer,
+)
 from apps.websites.models import Website
-from apps.websites.services.website_service import WebsiteService
 from apps.websites.services.pixel_service import PixelService
 from apps.websites.services.verification_service import VerificationService
-from apps.websites.api.v1.serializers import (
-    WebsiteSerializer,
-    WebsiteCreateSerializer,
-    WebsiteUpdateSerializer,
-    WebsiteSettingsSerializer,
-)
-from core.exceptions import ResourceNotFound
-from apps.billing.services.plan_service import PLANS
+from apps.websites.services.website_service import WebsiteService
 
 
 class WebsiteListCreateView(APIView):
@@ -128,17 +126,17 @@ class DashboardView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        from apps.analytics.models import Visitor, PageEvent
-        from apps.leads.models import Lead
+        from apps.analytics.models import PageEvent, Visitor
         from apps.audits.models import Audit
-        from apps.strategy.models import Strategy, Action, MorningBrief
+        from apps.leads.models import Lead
         from apps.notifications.models import Notification
+        from apps.strategy.models import MorningBrief, Strategy
 
         websites = Website.objects.filter(user=request.user)
         website = websites.first()
         now = timezone.now()
         thirty_days_ago = now - timedelta(days=30)
-        seven_days_ago = now - timedelta(days=7)
+        now - timedelta(days=7)
 
         # Stats
         total_visitors = 0

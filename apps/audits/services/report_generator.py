@@ -1,4 +1,5 @@
 import logging
+
 from apps.audits.models import Audit
 
 logger = logging.getLogger("apps")

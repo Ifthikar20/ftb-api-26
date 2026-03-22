@@ -2,14 +2,12 @@
 Keyword Intelligence Service — Google Trends integration + AI keyword scoring.
 Uses pytrends for trending data and rule-based AI for keyword opportunity scoring.
 """
-import logging
 import hashlib
-from datetime import datetime, timedelta
+import logging
 from urllib.parse import urlparse
 
-from django.db.models import Count, Avg
-from django.utils import timezone
 from django.core.cache import cache
+from django.utils import timezone
 
 logger = logging.getLogger("apps")
 
@@ -111,7 +109,7 @@ class KeywordIntelligenceService:
             pytrends.build_payload([keyword], timeframe="today 3-m", geo="US")
 
             related_queries = pytrends.related_queries()
-            related_topics = pytrends.related_topics()
+            pytrends.related_topics()
 
             rising = []
             top = []

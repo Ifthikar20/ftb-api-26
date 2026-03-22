@@ -1,8 +1,8 @@
 """Advanced analytics API views."""
+from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework import status
 
 from apps.websites.services.website_service import WebsiteService
 
@@ -147,8 +147,9 @@ class VisitorListView(APIView):
 
     def get(self, request, website_id):
         WebsiteService.get_for_user(user=request.user, website_id=website_id)
-        from apps.analytics.models import Visitor
         from django.db.models import Count
+
+        from apps.analytics.models import Visitor
 
         visitors = (
             Visitor.objects.filter(website_id=website_id)
@@ -196,9 +197,11 @@ class LiveEventsView(APIView):
 
     def get(self, request, website_id):
         WebsiteService.get_for_user(user=request.user, website_id=website_id)
-        from apps.analytics.models import PageEvent
         from datetime import timedelta
+
         from django.utils import timezone
+
+        from apps.analytics.models import PageEvent
 
         cutoff = timezone.now() - timedelta(seconds=120)
         events = (

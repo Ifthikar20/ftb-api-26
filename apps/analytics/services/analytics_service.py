@@ -1,8 +1,9 @@
-from django.db.models import Count, Avg, Q
-from django.utils import timezone
 from datetime import timedelta
 
-from apps.analytics.models import Visitor, PageEvent, Session
+from django.db.models import Count
+from django.utils import timezone
+
+from apps.analytics.models import PageEvent, Session, Visitor
 from core.utils.date_utils import get_date_range
 
 

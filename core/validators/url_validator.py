@@ -16,7 +16,7 @@ def validate_website_url(url: str) -> str:
     try:
         parsed = urlparse(url)
     except Exception:
-        raise ValidationError("Invalid URL format.")
+        raise ValidationError("Invalid URL format.") from None
 
     if not parsed.netloc:
         raise ValidationError("URL must include a domain.")

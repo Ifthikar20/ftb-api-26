@@ -1,5 +1,6 @@
 from django.contrib import admin
-from apps.analytics.models import Visitor, PageEvent, Session, TrackedLink, LinkClick
+
+from apps.analytics.models import LinkClick, PageEvent, TrackedLink, Visitor
 
 
 @admin.register(Visitor)

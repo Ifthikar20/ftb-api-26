@@ -1,19 +1,22 @@
+from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework import status
 
+from apps.strategy.api.v1.serializers import (
+    ActionSerializer,
+    ChatMessageSerializer,
+    ContentCalendarEntrySerializer,
+    MorningBriefSerializer,
+    StrategyListSerializer,
+    StrategySerializer,
+)
 from apps.strategy.models import Strategy
-from apps.strategy.services.strategy_generator import StrategyGenerator
-from apps.strategy.services.chat_service import ChatService
-from apps.strategy.services.morning_brief_service import MorningBriefService
 from apps.strategy.services.action_service import ActionService
 from apps.strategy.services.calendar_service import CalendarService
+from apps.strategy.services.chat_service import ChatService
+from apps.strategy.services.morning_brief_service import MorningBriefService
 from apps.strategy.services.prediction_service import PredictionService
-from apps.strategy.api.v1.serializers import (
-    StrategySerializer, StrategyListSerializer, ChatMessageSerializer,
-    MorningBriefSerializer, ContentCalendarEntrySerializer, ActionSerializer,
-)
 from apps.websites.services.website_service import WebsiteService
 from core.exceptions import ResourceNotFound
 from core.interceptors.throttling import AIGenerationThrottle

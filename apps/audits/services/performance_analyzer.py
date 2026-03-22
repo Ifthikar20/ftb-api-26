@@ -1,7 +1,9 @@
 import logging
 import time
+
 import requests
 from bs4 import BeautifulSoup
+
 from apps.audits.models import Audit, AuditIssue
 
 logger = logging.getLogger("apps")

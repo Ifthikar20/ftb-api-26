@@ -1,4 +1,5 @@
 import pytest
+
 from apps.accounts.services.auth_service import AuthService
 from apps.accounts.tests.factories import UserFactory
 

@@ -1,5 +1,6 @@
 from rest_framework import serializers
-from apps.strategy.models import Strategy, Action, ContentCalendarEntry, ChatMessage, MorningBrief
+
+from apps.strategy.models import Action, ChatMessage, ContentCalendarEntry, MorningBrief, Strategy
 
 
 class ActionSerializer(serializers.ModelSerializer):

@@ -1,5 +1,6 @@
 from django.contrib import admin
-from apps.websites.models import Website, WebsiteMembership, Integration, WebhookEndpoint
+
+from apps.websites.models import Integration, WebhookEndpoint, Website, WebsiteMembership
 
 
 @admin.register(Website)

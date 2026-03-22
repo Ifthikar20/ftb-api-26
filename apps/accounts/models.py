@@ -6,6 +6,7 @@ from django.utils import timezone
 
 from core.mixins.timestamp_mixin import TimestampMixin
 from core.utils.constants import Plan
+
 from .managers import UserManager
 
 

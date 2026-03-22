@@ -1,5 +1,13 @@
 from rest_framework import serializers
-from apps.leads.models import Lead, LeadNote, LeadSegment, ScoringConfig, EmailCampaign, CampaignRecipient
+
+from apps.leads.models import (
+    CampaignRecipient,
+    EmailCampaign,
+    Lead,
+    LeadNote,
+    LeadSegment,
+    ScoringConfig,
+)
 
 
 class LeadSerializer(serializers.ModelSerializer):

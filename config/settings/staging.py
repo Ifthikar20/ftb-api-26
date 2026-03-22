@@ -4,7 +4,7 @@ DEBUG = False
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 # Staging-specific logging with file handlers
-import os
+import os  # noqa: E402
 
 LOG_DIR = "/var/log/growthpilot"
 os.makedirs(LOG_DIR, exist_ok=True)
@@ -32,8 +32,8 @@ LOGGING["loggers"]["security"]["handlers"] = ["console", "security_file"]  # noq
 
 if SENTRY_DSN:  # noqa: F405
     import sentry_sdk
-    from sentry_sdk.integrations.django import DjangoIntegration
     from sentry_sdk.integrations.celery import CeleryIntegration
+    from sentry_sdk.integrations.django import DjangoIntegration
 
     sentry_sdk.init(
         dsn=SENTRY_DSN,  # noqa: F405

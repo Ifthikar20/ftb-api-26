@@ -1,5 +1,5 @@
-from apps.websites.services.pixel_service import PixelService
 from apps.websites.models import Website
+from apps.websites.services.pixel_service import PixelService
 
 
 class VerificationService:

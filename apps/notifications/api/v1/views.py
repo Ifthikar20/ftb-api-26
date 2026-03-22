@@ -1,11 +1,14 @@
+from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework import status
 
+from apps.notifications.api.v1.serializers import (
+    NotificationPreferenceSerializer,
+    NotificationSerializer,
+)
 from apps.notifications.models import Notification, NotificationPreference
 from apps.notifications.services.notification_service import NotificationService
-from apps.notifications.api.v1.serializers import NotificationSerializer, NotificationPreferenceSerializer
 from core.interceptors.pagination import StandardPagination
 
 

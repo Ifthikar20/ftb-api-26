@@ -9,7 +9,7 @@ import logging
 
 from django.utils import timezone
 
-from apps.leads.models import EmailCampaign, CampaignRecipient, Lead
+from apps.leads.models import CampaignRecipient, EmailCampaign, Lead
 from core.exceptions import ResourceNotFound
 
 logger = logging.getLogger("apps")
@@ -32,7 +32,7 @@ class CampaignService:
         try:
             return EmailCampaign.objects.get(id=campaign_id, website_id=website_id)
         except EmailCampaign.DoesNotExist:
-            raise ResourceNotFound("Campaign not found.")
+            raise ResourceNotFound("Campaign not found.") from None
 
     @staticmethod
     def list(*, website_id: str):

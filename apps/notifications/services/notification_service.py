@@ -1,9 +1,9 @@
 import logging
 
-from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
 
-from apps.notifications.models import Notification, NotificationPreference
+from apps.notifications.models import Notification
 from core.exceptions import ResourceNotFound
 
 logger = logging.getLogger("apps")
@@ -47,7 +47,7 @@ class NotificationService:
         try:
             notification = Notification.objects.get(id=notification_id, user=user)
         except Notification.DoesNotExist:
-            raise ResourceNotFound("Notification not found.")
+            raise ResourceNotFound("Notification not found.") from None
         notification.read = True
         notification.save(update_fields=["read"])
         return notification

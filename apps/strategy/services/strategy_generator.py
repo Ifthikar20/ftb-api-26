@@ -1,7 +1,8 @@
 import logging
+
 from django.conf import settings
 
-from apps.strategy.models import Strategy, Action
+from apps.strategy.models import Action, Strategy
 from core.exceptions import AIGenerationFailed
 from core.logging.audit_logger import audit_log
 
@@ -29,7 +30,7 @@ class StrategyGenerator:
 
         except Exception as e:
             logger.error(f"AI strategy generation failed: {e}")
-            raise AIGenerationFailed()
+            raise AIGenerationFailed() from e
 
         strategy = Strategy.objects.create(
             website=website,
@@ -39,7 +40,7 @@ class StrategyGenerator:
         )
 
         # Create action items
-        for idx, action_data in enumerate(strategy_data.get("actions", [])[:20]):
+        for _idx, action_data in enumerate(strategy_data.get("actions", [])[:20]):
             Action.objects.create(
                 strategy=strategy,
                 title=action_data.get("title", ""),

@@ -1,5 +1,5 @@
-import re
 import html
+import re
 
 
 def strip_html_tags(text: str) -> str:

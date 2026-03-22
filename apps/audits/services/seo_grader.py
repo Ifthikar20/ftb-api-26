@@ -1,8 +1,10 @@
 import logging
 import re
+from urllib.parse import urljoin, urlparse
+
 import requests
-from urllib.parse import urlparse, urljoin
 from bs4 import BeautifulSoup
+
 from apps.audits.models import Audit, SEOGraderIssue
 
 logger = logging.getLogger("apps")

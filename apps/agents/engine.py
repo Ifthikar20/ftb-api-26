@@ -14,9 +14,9 @@ import time
 from django.conf import settings
 from django.utils import timezone
 
-from apps.agents.models import AgentRun, AgentStep
 from apps.agents.agent_types import get_agent_config
-from apps.agents.tools import execute_tool, get_tool_schemas, TOOL_REGISTRY
+from apps.agents.models import AgentRun, AgentStep
+from apps.agents.tools import TOOL_REGISTRY, execute_tool
 
 logger = logging.getLogger("apps.agents")
 
@@ -86,7 +86,7 @@ class AgentEngine:
                 # Validate tool is allowed
                 if tool_name not in config["allowed_tools"]:
                     logger.warning(f"Agent tried to use disallowed tool: {tool_name}")
-                    step = AgentStep.objects.create(
+                    AgentStep.objects.create(
                         agent_run=agent_run,
                         step_number=step_num,
                         reasoning=reasoning,
@@ -164,7 +164,7 @@ class AgentEngine:
         agent_run.approved_at = timezone.now()
         agent_run.save(update_fields=["status", "approved_at", "context", "updated_at"])
 
-        for i, pa in enumerate(pending):
+        for _i, pa in enumerate(pending):
             tool_name = pa.get("tool", "")
             tool_params = pa.get("params", {})
             if "website_id" in TOOL_REGISTRY.get(tool_name, {}).get("params", {}):

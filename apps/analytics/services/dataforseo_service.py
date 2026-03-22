@@ -2,12 +2,12 @@
 DataForSEO API Service — Real keyword rankings, search volume, difficulty, and SERP features.
 Uses DataForSEO REST API v3 with HTTP Basic Auth.
 """
-import logging
 import base64
-from django.conf import settings
-from django.core.cache import cache
+import logging
 
 import requests
+from django.conf import settings
+from django.core.cache import cache
 
 logger = logging.getLogger("apps")
 

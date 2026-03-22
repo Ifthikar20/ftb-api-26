@@ -1,10 +1,10 @@
+from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework import status
 
+from apps.audits.api.v1.serializers import AuditListSerializer, AuditSerializer
 from apps.audits.models import Audit, SEOGraderIssue
-from apps.audits.api.v1.serializers import AuditSerializer, AuditListSerializer
 from apps.websites.services.website_service import WebsiteService
 from core.exceptions import AuditInProgress, ResourceNotFound
 
@@ -21,8 +21,9 @@ class AuditRunView(APIView):
 
         audit = Audit.objects.create(website=website, triggered_by=request.user)
 
-        from apps.audits.tasks import run_website_audit
         from django.conf import settings
+
+        from apps.audits.tasks import run_website_audit
 
         # In dev mode or when no Celery broker is configured, run in a thread
         broker = getattr(settings, "CELERY_BROKER_URL", "")
@@ -81,7 +82,7 @@ class AuditDetailView(APIView):
         try:
             audit = Audit.objects.get(id=audit_id, website_id=website_id)
         except Audit.DoesNotExist:
-            raise ResourceNotFound("Audit not found.")
+            raise ResourceNotFound("Audit not found.") from None
         return Response(AuditSerializer(audit).data)
 
 
@@ -152,7 +153,7 @@ class SEOGraderDeployView(APIView):
         try:
             issue = SEOGraderIssue.objects.get(id=issue_id, audit__website_id=website_id)
         except SEOGraderIssue.DoesNotExist:
-            raise ResourceNotFound("Grader issue not found.")
+            raise ResourceNotFound("Grader issue not found.") from None
 
         issue.deployed = not issue.deployed
         issue.save(update_fields=["deployed"])

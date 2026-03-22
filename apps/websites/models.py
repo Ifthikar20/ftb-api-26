@@ -4,8 +4,8 @@ from django.conf import settings
 from django.db import models
 
 from core.encryption.field_encryption import EncryptedTextField
-from core.mixins.timestamp_mixin import TimestampMixin
 from core.mixins.soft_delete_mixin import SoftDeleteMixin
+from core.mixins.timestamp_mixin import TimestampMixin
 from core.utils.constants import UserRole
 
 
@@ -157,6 +157,7 @@ class Integration(TimestampMixin):
         """Check if token needs refresh (default: 15 min before expiry)."""
         if not self.token_expires_at:
             return False
-        from django.utils import timezone
         from datetime import timedelta
+
+        from django.utils import timezone
         return timezone.now() >= (self.token_expires_at - timedelta(seconds=buffer_seconds))

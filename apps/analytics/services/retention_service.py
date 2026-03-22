@@ -1,12 +1,11 @@
 """Cohort-based retention analysis."""
 import logging
-from datetime import timedelta
 from collections import defaultdict
+from datetime import timedelta
 
-from django.db.models import Count, Min
 from django.utils import timezone
 
-from apps.analytics.models import Visitor, PageEvent
+from apps.analytics.models import PageEvent, Visitor
 from core.utils.date_utils import get_date_range
 
 logger = logging.getLogger("apps")
@@ -124,8 +123,9 @@ class RetentionService:
         - Avg session duration
         - Engagement score
         """
+        from django.db.models import Avg
+
         from apps.analytics.models import Session
-        from django.db.models import Avg, Sum, F
 
         start, end = get_date_range(period)
 

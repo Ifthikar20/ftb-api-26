@@ -1,20 +1,18 @@
 import pytest
 
-from apps.leads.services.lead_service import LeadService
-from apps.leads.services.scoring_service import ScoringService, DEFAULT_WEIGHTS
+from apps.accounts.tests.factories import UserFactory
 from apps.leads.models import Lead, LeadNote
+from apps.leads.services.lead_service import LeadService
+from apps.leads.services.scoring_service import DEFAULT_WEIGHTS, ScoringService
+from apps.leads.tests.factories import (
+    LeadFactory,
+    PageEventFactory,
+    ScoringConfigFactory,
+    VisitorFactory,
+    WebsiteFactory,
+)
 from core.exceptions import ResourceNotFound
 from core.utils.constants import LeadStatus
-
-from apps.leads.tests.factories import (
-    WebsiteFactory,
-    VisitorFactory,
-    PageEventFactory,
-    LeadFactory,
-    LeadNoteFactory,
-    ScoringConfigFactory,
-)
-from apps.accounts.tests.factories import UserFactory
 
 
 @pytest.mark.django_db
@@ -23,8 +21,8 @@ class TestLeadService:
         website = WebsiteFactory()
         v1 = VisitorFactory(website=website)
         v2 = VisitorFactory(website=website)
-        lead1 = LeadFactory(visitor=v1, website=website, score=80)
-        lead2 = LeadFactory(visitor=v2, website=website, score=50)
+        LeadFactory(visitor=v1, website=website, score=80)
+        LeadFactory(visitor=v2, website=website, score=50)
 
         leads = LeadService.get_leads(website_id=str(website.id))
         assert leads.count() == 2
@@ -33,8 +31,8 @@ class TestLeadService:
         website = WebsiteFactory()
         v1 = VisitorFactory(website=website)
         v2 = VisitorFactory(website=website)
-        low = LeadFactory(visitor=v1, website=website, score=30)
-        high = LeadFactory(visitor=v2, website=website, score=90)
+        LeadFactory(visitor=v1, website=website, score=30)
+        LeadFactory(visitor=v2, website=website, score=90)
 
         leads = list(LeadService.get_leads(website_id=str(website.id)))
         assert leads[0].score == 90

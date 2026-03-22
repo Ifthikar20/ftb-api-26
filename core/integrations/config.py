@@ -1,5 +1,4 @@
 from dataclasses import dataclass, field
-from typing import Optional
 
 
 @dataclass(frozen=True)
@@ -10,7 +9,7 @@ class OAuthConfig:
     scopes: list[str] = field(default_factory=list)
     token_url: str = ""
     authorize_url: str = ""
-    token_expiry_seconds: Optional[int] = None
+    token_expiry_seconds: int | None = None
 
 
 @dataclass(frozen=True)
@@ -24,7 +23,7 @@ class ApiKeyConfig:
 class RateLimitConfig:
     """Rate limit constraints for an integration's external API."""
     requests_per_second: float = 10.0
-    daily_quota: Optional[int] = None
+    daily_quota: int | None = None
     celery_rate_limit: str = ""  # e.g. "10/m"
 
 
@@ -48,8 +47,8 @@ class IntegrationConfig:
     auth_type: str           # "oauth2", "api_key", "webhook_url"
 
     # Credentials — exactly one of these should be set based on auth_type
-    oauth: Optional[OAuthConfig] = None
-    api_key: Optional[ApiKeyConfig] = None
+    oauth: OAuthConfig | None = None
+    api_key: ApiKeyConfig | None = None
 
     # Per-tier entitlements
     starter: TierEntitlement = field(default_factory=TierEntitlement)

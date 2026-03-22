@@ -1,12 +1,13 @@
-from rest_framework.permissions import IsAuthenticated, AllowAny
-from rest_framework.response import Response
-from rest_framework.views import APIView
-from rest_framework.parsers import JSONParser, FormParser
-from rest_framework import status
 import json
 
-from apps.analytics.services.event_ingestion_service import EventIngestionService
+from rest_framework import status
+from rest_framework.parsers import FormParser, JSONParser
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
 from apps.analytics.services.analytics_service import AnalyticsService
+from apps.analytics.services.event_ingestion_service import EventIngestionService
 from apps.websites.services.website_service import WebsiteService
 from core.interceptors.throttling import PixelIngestThrottle
 
@@ -102,12 +103,14 @@ class HeatmapView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, website_id):
-        from apps.analytics.models import PageEvent
-        from django.db.models import Count
-        from django.utils import timezone
+        import random
         from collections import defaultdict
         from datetime import timedelta
-        import random
+
+        from django.db.models import Count
+        from django.utils import timezone
+
+        from apps.analytics.models import PageEvent
 
         website = WebsiteService.get_for_user(user=request.user, website_id=website_id)
         page_url = request.query_params.get("page", None)
@@ -266,8 +269,8 @@ class HeatmapView(APIView):
     def _generate_insights(zones, top_elements, total_clicks, page_url, website):
         """Use Claude to generate actionable heatmap insights."""
         try:
-            from django.conf import settings
             import anthropic
+            from django.conf import settings
 
             api_key = getattr(settings, "ANTHROPIC_API_KEY", "")
             if not api_key:

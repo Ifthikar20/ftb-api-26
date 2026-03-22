@@ -1,7 +1,8 @@
 import logging
+from datetime import timedelta
+
 from celery import shared_task
 from django.utils import timezone
-from datetime import timedelta
 
 logger = logging.getLogger("apps")
 
@@ -14,8 +15,8 @@ def hard_delete_soft_deleted():
     """
     cutoff = timezone.now() - timedelta(days=30)
 
-    from apps.websites.models import Website
     from apps.leads.models import Lead
+    from apps.websites.models import Website
 
     website_count = Website.all_objects.filter(is_deleted=True, deleted_at__lte=cutoff).delete()[0]
     lead_count = Lead.all_objects.filter(is_deleted=True, deleted_at__lte=cutoff).delete()[0]

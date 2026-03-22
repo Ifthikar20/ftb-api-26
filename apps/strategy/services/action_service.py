@@ -1,7 +1,8 @@
 from django.utils import timezone
+
 from apps.strategy.models import Action, Strategy
-from core.logging.audit_logger import audit_log
 from core.exceptions import ResourceNotFound
+from core.logging.audit_logger import audit_log
 
 
 class ActionService:
@@ -19,7 +20,7 @@ class ActionService:
                 id=action_id, strategy__website_id=website_id
             )
         except Action.DoesNotExist:
-            raise ResourceNotFound("Action not found.")
+            raise ResourceNotFound("Action not found.") from None
 
         action.status = status
         if status == "done":

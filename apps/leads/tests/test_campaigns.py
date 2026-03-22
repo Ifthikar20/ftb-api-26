@@ -1,20 +1,19 @@
 """Tests for email campaigns, tracked links, and new connector services."""
+from unittest.mock import patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 from rest_framework.test import APIClient
 
-from apps.leads.models import EmailCampaign, CampaignRecipient, LeadSegment
+from apps.accounts.tests.factories import UserFactory
+from apps.leads.models import CampaignRecipient, EmailCampaign
 from apps.leads.services.campaign_service import CampaignService
 from apps.leads.services.lead_service import LeadService
-
 from apps.leads.tests.factories import (
-    WebsiteFactory,
-    VisitorFactory,
     LeadFactory,
     LeadSegmentFactory,
+    VisitorFactory,
+    WebsiteFactory,
 )
-from apps.accounts.tests.factories import UserFactory
-
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -270,7 +269,6 @@ class TestTrackedLinks:
     def test_redirect_increments_click_count(self, auth_client):
         client, user, website = auth_client
         from apps.analytics.services.tracking_service import TrackingService
-        from apps.analytics.models import TrackedLink
         link = TrackingService.create_link(website=website, destination_url="https://example.com/")
 
         anon_client = APIClient()
@@ -285,8 +283,8 @@ class TestTrackedLinks:
 
     def test_delete_tracked_link(self, auth_client):
         client, user, website = auth_client
-        from apps.analytics.services.tracking_service import TrackingService
         from apps.analytics.models import TrackedLink
+        from apps.analytics.services.tracking_service import TrackingService
         link = TrackingService.create_link(website=website, destination_url="https://x.com/")
         response = client.delete(f"/api/v1/leads/{website.id}/tracked-links/{link.id}/")
         assert response.status_code == 204
@@ -353,7 +351,7 @@ class TestHotLeadNotifications:
         user, website = user_and_website
         # Visitor already has high score — no threshold crossing
         visitor = VisitorFactory(website=website, lead_score=80)
-        from apps.leads.tests.factories import PageEventFactory, LeadFactory
+        from apps.leads.tests.factories import LeadFactory, PageEventFactory
         LeadFactory(visitor=visitor, website=website, score=80)
         PageEventFactory(visitor=visitor, event_type="pageview", url="https://x.com/pricing")
 
@@ -412,7 +410,6 @@ class TestWebhookDispatch:
 
     def test_update_status_dispatches_webhook(self, user_and_website):
         from apps.leads.services.lead_service import LeadService
-        from apps.websites.services.webhook_service import WebhookService
         from core.utils.constants import LeadStatus
 
         user, website = user_and_website

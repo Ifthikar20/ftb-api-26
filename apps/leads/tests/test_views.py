@@ -1,18 +1,16 @@
 import pytest
 from rest_framework.test import APIClient
 
-from apps.leads.models import LeadNote, LeadSegment, ScoringConfig
-from core.utils.constants import LeadStatus
-
+from apps.accounts.tests.factories import UserFactory
+from apps.leads.models import LeadSegment, ScoringConfig
 from apps.leads.tests.factories import (
-    WebsiteFactory,
-    VisitorFactory,
     LeadFactory,
-    LeadNoteFactory,
     LeadSegmentFactory,
     ScoringConfigFactory,
+    VisitorFactory,
+    WebsiteFactory,
 )
-from apps.accounts.tests.factories import UserFactory
+from core.utils.constants import LeadStatus
 
 
 @pytest.fixture

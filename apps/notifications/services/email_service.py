@@ -1,4 +1,5 @@
 import logging
+
 from django.conf import settings
 
 logger = logging.getLogger("apps")
@@ -10,7 +11,7 @@ class EmailService:
         """Send email via SendGrid."""
         try:
             import sendgrid
-            from sendgrid.helpers.mail import Mail, Email, To, Content
+            from sendgrid.helpers.mail import Content, Email, Mail, To
 
             sg = sendgrid.SendGridAPIClient(api_key=settings.SENDGRID_API_KEY)
             mail = Mail(

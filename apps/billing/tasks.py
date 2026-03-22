@@ -1,4 +1,5 @@
 import logging
+
 from celery import shared_task
 
 logger = logging.getLogger("apps")
@@ -38,8 +39,10 @@ def check_past_due_subscriptions():
     Downgrade users with past_due subscriptions older than 7 days.
     Gives users a grace period before feature restriction.
     """
-    from django.utils import timezone
     from datetime import timedelta
+
+    from django.utils import timezone
+
     from apps.billing.models import Subscription
 
     cutoff = timezone.now() - timedelta(days=7)

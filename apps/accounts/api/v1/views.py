@@ -1,20 +1,20 @@
 from rest_framework import status
-from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
-from apps.accounts.services.auth_service import AuthService
-from apps.accounts.services.user_service import UserService
-from apps.accounts.services.oauth_service import OAuthService
 from apps.accounts.api.v1.serializers import (
-    RegisterSerializer,
-    LoginSerializer,
     ChangePasswordSerializer,
     ForgotPasswordSerializer,
+    LoginSerializer,
+    RegisterSerializer,
     ResetPasswordSerializer,
-    VerifyEmailSerializer,
     UserProfileSerializer,
+    VerifyEmailSerializer,
 )
+from apps.accounts.services.auth_service import AuthService
+from apps.accounts.services.oauth_service import OAuthService
+from apps.accounts.services.user_service import UserService
 from core.interceptors.throttling import AuthRateThrottle, PasswordResetThrottle
 
 REFRESH_COOKIE_SETTINGS = {

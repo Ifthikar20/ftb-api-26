@@ -3,8 +3,8 @@ import uuid
 from django.conf import settings
 from django.db import models
 
-from core.mixins.timestamp_mixin import TimestampMixin
 from core.mixins.soft_delete_mixin import SoftDeleteMixin
+from core.mixins.timestamp_mixin import TimestampMixin
 from core.utils.constants import LeadStatus
 
 

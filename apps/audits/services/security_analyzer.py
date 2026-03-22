@@ -1,8 +1,10 @@
 import logging
-import ssl
 import socket
+import ssl
 from urllib.parse import urlparse
+
 import requests
+
 from apps.audits.models import Audit, AuditIssue
 
 logger = logging.getLogger("apps")

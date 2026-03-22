@@ -7,13 +7,13 @@ from django.contrib.auth import authenticate
 from django.utils import timezone
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from core.logging.audit_logger import audit_log
 from apps.accounts.models import (
-    User,
-    LoginAttempt,
     EmailVerificationOTP,
+    LoginAttempt,
     PasswordResetToken,
+    User,
 )
+from core.logging.audit_logger import audit_log
 
 security_logger = logging.getLogger("security")
 
@@ -118,7 +118,7 @@ class AuthService:
                 "refresh": str(refresh),
             }
         except Exception:
-            raise ValueError("Refresh token is invalid or expired.")
+            raise ValueError("Refresh token is invalid or expired.") from None
 
     @staticmethod
     def generate_email_otp(*, user: User) -> str:
@@ -136,7 +136,7 @@ class AuthService:
         try:
             user = User.objects.get(email__iexact=email)
         except User.DoesNotExist:
-            raise ValueError("Invalid OTP.")
+            raise ValueError("Invalid OTP.") from None
 
         verification = (
             EmailVerificationOTP.objects.filter(
@@ -183,7 +183,7 @@ class AuthService:
                 token=token, used=False, expires_at__gt=timezone.now()
             )
         except PasswordResetToken.DoesNotExist:
-            raise ValueError("Invalid or expired reset token.")
+            raise ValueError("Invalid or expired reset token.") from None
 
         user = reset_token.user
         user.set_password(new_password)

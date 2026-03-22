@@ -1,8 +1,6 @@
 import logging
-from django.utils import timezone
 
 from apps.strategy.models import ContentCalendarEntry
-from core.exceptions import AIGenerationFailed
 
 logger = logging.getLogger("apps")
 
@@ -23,6 +21,7 @@ class CalendarService:
     def generate_for_next_month(*, website) -> list:
         """AI-generate content calendar entries for next month."""
         from datetime import date
+
         from dateutil.relativedelta import relativedelta
 
         next_month = date.today() + relativedelta(months=1)

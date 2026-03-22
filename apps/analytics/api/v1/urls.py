@@ -1,9 +1,6 @@
 from django.urls import path
-from . import views
-from . import keyword_views
-from . import analytics_views
-from . import keyword_scan_views
-from . import dynamic_seo_views
+
+from . import analytics_views, dynamic_seo_views, keyword_scan_views, keyword_views, views
 
 urlpatterns = [
     # Existing

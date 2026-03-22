@@ -1,5 +1,5 @@
 import logging
-from typing import Optional, Any
+from typing import Any
 
 audit_logger = logging.getLogger("audit")
 
@@ -7,7 +7,7 @@ audit_logger = logging.getLogger("audit")
 def audit_log(
     event: str,
     user=None,
-    metadata: Optional[dict] = None,
+    metadata: dict | None = None,
     level: str = "info",
 ) -> None:
     """

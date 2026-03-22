@@ -1,9 +1,7 @@
 import logging
 
-from django.utils import timezone
-
-from core.logging.audit_logger import audit_log
 from apps.accounts.models import User, UserProfile
+from core.logging.audit_logger import audit_log
 
 logger = logging.getLogger("apps")
 
@@ -41,7 +39,6 @@ class UserService:
     def export_data(*, user: User) -> dict:
         """GDPR Article 15 — export all user data."""
         from apps.websites.models import Website
-        from apps.leads.models import Lead
 
         return {
             "profile": {

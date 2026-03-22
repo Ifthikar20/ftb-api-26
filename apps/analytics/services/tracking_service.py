@@ -5,9 +5,7 @@ import hashlib
 import logging
 import secrets
 
-from django.utils import timezone
-
-from apps.analytics.models import TrackedLink, LinkClick
+from apps.analytics.models import LinkClick, TrackedLink
 
 logger = logging.getLogger("apps")
 

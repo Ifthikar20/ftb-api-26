@@ -1,6 +1,8 @@
 import logging
+
 import requests
 from bs4 import BeautifulSoup
+
 from apps.audits.models import Audit, AuditIssue
 
 logger = logging.getLogger("apps")
@@ -124,7 +126,7 @@ class MobileAnalyzer:
             # ── Tap-Friendly Links ──
             links = soup.find_all("a")
             close_links = 0
-            for i, link in enumerate(links[:20]):
+            for _i, link in enumerate(links[:20]):
                 if link.string and len(link.string.strip()) < 3:
                     close_links += 1
             if close_links > 3:

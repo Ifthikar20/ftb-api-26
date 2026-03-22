@@ -1,8 +1,9 @@
 from django.conf import settings
 from django.contrib import admin
-from django.urls import path, include
-from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView
-from apps.analytics.api.v1.tracking_views import TrackedLinkRedirectView, EmailOpenPixelView
+from django.urls import include, path
+from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView, SpectacularSwaggerView
+
+from apps.analytics.api.v1.tracking_views import EmailOpenPixelView, TrackedLinkRedirectView
 
 urlpatterns = [
     path("admin/", admin.site.urls),

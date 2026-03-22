@@ -1,4 +1,5 @@
 import logging
+
 import requests
 
 logger = logging.getLogger("apps")
@@ -24,7 +25,6 @@ class SlackService:
 
     @staticmethod
     def send_hot_lead_alert(*, user, lead) -> None:
-        from apps.notifications.models import NotificationPreference
         try:
             prefs = user.notification_preferences
             if not prefs.hot_lead_slack or not prefs.slack_webhook_url:

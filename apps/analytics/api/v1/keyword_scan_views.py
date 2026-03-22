@@ -1,9 +1,9 @@
 """
 Keyword Scan API — trigger an SEO keyword scan and retrieve results.
 """
-from rest_framework.views import APIView
-from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from apps.analytics.services.seo_keyword_scanner import SEOKeywordScanner
 from apps.websites.models import Website
@@ -38,6 +38,7 @@ class KeywordScanView(APIView):
         import hashlib
         import logging
         from urllib.parse import urlparse
+
         from django.core.cache import cache
         cache_key = f"seo_scan_{hashlib.md5(website.url.encode()).hexdigest()}"
         cache.delete(cache_key)

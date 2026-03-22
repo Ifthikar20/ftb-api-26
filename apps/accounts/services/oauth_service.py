@@ -3,8 +3,8 @@ import logging
 import requests
 from django.conf import settings
 
-from core.logging.audit_logger import audit_log
 from apps.accounts.models import User
+from core.logging.audit_logger import audit_log
 
 logger = logging.getLogger("apps")
 

@@ -6,10 +6,8 @@ HMAC-SHA256 signed POST with a JSON payload.
 """
 import hashlib
 import hmac
-import json
 import logging
 import uuid
-from datetime import datetime
 
 from django.utils import timezone
 

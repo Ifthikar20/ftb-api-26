@@ -1,11 +1,18 @@
 import factory
-from factory.django import DjangoModelFactory
 from django.utils import timezone
+from factory.django import DjangoModelFactory
 
 from apps.accounts.tests.factories import UserFactory
+from apps.analytics.models import PageEvent, Visitor
+from apps.leads.models import (
+    CampaignRecipient,
+    EmailCampaign,
+    Lead,
+    LeadNote,
+    LeadSegment,
+    ScoringConfig,
+)
 from apps.websites.models import Website, WebsiteSettings
-from apps.analytics.models import Visitor, PageEvent
-from apps.leads.models import Lead, LeadNote, LeadSegment, ScoringConfig, EmailCampaign, CampaignRecipient
 from core.utils.constants import LeadStatus
 
 

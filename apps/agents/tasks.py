@@ -1,4 +1,5 @@
 import logging
+
 from celery import shared_task
 
 logger = logging.getLogger("apps.agents")
@@ -15,8 +16,8 @@ logger = logging.getLogger("apps.agents")
 )
 def run_agent_task(self, agent_run_id: str):
     """Execute an agent run asynchronously."""
-    from apps.agents.models import AgentRun
     from apps.agents.engine import AgentEngine
+    from apps.agents.models import AgentRun
 
     try:
         agent_run = AgentRun.objects.get(id=agent_run_id)
@@ -37,7 +38,7 @@ def run_agent_task(self, agent_run_id: str):
             agent_run.save(update_fields=["status", "error_message"])
         except Exception:
             pass
-        raise self.retry(exc=exc)
+        raise self.retry(exc=exc) from None
 
 
 @shared_task(
@@ -49,8 +50,8 @@ def run_agent_task(self, agent_run_id: str):
 )
 def resume_agent_task(self, agent_run_id: str):
     """Resume a paused agent after approval."""
-    from apps.agents.models import AgentRun
     from apps.agents.engine import AgentEngine
+    from apps.agents.models import AgentRun
 
     try:
         agent_run = AgentRun.objects.get(id=agent_run_id)
@@ -64,7 +65,7 @@ def resume_agent_task(self, agent_run_id: str):
 
     except Exception as exc:
         logger.error(f"Resume failed for {agent_run_id}: {exc}")
-        raise self.retry(exc=exc)
+        raise self.retry(exc=exc) from exc
 
 
 @shared_task(name="apps.agents.tasks.run_scheduled_agents")

@@ -1,12 +1,11 @@
 """AI-powered analytics insights — anomaly detection, NL summaries, action suggestions."""
 import logging
 from datetime import timedelta
-from collections import defaultdict
 
-from django.db.models import Count, Avg, F
+from django.db.models import Count
 from django.utils import timezone
 
-from apps.analytics.models import Visitor, PageEvent, Session
+from apps.analytics.models import PageEvent, Session, Visitor
 from core.utils.date_utils import get_date_range
 
 logger = logging.getLogger("apps")

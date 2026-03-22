@@ -1,6 +1,5 @@
 """Lightweight User-Agent parser — no external dependencies."""
 
-import re
 
 
 def parse_user_agent(ua: str) -> dict:

@@ -5,16 +5,17 @@ keyword intelligence, and API endpoints.
 """
 import uuid
 from datetime import timedelta
-from unittest.mock import patch
 
-from django.test import TestCase, override_settings
+from django.test import TestCase
 from django.utils import timezone
-from rest_framework.test import APITestCase, APIClient
-from rest_framework import status
+from rest_framework.test import APIClient, APITestCase
 
 from apps.analytics.models import (
-    Visitor, Session, PageEvent, CustomFunnel,
-    TrackedKeyword, KeywordRankHistory,
+    CustomFunnel,
+    PageEvent,
+    Session,
+    TrackedKeyword,
+    Visitor,
 )
 from apps.websites.models import Website
 
@@ -47,7 +48,6 @@ def seed_analytics_data(website, days=30, visitors_per_day=3):
     now = timezone.now()
     visitors = []
     sessions = []
-    events = []
 
     for d in range(days):
         ts = now - timedelta(days=d)
@@ -92,7 +92,7 @@ def seed_analytics_data(website, days=30, visitors_per_day=3):
                 visitor=visitor,
                 website=website,
                 session=session,
-                url=f"https://www.outfi.ai/page-0",
+                url="https://www.outfi.ai/page-0",
                 event_type="click",
                 timestamp=ts + timedelta(minutes=1, seconds=30),
                 properties={"x": 100, "y": 200},
@@ -156,7 +156,7 @@ class EventIngestionServiceTest(TestCase):
     def test_ingest_invalid_pixel_key_raises(self):
         from apps.analytics.services.event_ingestion_service import EventIngestionService
 
-        with self.assertRaises(Exception):  # ValueError or Django ValidationError
+        with self.assertRaises((ValueError, Exception)):  # noqa: B017
             EventIngestionService.ingest_event(
                 pixel_key="invalid-key",
                 event_data={"fingerprint": "x", "url": "/", "event_type": "pageview"},
@@ -507,7 +507,7 @@ class AnalyticsAPITest(APITestCase):
             ],
         }, format="json")
         self.assertEqual(response.status_code, 201)
-        fid = response.data["id"]
+        response.data["id"]
 
         # List
         response = self.client.get(f"/api/v1/analytics/{self.wid}/funnels/")

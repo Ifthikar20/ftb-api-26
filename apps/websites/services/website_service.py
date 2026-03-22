@@ -1,9 +1,9 @@
 import logging
 
-from core.logging.audit_logger import audit_log
-from core.exceptions import ResourceNotFound, PlanLimitExceeded
-from core.validators.url_validator import validate_website_url
 from apps.websites.models import Website, WebsiteSettings
+from core.exceptions import ResourceNotFound
+from core.logging.audit_logger import audit_log
+from core.validators.url_validator import validate_website_url
 
 logger = logging.getLogger("apps")
 
@@ -44,7 +44,7 @@ class WebsiteService:
         try:
             return Website.objects.get(id=website_id, user=user)
         except Website.DoesNotExist:
-            raise ResourceNotFound("Website not found.")
+            raise ResourceNotFound("Website not found.") from None
 
     @staticmethod
     def update(*, website: Website, user, **kwargs) -> Website:

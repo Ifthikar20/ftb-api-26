@@ -12,8 +12,8 @@ from channels.auth import AuthMiddlewareStack  # noqa: E402
 from channels.routing import ProtocolTypeRouter, URLRouter  # noqa: E402
 from channels.security.websocket import AllowedHostsOriginValidator  # noqa: E402
 
-from apps.analytics.routing import websocket_urlpatterns as analytics_ws
-from apps.notifications.routing import websocket_urlpatterns as notifications_ws
+from apps.analytics.routing import websocket_urlpatterns as analytics_ws  # noqa: E402
+from apps.notifications.routing import websocket_urlpatterns as notifications_ws  # noqa: E402
 
 all_ws_patterns = analytics_ws + notifications_ws
 

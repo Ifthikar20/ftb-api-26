@@ -1,9 +1,9 @@
 import logging
+
 from django.conf import settings
 from django.utils import timezone
 
 from apps.strategy.models import MorningBrief
-from core.exceptions import AIGenerationFailed
 
 logger = logging.getLogger("apps")
 

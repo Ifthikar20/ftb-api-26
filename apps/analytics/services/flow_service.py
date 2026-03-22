@@ -1,8 +1,9 @@
 """User flow / path analysis."""
 import logging
-from collections import defaultdict, Counter
+from collections import Counter, defaultdict
 
 from django.db.models import Count
+
 from apps.analytics.models import PageEvent
 from core.utils.date_utils import get_date_range
 
@@ -136,8 +137,9 @@ class FlowService:
         and data-driven page recommendations.
         """
         start, end = get_date_range(period)
+        from collections import Counter
+
         from apps.analytics.models import Session
-        from collections import Counter, defaultdict
 
         # ── STEP 1: Analyze ALL sessions to build traffic model ──
         all_sessions = (
@@ -195,7 +197,7 @@ class FlowService:
                 converted_paths.append(pages)
 
         # ── STEP 2: Compute page importance scores ──
-        total_sessions = len(all_paths) or 1
+        len(all_paths) or 1
 
         # Pages that appear in conversion paths but not just the conversion page itself
         conversion_correlated = Counter()

@@ -1,5 +1,6 @@
 from rest_framework import serializers
-from apps.competitors.models import Competitor, CompetitorSnapshot, CompetitorChange
+
+from apps.competitors.models import Competitor, CompetitorChange, CompetitorSnapshot
 
 
 class CompetitorSerializer(serializers.ModelSerializer):

@@ -1,5 +1,6 @@
 from django.contrib import admin
-from apps.billing.models import Subscription, Invoice, UsageRecord
+
+from apps.billing.models import Invoice, Subscription, UsageRecord
 
 
 @admin.register(Subscription)

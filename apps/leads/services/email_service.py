@@ -3,8 +3,8 @@ Lead email service — send emails to leads and log them.
 """
 import logging
 
-from django.core.mail import send_mail
 from django.conf import settings
+from django.core.mail import send_mail
 
 from apps.leads.models import Lead, LeadEmail
 

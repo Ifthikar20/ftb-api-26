@@ -1,6 +1,8 @@
 from django.urls import path
-from . import views
+
 from apps.billing.webhooks import stripe_webhook
+
+from . import views
 
 urlpatterns = [
     path("", views.BillingOverviewView.as_view(), name="billing-overview"),

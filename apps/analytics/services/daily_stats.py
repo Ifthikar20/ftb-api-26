@@ -1,12 +1,10 @@
 """Pre-aggregated daily statistics for fast chart rendering."""
 import logging
-from collections import defaultdict
 from datetime import timedelta
 
-from django.db.models import Count, Avg, Q, F
-from django.utils import timezone
+from django.db.models import Avg, Count, F
 
-from apps.analytics.models import Visitor, PageEvent, Session
+from apps.analytics.models import PageEvent, Session, Visitor
 from core.utils.date_utils import get_date_range
 
 logger = logging.getLogger("apps")

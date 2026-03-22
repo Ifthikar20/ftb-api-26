@@ -5,7 +5,7 @@ Usage:  python manage.py seed_demo_data --settings=config.settings.dev
 """
 import random
 import uuid
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 
 from django.core.management.base import BaseCommand
 from django.utils import timezone
@@ -46,7 +46,7 @@ class Command(BaseCommand):
         )
         demo.set_password("DemoPass123!")
         demo.save()
-        self.stdout.write(f"  Users: admin + demo")
+        self.stdout.write("  Users: admin + demo")
 
         # ── Websites ──
         from apps.websites.models import Website, WebsiteSettings
@@ -60,7 +60,7 @@ class Command(BaseCommand):
         self.stdout.write(f"  Website: {website.name} ({website.id})")
 
         # ── Visitors + Sessions + PageEvents ──
-        from apps.analytics.models import Visitor, Session, PageEvent
+        from apps.analytics.models import PageEvent, Session, Visitor
 
         pages = [
             "/", "/features", "/pricing", "/blog", "/blog/growth-hacking-101",
@@ -97,7 +97,7 @@ class Command(BaseCommand):
 
         # Sessions and events
         for v in visitors[:30]:
-            for j in range(random.randint(1, 4)):
+            for _j in range(random.randint(1, 4)):
                 start = now - timedelta(days=random.randint(0, 30), hours=random.randint(0, 23))
                 sess = Session.objects.create(
                     visitor=v,
@@ -167,7 +167,7 @@ class Command(BaseCommand):
         self.stdout.write(f"  Heatmap: {click_count} click events across {len(heatmap_pages)} pages")
 
         # ── Keyword Rank Tracking ──
-        from apps.analytics.models import TrackedKeyword, KeywordRankHistory
+        from apps.analytics.models import KeywordRankHistory, TrackedKeyword
 
         keyword_data = [
             {"keyword": "growth hacking tools", "search_volume": 8200, "difficulty": 45, "base_rank": 12},
@@ -333,7 +333,7 @@ class Command(BaseCommand):
         self.stdout.write(f"  Audits: 2 completed + {len(issues)} issues")
 
         # ── Strategy ──
-        from apps.strategy.models import Strategy, Action, ContentCalendarEntry, MorningBrief
+        from apps.strategy.models import Action, ContentCalendarEntry, MorningBrief, Strategy
 
         strategy, _ = Strategy.objects.get_or_create(
             website=website,
@@ -410,7 +410,7 @@ class Command(BaseCommand):
         self.stdout.write(f"  Notifications: {len(notif_data)}")
 
         # ── Billing ──
-        from apps.billing.models import Subscription, Invoice, UsageRecord
+        from apps.billing.models import Invoice, Subscription, UsageRecord
 
         sub, _ = Subscription.objects.get_or_create(
             user=demo,

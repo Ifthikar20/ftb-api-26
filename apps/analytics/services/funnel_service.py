@@ -1,9 +1,9 @@
 """Conversion funnel analysis."""
 import logging
-from collections import OrderedDict
 
-from django.db.models import Count, Q
-from apps.analytics.models import PageEvent, CustomFunnel, Visitor
+from django.db.models import Q
+
+from apps.analytics.models import CustomFunnel, PageEvent
 from core.utils.date_utils import get_date_range
 
 logger = logging.getLogger("apps")

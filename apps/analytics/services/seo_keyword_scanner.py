@@ -3,9 +3,9 @@ SEO Keyword Scanner & AI Ranking Agent — Crawl site, extract keywords,
 compare to Google Trends, check AI engine rankings (Claude, ChatGPT, Perplexity),
 suggest better synonyms, and calculate a progressive SEO score.
 """
+import hashlib
 import logging
 import re
-import hashlib
 from collections import Counter
 from urllib.parse import urlparse
 

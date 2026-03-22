@@ -69,8 +69,8 @@ LOGGING["loggers"]["security"]["handlers"] = ["console", "security_file"]  # noq
 
 if SENTRY_DSN:  # noqa: F405
     import sentry_sdk
-    from sentry_sdk.integrations.django import DjangoIntegration
     from sentry_sdk.integrations.celery import CeleryIntegration
+    from sentry_sdk.integrations.django import DjangoIntegration
 
     sentry_sdk.init(
         dsn=SENTRY_DSN,  # noqa: F405

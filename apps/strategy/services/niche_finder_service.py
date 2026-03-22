@@ -1,5 +1,7 @@
 import logging
+
 from django.conf import settings
+
 from apps.strategy.models import NicheAnalysis
 
 logger = logging.getLogger("apps")

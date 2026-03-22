@@ -89,9 +89,10 @@ def _add_calendar_entry(*, website_id: str, title: str, topic: str = "",
 
 def _generate_content_brief(*, website_id: str, keyword: str, target_audience: str = "") -> dict:
     """Generate a content brief for a specific keyword."""
-    from apps.websites.models import Website
     import anthropic
     from django.conf import settings
+
+    from apps.websites.models import Website
 
     website = Website.objects.get(id=website_id)
     client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)

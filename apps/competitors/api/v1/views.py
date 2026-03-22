@@ -1,12 +1,12 @@
+from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework import status
 
+from apps.competitors.api.v1.serializers import CompetitorChangeSerializer, CompetitorSerializer
 from apps.competitors.models import Competitor
-from apps.competitors.services.discovery_service import DiscoveryService
 from apps.competitors.services.comparison_service import ComparisonService
-from apps.competitors.api.v1.serializers import CompetitorSerializer, CompetitorChangeSerializer
+from apps.competitors.services.discovery_service import DiscoveryService
 from apps.websites.services.website_service import WebsiteService
 from core.exceptions import ResourceNotFound
 
@@ -43,7 +43,7 @@ class CompetitorDetailView(APIView):
         try:
             return Competitor.objects.get(id=comp_id, website_id=website_id)
         except Competitor.DoesNotExist:
-            raise ResourceNotFound("Competitor not found.")
+            raise ResourceNotFound("Competitor not found.") from None
 
     def get(self, request, website_id, comp_id):
         WebsiteService.get_for_user(user=request.user, website_id=website_id)

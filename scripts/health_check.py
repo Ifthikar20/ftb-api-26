@@ -3,12 +3,13 @@
 Kubernetes health check script.
 Returns exit code 0 if healthy, 1 if not.
 """
-import sys
 import os
+import sys
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings.prod")
 
 import django
+
 django.setup()
 
 try:

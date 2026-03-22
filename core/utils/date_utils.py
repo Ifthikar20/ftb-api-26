@@ -1,11 +1,10 @@
 from datetime import datetime, timedelta
-from typing import Tuple
 
 import pytz
 from django.utils import timezone
 
 
-def get_date_range(period: str, start_date=None, end_date=None) -> Tuple[datetime, datetime]:
+def get_date_range(period: str, start_date=None, end_date=None) -> tuple[datetime, datetime]:
     """Parse a period string into start/end datetimes."""
     now = timezone.now()
 

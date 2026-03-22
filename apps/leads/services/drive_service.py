@@ -25,7 +25,7 @@ class DriveService:
             raise RuntimeError(
                 "google-api-python-client is not installed. "
                 "Run: pip install google-api-python-client google-auth"
-            )
+            ) from None
 
     @staticmethod
     def export_leads_to_sheet(*, website_id: str, integration) -> dict:

@@ -1,11 +1,11 @@
+from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework import status
 
-from apps.agents.models import AgentRun
 from apps.agents.agent_types import get_agent_config, get_available_agent_types
-from apps.agents.api.v1.serializers import AgentRunSerializer, AgentRunListSerializer
+from apps.agents.api.v1.serializers import AgentRunListSerializer, AgentRunSerializer
+from apps.agents.models import AgentRun
 from apps.websites.services.website_service import WebsiteService
 from core.interceptors.throttling import AIGenerationThrottle
 

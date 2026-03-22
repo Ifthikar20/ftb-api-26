@@ -1,14 +1,13 @@
 import logging
 from datetime import datetime
 
+import stripe
 from django.conf import settings
 from django.utils import timezone
 
-import stripe
-
-from apps.billing.models import Subscription, Invoice
-from core.logging.audit_logger import audit_log
+from apps.billing.models import Invoice, Subscription
 from core.exceptions import GrowthPilotException
+from core.logging.audit_logger import audit_log
 
 logger = logging.getLogger("apps")
 
@@ -184,13 +183,13 @@ class StripeService:
             if period:
                 subscription.current_period_start = timezone.make_aware(
                     datetime.fromtimestamp(period)
-                ) if isinstance(period, (int, float)) else period
+                ) if isinstance(period, int | float) else period
 
             period_end = stripe_subscription.get("current_period_end")
             if period_end:
                 subscription.current_period_end = timezone.make_aware(
                     datetime.fromtimestamp(period_end)
-                ) if isinstance(period_end, (int, float)) else period_end
+                ) if isinstance(period_end, int | float) else period_end
 
             # Update plan if items contain a known price
             items = stripe_subscription.get("items", {}).get("data", [])

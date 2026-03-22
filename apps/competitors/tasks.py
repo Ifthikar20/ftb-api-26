@@ -1,4 +1,5 @@
 import logging
+
 from celery import shared_task
 
 logger = logging.getLogger("apps")
@@ -8,8 +9,8 @@ logger = logging.getLogger("apps")
 def crawl_all_competitors():
     """Weekly task to crawl all tracked competitors."""
     from apps.competitors.models import Competitor
-    from apps.competitors.services.crawl_service import CrawlService
     from apps.competitors.services.change_detection_service import ChangeDetectionService
+    from apps.competitors.services.crawl_service import CrawlService
 
     for competitor in Competitor.objects.select_related("website"):
         try:

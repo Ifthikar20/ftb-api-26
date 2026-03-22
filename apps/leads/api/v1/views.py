@@ -1,22 +1,22 @@
 from django.http import HttpResponse
+from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework import status
 
-from apps.leads.models import LeadSegment, ScoringConfig, EmailCampaign
-from apps.leads.services.lead_service import LeadService
 from apps.leads.api.v1.serializers import (
-    LeadSerializer,
+    CampaignRecipientSerializer,
+    EmailCampaignSerializer,
     LeadNoteSerializer,
     LeadSegmentSerializer,
+    LeadSerializer,
     ScoringConfigSerializer,
-    EmailCampaignSerializer,
-    CampaignRecipientSerializer,
 )
+from apps.leads.models import EmailCampaign, LeadSegment, ScoringConfig
+from apps.leads.services.lead_service import LeadService
 from apps.websites.services.website_service import WebsiteService
-from core.interceptors.pagination import StandardPagination
 from core.exceptions import ResourceNotFound
+from core.interceptors.pagination import StandardPagination
 
 
 class LeadListView(APIView):
@@ -95,8 +95,9 @@ class AILeadFinderView(APIView):
     def get(self, request, website_id):
         """Return current lead finder configuration status."""
         WebsiteService.get_for_user(user=request.user, website_id=website_id)
-        from apps.leads.services.ai_lead_finder import google_search_configured
         from django.conf import settings
+
+        from apps.leads.services.ai_lead_finder import google_search_configured
 
         return Response({
             "google_search_configured": google_search_configured(),
@@ -167,7 +168,7 @@ class LeadSegmentDetailView(APIView):
         try:
             return LeadSegment.objects.get(id=segment_id, website_id=website_id)
         except LeadSegment.DoesNotExist:
-            raise ResourceNotFound("Segment not found.")
+            raise ResourceNotFound("Segment not found.") from None
 
     def put(self, request, website_id, segment_id):
         segment = self._get_segment(request.user, website_id, segment_id)
@@ -317,8 +318,8 @@ class CampaignStatsView(APIView):
         # Pull live Mailchimp stats if available
         if campaign.mailchimp_campaign_id:
             try:
-                from apps.websites.models import Integration
                 from apps.leads.services.mailchimp_service import MailchimpService
+                from apps.websites.models import Integration
 
                 integration = Integration.objects.get(
                     website_id=website_id, type="mailchimp", is_active=True
@@ -340,8 +341,8 @@ class CampaignRecipientsView(APIView):
 
     def get(self, request, website_id, campaign_id):
         WebsiteService.get_for_user(user=request.user, website_id=website_id)
-        from apps.leads.services.campaign_service import CampaignService
         from apps.leads.models import CampaignRecipient
+        from apps.leads.services.campaign_service import CampaignService
 
         campaign = CampaignService.get(website_id=website_id, campaign_id=campaign_id)
         recipients = CampaignRecipient.objects.filter(campaign=campaign).select_related("lead")
@@ -401,7 +402,7 @@ class TrackedLinkDetailView(APIView):
         try:
             return TrackedLink.objects.get(id=link_id, website_id=website_id)
         except TrackedLink.DoesNotExist:
-            raise ResourceNotFound("Tracked link not found.")
+            raise ResourceNotFound("Tracked link not found.") from None
 
     def get(self, request, website_id, link_id):
         link = self._get_link(request.user, website_id, link_id)
@@ -422,11 +423,11 @@ class TrackedLinkClicksView(APIView):
 
     def get(self, request, website_id, link_id):
         WebsiteService.get_for_user(user=request.user, website_id=website_id)
-        from apps.analytics.models import TrackedLink, LinkClick
+        from apps.analytics.models import LinkClick, TrackedLink
         try:
             link = TrackedLink.objects.get(id=link_id, website_id=website_id)
         except TrackedLink.DoesNotExist:
-            raise ResourceNotFound("Tracked link not found.")
+            raise ResourceNotFound("Tracked link not found.") from None
 
         clicks = LinkClick.objects.filter(tracked_link=link).order_by("-clicked_at")
         paginator = StandardPagination()
@@ -443,7 +444,6 @@ class TrackedLinkClicksView(APIView):
 
 
 def _serialize_tracked_link(link) -> dict:
-    from django.utils import timezone
     return {
         "id": str(link.id),
         "tracking_key": link.tracking_key,
@@ -458,7 +458,7 @@ def _serialize_tracked_link(link) -> dict:
 
 
 def _serialize_tracked_links(links) -> list:
-    return [_serialize_tracked_link(l) for l in links]
+    return [_serialize_tracked_link(link) for link in links]
 
 
 # ── Connectors ────────────────────────────────────────────────────────────────
@@ -484,8 +484,8 @@ class LeadExportDriveView(APIView):
 
     def post(self, request, website_id):
         website = WebsiteService.get_for_user(user=request.user, website_id=website_id)
-        from apps.websites.models import Integration
         from apps.leads.services.drive_service import DriveService
+        from apps.websites.models import Integration
 
         try:
             integration = Integration.objects.get(

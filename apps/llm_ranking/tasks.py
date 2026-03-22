@@ -1,4 +1,5 @@
 import logging
+
 from celery import shared_task
 
 logger = logging.getLogger("apps")
@@ -7,8 +8,8 @@ logger = logging.getLogger("apps")
 @shared_task(name="apps.llm_ranking.tasks.run_llm_ranking_audit", bind=True, max_retries=1)
 def run_llm_ranking_audit(self, *, audit_id: str) -> None:
     """Run a full LLM ranking audit asynchronously."""
-    from apps.llm_ranking.services.ranking_service import LLMRankingService
     from apps.llm_ranking.models import LLMRankingAudit
+    from apps.llm_ranking.services.ranking_service import LLMRankingService
 
     try:
         LLMRankingService.run_audit(audit_id=audit_id)
@@ -21,4 +22,4 @@ def run_llm_ranking_audit(self, *, audit_id: str) -> None:
             )
         except Exception:
             pass
-        raise self.retry(exc=exc, countdown=30)
+        raise self.retry(exc=exc, countdown=30) from None

@@ -22,7 +22,7 @@ class MailchimpService:
             raise RuntimeError(
                 "mailchimp-marketing package is not installed. "
                 "Run: pip install mailchimp-marketing"
-            )
+            ) from None
 
     @staticmethod
     def _parse_credentials(integration):

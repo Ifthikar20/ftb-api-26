@@ -1,4 +1,5 @@
 import logging
+
 from django.conf import settings
 
 from apps.strategy.models import ChatMessage
@@ -43,7 +44,7 @@ class ChatService:
 
         except Exception as e:
             logger.error(f"Chat AI call failed: {e}")
-            raise AIGenerationFailed()
+            raise AIGenerationFailed() from e
 
         ai_message = ChatMessage.objects.create(
             website=website, user=user, role="assistant", content=reply, tokens_used=tokens_used

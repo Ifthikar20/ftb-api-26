@@ -63,7 +63,8 @@ class LLMRankingService:
                     ),
                 }],
             )
-            import json, re as _re
+            import json
+            import re as _re
             text = resp.content[0].text.strip()
             match = _re.search(r"\[.*\]", text, _re.DOTALL)
             if match:

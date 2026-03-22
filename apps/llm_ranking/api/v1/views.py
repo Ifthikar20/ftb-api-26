@@ -1,19 +1,19 @@
 import logging
 
+from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework import status
 
-from apps.llm_ranking.models import LLMRankingAudit
 from apps.llm_ranking.api.v1.serializers import (
-    LLMRankingAuditSerializer,
     LLMRankingAuditListSerializer,
+    LLMRankingAuditSerializer,
     RunAuditSerializer,
 )
+from apps.llm_ranking.models import LLMRankingAudit
 from apps.websites.services.website_service import WebsiteService
-from core.interceptors.pagination import StandardPagination
 from core.exceptions import ResourceNotFound
+from core.interceptors.pagination import StandardPagination
 
 logger = logging.getLogger("apps")
 
@@ -88,7 +88,7 @@ class LLMRankingAuditDetailView(APIView):
                 id=audit_id, website_id=website_id
             )
         except LLMRankingAudit.DoesNotExist:
-            raise ResourceNotFound("Audit not found.")
+            raise ResourceNotFound("Audit not found.") from None
 
     def get(self, request, website_id, audit_id):
         audit = self._get_audit(request.user, website_id, audit_id)
@@ -111,7 +111,7 @@ class LLMRankingRecommendationsView(APIView):
                 id=audit_id, website_id=website_id
             )
         except LLMRankingAudit.DoesNotExist:
-            raise ResourceNotFound("Audit not found.")
+            raise ResourceNotFound("Audit not found.") from None
 
         if audit.status != LLMRankingAudit.STATUS_COMPLETED:
             return Response(
@@ -156,7 +156,7 @@ class LLMRankingProviderBreakdownView(APIView):
                 id=audit_id, website_id=website_id
             )
         except LLMRankingAudit.DoesNotExist:
-            raise ResourceNotFound("Audit not found.")
+            raise ResourceNotFound("Audit not found.") from None
 
         breakdown = {}
         for result in audit.results.all():

@@ -1,13 +1,13 @@
 import hashlib
 import logging
-from datetime import datetime, timedelta, timezone as dt_timezone
-from urllib.parse import urlparse, parse_qs
+from datetime import datetime, timedelta
+from urllib.parse import parse_qs, urlparse
 
 from django.utils import timezone
 
-from apps.analytics.models import Visitor, PageEvent, Session
+from apps.analytics.models import PageEvent, Session, Visitor
 from apps.websites.models import Website
-from core.utils.ua_parser import parse_user_agent, get_client_ip
+from core.utils.ua_parser import get_client_ip, parse_user_agent
 
 logger = logging.getLogger("apps")
 
@@ -21,7 +21,7 @@ class EventIngestionService:
         try:
             website = Website.objects.get(pixel_key=pixel_key, is_active=True)
         except Website.DoesNotExist:
-            raise ValueError(f"Invalid pixel key: {pixel_key}")
+            raise ValueError(f"Invalid pixel key: {pixel_key}") from None
 
         # Parse user-agent server-side for accuracy
         ua_string = ""
@@ -217,8 +217,8 @@ class EventIngestionService:
             return ""
 
         try:
-            import urllib.request
             import json as _json
+            import urllib.request
             resp = urllib.request.urlopen(
                 f"http://ip-api.com/json/{ip}?fields=countryCode", timeout=3
             )

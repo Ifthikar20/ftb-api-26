@@ -6,8 +6,8 @@ otherwise falls back to Claude + Google Custom Search pipeline.
 import json
 import logging
 import re
-import requests
 
+import requests
 from django.conf import settings
 
 logger = logging.getLogger("apps")

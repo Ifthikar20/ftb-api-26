@@ -59,4 +59,4 @@ def deliver_webhook(self, *, endpoint_id: int, event: str, payload: dict) -> Non
             MAX_RETRIES,
             exc,
         )
-        raise self.retry(exc=exc, countdown=RETRY_BACKOFF * (2 ** self.request.retries))
+        raise self.retry(exc=exc, countdown=RETRY_BACKOFF * (2 ** self.request.retries)) from None

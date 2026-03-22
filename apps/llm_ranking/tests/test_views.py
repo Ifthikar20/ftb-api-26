@@ -1,12 +1,13 @@
 """Tests for LLM Ranking API views."""
-import pytest
 from unittest.mock import patch
+
+import pytest
 from rest_framework.test import APIClient
 
-from apps.llm_ranking.models import LLMRankingAudit, LLMRankingResult
-from apps.llm_ranking.tests.factories import LLMRankingAuditFactory, LLMRankingResultFactory
-from apps.leads.tests.factories import WebsiteFactory
 from apps.accounts.tests.factories import UserFactory
+from apps.leads.tests.factories import WebsiteFactory
+from apps.llm_ranking.models import LLMRankingAudit
+from apps.llm_ranking.tests.factories import LLMRankingAuditFactory, LLMRankingResultFactory
 
 
 @pytest.fixture

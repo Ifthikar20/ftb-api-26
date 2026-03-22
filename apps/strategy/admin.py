@@ -1,5 +1,6 @@
 from django.contrib import admin
-from apps.strategy.models import Strategy, Action, ContentCalendarEntry, MorningBrief
+
+from apps.strategy.models import Action, ContentCalendarEntry, MorningBrief, Strategy
 
 
 @admin.register(Strategy)

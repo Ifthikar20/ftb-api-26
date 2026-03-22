@@ -1,4 +1,5 @@
 import logging
+
 from celery import shared_task
 
 logger = logging.getLogger("apps")
@@ -7,8 +8,8 @@ logger = logging.getLogger("apps")
 @shared_task(name="apps.leads.tasks.rescore_all_leads")
 def rescore_all_leads():
     """Nightly task to rescore all leads across all websites."""
-    from apps.websites.models import Website
     from apps.leads.services.scoring_service import ScoringService
+    from apps.websites.models import Website
 
     for website in Website.objects.filter(is_active=True):
         try:

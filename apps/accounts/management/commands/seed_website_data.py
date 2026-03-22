@@ -14,7 +14,7 @@ class Command(BaseCommand):
         parser.add_argument("--website-id", required=True)
 
     def handle(self, *args, **options):
-        from apps.analytics.models import Visitor, Session, PageEvent
+        from apps.analytics.models import PageEvent, Session, Visitor
         from apps.leads.models import Lead
         from apps.websites.models import Website
 

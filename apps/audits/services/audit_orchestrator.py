@@ -1,12 +1,11 @@
 import logging
-from django.utils import timezone
 
 from apps.audits.models import Audit
-from apps.audits.services.seo_analyzer import SEOAnalyzer
-from apps.audits.services.performance_analyzer import PerformanceAnalyzer
-from apps.audits.services.mobile_analyzer import MobileAnalyzer
-from apps.audits.services.security_analyzer import SecurityAnalyzer
 from apps.audits.services.content_analyzer import ContentAnalyzer
+from apps.audits.services.mobile_analyzer import MobileAnalyzer
+from apps.audits.services.performance_analyzer import PerformanceAnalyzer
+from apps.audits.services.security_analyzer import SecurityAnalyzer
+from apps.audits.services.seo_analyzer import SEOAnalyzer
 
 logger = logging.getLogger("apps")
 

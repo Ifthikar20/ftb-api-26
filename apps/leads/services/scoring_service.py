@@ -96,7 +96,9 @@ class ScoringService:
                 # Fire hot-lead notifications when score first crosses threshold
                 if new_score >= threshold and old_score < threshold:
                     try:
-                        from apps.notifications.services.notification_service import NotificationService
+                        from apps.notifications.services.notification_service import (
+                            NotificationService,
+                        )
                         from apps.websites.models import WebsiteSettings
 
                         # Respect website-level notification setting

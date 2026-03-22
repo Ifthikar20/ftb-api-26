@@ -1,4 +1,5 @@
 import logging
+
 from celery import shared_task
 
 logger = logging.getLogger("apps")
@@ -7,8 +8,8 @@ logger = logging.getLogger("apps")
 @shared_task(name="apps.strategy.tasks.generate_strategy_async")
 def generate_strategy_async(website_id: str, plan_type: str = "30"):
     """Asynchronously generate an AI growth strategy."""
-    from apps.websites.models import Website
     from apps.strategy.services.strategy_generator import StrategyGenerator
+    from apps.websites.models import Website
 
     try:
         website = Website.objects.get(id=website_id)
@@ -21,8 +22,8 @@ def generate_strategy_async(website_id: str, plan_type: str = "30"):
 @shared_task(name="apps.strategy.tasks.generate_morning_briefs")
 def generate_morning_briefs():
     """Generate daily morning briefs for all active websites."""
-    from apps.websites.models import Website
     from apps.strategy.services.morning_brief_service import MorningBriefService
+    from apps.websites.models import Website
 
     for website in Website.objects.filter(is_active=True, pixel_verified=True):
         try:

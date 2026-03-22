@@ -1,10 +1,9 @@
 import logging
-from typing import Optional
 
 from .config import (
+    ApiKeyConfig,
     IntegrationConfig,
     OAuthConfig,
-    ApiKeyConfig,
     RateLimitConfig,
     TierEntitlement,
 )
@@ -303,7 +302,7 @@ class IntegrationRegistry:
     def register(self, config: IntegrationConfig):
         self._integrations[config.name] = config
 
-    def get(self, name: str) -> Optional[IntegrationConfig]:
+    def get(self, name: str) -> IntegrationConfig | None:
         return self._integrations.get(name)
 
     def all(self) -> dict[str, IntegrationConfig]:
@@ -349,7 +348,7 @@ class IntegrationRegistry:
 
 # ── Singleton ──
 
-_registry: Optional[IntegrationRegistry] = None
+_registry: IntegrationRegistry | None = None
 
 
 def get_registry() -> IntegrationRegistry:

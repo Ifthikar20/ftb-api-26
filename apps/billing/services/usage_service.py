@@ -1,4 +1,5 @@
 from django.utils import timezone
+
 from apps.billing.models import Subscription, UsageRecord
 
 
@@ -12,7 +13,7 @@ class UsageService:
             return {}
 
         now = timezone.now()
-        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
         usage = {}
         for record in UsageRecord.objects.filter(

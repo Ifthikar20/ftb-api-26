@@ -1,13 +1,11 @@
 """Tests for LLM Ranking service logic."""
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 
 from apps.llm_ranking.models import LLMRankingAudit, LLMRankingResult
 from apps.llm_ranking.services.ranking_service import LLMRankingService
 from apps.llm_ranking.tests.factories import LLMRankingAuditFactory, LLMRankingResultFactory
-from apps.leads.tests.factories import WebsiteFactory
-from apps.accounts.tests.factories import UserFactory
-
 
 # ── Mention analysis ──────────────────────────────────────────────────────────
 

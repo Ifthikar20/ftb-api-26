@@ -1,5 +1,4 @@
 import pytest
-from django.urls import reverse
 from rest_framework.test import APIClient
 
 from apps.accounts.tests.factories import UserFactory

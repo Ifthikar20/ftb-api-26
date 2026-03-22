@@ -4,10 +4,9 @@ Public views for tracked link redirects and email open pixel.
 These endpoints are unauthenticated by design — they're called by email clients
 and browsers, not by the API user.
 """
-import hashlib
 import logging
 
-from django.http import HttpResponseRedirect, HttpResponse
+from django.http import HttpResponse, HttpResponseRedirect
 from django.views import View
 
 from apps.analytics.models import TrackedLink

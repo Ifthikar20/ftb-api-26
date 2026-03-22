@@ -3,9 +3,9 @@ import io
 import logging
 from io import BytesIO
 
-from core.logging.audit_logger import audit_log
-from core.exceptions import ResourceNotFound
 from apps.leads.models import Lead, LeadNote
+from core.exceptions import ResourceNotFound
+from core.logging.audit_logger import audit_log
 
 logger = logging.getLogger("apps")
 
@@ -25,7 +25,7 @@ class LeadService:
         try:
             return Lead.objects.get(id=lead_id, website_id=website_id)
         except Lead.DoesNotExist:
-            raise ResourceNotFound("Lead not found.")
+            raise ResourceNotFound("Lead not found.") from None
 
     @staticmethod
     def update_status(*, lead: Lead, status: str, user) -> Lead:
@@ -81,7 +81,7 @@ class LeadService:
         except ImportError:
             raise RuntimeError(
                 "openpyxl is not installed. Run: pip install openpyxl"
-            )
+            ) from None
 
         leads = Lead.objects.filter(website_id=website_id).select_related("visitor")
 

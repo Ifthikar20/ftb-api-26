@@ -1,5 +1,6 @@
 from django.contrib import admin
-from apps.competitors.models import Competitor, CompetitorSnapshot, CompetitorChange
+
+from apps.competitors.models import Competitor, CompetitorChange, CompetitorSnapshot
 
 
 @admin.register(Competitor)

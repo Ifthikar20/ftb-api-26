@@ -30,5 +30,4 @@ def send_password_reset_email(email: str, token: str):
 @shared_task(name="apps.accounts.tasks.expire_inactive_sessions")
 def expire_inactive_sessions():
     """Clean up expired sessions."""
-    from django.contrib.sessions.backends.db import SessionStore
     logger.info("Session expiry task completed.")
