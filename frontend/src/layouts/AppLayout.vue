@@ -131,7 +131,13 @@
       </header>
 
       <main class="page-content" :style="{ background: pageTint }">
-        <router-view />
+        <router-view v-slot="{ Component }">
+          <transition name="page-fade" mode="out-in">
+            <keep-alive :max="10">
+              <component :is="Component" :key="pageKey" />
+            </keep-alive>
+          </transition>
+        </router-view>
       </main>
     </div>
 
@@ -231,6 +237,10 @@ const userInitials = computed(() => {
 })
 
 const websiteId = computed(() => appStore.activeWebsite?.id)
+
+// Cache key: one keep-alive instance per page type + website.
+// Same page + same website = instant (no reload). Different website = fresh instance.
+const pageKey = computed(() => `${route.name || 'page'}-${route.params.websiteId || ''}`)
 const analyticsRoute = computed(() => websiteId.value ? `/analytics/${websiteId.value}` : '/websites')
 const leadsRoute = computed(() => websiteId.value ? `/leads/${websiteId.value}` : '/websites')
 const competitorsRoute = computed(() => websiteId.value ? `/competitors/${websiteId.value}` : '/websites')
@@ -539,6 +549,18 @@ onMounted(async () => {
   padding: 32px;
   background: var(--bg-page-tint);
   min-height: calc(100vh - var(--topbar-height));
+}
+
+/* Page transition — outgoing fades out quickly, incoming fades in */
+.page-fade-leave-active {
+  transition: opacity 80ms ease;
+}
+.page-fade-enter-active {
+  transition: opacity 160ms ease;
+}
+.page-fade-enter-from,
+.page-fade-leave-to {
+  opacity: 0;
 }
 
 /* Responsive */
