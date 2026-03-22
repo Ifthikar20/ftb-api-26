@@ -8,6 +8,7 @@ export default {
     addNote: (wid, lid, data) => api.post(`/leads/${wid}/${lid}/note/`, data),
     timeline: (wid, lid) => api.get(`/leads/${wid}/${lid}/timeline/`),
     export: (wid) => api.post(`/leads/${wid}/export/`),
+    exportXlsx: (wid) => api.post(`/leads/${wid}/export/xlsx/`, {}, { responseType: 'blob' }),
     getScoring: (wid) => api.get(`/leads/${wid}/scoring/`),
     updateScoring: (wid, data) => api.put(`/leads/${wid}/scoring/`, data),
     segments: (wid) => api.get(`/leads/${wid}/segments/`),

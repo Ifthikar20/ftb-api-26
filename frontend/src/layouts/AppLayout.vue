@@ -66,6 +66,14 @@
           <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="6" r="3"/><path d="M3 14c0-3 2.2-5 5-5s5 2 5 5"/><path d="M12 4l2-2M4 4L2 2" stroke-linecap="round"/></svg></span>
           <span v-if="!appStore.sidebarCollapsed" class="nav-text">Agents</span>
         </router-link>
+        <router-link :to="campaignsRoute" class="nav-link" exact-active-class="active">
+          <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 3h12c.6 0 1 .4 1 1v8c0 .6-.4 1-1 1H2c-.6 0-1-.4-1-1V4c0-.6.4-1 1-1z"/><polyline points="14,4 8,9 2,4"/></svg></span>
+          <span v-if="!appStore.sidebarCollapsed" class="nav-text">Campaigns</span>
+        </router-link>
+        <router-link :to="llmRankingRoute" class="nav-link" exact-active-class="active">
+          <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 4v4l3 2"/><path d="M5 2l6 0" stroke-linecap="round"/></svg></span>
+          <span v-if="!appStore.sidebarCollapsed" class="nav-text">LLM Ranking</span>
+        </router-link>
 
         <div class="nav-section-label">Account</div>
         <router-link to="/billing" class="nav-link" exact-active-class="active">
@@ -231,6 +239,8 @@ const heatmapRoute = computed(() => websiteId.value ? `/heatmap/${websiteId.valu
 const keywordsRoute = computed(() => websiteId.value ? `/keywords/${websiteId.value}` : '/websites')
 const strategyRoute = computed(() => websiteId.value ? `/strategy/${websiteId.value}` : '/websites')
 const agentsRoute = computed(() => websiteId.value ? `/agents/${websiteId.value}` : '/websites')
+const campaignsRoute = computed(() => websiteId.value ? `/campaigns/${websiteId.value}` : '/websites')
+const llmRankingRoute = computed(() => websiteId.value ? `/llm-ranking/${websiteId.value}` : '/websites')
 
 // Dynamic page background tint based on current route
 const pageTint = computed(() => {
@@ -244,6 +254,8 @@ const pageTint = computed(() => {
   if (path.startsWith('/keywords')) return 'var(--tint-leads)'
   if (path.startsWith('/strategy')) return 'var(--tint-strategy)'
   if (path.startsWith('/agents')) return 'var(--tint-strategy)'
+  if (path.startsWith('/campaigns')) return 'var(--tint-leads)'
+  if (path.startsWith('/llm-ranking')) return 'var(--tint-analytics)'
   if (path.startsWith('/billing')) return 'var(--tint-billing)'
   if (path.startsWith('/settings')) return 'var(--tint-settings)'
   if (path.startsWith('/websites')) return 'var(--tint-dashboard)'
@@ -266,6 +278,8 @@ function switchWebsite(id) {
     { prefix: '/keywords/', target: `/keywords/${id}` },
     { prefix: '/strategy/', target: `/strategy/${id}` },
     { prefix: '/websites/', target: `/websites/${id}` },
+    { prefix: '/campaigns/', target: `/campaigns/${id}` },
+    { prefix: '/llm-ranking/', target: `/llm-ranking/${id}` },
   ]
   const match = routeMap.find(r => path.startsWith(r.prefix))
   if (match) {
