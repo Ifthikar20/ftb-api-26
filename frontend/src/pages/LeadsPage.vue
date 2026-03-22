@@ -189,7 +189,16 @@
 
     <!-- ════════════════ PIPELINE VIEW ════════════════ -->
     <template v-else-if="activeTab === 'pipeline'">
-      <div class="pipeline-wrapper">
+      <!-- Empty state when pipeline has no nodes -->
+      <div v-if="nodes.length === 0" class="card" style="text-align:center;padding:48px 20px">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="1.2" style="margin:0 auto 12px;display:block;opacity:0.45">
+          <path d="M3 3h6v6H3zM15 3h6v6h-6zM9 15h6v6H9z"/><path d="M6 9v3h3M18 9v6h-3M9 18H6v-3" stroke-dasharray="2 2"/>
+        </svg>
+        <h3 style="margin:0 0 6px;font-size:var(--font-md);font-weight:600;color:var(--text-primary)">No pipeline yet</h3>
+        <p style="font-size:var(--font-sm);color:var(--text-muted);max-width:340px;margin:0 auto;line-height:1.5">Select leads from the Table tab and click <strong>Add to Pipeline</strong> to start building your outreach flow.</p>
+      </div>
+
+      <div v-else class="pipeline-wrapper">
         <!-- ── Connector Sidebar ── -->
         <div class="connector-sidebar">
           <div class="cs-header">
@@ -243,77 +252,45 @@
         </div>
       </div>
 
-      <!-- Detail Panel (below canvas) -->
-      <div class="pipeline-detail-grid" v-if="selectedLead">
-        <div class="card">
-          <div style="display:flex;align-items:center;gap:14px">
-            <div class="avatar avatar-lg">{{ initials(selectedLead) }}</div>
-            <div>
-              <div style="font-weight:700;font-size:var(--font-md)">{{ selectedLead.name || 'Anonymous Visitor' }}</div>
-              <div class="text-sm text-muted">{{ selectedLead.company || 'Unknown Company' }}</div>
-              <div class="text-xs" style="color:var(--brand-accent)">{{ selectedLead.email || 'No email' }}</div>
-            </div>
-          </div>
-          <div style="text-align:center;margin-top:16px;padding-top:16px;border-top:1px solid var(--border-color)">
-            <svg viewBox="0 0 140 80" width="120" height="68" style="margin:0 auto 4px;display:block">
-              <path d="M15,75 A55,55 0 0,1 125,75" fill="none" stroke="var(--border-color)" stroke-width="10" />
-              <path d="M15,75 A55,55 0 0,1 125,75" fill="none" stroke="var(--brand-accent)" stroke-width="10" stroke-linecap="round"
-                :stroke-dasharray="173" :stroke-dashoffset="173 - (selectedLead.score / 100) * 173" style="transition:stroke-dashoffset 0.8s ease" />
-            </svg>
-            <div style="font-family:var(--font-display);font-size:var(--font-2xl);color:var(--color-success)">{{ selectedLead.score }}%</div>
-            <div class="text-xs text-muted">ML Success Prediction</div>
-            <span class="badge badge-info" style="margin-top:8px"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" style="vertical-align:-2px;margin-right:4px"><rect x="1" y="3" width="14" height="10" rx="1.5"/><path d="M1 4l7 5 7-5"/></svg>Recommended: Email</span>
-          </div>
-          <div style="display:flex;gap:8px;margin-top:16px">
-            <button class="btn btn-primary btn-sm" style="flex:1" @click="openEmailCompose(selectedLead)"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" style="vertical-align:-2px;margin-right:4px"><rect x="1" y="3" width="14" height="10" rx="1.5"/><path d="M1 4l7 5 7-5"/></svg>Send Email</button>
-            <button class="btn btn-secondary btn-sm" style="flex:1"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" style="vertical-align:-2px;margin-right:4px"><rect x="3" y="1" width="10" height="14" rx="1.5"/><path d="M6 5h4M6 8h4M6 11h2"/></svg>Add Note</button>
-          </div>
-        </div>
-
-        <div class="card">
-          <div class="card-header"><h3 class="card-title" style="font-size:var(--font-xs);text-transform:uppercase;letter-spacing:0.1em;color:var(--text-muted)">Why This Lead Will Convert</h3></div>
-          <div class="corr-list">
-            <div class="corr-row" v-for="c in correlations" :key="c.text">
-              <span style="width:10px;height:10px;border-radius:50%;flex-shrink:0" :style="{ background: c.positive ? 'var(--color-success)' : 'var(--color-warning)' }"></span>
-              <span style="flex:1;font-size:var(--font-sm);color:var(--text-primary)">{{ c.text }}</span>
-              <span class="badge" :class="c.positive ? 'badge-success' : 'badge-danger'" style="font-size:9px;padding:2px 6px">{{ c.impact }}</span>
-            </div>
-          </div>
-        </div>
-
-        <div class="card">
-          <div class="card-header"><h3 class="card-title" style="font-size:var(--font-xs);text-transform:uppercase;letter-spacing:0.1em;color:var(--text-muted)">Company Intelligence</h3></div>
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
-            <div style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;background:var(--bg-surface);border-radius:8px"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="var(--text-secondary)" stroke-width="1.5"><rect x="2" y="3" width="12" height="11" rx="1"/><path d="M5 3V1.5h6V3M5 7h2M9 7h2M5 10h2M9 10h2"/></svg></div>
-            <div>
-              <div style="font-weight:700;font-size:var(--font-sm)">{{ selectedLead.company || 'Unknown' }}</div>
-              <div class="text-xs" style="color:var(--brand-accent)">{{ companyDomain }}</div>
-            </div>
-          </div>
-          <div class="intel-grid">
-            <div class="intel-cell"><div class="intel-label">Employees</div><div class="intel-value">50–200</div></div>
-            <div class="intel-cell"><div class="intel-label">Funding</div><div class="intel-value">Series A</div></div>
-            <div class="intel-cell"><div class="intel-label">Industry</div><div class="intel-value">{{ selectedLead.source || 'Tech' }}</div></div>
-            <div class="intel-cell"><div class="intel-label">Hiring</div><div class="intel-value">3 marketing</div></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Lead list when node is clicked -->
-      <div class="pipeline-detail-grid" v-else-if="selectedNodeId">
+      <!-- Node Detail Panel (below canvas) -->
+      <div class="pipeline-detail-grid" v-if="selectedPipelineNode">
         <div class="card" style="grid-column:1/-1">
-          <div class="card-header"><h3 class="card-title">{{ filteredLabel }} <span class="badge badge-neutral" style="margin-left:6px">{{ filteredLeads.length }}</span></h3></div>
-          <div class="lead-list">
-            <div class="lead-list-item" v-for="lead in filteredLeads.slice(0, 12)" :key="lead.id" @click="openLeadDetail(lead)">
-              <div class="avatar" style="width:32px;height:32px;font-size:10px">{{ initials(lead) }}</div>
-              <div style="flex:1;min-width:0">
-                <div style="font-weight:600;font-size:var(--font-sm);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ lead.name || 'Anonymous' }}</div>
-                <div class="text-xs text-muted">{{ lead.company || '--' }}</div>
-              </div>
-              <span class="score-badge" :class="scoreTier(lead.score)" style="font-size:10px;padding:2px 8px">{{ lead.score }}</span>
+          <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
+            <h3 class="card-title">{{ selectedPipelineNode.data.label }} <span class="badge badge-neutral" style="margin-left:6px">{{ filteredLeads.length }}</span></h3>
+            <!-- Action buttons based on node type -->
+            <div style="display:flex;gap:8px">
+              <button v-if="selectedPipelineNode.data.connectorId === 'send-email' && filteredLeads.length" class="btn btn-primary btn-sm" @click="bulkEmailFromPipeline">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="vertical-align:-2px;margin-right:4px"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4z"/></svg>
+                Send to All {{ filteredLeads.length }}
+              </button>
+              <button v-if="selectedPipelineNode.data.connectorId === 'linkedin-outreach' && filteredLeads.length" class="btn btn-secondary btn-sm" @click="openAllLinkedIn">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style="vertical-align:-2px;margin-right:4px"><path d="M0 1.146C0 .513.526 0 1.175 0h13.65C15.474 0 16 .513 16 1.146v13.708c0 .633-.526 1.146-1.175 1.146H1.175C.526 16 0 15.487 0 14.854V1.146z"/></svg>
+                Open All Profiles
+              </button>
             </div>
           </div>
-          <div v-if="filteredLeads.length === 0" class="text-sm text-muted" style="text-align:center;padding:20px">No leads in this segment yet.</div>
+          <div class="lead-list">
+            <div class="lead-list-item" v-for="lead in filteredLeads" :key="lead.name || lead.email" @click="openLeadDetail(lead)">
+              <div style="flex:1;min-width:0">
+                <div style="font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-primary)">{{ lead.name || 'Anonymous' }}</div>
+                <div style="font-size:11px;color:var(--text-muted);margin-top:1px">
+                  {{ lead.company || '--' }}
+                  <span v-if="lead.email" style="margin-left:6px;color:var(--brand-accent)">{{ lead.email }}</span>
+                </div>
+              </div>
+              <!-- Per-lead actions -->
+              <a v-if="selectedPipelineNode.data.connectorId === 'linkedin-outreach' && lead.linkedin_url" :href="lead.linkedin_url" target="_blank" class="btn btn-secondary btn-sm" @click.stop style="font-size:11px;padding:4px 10px">
+                Open LinkedIn
+              </a>
+              <button v-else-if="selectedPipelineNode.data.connectorId === 'send-email' && lead.email" class="btn btn-secondary btn-sm" @click.stop="openEmailCompose(lead)" style="font-size:11px;padding:4px 10px">
+                Draft Email
+              </button>
+              <span v-else-if="selectedPipelineNode.data.connectorId" class="score-num" style="font-size:12px">{{ lead.relevance_score || lead.score || '--' }}</span>
+            </div>
+          </div>
+          <div v-if="filteredLeads.length === 0" class="text-sm text-muted" style="text-align:center;padding:24px">
+            No leads in this node. Connect it to a source node to pass leads through.
+          </div>
         </div>
       </div>
     </template>
@@ -469,98 +446,49 @@ function addSelectedToLeads() {
 
 function addSelectedToPipeline() {
   const selected = aiSelected.value.map(i => sortedTableLeads.value[i]).filter(Boolean)
-  let xOffset = 280
-  let yOffset = 400
-  for (const lead of selected) {
-    connectorCounter++
-    const newId = `ai-lead-${connectorCounter}`
-    nodes.value.push({
-      id: newId,
-      type: 'pipeline',
-      position: { x: xOffset, y: yOffset },
-      data: {
-        nodeType: 'hot',
-        icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.5-7 8-7s8 3 8 7"/></svg>',
-        label: lead.name || 'Lead',
-        count: lead.relevance_score || 0,
-        badge: lead.company || 'AI Lead',
-        badgeClass: lead.relevance_score >= 80 ? 'badge-danger' : lead.relevance_score >= 60 ? 'badge-warning' : 'badge-neutral',
-        leadData: lead, // Attach full lead data for smart connectors
-      },
-    })
-    xOffset += 180
-    if (xOffset > 800) { xOffset = 280; yOffset += 120 }
-  }
+  if (!selected.length) return
+
+  // Reset pipeline to fresh state
+  connectorCounter = 0
+  pipelineLeadsData.value = selected
+
+  nodes.value = [{
+    id: 'source',
+    type: 'pipeline',
+    position: { x: 40, y: 120 },
+    data: {
+      nodeType: 'source',
+      status: 'done',
+      icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.5-7 8-7s8 3 8 7"/></svg>',
+      label: 'Selected Leads',
+      leadCount: selected.length,
+      leads: selected,
+    },
+  }]
+  edges.value = []
+  selectedNodeId.value = 'source'
   aiSelected.value = []
   activeTab.value = 'pipeline'
 }
 
 
-// ── Connector catalog (drag from sidebar) ── smart filtering based on lead data
+// ── Pipeline leads data (the leads flowing through the pipeline) ──
+const pipelineLeadsData = ref([])
+
+// ── Connector catalog (simplified for execution pipeline) ──
 const connectorCatalog = computed(() => {
-  // Check what data pipeline leads actually have
-  const pipelineLeads = nodes.value
-    .filter(n => n.data?.leadData)
-    .map(n => n.data.leadData)
-  const hasEmail = pipelineLeads.some(l => l.email && l.email !== '--')
-  const hasPhone = pipelineLeads.some(l => l.phone && l.phone !== '--')
-  const hasLinkedIn = pipelineLeads.some(l => l.linkedin_url)
-  const hasSomeLead = pipelineLeads.length > 0
-
-  const catalog = {
-    'Import / Export': [
-      { id: 'gdrive',    icon: '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#4285f4"></span>', label: 'Google Drive',   desc: 'Import CSV/Sheets',        badgeClass: 'badge-info' },
-      { id: 'excel',     icon: '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#217346"></span>', label: 'Excel Export',    desc: 'Download as .xlsx',        badgeClass: 'badge-success' },
-      { id: 'csv-import',icon: '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#94a3b8"></span>', label: 'CSV Upload',     desc: 'Bulk import contacts',     badgeClass: 'badge-neutral' },
+  return {
+    'Process': [
+      { id: 'extract-email', nodeType: 'splitter', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 7l10 7 10-7"/></svg>', label: 'Extract Email', desc: 'Split by email availability', badgeClass: 'badge-info', hasSplit: true },
     ],
-    'Data Sources': [
-      { id: 'gsc',       icon: '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#22c55e"></span>', label: 'Search Console', desc: 'Keyword & click data',     badgeClass: 'badge-success' },
-      { id: 'ga4',       icon: '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#f59e0b"></span>', label: 'GA4',            desc: 'Traffic & attribution',    badgeClass: 'badge-warning' },
-      { id: 'shopify',   icon: '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#22c55e"></span>', label: 'Shopify',        desc: 'Customer & order data',    badgeClass: 'badge-success' },
-      { id: 'webhooks',  icon: '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#94a3b8"></span>', label: 'Webhooks',       desc: 'Custom event ingestion',   badgeClass: 'badge-neutral' },
+    'Outreach': [
+      { id: 'send-email', nodeType: 'outreach', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4z"/></svg>', label: 'Send Email', desc: 'Bulk or single email via SendGrid', badgeClass: 'badge-accent' },
+      { id: 'linkedin-outreach', nodeType: 'linkedin', icon: '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M0 1.146C0 .513.526 0 1.175 0h13.65C15.474 0 16 .513 16 1.146v13.708c0 .633-.526 1.146-1.175 1.146H1.175C.526 16 0 15.487 0 14.854V1.146zm4.943 12.248V6.169H2.542v7.225h2.401zm-1.2-8.212c.837 0 1.358-.554 1.358-1.248-.015-.709-.52-1.248-1.342-1.248-.822 0-1.359.54-1.359 1.248 0 .694.521 1.248 1.327 1.248h.016zm4.908 8.212V9.359c0-.216.016-.432.08-.586.173-.431.568-.878 1.232-.878.869 0 1.216.662 1.216 1.634v3.865h2.401V9.25c0-2.22-1.184-3.252-2.764-3.252-1.274 0-1.845.7-2.165 1.193V6.169H6.29c.032.68 0 7.225 0 7.225h2.361z"/></svg>', label: 'LinkedIn Outreach', desc: 'Open profiles for manual DM', badgeClass: 'badge-info' },
     ],
-    'Enrichment': [
-      { id: 'clearbit',  icon: '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#3b82f6"></span>', label: 'Clearbit',       desc: 'Firmographic enrichment',  badgeClass: 'badge-info' },
-      { id: 'apollo',    icon: '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#5B8DEF"></span>', label: 'Apollo.io',      desc: 'Contact DB & tech stack',  badgeClass: 'badge-accent' },
-      { id: 'linkedin',  icon: '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#3b82f6"></span>', label: 'LinkedIn',       desc: 'Profile & company intel',  badgeClass: 'badge-info' },
-      { id: 'zoominfo',  icon: '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#3b82f6"></span>', label: 'ZoomInfo',       desc: 'Enterprise B2B data',      badgeClass: 'badge-info' },
+    'Export': [
+      { id: 'export-csv', nodeType: 'action', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M12 18v-6M9 15l3 3 3-3"/></svg>', label: 'Export CSV', desc: 'Download leads as CSV', badgeClass: 'badge-neutral' },
     ],
   }
-
-  // Outreach — only show connectors matching available lead data
-  const outreach = []
-  if (!hasSomeLead || hasEmail) {
-    outreach.push({ id: 'email', icon: '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#3b82f6"></span>', label: 'Email', desc: 'Campaigns & drip flows', badgeClass: 'badge-info' })
-  }
-  if (!hasSomeLead || hasPhone) {
-    outreach.push({ id: 'sms', icon: '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#3b82f6"></span>', label: 'SMS (Twilio)', desc: 'Text follow-ups', badgeClass: 'badge-info' })
-    outreach.push({ id: 'whatsapp', icon: '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#22c55e"></span>', label: 'WhatsApp', desc: 'Conversational outreach', badgeClass: 'badge-success' })
-  }
-  if (!hasSomeLead || hasLinkedIn) {
-    outreach.push({ id: 'linkedin-mail', icon: '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#3b82f6"></span>', label: 'LinkedIn InMail', desc: 'Direct messaging', badgeClass: 'badge-info' })
-  }
-  if (outreach.length) catalog['Outreach'] = outreach
-
-  catalog['Advertising'] = [
-    { id: 'facebook',  icon: '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#3b82f6"></span>', label: 'Facebook Ads',   desc: 'Retarget audiences',       badgeClass: 'badge-info' },
-    { id: 'google-ads',icon: '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#f59e0b"></span>', label: 'Google Ads',     desc: 'Customer Match & display', badgeClass: 'badge-warning' },
-    { id: 'pinterest', icon: '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#ef4444"></span>', label: 'Pinterest',      desc: 'Promoted pin campaigns',   badgeClass: 'badge-danger' },
-    { id: 'instagram', icon: '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#5B8DEF"></span>', label: 'Instagram Ads',  desc: 'Story & reel ads',         badgeClass: 'badge-accent' },
-    { id: 'tiktok',    icon: '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#94a3b8"></span>', label: 'TikTok Ads',     desc: 'Video ad campaigns',       badgeClass: 'badge-neutral' },
-  ]
-  catalog['CRM & Automation'] = [
-    { id: 'hubspot',   icon: '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#f59e0b"></span>', label: 'HubSpot',        desc: 'Two-way CRM sync',        badgeClass: 'badge-warning' },
-    { id: 'salesforce', icon: '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#3b82f6"></span>', label: 'Salesforce',     desc: 'Enterprise CRM sync',     badgeClass: 'badge-info' },
-    { id: 'slack',     icon: '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#5B8DEF"></span>', label: 'Slack',           desc: 'Real-time lead alerts',   badgeClass: 'badge-accent' },
-    { id: 'zapier',    icon: '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#f59e0b"></span>', label: 'Zapier',          desc: 'Universal automation',    badgeClass: 'badge-warning' },
-  ]
-  catalog['AI & Intelligence'] = [
-    { id: 'anthropic', icon: '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#5B8DEF"></span>', label: 'Claude AI',      desc: 'AI email drafting',        badgeClass: 'badge-accent' },
-    { id: 'openai',    icon: '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#22c55e"></span>', label: 'OpenAI',          desc: 'Content generation',      badgeClass: 'badge-success' },
-    { id: 'mixpanel',  icon: '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#5B8DEF"></span>', label: 'Mixpanel',       desc: 'Product analytics',       badgeClass: 'badge-accent' },
-  ]
-
-  return catalog
 })
 
 let connectorCounter = 0
@@ -580,54 +508,9 @@ const companyDomain = computed(() => {
   return selectedLead.value.company.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '.com'
 })
 
-// ── Vue Flow: Nodes (extended pipeline) ──
-const nodes = ref([
-  { id: 'source',   type: 'pipeline', position: { x: 0,    y: 140 }, data: { nodeType: 'source',  icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>', label: 'All Visitors',   count: 0 } },
-  { id: 'hot',      type: 'pipeline', position: { x: 280,  y: 10 },  data: { nodeType: 'hot',     icon: '<span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#ef4444;box-shadow:0 0 6px rgba(239,68,68,0.5)"></span>', label: 'Hot Leads',      count: 0, badge: 'Score ≥ 70', badgeClass: 'badge-danger' } },
-  { id: 'warm',     type: 'pipeline', position: { x: 280,  y: 170 }, data: { nodeType: 'warm',    icon: '<span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#f59e0b;box-shadow:0 0 6px rgba(245,158,11,0.4)"></span>', label: 'Warm Leads',     count: 0, badge: 'Score 30–69', badgeClass: 'badge-warning' } },
-  { id: 'cold',     type: 'pipeline', position: { x: 280,  y: 330 }, data: { nodeType: 'cold',    icon: '<span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#94a3b8"></span>', label: 'Cold Leads',     count: 0, badge: 'Score < 30', badgeClass: 'badge-neutral' } },
-  { id: 'saas',     type: 'pipeline', position: { x: 540,  y: 0 },   data: { nodeType: 'saas',    icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M7 20h10M12 18v2"/></svg>', label: 'SaaS',           count: 0, badge: 'Industry', badgeClass: 'badge-info' } },
-  { id: 'health',   type: 'pipeline', position: { x: 540,  y: 150 }, data: { nodeType: 'health',  icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2v4m0 0H4m4 0h4M16 12h4m-4 0h-4m4 0V8m0 4v4"/><rect x="3" y="3" width="18" height="18" rx="2"/></svg>', label: 'Healthcare',     count: 0, badge: 'Industry', badgeClass: 'badge-success' } },
-  { id: 'enrich',   type: 'pipeline', position: { x: 800,  y: 20 },  data: { nodeType: 'action',  icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>', label: 'Enrich Profile', count: 0, badge: 'Auto', badgeClass: 'badge-accent' } },
-  { id: 'score',    type: 'pipeline', position: { x: 800,  y: 170 }, data: { nodeType: 'action',  icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2a10 10 0 1 0 10 10"/><path d="M12 6v6l4 2"/></svg>', label: 'ML Score',       count: 0, badge: 'AI Model', badgeClass: 'badge-accent' } },
-  { id: 'campaign', type: 'pipeline', position: { x: 1060, y: 20 },  data: { nodeType: 'action',  icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 7l10 7 10-7"/></svg>', label: 'Send Campaign',  count: 0, badge: 'Outreach', badgeClass: 'badge-accent' } },
-  { id: 'nurture',  type: 'pipeline', position: { x: 1060, y: 170 }, data: { nodeType: 'action',  icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 12a9 9 0 1 1-6.22-8.56"/><path d="M21 3v9h-9"/></svg>', label: 'Nurture Flow',   count: 0, badge: 'Automated', badgeClass: 'badge-accent' } },
-  { id: 'convert',  type: 'pipeline', position: { x: 1060, y: 320 }, data: { nodeType: 'health',  icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>', label: 'Converted',       count: 0, badge: 'Customer', badgeClass: 'badge-success' } },
-])
-
-const edges = ref([
-  { id: 'e1',  source: 'source',  target: 'hot',      animated: true, style: { stroke: 'var(--brand-accent)', strokeWidth: 2 } },
-  { id: 'e2',  source: 'source',  target: 'warm',     style: { stroke: 'var(--border-hover)', strokeWidth: 1.5 } },
-  { id: 'e3',  source: 'source',  target: 'cold',     style: { stroke: 'var(--border-color)', strokeWidth: 1.5 } },
-  { id: 'e4',  source: 'hot',     target: 'saas',     style: { stroke: 'var(--border-hover)', strokeWidth: 1.5 } },
-  { id: 'e5',  source: 'hot',     target: 'health',   animated: true, style: { stroke: 'var(--brand-accent)', strokeWidth: 2 } },
-  { id: 'e6',  source: 'saas',    target: 'enrich',   style: { stroke: 'var(--border-hover)', strokeWidth: 1.5 } },
-  { id: 'e7',  source: 'health',  target: 'enrich',   animated: true, style: { stroke: 'var(--brand-accent)', strokeWidth: 2 } },
-  { id: 'e8',  source: 'enrich',  target: 'score',    animated: true, style: { stroke: 'var(--brand-accent)', strokeWidth: 2 } },
-  { id: 'e9',  source: 'score',   target: 'campaign', animated: true, style: { stroke: 'var(--brand-accent)', strokeWidth: 2 } },
-  { id: 'e10', source: 'score',   target: 'nurture',  style: { stroke: 'var(--border-hover)', strokeWidth: 1.5 } },
-  { id: 'e11', source: 'score',   target: 'convert',  style: { stroke: 'var(--color-success)', strokeWidth: 1.5 } },
-  { id: 'e12', source: 'warm',    target: 'score',    style: { stroke: 'var(--border-color)', strokeWidth: 1 } },
-])
-
-// Update node counts
-watch(leads, (newLeads) => {
-  const total = newLeads.length > 0 ? newLeads.length * 37 : 847
-  const hot = hotCount.value
-  const enriched = Math.max(1, Math.floor(hot * 0.8))
-  const scored = Math.max(1, Math.floor(enriched * 0.9))
-  nodes.value[0].data.count  = total
-  nodes.value[1].data.count  = hot
-  nodes.value[2].data.count  = warmCount.value
-  nodes.value[3].data.count  = coldCount.value
-  nodes.value[4].data.count  = Math.max(1, Math.floor(hot * 0.52))
-  nodes.value[5].data.count  = Math.max(1, Math.ceil(hot * 0.35))
-  nodes.value[6].data.count  = enriched
-  nodes.value[7].data.count  = scored
-  nodes.value[8].data.count  = Math.max(1, Math.floor(scored * 0.6))
-  nodes.value[9].data.count  = Math.max(1, Math.floor(scored * 0.3))
-  nodes.value[10].data.count = Math.max(1, Math.floor(scored * 0.1))
-}, { immediate: true })
+// ── Vue Flow: Nodes & Edges (start empty, populated by addSelectedToPipeline) ──
+const nodes = ref([])
+const edges = ref([])
 
 // ── Drag & Drop connectors ──
 let draggedConnector = null
@@ -662,12 +545,16 @@ function onDrop(event) {
     type: 'pipeline',
     position,
     data: {
-      nodeType: 'connector',
+      nodeType: draggedConnector.nodeType || 'action',
+      connectorId: draggedConnector.id,
       icon: draggedConnector.icon,
       label: draggedConnector.label,
-      count: undefined,
-      badge: 'Connector',
+      leadCount: undefined,
+      leads: null,
+      badge: draggedConnector.desc,
       badgeClass: draggedConnector.badgeClass || 'badge-neutral',
+      status: 'idle',
+      hasSplit: draggedConnector.hasSplit || false,
     },
   })
 
@@ -675,33 +562,78 @@ function onDrop(event) {
 }
 
 function onConnect(params) {
-  const id = `e-${params.source}-${params.target}`
-  if (!edges.value.find(e => e.id === id)) {
-    edges.value.push({
-      id,
-      source: params.source,
-      target: params.target,
-      animated: true,
-      style: { stroke: 'var(--brand-accent)', strokeWidth: 2 },
-    })
+  const edgeId = `e-${params.source}-${params.target}`
+  if (edges.value.find(e => e.id === edgeId)) return
+
+  // Determine handle type (split vs primary)
+  const sourceHandleId = params.sourceHandle || 'out'
+
+  edges.value.push({
+    id: edgeId,
+    source: params.source,
+    sourceHandle: sourceHandleId,
+    target: params.target,
+    animated: true,
+    style: { stroke: sourceHandleId === 'split' ? 'var(--color-warning, #f59e0b)' : 'var(--brand-accent)', strokeWidth: 2 },
+  })
+
+  // ── DATA FLOW: propagate leads from source to target ──
+  const sourceNode = nodes.value.find(n => n.id === params.source)
+  const targetNode = nodes.value.find(n => n.id === params.target)
+  if (!sourceNode?.data?.leads || !targetNode) return
+
+  const srcLeads = sourceNode.data.leads
+
+  // If connecting from a splitter's "split" handle, pass the remainder leads
+  if (sourceHandleId === 'split' && sourceNode.data.splitLeads) {
+    targetNode.data.leads = sourceNode.data.splitLeads
+    targetNode.data.leadCount = sourceNode.data.splitLeads.length
+    targetNode.data.status = 'ready'
+  } else {
+    // Primary output — pass main leads (or extracted leads for splitters)
+    const mainLeads = sourceNode.data.mainLeads || srcLeads
+    targetNode.data.leads = mainLeads
+    targetNode.data.leadCount = mainLeads.length
+    targetNode.data.status = 'ready'
+  }
+
+  // If the target is an extract-email splitter, auto execute the split
+  if (targetNode.data.connectorId === 'extract-email') {
+    executeSplit(targetNode)
   }
 }
 
+// ── Execute the email split on a node ──
+function executeSplit(node) {
+  if (!node.data.leads) return
+  node.data.status = 'running'
+  setTimeout(() => {
+    const withEmail = node.data.leads.filter(l => l.email && l.email !== '--')
+    const withoutEmail = node.data.leads.filter(l => !l.email || l.email === '--')
+    node.data.mainLeads = withEmail
+    node.data.splitLeads = withoutEmail
+    node.data.leadCount = withEmail.length
+    node.data.badge = `${withEmail.length} with email, ${withoutEmail.length} without`
+    node.data.status = 'done'
+  }, 800) // small delay for visual feedback
+}
+
 // ── Filtering & selection ──
+const selectedPipelineNode = computed(() => {
+  if (!selectedNodeId.value) return null
+  return nodes.value.find(n => n.id === selectedNodeId.value)
+})
+
 const filteredLabel = computed(() => {
-  const labels = { source: 'All Leads', hot: 'Hot Leads', warm: 'Warm Leads', cold: 'Cold Leads', saas: 'SaaS', health: 'Healthcare', enrich: 'Enriched', score: 'ML Scored', campaign: 'Campaign', nurture: 'Nurture', convert: 'Converted' }
-  return labels[selectedNodeId.value] || 'Leads'
+  const node = selectedPipelineNode.value
+  if (!node) return 'Leads'
+  return node.data?.label || 'Leads'
 })
 
 const filteredLeads = computed(() => {
-  switch (selectedNodeId.value) {
-    case 'hot':    return leads.value.filter(l => l.score >= 70)
-    case 'warm':   return leads.value.filter(l => l.score >= 30 && l.score < 70)
-    case 'cold':   return leads.value.filter(l => l.score < 30)
-    case 'campaign': return leads.value.filter(l => l.status === 'contacted')
-    case 'convert':  return leads.value.filter(l => l.status === 'customer')
-    default:       return leads.value
-  }
+  const node = selectedPipelineNode.value
+  if (!node?.data?.leads) return []
+  return node.data.leads
 })
 
 const correlations = computed(() => {
@@ -818,6 +750,22 @@ async function openEmailCompose(lead) {
     const { data } = await leadsApi.getEmails(websiteId, lead.id)
     emailHistory.value = data || []
   } catch { /* ignore */ }
+}
+
+function bulkEmailFromPipeline() {
+  const node = selectedPipelineNode.value
+  if (!node?.data?.leads?.length) return
+  // Open compose for the first lead with email — user sends to all
+  const firstWithEmail = node.data.leads.find(l => l.email && l.email !== '--')
+  if (firstWithEmail) openEmailCompose(firstWithEmail)
+}
+
+function openAllLinkedIn() {
+  const node = selectedPipelineNode.value
+  if (!node?.data?.leads?.length) return
+  node.data.leads.forEach(l => {
+    if (l.linkedin_url) window.open(l.linkedin_url, '_blank')
+  })
 }
 
 async function sendEmail() {
