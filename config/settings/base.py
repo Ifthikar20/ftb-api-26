@@ -58,6 +58,7 @@ LOCAL_APPS = [
     "apps.notifications",
     "apps.billing",
     "apps.agents",
+    "apps.llm_ranking",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -307,6 +308,12 @@ HUBSPOT_CLIENT_SECRET = env("HUBSPOT_CLIENT_SECRET", default="")
 SEMRUSH_API_KEY = env("SEMRUSH_API_KEY", default="")
 SLACK_CLIENT_ID = env("SLACK_CLIENT_ID", default="")
 SLACK_CLIENT_SECRET = env("SLACK_CLIENT_SECRET", default="")
+MAILCHIMP_API_KEY = env("MAILCHIMP_API_KEY", default="")
+CANVA_CLIENT_ID = env("CANVA_CLIENT_ID", default="")
+CANVA_CLIENT_SECRET = env("CANVA_CLIENT_SECRET", default="")
+GEMINI_API_KEY = env("GEMINI_API_KEY", default="")
+PERPLEXITY_API_KEY = env("PERPLEXITY_API_KEY", default="")
+DEFAULT_FROM_EMAIL = env("SERVER_EMAIL", default="noreply@growthpilot.io")
 
 # ── LOGGING ──
 LOGGING = {

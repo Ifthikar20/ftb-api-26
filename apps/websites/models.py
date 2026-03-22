@@ -77,6 +77,39 @@ class WebsiteMembership(TimestampMixin):
         return f"{self.user.email} — {self.role} on {self.website.name}"
 
 
+class WebhookEndpoint(TimestampMixin):
+    """Outbound webhook endpoint — receives platform events via HTTP POST."""
+
+    ALL_EVENTS = [
+        "lead.scored",
+        "lead.status_changed",
+        "lead.created",
+        "competitor.change_detected",
+        "audit.completed",
+        "visitor.identified",
+        "campaign.sent",
+        "link.clicked",
+    ]
+
+    website = models.ForeignKey(Website, on_delete=models.CASCADE, related_name="webhook_endpoints")
+    url = models.URLField(max_length=500)
+    events = models.JSONField(default=list)  # list of event names to subscribe to
+    secret = EncryptedTextField(blank=True)  # HMAC-SHA256 signing key
+    is_active = models.BooleanField(default=True)
+    last_triggered_at = models.DateTimeField(null=True, blank=True)
+    failure_count = models.IntegerField(default=0)
+
+    class Meta:
+        db_table = "websites_webhookendpoint"
+
+    def __str__(self):
+        return f"Webhook({self.url[:60]}, {self.website.name})"
+
+    def subscribes_to(self, event: str) -> bool:
+        """Return True if this endpoint is subscribed to the given event."""
+        return not self.events or event in self.events
+
+
 class Integration(TimestampMixin):
     """External service integrations — types driven by core.integrations registry."""
 
@@ -85,6 +118,10 @@ class Integration(TimestampMixin):
         ("gsc", "Google Search Console"),
         ("facebook", "Facebook Ads"),
         ("shopify", "Shopify"),
+        ("mailchimp", "Mailchimp"),
+        ("google_drive", "Google Drive"),
+        ("canva", "Canva"),
+        ("hubspot", "HubSpot"),
     ]
 
     website = models.ForeignKey(Website, on_delete=models.CASCADE, related_name="integrations")

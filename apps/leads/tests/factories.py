@@ -5,7 +5,7 @@ from django.utils import timezone
 from apps.accounts.tests.factories import UserFactory
 from apps.websites.models import Website, WebsiteSettings
 from apps.analytics.models import Visitor, PageEvent
-from apps.leads.models import Lead, LeadNote, LeadSegment, ScoringConfig
+from apps.leads.models import Lead, LeadNote, LeadSegment, ScoringConfig, EmailCampaign, CampaignRecipient
 from core.utils.constants import LeadStatus
 
 
@@ -86,3 +86,23 @@ class ScoringConfigFactory(DjangoModelFactory):
     website = factory.SubFactory(WebsiteFactory)
     weights = factory.LazyFunction(dict)
     threshold = 70
+
+
+class EmailCampaignFactory(DjangoModelFactory):
+    class Meta:
+        model = EmailCampaign
+
+    website = factory.SubFactory(WebsiteFactory)
+    created_by = factory.SubFactory(UserFactory)
+    subject = factory.Sequence(lambda n: f"Campaign {n}")
+    body = "<p>Hello!</p>"
+    status = EmailCampaign.STATUS_DRAFT
+
+
+class CampaignRecipientFactory(DjangoModelFactory):
+    class Meta:
+        model = CampaignRecipient
+
+    campaign = factory.SubFactory(EmailCampaignFactory)
+    lead = factory.SubFactory(LeadFactory)
+    status = CampaignRecipient.STATUS_QUEUED

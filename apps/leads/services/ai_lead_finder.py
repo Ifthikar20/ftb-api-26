@@ -12,6 +12,14 @@ from django.conf import settings
 
 logger = logging.getLogger("apps")
 
+
+def google_search_configured() -> bool:
+    """Return True if Google Custom Search API credentials are present."""
+    return bool(
+        getattr(settings, "GOOGLE_SEARCH_API_KEY", "")
+        and getattr(settings, "GOOGLE_SEARCH_ENGINE_ID", "")
+    )
+
 GOOGLE_SEARCH_URL = "https://www.googleapis.com/customsearch/v1"
 
 
@@ -59,6 +67,10 @@ class AILeadFinder:
         api_key = getattr(settings, "GOOGLE_SEARCH_API_KEY", "")
         engine_id = getattr(settings, "GOOGLE_SEARCH_ENGINE_ID", "")
         if not api_key or not engine_id:
+            logger.warning(
+                "Google Custom Search not configured — set GOOGLE_SEARCH_API_KEY "
+                "and GOOGLE_SEARCH_ENGINE_ID for real profile search results."
+            )
             return []
 
         try:

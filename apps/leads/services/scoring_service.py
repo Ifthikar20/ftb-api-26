@@ -68,21 +68,49 @@ class ScoringService:
     def rescore_website(*, website_id: str) -> int:
         """Rescore all visitors for a website and update their lead scores."""
         from apps.analytics.models import Visitor
-        from apps.leads.models import Lead
+        from apps.leads.models import Lead, ScoringConfig
+        from apps.websites.models import Website
 
+        website = Website.objects.select_related("user").get(id=website_id)
         visitors = Visitor.objects.filter(website_id=website_id)
         updated = 0
 
+        # Determine hot-lead threshold (per-website config or global default)
+        try:
+            config = ScoringConfig.objects.get(website_id=website_id)
+            threshold = config.threshold
+        except ScoringConfig.DoesNotExist:
+            threshold = 70
+
         for visitor in visitors:
+            old_score = visitor.lead_score
             new_score = ScoringService.compute_score(visitor=visitor)
             Visitor.objects.filter(pk=visitor.pk).update(lead_score=new_score)
 
             # Update or create lead if score is significant
             if new_score >= 10:
-                Lead.objects.update_or_create(
+                lead, created = Lead.objects.update_or_create(
                     visitor=visitor,
                     defaults={"website_id": website_id, "score": new_score},
                 )
+                # Fire hot-lead notifications when score first crosses threshold
+                if new_score >= threshold and old_score < threshold:
+                    try:
+                        from apps.notifications.services.notification_service import NotificationService
+                        from apps.websites.models import WebsiteSettings
+
+                        # Respect website-level notification setting
+                        try:
+                            ws = WebsiteSettings.objects.get(website_id=website_id)
+                            if not ws.notify_hot_leads:
+                                continue
+                        except WebsiteSettings.DoesNotExist:
+                            pass
+
+                        NotificationService.fire_hot_lead(user=website.user, lead=lead)
+                    except Exception as e:
+                        logger.error("Hot-lead notification failed for lead %s: %s", lead.id, e)
+
             updated += 1
 
         return updated

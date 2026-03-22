@@ -137,6 +137,63 @@ class TrackedKeyword(TimestampMixin):
         return f"Keyword({self.keyword} #{self.current_rank})"
 
 
+class TrackedLink(TimestampMixin):
+    """
+    A short tracked URL that redirects to a destination and records click attribution.
+    Used in email campaigns and content to measure conversions.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    website = models.ForeignKey(
+        "websites.Website", on_delete=models.CASCADE, related_name="tracked_links"
+    )
+    # Optional link to an email campaign
+    campaign = models.ForeignKey(
+        "leads.EmailCampaign", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="tracked_links",
+    )
+    destination_url = models.URLField(max_length=2000)
+    tracking_key = models.CharField(max_length=32, unique=True, db_index=True)
+    description = models.CharField(max_length=300, blank=True)
+    click_count = models.IntegerField(default=0)
+    conversion_count = models.IntegerField(default=0)
+
+    class Meta:
+        db_table = "analytics_trackedlink"
+
+    def __str__(self):
+        return f"TrackedLink({self.tracking_key} -> {self.destination_url[:60]})"
+
+
+class LinkClick(TimestampMixin):
+    """A single click on a TrackedLink."""
+
+    tracked_link = models.ForeignKey(TrackedLink, on_delete=models.CASCADE, related_name="clicks")
+    # Visitor may be null for anonymous clicks that we can't tie to a fingerprint
+    visitor = models.ForeignKey(
+        Visitor, null=True, blank=True, on_delete=models.SET_NULL, related_name="link_clicks"
+    )
+    # Optional back-reference to the campaign recipient (enables full-funnel attribution)
+    campaign_recipient = models.ForeignKey(
+        "leads.CampaignRecipient", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="link_clicks",
+    )
+    ip_hash = models.CharField(max_length=64, blank=True)
+    user_agent = models.CharField(max_length=500, blank=True)
+    referrer = models.URLField(max_length=2000, blank=True)
+    clicked_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    converted = models.BooleanField(default=False, db_index=True)
+
+    class Meta:
+        db_table = "analytics_linkclick"
+        indexes = [
+            models.Index(fields=["tracked_link", "clicked_at"]),
+        ]
+
+    def __str__(self):
+        return f"Click({self.tracked_link.tracking_key} at {self.clicked_at})"
+
+
 class KeywordRankHistory(models.Model):
     """Daily rank snapshot for a tracked keyword."""
 

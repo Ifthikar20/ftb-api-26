@@ -1,0 +1,432 @@
+<template>
+  <div class="llm-ranking-page fade-in">
+    <div class="page-header">
+      <div>
+        <h1 class="page-title">LLM Ranking</h1>
+        <p class="page-subtitle">
+          See how AI tools like Claude, GPT-4, Gemini, and Perplexity rank your business
+          when users ask them to find a service like yours.
+        </p>
+      </div>
+      <button class="btn btn-primary btn-sm" @click="openRunAudit" :disabled="running">
+        {{ running ? 'Running audit...' : 'Run New Audit' }}
+      </button>
+    </div>
+
+    <div v-if="loading" class="loading-state">Loading LLM ranking data...</div>
+
+    <template v-else>
+      <!-- Score Summary (latest audit) -->
+      <div v-if="latestAudit" class="card" style="margin-bottom:24px">
+        <div class="score-main">
+          <div class="score-ring-wrap">
+            <svg viewBox="0 0 100 100" class="score-ring-svg">
+              <circle cx="50" cy="50" r="42" class="ring-track" />
+              <circle cx="50" cy="50" r="42" class="ring-fill" :style="ringFillStyle(latestAudit.overall_score)" />
+            </svg>
+            <div class="score-center">
+              <span class="score-num">{{ latestAudit.overall_score ?? '—' }}</span>
+              <span class="score-denom">/100</span>
+            </div>
+          </div>
+          <div class="score-meta">
+            <div class="card-title">AI Visibility Score</div>
+            <p class="text-sm text-muted" style="margin-top:4px;margin-bottom:12px">
+              How prominently LLMs mention your business
+            </p>
+            <div class="flex gap-8">
+              <span class="badge" :class="mentionBadge(latestAudit.mention_rate)">
+                {{ Math.round((latestAudit.mention_rate || 0) * 100) }}% mention rate
+              </span>
+              <span class="badge badge-neutral">{{ latestAudit.providers_queried || 0 }} providers queried</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Provider Breakdown -->
+        <div v-if="latestBreakdown.length" class="provider-grid" style="margin-top:24px">
+          <div
+            v-for="p in latestBreakdown"
+            :key="p.provider"
+            class="provider-card"
+            :class="{ 'provider-mentioned': p.is_mentioned }"
+          >
+            <div class="provider-icon">{{ providerInitial(p.provider) }}</div>
+            <div class="provider-name">{{ providerLabel(p.provider) }}</div>
+            <span class="badge" :class="p.is_mentioned ? 'badge-success' : 'badge-neutral'">
+              {{ p.is_mentioned ? 'Mentioned' : 'Not mentioned' }}
+            </span>
+            <div v-if="p.mention_rank" class="text-xs text-muted" style="margin-top:4px">Rank #{{ p.mention_rank }}</div>
+            <div class="text-xs" :class="sentimentTextClass(p.sentiment)" style="margin-top:2px">{{ p.sentiment }}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Recommendations -->
+      <div v-if="recommendations.length" class="card" style="margin-bottom:24px">
+        <div class="card-header">
+          <h3 class="card-title">Recommendations</h3>
+        </div>
+        <div class="recs-list">
+          <div v-for="(rec, i) in recommendations" :key="i" class="rec-row">
+            <span class="rec-num">{{ i + 1 }}</span>
+            <span class="text-sm" style="color:var(--text-secondary);line-height:1.5">{{ rec }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Audit History -->
+      <div class="card">
+        <div class="card-header">
+          <h3 class="card-title">Audit History</h3>
+        </div>
+
+        <div v-if="audits.length === 0" class="empty-state">
+          <div class="empty-state-title">No audits yet</div>
+          <p class="empty-state-desc">Run your first audit to see how LLMs rank your business.</p>
+        </div>
+
+        <table v-else class="data-table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Business</th>
+              <th>Score</th>
+              <th>Mention Rate</th>
+              <th>Status</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="audit in audits"
+              :key="audit.id"
+              class="audit-row"
+              :class="{ 'row-selected': selectedAuditId === audit.id }"
+              @click="selectAudit(audit)"
+            >
+              <td class="text-sm">{{ formatDate(audit.created_at) }}</td>
+              <td class="font-semibold">{{ audit.business_name }}</td>
+              <td>
+                <span class="score-pill" :class="scorePillClass(audit.overall_score)">
+                  {{ audit.overall_score ?? '—' }}
+                </span>
+              </td>
+              <td class="text-sm">{{ Math.round((audit.mention_rate || 0) * 100) }}%</td>
+              <td><span class="badge" :class="auditStatusBadge(audit.status)">{{ audit.status }}</span></td>
+              <td>
+                <!-- Inline delete confirmation -->
+                <div v-if="confirmDeleteId === audit.id" class="flex gap-8 items-center">
+                  <span class="text-xs" style="color:var(--color-danger)">Delete?</span>
+                  <button class="btn btn-danger btn-sm" @click.stop="confirmDelete(audit)">Yes</button>
+                  <button class="btn btn-secondary btn-sm" @click.stop="confirmDeleteId = null">No</button>
+                </div>
+                <button
+                  v-else
+                  class="btn btn-ghost btn-sm delete-btn"
+                  @click.stop="confirmDeleteId = audit.id"
+                >Delete</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </template>
+
+    <!-- Run Audit Modal -->
+    <div v-if="showRunForm" class="modal-overlay" @click.self="showRunForm = false">
+      <div class="modal-content">
+        <div class="modal-header">
+          <div class="modal-title">Run LLM Ranking Audit</div>
+          <button class="btn btn-ghost btn-icon" @click="showRunForm = false">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><line x1="2" y1="2" x2="14" y2="14"/><line x1="14" y1="2" x2="2" y2="14"/></svg>
+          </button>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Business Name</label>
+          <input v-model="auditForm.business_name" class="form-input" placeholder="e.g. Acme Corp" />
+        </div>
+        <div class="form-group" style="margin-top:12px">
+          <label class="form-label">Industry / Category</label>
+          <input v-model="auditForm.industry" class="form-input" placeholder="e.g. SaaS, e-commerce, marketing agency" />
+        </div>
+        <div class="form-group" style="margin-top:12px">
+          <label class="form-label">Location (optional)</label>
+          <input v-model="auditForm.location" class="form-input" placeholder="e.g. New York, US" />
+        </div>
+        <div class="form-group" style="margin-top:12px">
+          <label class="form-label">Custom Prompts (optional, one per line)</label>
+          <textarea v-model="customPromptsText" class="form-input" rows="3" placeholder="Best SaaS tools for startups"></textarea>
+          <p class="text-xs text-muted" style="margin-top:4px">Leave blank to use auto-generated prompts.</p>
+        </div>
+        <div class="form-group" style="margin-top:12px">
+          <label class="form-label">Providers</label>
+          <div class="provider-checks">
+            <label v-for="p in availableProviders" :key="p.value" class="check-label">
+              <input type="checkbox" :value="p.value" v-model="auditForm.providers" />
+              {{ p.label }}
+            </label>
+          </div>
+        </div>
+        <p v-if="auditError" class="form-error" style="margin-top:8px">{{ auditError }}</p>
+        <div class="flex gap-8" style="justify-content:flex-end;margin-top:20px">
+          <button class="btn btn-secondary" @click="showRunForm = false">Cancel</button>
+          <button class="btn btn-primary" @click="submitAudit" :disabled="running">
+            {{ running ? 'Queuing...' : 'Start Audit' }}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref, computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
+import { useToast } from '@/composables/useToast'
+import llmRankingApi from '@/api/llm_ranking'
+
+const route = useRoute()
+const websiteId = route.params.websiteId
+const toast = useToast()
+
+const audits = ref([])
+const loading = ref(true)
+const running = ref(false)
+const showRunForm = ref(false)
+const auditError = ref('')
+const selectedAuditId = ref(null)
+const latestBreakdown = ref([])
+const recommendations = ref([])
+const confirmDeleteId = ref(null)
+
+const customPromptsText = ref('')
+const auditForm = ref({
+  business_name: '',
+  industry: '',
+  location: '',
+  providers: ['claude', 'gpt4', 'gemini', 'perplexity'],
+})
+
+const availableProviders = [
+  { value: 'claude', label: 'Claude (Anthropic)' },
+  { value: 'gpt4', label: 'GPT-4 (OpenAI)' },
+  { value: 'gemini', label: 'Gemini (Google)' },
+  { value: 'perplexity', label: 'Perplexity' },
+]
+
+const latestAudit = computed(() => audits.value[0] || null)
+
+function ringFillStyle(score) {
+  if (score == null) return {}
+  const pct = Math.min(100, Math.max(0, score))
+  const circ = 2 * Math.PI * 42
+  const stroke = pct >= 70
+    ? 'var(--color-success)'
+    : pct >= 40
+      ? 'var(--color-warning)'
+      : 'var(--color-danger)'
+  return {
+    strokeDasharray: `${(pct / 100) * circ} ${circ}`,
+    stroke,
+  }
+}
+
+function mentionBadge(rate) {
+  const pct = (rate || 0) * 100
+  return pct >= 60 ? 'badge-success' : pct >= 30 ? 'badge-warning' : 'badge-neutral'
+}
+
+function providerLabel(p) {
+  return { claude: 'Claude', gpt4: 'GPT-4', gemini: 'Gemini', perplexity: 'Perplexity' }[p] || p
+}
+
+function providerInitial(p) {
+  return { claude: 'A', gpt4: 'G', gemini: 'G', perplexity: 'P' }[p] || p[0].toUpperCase()
+}
+
+function sentimentTextClass(s) {
+  return { positive: 'text-success', neutral: 'text-muted', negative: 'text-danger' }[s] || 'text-muted'
+}
+
+function formatDate(dt) {
+  return new Date(dt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+function scorePillClass(score) {
+  if (score == null) return 'pill-neutral'
+  return score >= 70 ? 'pill-green' : score >= 40 ? 'pill-yellow' : 'pill-red'
+}
+
+function auditStatusBadge(status) {
+  return {
+    pending: 'badge-neutral',
+    running: 'badge-warning',
+    completed: 'badge-success',
+    failed: 'badge-danger',
+  }[status] || 'badge-neutral'
+}
+
+function openRunAudit() {
+  auditError.value = ''
+  customPromptsText.value = ''
+  auditForm.value = { business_name: '', industry: '', location: '', providers: ['claude', 'gpt4', 'gemini', 'perplexity'] }
+  showRunForm.value = true
+}
+
+async function submitAudit() {
+  if (!auditForm.value.business_name) { auditError.value = 'Business name is required.'; return }
+  running.value = true
+  auditError.value = ''
+  try {
+    const payload = { ...auditForm.value }
+    if (customPromptsText.value.trim()) {
+      payload.custom_prompts = customPromptsText.value.split('\n').map(s => s.trim()).filter(Boolean)
+    }
+    const { data } = await llmRankingApi.runAudit(websiteId, payload)
+    const audit = data?.data || data
+    audits.value.unshift(audit)
+    selectedAuditId.value = audit.id
+    showRunForm.value = false
+    toast.success('Audit queued. Results will appear once complete.')
+  } catch (err) {
+    auditError.value = err.displayMessage || 'Failed to start audit.'
+  } finally {
+    running.value = false
+  }
+}
+
+async function selectAudit(audit) {
+  selectedAuditId.value = audit.id
+  latestBreakdown.value = []
+  recommendations.value = []
+  try {
+    const [bRes, rRes] = await Promise.all([
+      llmRankingApi.breakdown(websiteId, audit.id),
+      llmRankingApi.recommendations(websiteId, audit.id),
+    ])
+    latestBreakdown.value = bRes.data?.results || bRes.data || []
+    recommendations.value = rRes.data?.recommendations || rRes.data || []
+  } catch (e) {
+    console.error('Audit breakdown fetch error', e)
+  }
+}
+
+async function confirmDelete(audit) {
+  confirmDeleteId.value = null
+  try {
+    await llmRankingApi.deleteAudit(websiteId, audit.id)
+    audits.value = audits.value.filter(a => a.id !== audit.id)
+    if (selectedAuditId.value === audit.id) {
+      selectedAuditId.value = null
+      latestBreakdown.value = []
+      recommendations.value = []
+    }
+    toast.success('Audit deleted.')
+  } catch (err) {
+    toast.error(err.displayMessage || 'Failed to delete audit.')
+  }
+}
+
+async function fetchData() {
+  loading.value = true
+  try {
+    const { data } = await llmRankingApi.listAudits(websiteId)
+    audits.value = data?.results || data || []
+    if (audits.value.length) {
+      selectedAuditId.value = audits.value[0].id
+      await selectAudit(audits.value[0])
+    }
+  } catch (e) {
+    console.error('LLM ranking fetch error', e)
+    audits.value = []
+  } finally {
+    loading.value = false
+  }
+}
+
+onMounted(fetchData)
+</script>
+
+<style scoped>
+.loading-state { text-align: center; padding: 80px 20px; font-size: var(--font-md); color: var(--text-muted); }
+
+/* Score summary */
+.score-main { display: flex; align-items: center; gap: 32px; }
+.score-ring-wrap { position: relative; width: 110px; height: 110px; flex-shrink: 0; }
+.score-ring-svg { width: 110px; height: 110px; transform: rotate(-90deg); }
+.ring-track { fill: none; stroke: var(--border-color); stroke-width: 8; }
+.ring-fill { fill: none; stroke-width: 8; stroke-linecap: round; transition: stroke-dasharray 0.6s ease; }
+.score-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.score-num { font-size: 26px; font-weight: 800; color: var(--text-primary); line-height: 1; }
+.score-denom { font-size: var(--font-xs); color: var(--text-muted); }
+.score-meta { flex: 1; }
+
+/* Provider grid */
+.provider-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
+.provider-card {
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+  transition: border-color var(--transition-fast);
+}
+.provider-card.provider-mentioned { border-color: var(--color-success); background: var(--color-success-bg); }
+.provider-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--bg-surface);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: var(--font-base);
+  color: var(--text-secondary);
+}
+.provider-name { font-size: var(--font-sm); font-weight: 600; color: var(--text-primary); }
+
+/* Recommendations */
+.recs-list { display: flex; flex-direction: column; gap: 0; }
+.rec-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border-color);
+}
+.rec-row:last-child { border-bottom: none; }
+.rec-num {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--text-primary);
+  color: var(--text-inverse);
+  font-size: var(--font-xs);
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* Audit table */
+.audit-row { cursor: pointer; }
+.audit-row.row-selected td { background: var(--bg-surface); }
+
+.score-pill { padding: 2px 10px; border-radius: var(--radius-full); font-size: var(--font-xs); font-weight: 700; }
+.pill-green { background: var(--color-success-bg); color: var(--color-success); }
+.pill-yellow { background: var(--color-warning-bg); color: var(--color-warning); }
+.pill-red { background: var(--color-danger-bg); color: var(--color-danger); }
+.pill-neutral { background: var(--bg-surface); color: var(--text-muted); }
+
+.delete-btn { color: var(--color-danger); }
+
+/* Modal extras */
+.provider-checks { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 4px; }
+.check-label { display: flex; align-items: center; gap: 6px; font-size: var(--font-sm); color: var(--text-secondary); cursor: pointer; }
+</style>

@@ -2,6 +2,7 @@ from django.conf import settings
 from django.contrib import admin
 from django.urls import path, include
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView
+from apps.analytics.api.v1.tracking_views import TrackedLinkRedirectView, EmailOpenPixelView
 
 urlpatterns = [
     path("admin/", admin.site.urls),
@@ -20,9 +21,16 @@ urlpatterns = [
     path("api/v1/notifications/", include("apps.notifications.api.v1.urls")),
     path("api/v1/billing/", include("apps.billing.api.v1.urls")),
     path("api/v1/agents/", include("apps.agents.api.v1.urls")),
+    path("api/v1/llm-ranking/", include("apps.llm_ranking.api.v1.urls")),
 
     # Pixel ingestion (high throughput)
     path("api/v1/track/", include("apps.analytics.api.v1.pixel_urls")),
+
+    # Tracked link redirect (short URLs — no /api/ prefix intentional)
+    path("t/<str:tracking_key>/", TrackedLinkRedirectView.as_view(), name="tracked-link-redirect"),
+
+    # Email tracking pixel (open tracking)
+    path("api/v1/track/open/<uuid:tracking_id>/", EmailOpenPixelView.as_view(), name="email-open-pixel"),
 
     # OpenAPI schema
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
