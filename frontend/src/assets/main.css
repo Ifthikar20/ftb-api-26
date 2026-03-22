@@ -384,7 +384,7 @@ select.form-input {
 
 /* ── Cards ── */
 .card {
-  background: #ffffff;
+  background: var(--bg-card);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
   padding: 24px;
@@ -419,7 +419,7 @@ select.form-input {
 
 /* ── Stat Cards ── */
 .stat-card {
-  background: #ffffff;
+  background: var(--bg-card);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
   padding: 22px 24px;

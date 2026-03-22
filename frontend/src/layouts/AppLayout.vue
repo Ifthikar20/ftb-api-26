@@ -104,8 +104,18 @@
     <!-- Main Content -->
     <div class="main-wrapper">
       <header class="topbar">
-        <button class="btn-icon sidebar-toggle" @click="appStore.toggleSidebar">
-          <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="5" x2="15" y2="5"/><line x1="3" y1="9" x2="15" y2="9"/><line x1="3" y1="13" x2="15" y2="13"/></svg>
+        <button class="btn-icon sidebar-toggle" @click="appStore.toggleSidebar" :title="appStore.sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'">
+          <!-- Collapse: panel + left arrow. Expand: panel + right arrow. -->
+          <svg v-if="!appStore.sidebarCollapsed" width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.75">
+            <rect x="1" y="1" width="16" height="16" rx="2.5" />
+            <line x1="6" y1="1" x2="6" y2="17" />
+            <polyline points="10,6 8,9 10,12" />
+          </svg>
+          <svg v-else width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.75">
+            <rect x="1" y="1" width="16" height="16" rx="2.5" />
+            <line x1="6" y1="1" x2="6" y2="17" />
+            <polyline points="8,6 10,9 8,12" />
+          </svg>
         </button>
 
         <div class="topbar-search">
