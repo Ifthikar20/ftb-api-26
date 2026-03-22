@@ -4,6 +4,7 @@
     <aside class="sidebar">
       <div class="sidebar-brand">
         <img src="/images/fb-logo.png" alt="FetchBot" class="brand-logo" />
+        <span v-if="!appStore.sidebarCollapsed" class="brand-name">FetchBot</span>
       </div>
 
       <!-- Project Selector -->
@@ -389,6 +390,13 @@ onMounted(async () => {
   height: 36px;
   object-fit: contain;
   flex-shrink: 0;
+}
+
+.brand-name {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
 }
 
 .project-select { padding: 0 16px 16px; }
