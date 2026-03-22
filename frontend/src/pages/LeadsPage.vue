@@ -18,6 +18,32 @@
       </div>
     </div>
 
+    <!-- ═══ AI Prompt — Always Visible ═══ -->
+    <div class="ai-search-card card">
+      <h3 class="card-title" style="margin-bottom:4px">Describe your ideal lead</h3>
+      <p class="text-sm text-muted" style="margin-bottom:16px">Use natural language to find leads from LinkedIn and Twitter profiles.</p>
+      <textarea
+        v-model="aiPrompt"
+        class="ai-prompt-input"
+        rows="3"
+        placeholder='e.g. "SaaS founders in Austin who tweet about growth marketing" or "VP of Engineering at healthcare startups in NYC"'
+        @keydown.meta.enter="runAISearch"
+        @keydown.ctrl.enter="runAISearch"
+      ></textarea>
+      <div class="ai-search-actions">
+        <div class="ai-example-prompts">
+          <span class="text-xs text-muted">Try:</span>
+          <button class="ai-example-btn" @click="aiPrompt = 'SaaS founders in San Francisco'">SaaS founders in SF</button>
+          <button class="ai-example-btn" @click="aiPrompt = 'Marketing directors at e-commerce companies'">E-com marketing directors</button>
+          <button class="ai-example-btn" @click="aiPrompt = 'CTO at fintech startups raising Series A'">Fintech CTOs</button>
+        </div>
+        <button class="btn btn-primary" @click="runAISearch" :disabled="aiSearching || !aiPrompt.trim()">
+          <span v-if="aiSearching" class="ai-spinner"></span>
+          {{ aiSearching ? 'Searching...' : 'Find Leads' }}
+        </button>
+      </div>
+    </div>
+
     <!-- Tabs -->
     <div class="tabs">
       <button class="tab" :class="{ active: activeTab === 'table' }" @click="activeTab = 'table'">Table</button>
@@ -190,92 +216,110 @@
     <!-- ════════════════ AI LEAD FINDER ════════════════ -->
     <template v-else-if="activeTab === 'ai-finder'">
       <div class="ai-finder">
-        <!-- Search Input -->
-        <div class="ai-search-card card">
-          <h3 class="card-title" style="margin-bottom:4px">Describe your ideal lead</h3>
-          <p class="text-sm text-muted" style="margin-bottom:16px">Use natural language to find leads from LinkedIn and Twitter profiles.</p>
-          <textarea
-            v-model="aiPrompt"
-            class="ai-prompt-input"
-            rows="3"
-            placeholder='e.g. "SaaS founders in Austin who tweet about growth marketing" or "VP of Engineering at healthcare startups in NYC"'
-            @keydown.meta.enter="runAISearch"
-            @keydown.ctrl.enter="runAISearch"
-          ></textarea>
-          <div class="ai-search-actions">
-            <div class="ai-example-prompts">
-              <span class="text-xs text-muted">Try:</span>
-              <button class="ai-example-btn" @click="aiPrompt = 'SaaS founders in San Francisco'">SaaS founders in SF</button>
-              <button class="ai-example-btn" @click="aiPrompt = 'Marketing directors at e-commerce companies'">E-com marketing directors</button>
-              <button class="ai-example-btn" @click="aiPrompt = 'CTO at fintech startups raising Series A'">Fintech CTOs</button>
-            </div>
-            <button class="btn btn-primary" @click="runAISearch" :disabled="aiSearching || !aiPrompt.trim()">
-              <span v-if="aiSearching" class="ai-spinner"></span>
-              {{ aiSearching ? 'Searching...' : 'Find Leads' }}
-            </button>
-          </div>
-        </div>
-
         <!-- Loading State -->
         <div v-if="aiSearching" class="ai-loading">
           <div class="ai-spinner-lg"></div>
           <p class="text-sm text-muted" style="margin-top:12px">Parsing your prompt with AI and searching social profiles...</p>
         </div>
 
-        <!-- Results -->
+        <!-- Results Table -->
         <template v-if="aiResults.length">
-          <div class="ai-results-header">
-            <h3 style="margin:0;font-size:var(--font-md)">{{ aiResults.length }} leads found</h3>
-            <div class="ai-meta">
-              <span v-if="aiMeta.sources_searched" class="text-xs text-muted">
-                LinkedIn: {{ aiMeta.sources_searched.linkedin || 0 }} | Twitter: {{ aiMeta.sources_searched.twitter || 0 }}
-              </span>
-              <span v-if="!aiMeta.has_google_search" class="badge badge-neutral" style="font-size:9px">AI-generated (no Google API key)</span>
+          <!-- Action bar -->
+          <div class="ai-table-bar">
+            <div class="ai-table-bar-left">
+              <h3 style="margin:0;font-size:var(--font-md)">{{ aiResults.length }} leads found</h3>
+              <div class="ai-meta">
+                <span v-if="aiMeta.sources_searched" class="text-xs text-muted">
+                  LinkedIn: {{ aiMeta.sources_searched.linkedin || 0 }} | Twitter: {{ aiMeta.sources_searched.twitter || 0 }}
+                </span>
+                <span v-if="!aiMeta.has_google_search" class="badge badge-neutral" style="font-size:9px">AI-generated</span>
+              </div>
+            </div>
+            <div class="ai-table-bar-right">
+              <span v-if="aiSelected.length" class="text-sm" style="color:var(--brand-accent);font-weight:600">{{ aiSelected.length }} selected</span>
+              <button class="btn btn-secondary btn-sm" :disabled="!aiSelected.length" @click="addSelectedToLeads">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" style="vertical-align:-2px;margin-right:4px"><circle cx="8" cy="5" r="3"/><path d="M2 14c0-3 2.5-5 6-5s6 2 6 5"/></svg>
+                Add as Leads
+              </button>
+              <button class="btn btn-primary btn-sm" :disabled="!aiSelected.length" @click="addSelectedToPipeline">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" style="vertical-align:-2px;margin-right:4px"><path d="M1 4h4v4H1zM6 2h4v8H6zM11 5h4v3h-4z"/></svg>
+                Add to Pipeline
+              </button>
             </div>
           </div>
-          <div class="ai-results-grid">
-            <div v-for="(lead, i) in aiResults" :key="i" class="ai-lead-card card" :style="{ animationDelay: (i * 0.08) + 's' }">
-              <div class="ai-lead-top">
-                <div class="avatar" style="width:40px;height:40px;font-size:14px">{{ (lead.name || 'A').split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2) }}</div>
-                <div style="flex:1;min-width:0">
-                  <div class="ai-lead-name">{{ lead.name }}</div>
-                  <div class="text-sm text-muted">{{ lead.title }}</div>
-                </div>
-                <div class="ai-score" :class="lead.relevance_score >= 80 ? 'score-hot' : lead.relevance_score >= 60 ? 'score-warm' : 'score-cold'">
-                  {{ lead.relevance_score }}
-                </div>
-              </div>
-              <div class="ai-lead-details">
-                <div class="ai-lead-detail" v-if="lead.company">
-                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="4" width="12" height="10" rx="1"/><path d="M5 4V2h6v2"/></svg>
-                  {{ lead.company }}
-                </div>
-                <div class="ai-lead-detail" v-if="lead.location">
-                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 1C5.2 1 3 3.2 3 6c0 4 5 9 5 9s5-5 5-9c0-2.8-2.2-5-5-5z"/><circle cx="8" cy="6" r="2"/></svg>
-                  {{ lead.location }}
-                </div>
-                <div class="ai-lead-detail" v-if="lead.industry">
-                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M2 8h12M8 2c-2 2-2 10 0 12M8 2c2 2 2 10 0 12"/></svg>
-                  {{ lead.industry }}
-                </div>
-              </div>
-              <p class="ai-lead-reason">{{ lead.reason }}</p>
-              <div class="ai-lead-actions">
-                <div class="ai-social-links">
-                  <a v-if="lead.linkedin_url" :href="lead.linkedin_url" target="_blank" class="ai-social-link li">
-                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M0 1.146C0 .513.526 0 1.175 0h13.65C15.474 0 16 .513 16 1.146v13.708c0 .633-.526 1.146-1.175 1.146H1.175C.526 16 0 15.487 0 14.854V1.146zm4.943 12.248V6.169H2.542v7.225h2.401zm-1.2-8.212c.837 0 1.358-.554 1.358-1.248-.015-.709-.52-1.248-1.342-1.248-.822 0-1.359.54-1.359 1.248 0 .694.521 1.248 1.327 1.248h.016zm4.908 8.212V9.359c0-.216.016-.432.08-.586.173-.431.568-.878 1.232-.878.869 0 1.216.662 1.216 1.634v3.865h2.401V9.25c0-2.22-1.184-3.252-2.764-3.252-1.274 0-1.845.7-2.165 1.193V6.169H6.29c.032.68 0 7.225 0 7.225h2.361z"/></svg>
-                    LinkedIn
-                  </a>
-                  <a v-if="lead.twitter_url" :href="lead.twitter_url" target="_blank" class="ai-social-link tw">
-                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M5.026 15c6.038 0 9.341-5.003 9.341-9.334 0-.14 0-.282-.006-.422A6.685 6.685 0 0016 3.542a6.658 6.658 0 01-1.889.518 3.301 3.301 0 001.447-1.817 6.533 6.533 0 01-2.087.793A3.286 3.286 0 007.875 6.03 9.325 9.325 0 011.114 2.1 3.323 3.323 0 002.13 6.574A3.203 3.203 0 01.64 6.14v.04a3.288 3.288 0 002.632 3.218 3.203 3.203 0 01-.865.115c-.212 0-.418-.02-.62-.058a3.283 3.283 0 003.067 2.277A6.588 6.588 0 01.78 13.58a6.32 6.32 0 01-.78-.045A9.344 9.344 0 005.026 15z"/></svg>
-                    Twitter
-                  </a>
-                </div>
-                <button class="btn btn-secondary btn-sm" @click="addAILeadToTable(lead)">
-                  + Add as Lead
-                </button>
-              </div>
-            </div>
+
+          <!-- Sortable Table -->
+          <div class="card ai-table-card">
+            <table class="data-table ai-data-table">
+              <thead>
+                <tr>
+                  <th style="width:36px">
+                    <input type="checkbox" class="ai-check" :checked="aiSelected.length === sortedAIResults.length && sortedAIResults.length > 0" @change="toggleAllAI" />
+                  </th>
+                  <th class="sortable-th" @click="setAiSort('name')">
+                    Name
+                    <span class="sort-icon" v-if="aiSortKey === 'name'">{{ aiSortDir === 'asc' ? '\u25B2' : '\u25BC' }}</span>
+                  </th>
+                  <th class="sortable-th" @click="setAiSort('email')">
+                    Email
+                    <span class="sort-icon" v-if="aiSortKey === 'email'">{{ aiSortDir === 'asc' ? '\u25B2' : '\u25BC' }}</span>
+                  </th>
+                  <th class="sortable-th" @click="setAiSort('company')">
+                    Company
+                    <span class="sort-icon" v-if="aiSortKey === 'company'">{{ aiSortDir === 'asc' ? '\u25B2' : '\u25BC' }}</span>
+                  </th>
+                  <th class="sortable-th" @click="setAiSort('phone')">Phone</th>
+                  <th class="sortable-th" @click="setAiSort('location')">
+                    Location
+                    <span class="sort-icon" v-if="aiSortKey === 'location'">{{ aiSortDir === 'asc' ? '\u25B2' : '\u25BC' }}</span>
+                  </th>
+                  <th class="sortable-th" @click="setAiSort('industry')">
+                    Industry
+                    <span class="sort-icon" v-if="aiSortKey === 'industry'">{{ aiSortDir === 'asc' ? '\u25B2' : '\u25BC' }}</span>
+                  </th>
+                  <th class="sortable-th" @click="setAiSort('relevance_score')" style="width:80px">
+                    Score
+                    <span class="sort-icon" v-if="aiSortKey === 'relevance_score'">{{ aiSortDir === 'asc' ? '\u25B2' : '\u25BC' }}</span>
+                  </th>
+                  <th style="width:90px">Links</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(lead, i) in sortedAIResults" :key="i"
+                    :class="{ 'row-selected': aiSelected.includes(i) }"
+                    @click="toggleAiSelect(i)">
+                  <td @click.stop>
+                    <input type="checkbox" class="ai-check" :checked="aiSelected.includes(i)" @change="toggleAiSelect(i)" />
+                  </td>
+                  <td>
+                    <div class="lead-name">{{ lead.name || '--' }}</div>
+                    <div class="text-xs text-muted">{{ lead.title || '' }}</div>
+                  </td>
+                  <td><span class="text-sm" style="color:var(--brand-accent)">{{ lead.email || '--' }}</span></td>
+                  <td class="text-sm">{{ lead.company || '--' }}</td>
+                  <td class="text-sm text-muted">{{ lead.phone || '--' }}</td>
+                  <td class="text-sm text-muted">{{ lead.location || '--' }}</td>
+                  <td><span class="badge badge-neutral" style="font-size:10px" v-if="lead.industry">{{ lead.industry }}</span></td>
+                  <td><span class="score-badge" :class="lead.relevance_score >= 80 ? 'score-hot' : lead.relevance_score >= 60 ? 'score-warm' : 'score-cold'">{{ lead.relevance_score }}</span></td>
+                  <td @click.stop>
+                    <div style="display:flex;gap:4px">
+                      <a v-if="lead.linkedin_url" :href="lead.linkedin_url" target="_blank" class="ai-social-link li" style="padding:3px 5px">
+                        <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M0 1.146C0 .513.526 0 1.175 0h13.65C15.474 0 16 .513 16 1.146v13.708c0 .633-.526 1.146-1.175 1.146H1.175C.526 16 0 15.487 0 14.854V1.146zm4.943 12.248V6.169H2.542v7.225h2.401zm-1.2-8.212c.837 0 1.358-.554 1.358-1.248-.015-.709-.52-1.248-1.342-1.248-.822 0-1.359.54-1.359 1.248 0 .694.521 1.248 1.327 1.248h.016zm4.908 8.212V9.359c0-.216.016-.432.08-.586.173-.431.568-.878 1.232-.878.869 0 1.216.662 1.216 1.634v3.865h2.401V9.25c0-2.22-1.184-3.252-2.764-3.252-1.274 0-1.845.7-2.165 1.193V6.169H6.29c.032.68 0 7.225 0 7.225h2.361z"/></svg>
+                      </a>
+                      <a v-if="lead.twitter_url" :href="lead.twitter_url" target="_blank" class="ai-social-link tw" style="padding:3px 5px">
+                        <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M5.026 15c6.038 0 9.341-5.003 9.341-9.334 0-.14 0-.282-.006-.422A6.685 6.685 0 0016 3.542a6.658 6.658 0 01-1.889.518 3.301 3.301 0 001.447-1.817 6.533 6.533 0 01-2.087.793A3.286 3.286 0 007.875 6.03 9.325 9.325 0 011.114 2.1 3.323 3.323 0 002.13 6.574A3.203 3.203 0 01.64 6.14v.04a3.288 3.288 0 002.632 3.218 3.203 3.203 0 01-.865.115c-.212 0-.418-.02-.62-.058a3.283 3.283 0 003.067 2.277A6.588 6.588 0 01.78 13.58a6.32 6.32 0 01-.78-.045A9.344 9.344 0 005.026 15z"/></svg>
+                      </a>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Reason tooltips below table -->
+          <div v-if="aiSelected.length === 1" class="ai-reason-panel card">
+            <div class="card-header"><h3 class="card-title" style="font-size:var(--font-xs);text-transform:uppercase;letter-spacing:0.1em;color:var(--text-muted)">Why This Lead Matches</h3></div>
+            <p class="text-sm" style="color:var(--text-secondary);line-height:1.6;margin:0">{{ sortedAIResults[aiSelected[0]]?.reason || 'No reason provided.' }}</p>
           </div>
         </template>
 
@@ -285,7 +329,6 @@
         </div>
       </div>
     </template>
-  </div>
 
     <!-- ══════════ Email Compose Modal ══════════ -->
     <div v-if="showEmailModal" class="modal-overlay" @click.self="showEmailModal = false">
@@ -326,12 +369,14 @@
         </div>
       </div>
     </div>
+  </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
-import { VueFlow, useVueFlow } from '@vue-flow/core'
+import { VueFlow } from '@vue-flow/core'
+import { useVueFlow } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
 import { MiniMap } from '@vue-flow/minimap'
@@ -345,6 +390,7 @@ import leadsApi from '@/api/leads'
 
 const route = useRoute()
 const websiteId = route.params.websiteId
+const { screenToFlowCoordinate: vfScreenToFlow } = useVueFlow()
 const flowRef = ref(null)
 
 const loading = ref(true)
@@ -360,6 +406,103 @@ const aiSearching = ref(false)
 const aiSearchDone = ref(false)
 const aiResults = ref([])
 const aiMeta = ref({})
+
+// AI table sorting & selection
+const aiSortKey = ref('relevance_score')
+const aiSortDir = ref('desc')
+const aiSelected = ref([])
+
+const sortedAIResults = computed(() => {
+  const arr = [...aiResults.value]
+  const key = aiSortKey.value
+  const dir = aiSortDir.value === 'asc' ? 1 : -1
+  return arr.sort((a, b) => {
+    const va = a[key] ?? ''
+    const vb = b[key] ?? ''
+    if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * dir
+    return String(va).localeCompare(String(vb)) * dir
+  })
+})
+
+function setAiSort(key) {
+  if (aiSortKey.value === key) {
+    aiSortDir.value = aiSortDir.value === 'asc' ? 'desc' : 'asc'
+  } else {
+    aiSortKey.value = key
+    aiSortDir.value = key === 'relevance_score' ? 'desc' : 'asc'
+  }
+  aiSelected.value = [] // clear selection on re-sort
+}
+
+function toggleAiSelect(index) {
+  const pos = aiSelected.value.indexOf(index)
+  if (pos === -1) aiSelected.value.push(index)
+  else aiSelected.value.splice(pos, 1)
+}
+
+function toggleAllAI() {
+  if (aiSelected.value.length === sortedAIResults.value.length) {
+    aiSelected.value = []
+  } else {
+    aiSelected.value = sortedAIResults.value.map((_, i) => i)
+  }
+}
+
+function addSelectedToLeads() {
+  const selected = aiSelected.value.map(i => sortedAIResults.value[i]).filter(Boolean)
+  for (const lead of selected) {
+    leads.value.unshift({
+      id: 'ai-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+      name: lead.name,
+      email: lead.email || '',
+      company: lead.company || '',
+      score: lead.relevance_score || 50,
+      status: 'new',
+      source: 'AI Finder',
+    })
+  }
+  aiSelected.value = []
+  activeTab.value = 'table'
+}
+
+function addSelectedToPipeline() {
+  const selected = aiSelected.value.map(i => sortedAIResults.value[i]).filter(Boolean)
+  // Add each selected lead as a node on the pipeline canvas
+  let xOffset = 280
+  let yOffset = 400
+  for (const lead of selected) {
+    connectorCounter++
+    const newId = `ai-lead-${connectorCounter}`
+    nodes.value.push({
+      id: newId,
+      type: 'pipeline',
+      position: { x: xOffset, y: yOffset },
+      data: {
+        nodeType: 'hot',
+        icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.5-7 8-7s8 3 8 7"/></svg>',
+        label: lead.name || 'Lead',
+        count: lead.relevance_score || 0,
+        badge: lead.company || 'AI Lead',
+        badgeClass: lead.relevance_score >= 80 ? 'badge-danger' : lead.relevance_score >= 60 ? 'badge-warning' : 'badge-neutral',
+      },
+    })
+    // Also add as a table lead
+    leads.value.unshift({
+      id: newId,
+      name: lead.name,
+      email: lead.email || '',
+      company: lead.company || '',
+      score: lead.relevance_score || 50,
+      status: 'new',
+      source: 'AI Finder',
+    })
+    xOffset += 180
+    if (xOffset > 800) { xOffset = 280; yOffset += 120 }
+  }
+  aiSelected.value = []
+  activeTab.value = 'pipeline'
+}
+
 
 // ── Connector catalog (drag from sidebar) ──
 const connectorCatalog = {
@@ -480,20 +623,16 @@ function onDrop(event) {
   event.preventDefault()
   if (!draggedConnector) return
 
-  const connectorEl = flowRef.value?.$el || document.querySelector('.vue-flow')
-  if (!connectorEl) return
-
-  const bounds = connectorEl.getBoundingClientRect()
-  const rawX = event.clientX - bounds.left
-  const rawY = event.clientY - bounds.top
-
-  // Get the Vue Flow instance to convert screen coords to flow coords
-  const vfInstance = flowRef.value
-  let position = { x: rawX, y: rawY }
-  if (vfInstance?.screenToFlowCoordinate) {
-    position = vfInstance.screenToFlowCoordinate({ x: event.clientX, y: event.clientY })
-  } else if (vfInstance?.project) {
-    position = vfInstance.project({ x: rawX, y: rawY })
+  // Convert screen coordinates to flow coordinates using the composable
+  let position
+  try {
+    position = vfScreenToFlow({ x: event.clientX, y: event.clientY })
+  } catch {
+    // Fallback: manual offset calculation
+    const connectorEl = flowRef.value?.$el || document.querySelector('.vue-flow')
+    if (!connectorEl) return
+    const bounds = connectorEl.getBoundingClientRect()
+    position = { x: event.clientX - bounds.left, y: event.clientY - bounds.top }
   }
 
   connectorCounter++
@@ -610,6 +749,7 @@ async function runAISearch() {
   aiSearching.value = true
   aiSearchDone.value = false
   aiResults.value = []
+  aiSelected.value = []
   try {
     const { data } = await leadsApi.aiSearch(websiteId, { prompt: aiPrompt.value })
     aiResults.value = data?.leads || []
@@ -1003,6 +1143,85 @@ async function sendEmail() {
   text-align: center;
   padding: 40px 20px;
   color: var(--text-muted);
+}
+
+/* ── AI Sortable Results Table ── */
+.ai-table-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.ai-table-bar-left { display: flex; flex-direction: column; gap: 4px; }
+.ai-table-bar-right { display: flex; align-items: center; gap: 8px; }
+
+.ai-table-card {
+  overflow-x: auto;
+  padding: 0;
+}
+.ai-data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-sm);
+}
+.ai-data-table thead { position: sticky; top: 0; z-index: 1; }
+.ai-data-table th {
+  background: var(--bg-surface);
+  padding: 10px 12px;
+  text-align: left;
+  font-weight: 600;
+  font-size: var(--font-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-color);
+  white-space: nowrap;
+}
+.sortable-th {
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.15s;
+}
+.sortable-th:hover { color: var(--text-primary); }
+.sort-icon {
+  display: inline-block;
+  font-size: 9px;
+  margin-left: 3px;
+  color: var(--brand-accent);
+}
+
+.ai-data-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-color);
+  vertical-align: middle;
+}
+.ai-data-table tbody tr {
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.ai-data-table tbody tr:hover { background: var(--bg-hover); }
+.ai-data-table tbody tr.row-selected { background: rgba(91, 141, 239, 0.06); }
+.ai-data-table tbody tr.row-selected:hover { background: rgba(91, 141, 239, 0.1); }
+
+.ai-check {
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+  accent-color: var(--brand-accent);
+}
+
+.lead-name {
+  font-weight: 600;
+  font-size: var(--font-sm);
+  color: var(--text-primary);
+}
+
+.ai-reason-panel {
+  margin-top: 16px;
+  padding: 16px 20px;
+  animation: ai-card-in 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 /* ── Email Compose ── */

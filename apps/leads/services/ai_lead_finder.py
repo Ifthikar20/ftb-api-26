@@ -122,6 +122,8 @@ class AILeadFinder:
                             '  "name": "Full Name",\n'
                             '  "title": "Job Title",\n'
                             '  "company": "Company Name",\n'
+                            '  "email": "realistic professional email based on name and company domain",\n'
+                            '  "phone": "realistic phone number with area code, or empty string if unknown",\n'
                             '  "location": "City, State/Country",\n'
                             '  "linkedin_url": "https://linkedin.com/in/...",\n'
                             '  "twitter_url": "https://twitter.com/...",\n'
@@ -130,7 +132,7 @@ class AILeadFinder:
                             '  "industry": "Industry",\n'
                             '  "is_from_search": true/false\n'
                             "}\n"
-                            "Return 5-10 leads sorted by relevance_score descending. "
+                            "Return 8-15 leads sorted by relevance_score descending. "
                             "Return ONLY the JSON array, no other text."
                         ),
                     }
