@@ -39,9 +39,9 @@ class ScoringConfigAdmin(admin.ModelAdmin):
 
 @admin.register(EmailCampaign)
 class EmailCampaignAdmin(admin.ModelAdmin):
-    list_display = ("id", "name", "website", "status", "sent_count", "open_rate", "click_rate", "created_at")
+    list_display = ("id", "subject", "website", "status", "recipient_count", "open_rate", "click_rate", "created_at")
     list_filter = ("status",)
-    search_fields = ("name", "subject", "website__name")
+    search_fields = ("subject", "website__name")
     readonly_fields = ("id", "created_at", "updated_at", "sent_at")
     ordering = ("-created_at",)
 

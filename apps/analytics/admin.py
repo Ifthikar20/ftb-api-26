@@ -28,6 +28,6 @@ class TrackedLinkAdmin(admin.ModelAdmin):
 
 @admin.register(LinkClick)
 class LinkClickAdmin(admin.ModelAdmin):
-    list_display = ("id", "tracked_link", "ip_address", "converted", "clicked_at")
+    list_display = ("id", "tracked_link", "ip_hash", "converted", "clicked_at")
     list_filter = ("converted",)
     readonly_fields = ("id", "clicked_at")
