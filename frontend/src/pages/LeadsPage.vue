@@ -230,9 +230,10 @@
               <h3 style="margin:0;font-size:var(--font-md)">{{ aiResults.length }} leads found</h3>
               <div class="ai-meta">
                 <span v-if="aiMeta.sources_searched" class="text-xs text-muted">
-                  LinkedIn: {{ aiMeta.sources_searched.linkedin || 0 }} | Twitter: {{ aiMeta.sources_searched.twitter || 0 }}
+                  LinkedIn: {{ aiMeta.sources_searched.linkedin || 0 }} | X: {{ aiMeta.sources_searched.twitter || 0 }}<template v-if="aiMeta.sources_searched.web"> | Web: {{ aiMeta.sources_searched.web }}</template>
                 </span>
-                <span v-if="!aiMeta.has_google_search" class="badge badge-neutral" style="font-size:9px">AI-generated</span>
+                <span v-if="aiMeta.engine === 'openclaw'" class="badge badge-success" style="font-size:9px">OpenClaw</span>
+                <span v-else-if="!aiMeta.has_google_search" class="badge badge-neutral" style="font-size:9px">AI-generated</span>
               </div>
             </div>
             <div class="ai-table-bar-right">
@@ -281,6 +282,7 @@
                     Score
                     <span class="sort-icon" v-if="aiSortKey === 'relevance_score'">{{ aiSortDir === 'asc' ? '\u25B2' : '\u25BC' }}</span>
                   </th>
+                  <th style="width:70px">Source</th>
                   <th style="width:90px">Links</th>
                 </tr>
               </thead>
@@ -301,6 +303,7 @@
                   <td class="text-sm text-muted">{{ lead.location || '--' }}</td>
                   <td><span class="badge badge-neutral" style="font-size:10px" v-if="lead.industry">{{ lead.industry }}</span></td>
                   <td><span class="score-badge" :class="lead.relevance_score >= 80 ? 'score-hot' : lead.relevance_score >= 60 ? 'score-warm' : 'score-cold'">{{ lead.relevance_score }}</span></td>
+                  <td><span class="source-badge" :class="'source-' + (lead.source || 'ai')">{{ (lead.source || 'ai').toUpperCase() }}</span></td>
                   <td @click.stop>
                     <div style="display:flex;gap:4px">
                       <a v-if="lead.linkedin_url" :href="lead.linkedin_url" target="_blank" class="ai-social-link li" style="padding:3px 5px">
@@ -1223,6 +1226,21 @@ async function sendEmail() {
   padding: 16px 20px;
   animation: ai-card-in 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
+
+.source-badge {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.source-x { background: rgba(0,0,0,0.08); color: #1a1a2e; }
+.source-linkedin { background: rgba(10,102,194,0.1); color: #0a66c2; }
+.source-web { background: rgba(148,163,184,0.12); color: var(--text-muted); }
+.source-ai { background: rgba(91,141,239,0.1); color: var(--brand-accent); }
+.source-openclaw { background: rgba(34,197,94,0.1); color: #22c55e; }
 
 /* ── Email Compose ── */
 .email-sent-msg { text-align: center; padding: 8px; color: var(--color-success); font-size: var(--font-sm); font-weight: 600; }

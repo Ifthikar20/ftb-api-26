@@ -296,6 +296,10 @@ SENTRY_DSN = env("SENTRY_DSN", default="")
 DATAFORSEO_LOGIN = env("DATAFORSEO_LOGIN", default="")
 DATAFORSEO_PASSWORD = env("DATAFORSEO_PASSWORD", default="")
 
+# ── OpenClaw AI Agent ──
+OPENCLAW_GATEWAY_URL = env("OPENCLAW_GATEWAY_URL", default="")
+OPENCLAW_AUTH_TOKEN = env("OPENCLAW_AUTH_TOKEN", default="")
+
 # ── INTEGRATION CREDENTIALS ──
 # Managed centrally via core.integrations.registry — setting names referenced there.
 HUBSPOT_CLIENT_ID = env("HUBSPOT_CLIENT_ID", default="")

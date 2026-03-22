@@ -1,0 +1,13 @@
+FROM ghcr.io/openclaw/openclaw:latest
+
+# Copy custom skills into the OpenClaw data directory
+COPY skills/ /home/user/.openclaw/skills/
+
+# Copy gateway configuration
+COPY openclaw.json /home/user/.openclaw/openclaw.json
+
+# OpenClaw Gateway default port
+EXPOSE 18789
+
+# Start the gateway
+CMD ["openclaw", "gateway", "start", "--no-onboarding"]

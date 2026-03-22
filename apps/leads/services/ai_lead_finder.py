@@ -1,8 +1,7 @@
 """
 AI-powered lead discovery service.
-Uses Claude to parse natural-language prompts into structured search criteria,
-then queries Google Custom Search for LinkedIn/Twitter profiles.
-Falls back to Claude-only suggestions when Google keys are absent.
+Routes through OpenClaw AI agent when available (self-hosted),
+otherwise falls back to Claude + Google Custom Search pipeline.
 """
 import json
 import logging
@@ -156,8 +155,43 @@ class AILeadFinder:
     @classmethod
     def search(cls, prompt: str) -> dict:
         """
-        Full pipeline: parse prompt → search Google → score with AI → return leads.
+        Full pipeline:
+        1. Try OpenClaw agent (real X/LinkedIn scraping) if available
+        2. Fallback: parse prompt with Claude → Google search → Claude scoring
         """
+        # ── Strategy 1: OpenClaw AI Agent ──
+        try:
+            from apps.leads.services.openclaw_service import OpenClawService
+
+            openclaw_result = OpenClawService.send_prompt(prompt)
+            if openclaw_result and openclaw_result.get("leads"):
+                leads = openclaw_result["leads"]
+                sources = openclaw_result.get("sources_searched", {})
+                logger.info(
+                    "OpenClaw returned %d leads (x:%d, li:%d, web:%d)",
+                    len(leads),
+                    sources.get("x", 0),
+                    sources.get("linkedin", 0),
+                    sources.get("web", 0),
+                )
+                return {
+                    "criteria": openclaw_result.get("criteria", {}),
+                    "leads": leads,
+                    "sources_searched": {
+                        "linkedin": sources.get("linkedin", 0),
+                        "twitter": sources.get("x", 0),
+                        "web": sources.get("web", 0),
+                    },
+                    "total": len(leads),
+                    "has_google_search": True,
+                    "engine": "openclaw",
+                }
+        except Exception as e:
+            logger.warning("OpenClaw integration failed, using fallback: %s", e)
+
+        # ── Strategy 2: Claude + Google Custom Search (fallback) ──
+        logger.info("Using Claude fallback for lead search")
+
         # Step 1: Parse prompt
         criteria = cls._parse_prompt(prompt)
         logger.info("AI Lead Finder criteria: %s", criteria)
@@ -194,4 +228,5 @@ class AILeadFinder:
                 getattr(settings, "GOOGLE_SEARCH_API_KEY", "")
                 and getattr(settings, "GOOGLE_SEARCH_ENGINE_ID", "")
             ),
+            "engine": "claude",
         }
