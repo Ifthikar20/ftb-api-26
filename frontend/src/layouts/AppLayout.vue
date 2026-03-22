@@ -3,8 +3,7 @@
     <!-- Sidebar -->
     <aside class="sidebar">
       <div class="sidebar-brand">
-        <div class="brand-mark">FB</div>
-        <span v-if="!appStore.sidebarCollapsed" class="brand-name">FetchBot</span>
+        <img src="/images/fb-logo.png" alt="FetchBot" class="brand-logo" />
       </div>
 
       <!-- Project Selector -->
@@ -351,26 +350,11 @@ onMounted(async () => {
   padding: 20px 20px 16px;
 }
 
-.brand-mark {
-  width: 32px;
-  height: 32px;
-  background: var(--text-primary);
-  color: var(--text-inverse);
-  border-radius: var(--radius-md);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 800;
-  font-size: var(--font-sm);
-  letter-spacing: -0.02em;
+.brand-logo {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
   flex-shrink: 0;
-}
-
-.brand-name {
-  font-family: var(--font-display);
-  font-size: var(--font-xl);
-  font-weight: 400;
-  color: var(--text-primary);
 }
 
 .project-select { padding: 0 16px 16px; }
