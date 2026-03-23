@@ -64,15 +64,35 @@
             v-for="p in latestBreakdown"
             :key="p.provider"
             class="provider-card"
-            :class="{ 'provider-mentioned': p.mentioned > 0 }"
+            :class="{ 'provider-mentioned': p.mentioned > 0, 'provider-failed': p.succeeded === 0 }"
           >
             <div class="provider-icon">{{ providerInitial(p.provider) }}</div>
             <div class="provider-name">{{ p.provider_display || providerLabel(p.provider) }}</div>
-            <span class="badge" :class="p.mentioned > 0 ? 'badge-success' : 'badge-neutral'">
-              {{ p.mention_rate }}% mentioned
-            </span>
-            <div v-if="p.avg_rank" class="text-xs text-muted" style="margin-top:4px">Avg rank #{{ p.avg_rank }}</div>
-            <div class="text-xs" style="margin-top:2px;color:var(--text-muted)">{{ p.succeeded }}/{{ p.total_prompts }} queries</div>
+            <!-- Failed / unconfigured provider -->
+            <template v-if="p.succeeded === 0">
+              <span class="badge badge-danger">Not configured</span>
+              <div class="text-xs text-muted" style="margin-top:4px">API key missing</div>
+            </template>
+            <!-- Queried and got results -->
+            <template v-else>
+              <span class="badge" :class="p.mentioned > 0 ? 'badge-success' : 'badge-neutral'">
+                {{ p.mention_rate }}% mentioned
+              </span>
+              <div v-if="p.avg_rank" class="text-xs text-muted" style="margin-top:4px">Avg rank #{{ p.avg_rank }}</div>
+              <div class="text-xs" style="margin-top:2px;color:var(--text-muted)">{{ p.succeeded }}/{{ p.total_prompts }} queries OK</div>
+            </template>
+          </div>
+        </div>
+
+        <!-- Score Breakdown -->
+        <div v-if="latestAudit && latestAudit.status === 'completed'" class="score-breakdown" style="margin-top:16px">
+          <div class="text-xs text-muted" style="line-height:1.6">
+            <strong>Score breakdown:</strong>
+            {{ Math.round(latestAudit.mention_rate || 0) }}% mention rate
+            ({{ Math.round((latestAudit.mention_rate || 0) * 0.4) }} pts) +
+            rank bonus ({{ latestAudit.avg_mention_rank ? 'avg #' + latestAudit.avg_mention_rank : 'N/A' }}) +
+            sentiment + provider coverage =
+            <strong>{{ latestAudit.overall_score }}/100</strong>
           </div>
         </div>
       </div>
@@ -523,6 +543,8 @@ onBeforeUnmount(stopPolling)
   transition: border-color var(--transition-fast);
 }
 .provider-card.provider-mentioned { border-color: var(--color-success); background: var(--color-success-bg); }
+.provider-card.provider-failed { opacity: 0.5; border-style: dashed; }
+.score-breakdown { padding: 12px 16px; border-radius: var(--radius-md); background: var(--bg-surface); border: 1px solid var(--border-color); }
 .provider-icon {
   width: 36px;
   height: 36px;
