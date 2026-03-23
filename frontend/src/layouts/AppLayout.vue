@@ -116,8 +116,12 @@
           </svg>
         </button>
 
-        <div class="topbar-search">
-          <input class="form-input" placeholder="Search..." style="padding:8px 16px;font-size:var(--font-sm);border-radius:var(--radius-full);background:var(--bg-surface)" />
+        <div class="topbar-search" @click="openSearch">
+          <div class="search-trigger">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="6" cy="6" r="4.5"/><line x1="9.5" y1="9.5" x2="13" y2="13"/></svg>
+            <span class="search-placeholder">Search pages...</span>
+            <span class="search-shortcut">{{ isMac ? '⌘' : 'Ctrl' }}+K</span>
+          </div>
         </div>
 
         <div class="topbar-actions">
@@ -183,11 +187,55 @@
         </template>
       </div>
     </div>
+
+    <!-- Command Palette Search -->
+    <Teleport to="body">
+      <div v-if="showSearch" class="cmd-backdrop" @click="showSearch = false">
+        <div class="cmd-palette" @click.stop>
+          <div class="cmd-input-wrap">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" class="cmd-search-icon"><circle cx="7" cy="7" r="5"/><line x1="11" y1="11" x2="14" y2="14"/></svg>
+            <input
+              ref="searchInputRef"
+              v-model="searchQuery"
+              class="cmd-input"
+              placeholder="Search pages, features, and settings..."
+              @keydown.down.prevent="moveHighlight(1)"
+              @keydown.up.prevent="moveHighlight(-1)"
+              @keydown.enter.prevent="selectHighlighted"
+              @keydown.escape="showSearch = false"
+            />
+          </div>
+          <div class="cmd-results">
+            <template v-if="filteredSearchPages.length">
+              <template v-for="(group, gIdx) in groupedResults" :key="group.label">
+                <div class="cmd-group-label">{{ group.label }}</div>
+                <div
+                  v-for="(item, iIdx) in group.items"
+                  :key="item.name"
+                  class="cmd-item"
+                  :class="{ 'cmd-item-active': item._flatIdx === highlightIdx }"
+                  @click="navigateToPage(item)"
+                  @mouseenter="highlightIdx = item._flatIdx"
+                >
+                  <span class="cmd-item-icon" v-html="item.icon"></span>
+                  <div class="cmd-item-text">
+                    <span class="cmd-item-name">{{ item.label }}</span>
+                    <span class="cmd-item-desc">{{ item.description }}</span>
+                  </div>
+                  <span class="cmd-item-shortcut" v-if="item.shortcut">{{ item.shortcut }}</span>
+                </div>
+              </template>
+            </template>
+            <div v-else class="cmd-empty">No results for "{{ searchQuery }}"</div>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useAppStore } from '@/stores/app'
@@ -211,6 +259,83 @@ const creating = ref(false)
 const createError = ref('')
 const newProject = ref({ name: '', url: '', industry: '' })
 
+// ── Command palette search ──
+const showSearch = ref(false)
+const searchQuery = ref('')
+const highlightIdx = ref(0)
+const searchInputRef = ref(null)
+const isMac = navigator.platform?.toUpperCase().includes('MAC')
+
+const searchPages = [
+  { name: 'dashboard', label: 'Dashboard', description: 'Overview of all your projects', category: 'Navigation', route: '/dashboard', icon: '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/><rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>' },
+  { name: 'websites', label: 'Projects', description: 'Manage your tracked websites', category: 'Navigation', route: '/websites', icon: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="7"/><line x1="1" y1="8" x2="15" y2="8"/><ellipse cx="8" cy="8" rx="3" ry="7"/></svg>' },
+  { name: 'analytics', label: 'Analytics', description: 'Visitor data, traffic sources, engagement', category: 'Intelligence', routeFn: () => analyticsRoute.value, icon: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 14V6l4-4 4 4 4-4v12"/></svg>' },
+  { name: 'leads', label: 'Leads', description: 'Lead capture and pipeline management', category: 'Intelligence', routeFn: () => leadsRoute.value, icon: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="5" r="3"/><path d="M2 14c0-3 3-5 6-5s6 2 6 5"/></svg>' },
+  { name: 'audits', label: 'Audits', description: 'SEO, performance, and security audits', category: 'Intelligence', routeFn: () => auditsRoute.value, icon: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="5"/><line x1="11" y1="11" x2="14" y2="14"/></svg>' },
+  { name: 'heatmaps', label: 'Heatmaps', description: 'Visual click and scroll behavior', category: 'Intelligence', routeFn: () => heatmapRoute.value, icon: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="1" width="14" height="14" rx="2"/><circle cx="6" cy="6" r="2" fill="currentColor" opacity="0.6"/><circle cx="10" cy="10" r="2.5" fill="currentColor" opacity="0.8"/></svg>' },
+  { name: 'keywords', label: 'Keywords', description: 'Keyword ranking and tracking', category: 'Intelligence', routeFn: () => keywordsRoute.value, icon: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 12l4-4 3 3 5-7"/><circle cx="14" cy="4" r="1.5" fill="currentColor"/></svg>' },
+  { name: 'strategy', label: 'Strategy', description: 'AI-powered growth recommendations', category: 'Intelligence', routeFn: () => strategyRoute.value, icon: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 1l2 4h4l-3 3 1 4-4-2-4 2 1-4-3-3h4z"/></svg>' },
+  { name: 'agents', label: 'Agents', description: 'AI agents for automation tasks', category: 'Intelligence', routeFn: () => agentsRoute.value, icon: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="6" r="3"/><path d="M3 14c0-3 2.2-5 5-5s5 2 5 5"/><path d="M12 4l2-2M4 4L2 2" stroke-linecap="round"/></svg>' },
+  { name: 'campaigns', label: 'Campaigns', description: 'Email campaigns and outreach', category: 'Intelligence', routeFn: () => campaignsRoute.value, icon: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 3h12c.6 0 1 .4 1 1v8c0 .6-.4 1-1 1H2c-.6 0-1-.4-1-1V4c0-.6.4-1 1-1z"/><polyline points="14,4 8,9 2,4"/></svg>' },
+  { name: 'llm-ranking', label: 'LLM Ranking', description: 'AI visibility scoring across LLMs', category: 'Intelligence', routeFn: () => llmRankingRoute.value, icon: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 4v4l3 2"/></svg>' },
+  { name: 'billing', label: 'Billing', description: 'Subscription plans and payment', category: 'Account', route: '/billing', icon: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="3" width="14" height="10" rx="2"/><line x1="1" y1="7" x2="15" y2="7"/></svg>' },
+  { name: 'settings', label: 'Settings', description: 'Account settings and preferences', category: 'Account', route: '/settings', icon: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="2.5"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.3 3.3l1.4 1.4M11.3 11.3l1.4 1.4M12.7 3.3l-1.4 1.4M4.7 11.3l-1.4 1.4"/></svg>' },
+]
+
+const filteredSearchPages = computed(() => {
+  const q = searchQuery.value.toLowerCase().trim()
+  if (!q) return searchPages
+  return searchPages.filter(p =>
+    p.label.toLowerCase().includes(q) ||
+    p.description.toLowerCase().includes(q) ||
+    p.category.toLowerCase().includes(q)
+  )
+})
+
+const groupedResults = computed(() => {
+  const groups = {}
+  let flatIdx = 0
+  for (const item of filteredSearchPages.value) {
+    if (!groups[item.category]) groups[item.category] = { label: item.category, items: [] }
+    groups[item.category].items.push({ ...item, _flatIdx: flatIdx++ })
+  }
+  return Object.values(groups)
+})
+
+function openSearch() {
+  showSearch.value = true
+  searchQuery.value = ''
+  highlightIdx.value = 0
+  nextTick(() => searchInputRef.value?.focus())
+}
+
+function moveHighlight(dir) {
+  const total = filteredSearchPages.value.length
+  if (!total) return
+  highlightIdx.value = (highlightIdx.value + dir + total) % total
+}
+
+function selectHighlighted() {
+  const item = filteredSearchPages.value[highlightIdx.value]
+  if (item) navigateToPage(item)
+}
+
+function navigateToPage(item) {
+  showSearch.value = false
+  const target = item.routeFn ? item.routeFn() : item.route
+  router.push(target)
+}
+
+function handleGlobalKeydown(e) {
+  if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+    e.preventDefault()
+    openSearch()
+  }
+}
+
+watch(searchQuery, () => {
+  highlightIdx.value = 0
+})
 // Onboarding steps for first-time users
 const onboardingSteps = [
   {
@@ -347,6 +472,12 @@ onMounted(async () => {
     const limits = { starter: 1, growth: 5, scale: -1 }
     appStore.setPlanInfo(plan, limits[plan] ?? 1)
   } catch {}
+  // Search keyboard shortcut
+  document.addEventListener('keydown', handleGlobalKeydown)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('keydown', handleGlobalKeydown)
 })
 </script>
 
@@ -618,5 +749,160 @@ onMounted(async () => {
   font-weight: 600;
   color: var(--text-primary);
   margin-bottom: 6px;
+}
+
+/* Search Trigger */
+.search-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: var(--radius-full);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  min-width: 220px;
+}
+.search-trigger:hover {
+  border-color: var(--color-primary);
+  background: var(--bg-base);
+}
+.search-trigger svg {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.search-placeholder {
+  font-size: var(--font-sm);
+  color: var(--text-muted);
+  flex: 1;
+}
+.search-shortcut {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--bg-base);
+  border: 1px solid var(--border-color);
+  padding: 2px 6px;
+  border-radius: 4px;
+  letter-spacing: 0.5px;
+}
+</style>
+
+<!-- Command palette styles (unscoped for Teleport) -->
+<style>
+.cmd-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  z-index: 9999;
+  display: flex;
+  justify-content: center;
+  padding-top: 15vh;
+  animation: cmdFadeIn 0.15s ease;
+}
+@keyframes cmdFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.cmd-palette {
+  width: 560px;
+  max-height: 480px;
+  background: var(--bg-card, #fff);
+  border-radius: 12px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: cmdSlideUp 0.2s ease;
+}
+@keyframes cmdSlideUp {
+  from { transform: translateY(12px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+.cmd-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border-color, #e5e5e5);
+}
+.cmd-search-icon {
+  color: var(--text-muted, #888);
+  flex-shrink: 0;
+}
+.cmd-input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  font-size: 15px;
+  color: var(--text-primary, #111);
+  outline: none;
+}
+.cmd-input::placeholder {
+  color: var(--text-muted, #999);
+}
+.cmd-results {
+  overflow-y: auto;
+  padding: 8px;
+  flex: 1;
+}
+.cmd-group-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted, #888);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 8px 10px 4px;
+}
+.cmd-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.cmd-item:hover,
+.cmd-item-active {
+  background: var(--bg-surface, #f5f5f5);
+}
+.cmd-item-icon {
+  color: var(--text-muted, #888);
+  flex-shrink: 0;
+  width: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.cmd-item-text {
+  flex: 1;
+  min-width: 0;
+}
+.cmd-item-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary, #111);
+}
+.cmd-item-desc {
+  font-size: 12px;
+  color: var(--text-muted, #888);
+  margin-left: 8px;
+}
+.cmd-item-shortcut {
+  font-size: 10px;
+  color: var(--text-muted, #888);
+  background: var(--bg-base, #f0f0f0);
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--border-color, #e5e5e5);
+}
+.cmd-empty {
+  padding: 24px;
+  text-align: center;
+  color: var(--text-muted, #888);
+  font-size: 14px;
 }
 </style>
