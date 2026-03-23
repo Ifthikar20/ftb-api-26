@@ -49,6 +49,10 @@ class LLMRankingAudit(TimestampMixin):
     avg_mention_rank = models.FloatField(default=0.0)  # avg position when mentioned (lower=better)
     # Which providers were queried
     providers_queried = models.JSONField(default=list)
+    # Progress tracking for batch job
+    queries_completed = models.IntegerField(default=0)
+    total_queries = models.IntegerField(default=0)
+    started_at = models.DateTimeField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
     error_message = models.TextField(blank=True)
 

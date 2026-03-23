@@ -387,6 +387,7 @@ class LLMRankingService:
         """
         Execute a full LLM ranking audit. Called as a Celery task.
         Updates the audit record with results and computed scores.
+        Saves progress after each query so the frontend can show ETA.
         """
         from apps.llm_ranking.models import LLMRankingAudit, LLMRankingResult
 
@@ -395,9 +396,6 @@ class LLMRankingService:
         except LLMRankingAudit.DoesNotExist:
             logger.error("LLMRankingAudit %s not found", audit_id)
             return
-
-        audit.status = LLMRankingAudit.STATUS_RUNNING
-        audit.save(update_fields=["status", "updated_at"])
 
         provider_map = {
             LLMRankingResult.PROVIDER_CLAUDE: LLMRankingService._query_claude,
@@ -408,9 +406,22 @@ class LLMRankingService:
 
         # Only query user-selected providers (stored at audit creation)
         selected_providers = audit.providers_queried or list(provider_map.keys())
+        # Filter to only providers that have a query function
+        selected_providers = [p for p in selected_providers if p in provider_map]
+
+        # Calculate total queries and set progress tracking
+        total = len(selected_providers) * len(audit.prompts)
+        audit.status = LLMRankingAudit.STATUS_RUNNING
+        audit.total_queries = total
+        audit.queries_completed = 0
+        audit.started_at = timezone.now()
+        audit.save(update_fields=[
+            "status", "total_queries", "queries_completed", "started_at", "updated_at",
+        ])
 
         all_results = []
         providers_succeeded = []
+        completed = 0
 
         for provider in selected_providers:
             query_fn = provider_map.get(provider)
@@ -455,6 +466,11 @@ class LLMRankingService:
                 )
                 all_results.append(result)
 
+                # Update progress after each query
+                completed += 1
+                audit.queries_completed = completed
+                audit.save(update_fields=["queries_completed", "updated_at"])
+
             if any(r.provider == provider and r.query_succeeded for r in all_results):
                 providers_succeeded.append(provider)
 
@@ -476,6 +492,7 @@ class LLMRankingService:
             "LLMRankingAudit %s completed: score=%d, mention_rate=%.1f%%",
             audit_id, scores["overall_score"], scores["mention_rate"],
         )
+
 
     # ── Recommendations ────────────────────────────────────────────────────
 

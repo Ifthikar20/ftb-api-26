@@ -26,14 +26,16 @@ class LLMRankingAuditSerializer(serializers.ModelSerializer):
         model = LLMRankingAudit
         fields = [
             "id", "status", "status_display",
-            "business_name", "business_description", "industry", "keywords",
+            "business_name", "business_description", "industry", "location", "keywords",
             "prompts", "overall_score", "mention_rate", "avg_mention_rank",
-            "providers_queried", "completed_at", "created_at",
+            "providers_queried", "queries_completed", "total_queries",
+            "started_at", "completed_at", "created_at",
             "results",
         ]
         read_only_fields = [
             "id", "status", "status_display", "overall_score", "mention_rate",
-            "avg_mention_rank", "providers_queried", "completed_at", "created_at",
+            "avg_mention_rank", "providers_queried", "queries_completed", "total_queries",
+            "started_at", "completed_at", "created_at",
             "results",
         ]
 
@@ -46,9 +48,10 @@ class LLMRankingAuditListSerializer(serializers.ModelSerializer):
         model = LLMRankingAudit
         fields = [
             "id", "status", "status_display",
-            "business_name", "industry",
+            "business_name", "industry", "location",
             "overall_score", "mention_rate", "avg_mention_rank",
-            "providers_queried", "completed_at", "created_at",
+            "providers_queried", "queries_completed", "total_queries",
+            "started_at", "completed_at", "created_at",
         ]
         read_only_fields = fields
 

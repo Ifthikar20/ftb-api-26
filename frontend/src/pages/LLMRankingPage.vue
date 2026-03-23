@@ -40,8 +40,20 @@
               </span>
               <span class="badge badge-neutral">{{ (latestAudit.providers_queried || []).length }} providers queried</span>
             </div>
-            <div v-if="latestAudit.status === 'running'" class="audit-running-notice">
-              <span class="pulse-dot"></span> Audit is running... results will appear shortly
+            <div v-if="latestAudit.status === 'running' || latestAudit.status === 'pending'" class="audit-progress-card">
+              <div class="progress-header">
+                <span class="pulse-dot"></span>
+                <span class="progress-label">{{ latestAudit.status === 'pending' ? 'Queued — waiting to start...' : 'Audit in progress' }}</span>
+                <span class="progress-pct">{{ auditProgressPct }}%</span>
+              </div>
+              <div class="progress-bar-track">
+                <div class="progress-bar-fill" :style="{ width: auditProgressPct + '%' }"></div>
+              </div>
+              <div class="progress-details">
+                <span>{{ latestAudit.queries_completed || 0 }} / {{ latestAudit.total_queries || '?' }} queries</span>
+                <span v-if="auditETA">ETA: {{ auditETA }}</span>
+                <span v-else-if="latestAudit.status === 'running'">Calculating ETA...</span>
+              </div>
             </div>
           </div>
         </div>
@@ -220,6 +232,26 @@ const availableProviders = [
 ]
 
 const latestAudit = computed(() => audits.value[0] || null)
+
+const auditProgressPct = computed(() => {
+  const a = latestAudit.value
+  if (!a || !a.total_queries) return 0
+  return Math.min(100, Math.round((a.queries_completed / a.total_queries) * 100))
+})
+
+const auditETA = computed(() => {
+  const a = latestAudit.value
+  if (!a || !a.started_at || !a.queries_completed || !a.total_queries) return ''
+  const started = new Date(a.started_at).getTime()
+  const now = Date.now()
+  const elapsed = (now - started) / 1000 // seconds
+  const perQuery = elapsed / a.queries_completed
+  const remaining = (a.total_queries - a.queries_completed) * perQuery
+  if (remaining < 5) return 'Almost done...'
+  if (remaining < 60) return `~${Math.ceil(remaining)}s remaining`
+  const mins = Math.ceil(remaining / 60)
+  return `~${mins} min remaining`
+})
 
 function ringFillStyle(score) {
   if (score == null) return {}
@@ -419,15 +451,30 @@ onBeforeUnmount(stopPolling)
 .score-denom { font-size: var(--font-xs); color: var(--text-muted); }
 .score-meta { flex: 1; }
 
-/* Running audit notice */
-.audit-running-notice {
+/* Running audit progress */
+.audit-progress-card {
+  margin-top: 16px;
+  padding: 14px 16px;
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+}
+.progress-header {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-top: 12px;
+  margin-bottom: 10px;
+}
+.progress-label {
   font-size: var(--font-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+  flex: 1;
+}
+.progress-pct {
+  font-size: var(--font-sm);
+  font-weight: 700;
   color: var(--color-warning);
-  font-weight: 500;
 }
 .pulse-dot {
   width: 8px;
@@ -435,10 +482,31 @@ onBeforeUnmount(stopPolling)
   border-radius: 50%;
   background: var(--color-warning);
   animation: pulse 1.5s ease-in-out infinite;
+  flex-shrink: 0;
 }
 @keyframes pulse {
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.5; transform: scale(0.8); }
+}
+.progress-bar-track {
+  height: 6px;
+  background: var(--border-color);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--color-warning), var(--color-success));
+  border-radius: 3px;
+  transition: width 0.5s ease;
+  min-width: 2px;
+}
+.progress-details {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 8px;
+  font-size: var(--font-xs);
+  color: var(--text-muted);
 }
 
 /* Provider grid */
