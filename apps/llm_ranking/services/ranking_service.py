@@ -195,30 +195,6 @@ class LLMRankingService:
     # ── Response analysis ──────────────────────────────────────────────────
 
     @staticmethod
-    def _build_search_terms(business_name: str, keywords: list) -> list[str]:
-        """
-        Build a list of search terms from the business name and keywords.
-        Includes the full name plus individual significant words.
-        """
-        terms = []
-        name_lower = business_name.lower().strip()
-        if name_lower:
-            terms.append(name_lower)
-            # Also add individual words longer than 3 chars (to catch partial names)
-            # e.g. "Acme Corp" -> also match "acme"
-            for word in name_lower.split():
-                if len(word) > 3 and word not in terms:
-                    terms.append(word)
-
-        # Add keywords but only substantial ones (>3 chars) to avoid false positives
-        for k in keywords:
-            k_lower = k.lower().strip()
-            if k_lower and len(k_lower) > 3 and k_lower not in terms:
-                terms.append(k_lower)
-
-        return terms
-
-    @staticmethod
     def _analyze_mention(
         response_text: str,
         business_name: str,
@@ -228,17 +204,34 @@ class LLMRankingService:
         Detect if the business is mentioned, estimate its rank among listed items,
         and classify sentiment.
 
+        IMPORTANT: Keywords are used for DETECTION only (is the business somewhere
+        in the response?). For RANK extraction, only the business name is used
+        to avoid false positives (e.g. keyword "analytics" matching "Google Analytics").
+
         Returns a dict with:
           is_mentioned, mention_rank, sentiment, confidence_score, mention_context
         """
         text_lower = response_text.lower()
         name_lower = business_name.lower().strip()
 
-        # Build search terms
-        search_terms = LLMRankingService._build_search_terms(business_name, keywords)
+        # Build TWO sets of search terms:
+        # 1. name_terms: name + name words only (precise — for rank extraction)
+        # 2. all_terms: name_terms + keywords (broad — for is_mentioned detection)
+        name_terms = []
+        if name_lower:
+            name_terms.append(name_lower)
+            for word in name_lower.split():
+                if len(word) > 3 and word not in name_terms:
+                    name_terms.append(word)
 
-        # Check for mention using exact substring match
-        is_mentioned = any(term in text_lower for term in search_terms if term)
+        all_terms = list(name_terms)
+        for k in keywords:
+            k_lower = k.lower().strip()
+            if k_lower and len(k_lower) > 3 and k_lower not in all_terms:
+                all_terms.append(k_lower)
+
+        # Detection: use ALL terms (name + keywords)
+        is_mentioned = any(term in text_lower for term in all_terms if term)
 
         if not is_mentioned:
             return {
@@ -249,12 +242,7 @@ class LLMRankingService:
                 "mention_context": "",
             }
 
-        # ── Rank extraction ──
-        # Parse list items from multiple common formats:
-        # 1. Numbered lists: "1. Item", "1) Item", "1: Item"
-        # 2. Bulleted lists: "- Item", "* Item", "• Item"
-        # 3. Bold headers: "**Item** — description"
-        # 4. Markdown headers within lists: "### 1. Item"
+        # ── Rank extraction (use ONLY name_terms, not keywords) ──
         lines = response_text.split("\n")
         rank = None
         context = ""
@@ -265,43 +253,44 @@ class LLMRankingService:
             if not line_stripped:
                 continue
 
-            # Check if this line represents a list item
             is_list_item = False
 
-            # Numbered: "1.", "1)", "1:"
-            if re.match(r"^(\d+)[\.\):\s]+\s*", line_stripped):
+            if re.match(r"^(\d+)[\.\)\:\s]+\s*", line_stripped):
                 is_list_item = True
-            # Markdown heading with number: "### 1. Item" or "## Item"
             elif re.match(r"^#{1,4}\s+(\d+[\.\)]\s+)?", line_stripped):
                 is_list_item = True
-            # Bulleted: "- Item", "* Item", "• Item"
             elif re.match(r"^[-*•]\s+", line_stripped):
                 is_list_item = True
-            # Bold header: "**Item**" at start of line
             elif re.match(r"^\*\*[^*]+\*\*", line_stripped):
                 is_list_item = True
 
             if is_list_item:
                 item_index += 1
                 line_lower = line_stripped.lower()
-                if any(term in line_lower for term in search_terms if term):
+                if any(term in line_lower for term in name_terms if term):
                     rank = item_index
                     context = line_stripped[:300]
                     break
             else:
-                # Still check non-list lines for context
                 line_lower = line_stripped.lower()
-                if any(term in line_lower for term in search_terms if term) and not context:
+                if any(term in line_lower for term in name_terms if term) and not context:
                     context = line_stripped[:300]
 
-        # Sentiment analysis
+        # If detected via keywords but name not found anywhere, lower confidence
+        keyword_only = not any(term in text_lower for term in name_terms if term)
+
         sentiment = LLMRankingService._classify_sentiment(
             context=context or response_text[:500],
             business_name=business_name,
         )
 
-        # Higher confidence when we found an explicit rank
-        confidence = 90.0 if rank is not None else 70.0
+        if keyword_only:
+            confidence = 40.0
+        elif rank is not None:
+            confidence = 90.0
+        else:
+            confidence = 70.0
+
         return {
             "is_mentioned": True,
             "mention_rank": rank,
@@ -309,6 +298,7 @@ class LLMRankingService:
             "confidence_score": confidence,
             "mention_context": context,
         }
+
 
     @staticmethod
     def _classify_sentiment(*, context: str, business_name: str) -> str:
