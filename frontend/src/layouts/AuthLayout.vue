@@ -3,7 +3,7 @@
     <div class="auth-left">
       <div class="auth-brand">
         <div class="brand-logo">
-          <svg width="32" height="32" viewBox="0 0 28 28" fill="none"><circle cx="14" cy="14" r="14" fill="var(--text-primary)"/><path d="M9 10h4v8H9z M15 7h4v11h-4z" fill="var(--text-inverse)"/></svg>
+          <img src="/images/fb-logo.png" alt="FetchBot" style="width:32px;height:32px;object-fit:contain" />
         </div>
         <span class="brand-name">FetchBot</span>
       </div>
