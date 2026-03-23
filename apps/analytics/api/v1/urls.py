@@ -9,6 +9,7 @@ urlpatterns = [
     path("<uuid:website_id>/sources/", views.TrafficSourcesView.as_view(), name="analytics-sources"),
     path("<uuid:website_id>/realtime/", views.RealtimeView.as_view(), name="analytics-realtime"),
     path("<uuid:website_id>/heatmap/", views.HeatmapView.as_view(), name="analytics-heatmap"),
+    path("<uuid:website_id>/ai-traffic/", views.AITrafficView.as_view(), name="analytics-ai-traffic"),
     path("<uuid:website_id>/keywords/trending/", keyword_views.TrendingKeywordsView.as_view(), name="keywords-trending"),
     path("<uuid:website_id>/keywords/scores/", keyword_views.KeywordScoresView.as_view(), name="keywords-scores"),
     path("<uuid:website_id>/keywords/suggestions/", keyword_views.KeywordSuggestionsView.as_view(), name="keywords-suggestions"),

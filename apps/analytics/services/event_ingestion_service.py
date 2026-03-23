@@ -163,9 +163,39 @@ class EventIngestionService:
         if not source and referrer:
             try:
                 ref_host = urlparse(referrer).hostname or ""
-                if "google" in ref_host:
+
+                # ── AI assistant referrers ──
+                if "chat.openai.com" in ref_host or "chatgpt.com" in ref_host:
+                    source = "chatgpt"
+                    medium = "ai"
+                elif "claude.ai" in ref_host:
+                    source = "claude"
+                    medium = "ai"
+                elif "gemini.google.com" in ref_host:
+                    source = "gemini"
+                    medium = "ai"
+                elif "perplexity.ai" in ref_host:
+                    source = "perplexity"
+                    medium = "ai"
+                elif "copilot.microsoft.com" in ref_host:
+                    source = "copilot"
+                    medium = "ai"
+                elif "meta.ai" in ref_host:
+                    source = "meta-ai"
+                    medium = "ai"
+                elif "poe.com" in ref_host:
+                    source = "poe"
+                    medium = "ai"
+                elif "you.com" in ref_host:
+                    source = "you"
+                    medium = "ai"
+
+                # ── Search engines ──
+                elif "google" in ref_host:
                     source = "google"
                     medium = "organic"
+
+                # ── Social platforms ──
                 elif "facebook" in ref_host or "fb.com" in ref_host:
                     source = "facebook"
                     medium = "social"
@@ -178,6 +208,7 @@ class EventIngestionService:
                 elif "youtube" in ref_host:
                     source = "youtube"
                     medium = "social"
+
                 elif ref_host:
                     source = ref_host
                     medium = "referral"

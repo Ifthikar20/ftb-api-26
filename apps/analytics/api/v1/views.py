@@ -98,6 +98,17 @@ class RealtimeView(APIView):
         return Response(data)
 
 
+class AITrafficView(APIView):
+    """AI-sourced traffic breakdown (sessions from ChatGPT, Claude, etc.)."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, website_id):
+        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        period = request.query_params.get("period", "30d")
+        data = AnalyticsService.get_ai_traffic_summary(website_id=website_id, period=period)
+        return Response(data)
+
+
 class HeatmapView(APIView):
     """Aggregated click coordinate data for heatmap visualization."""
     permission_classes = [IsAuthenticated]

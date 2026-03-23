@@ -94,3 +94,50 @@ class AnalyticsService:
             website_id=website_id, last_seen__gte=cutoff
         ).count()
         return {"active_visitors": active_count, "as_of": timezone.now().isoformat()}
+
+    @staticmethod
+    def get_ai_traffic_summary(*, website_id: str, period: str = "30d") -> dict:
+        """Return AI-sourced traffic breakdown (sessions from AI assistants)."""
+        start, end = get_date_range(period)
+
+        all_sessions = Session.objects.filter(
+            visitor__website_id=website_id,
+            started_at__range=(start, end),
+        ).count()
+
+        ai_sessions = list(
+            Session.objects.filter(
+                visitor__website_id=website_id,
+                started_at__range=(start, end),
+                medium="ai",
+            )
+            .values("source")
+            .annotate(count=Count("id"))
+            .order_by("-count")
+        )
+
+        total_ai = sum(r["count"] for r in ai_sessions)
+        ai_pct = round(total_ai / all_sessions * 100, 1) if all_sessions else 0.0
+
+        # Provider display names
+        provider_labels = {
+            "chatgpt": "ChatGPT", "claude": "Claude", "gemini": "Gemini",
+            "perplexity": "Perplexity", "copilot": "Copilot",
+            "meta-ai": "Meta AI", "poe": "Poe", "you": "You.com",
+        }
+
+        providers = [
+            {
+                "source": r["source"],
+                "label": provider_labels.get(r["source"], r["source"].title()),
+                "sessions": r["count"],
+            }
+            for r in ai_sessions
+        ]
+
+        return {
+            "total_sessions": all_sessions,
+            "ai_sessions": total_ai,
+            "ai_percentage": ai_pct,
+            "providers": providers,
+        }
