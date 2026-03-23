@@ -475,9 +475,13 @@ async function fetchData() {
     const { data } = await llmRankingApi.listAudits(websiteId)
     audits.value = data?.data?.results || data?.results || data || []
     if (audits.value.length) {
-      selectedAuditId.value = audits.value[0].id
-      if (audits.value[0].status === 'completed') {
-        await selectAudit(audits.value[0])
+      // Auto-select the first completed audit so its findings load
+      const firstCompleted = audits.value.find(a => a.status === 'completed')
+      if (firstCompleted) {
+        selectedAuditId.value = firstCompleted.id
+        await selectAudit(firstCompleted)
+      } else {
+        selectedAuditId.value = audits.value[0].id
       }
       // Start polling if any audits are running
       if (audits.value.some(a => a.status === 'pending' || a.status === 'running')) {
