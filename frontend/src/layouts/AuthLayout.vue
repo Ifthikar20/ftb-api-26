@@ -11,6 +11,7 @@
       <div class="auth-hero">
         <h1 class="auth-headline">Marketing Intelligence, <br/><em>Simplified.</em></h1>
         <p class="auth-tagline">Track visitors, score leads, spy on competitors, and grow with AI-powered strategy — all in one place.</p>
+        <span class="version-badge">v2.1</span>
       </div>
 
       <div class="auth-features">
@@ -125,6 +126,19 @@ onMounted(() => {
   color: var(--text-secondary);
   line-height: 1.7;
   max-width: 420px;
+}
+
+.version-badge {
+  display: inline-block;
+  margin-top: 12px;
+  padding: 4px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: var(--color-accent, #6366f1);
+  background: color-mix(in srgb, var(--color-accent, #6366f1) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-accent, #6366f1) 25%, transparent);
+  border-radius: 999px;
 }
 
 .auth-features {
