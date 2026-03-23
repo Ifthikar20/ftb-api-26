@@ -25,14 +25,4 @@ class Migration(migrations.Migration):
             name='token_expires_at',
             field=models.DateTimeField(blank=True, null=True),
         ),
-        migrations.AddField(
-            model_name='website',
-            name='onboarding_completed',
-            field=models.BooleanField(default=False),
-        ),
-        migrations.AddField(
-            model_name='website',
-            name='platform_type',
-            field=models.CharField(blank=True, choices=[('shopify', 'Shopify'), ('wordpress', 'WordPress'), ('woocommerce', 'WooCommerce'), ('custom', 'Custom / Other')], default='custom', max_length=20),
-        ),
     ]
