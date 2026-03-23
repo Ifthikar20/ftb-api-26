@@ -12,7 +12,7 @@ RUN npm run build
 # ── Stage 2: Copy dist to shared volume ──
 FROM alpine:3.19
 
-COPY --from=build /app/dist /app/dist
+COPY --from=build /app/dist /build
 
-# This container exits after copying — it's a build-only service
-CMD ["echo", "Frontend build complete"]
+# This container clears old files and copies fresh build into the volume mount
+CMD ["sh", "-c", "rm -rf /app/dist/* && cp -r /build/* /app/dist/ && echo 'Frontend build complete'"]
