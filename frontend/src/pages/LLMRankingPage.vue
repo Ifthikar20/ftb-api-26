@@ -97,6 +97,40 @@
         </div>
       </div>
 
+      <!-- Detailed Findings -->
+      <div v-if="auditDetail && auditDetail.results && auditDetail.results.length" class="card" style="margin-bottom:24px">
+        <div class="card-header" style="cursor:pointer" @click="showFindings = !showFindings">
+          <h3 class="card-title">Detailed Findings ({{ auditDetail.results.length }} queries)</h3>
+          <span class="text-xs text-muted">{{ showFindings ? 'Hide' : 'Show' }}</span>
+        </div>
+        <div v-if="showFindings" class="findings-list">
+          <div v-for="(r, i) in auditDetail.results" :key="i" class="finding-card" :class="{ 'finding-mentioned': r.is_mentioned, 'finding-failed': !r.query_succeeded }">
+            <div class="finding-header">
+              <span class="finding-provider">{{ providerLabel(r.provider) }}</span>
+              <span v-if="!r.query_succeeded" class="badge badge-danger">API Failed</span>
+              <span v-else-if="r.is_mentioned" class="badge badge-success">Mentioned #{{ r.mention_rank || '?' }}</span>
+              <span v-else class="badge badge-neutral">Not mentioned</span>
+              <span v-if="r.sentiment && r.sentiment !== 'not_mentioned'" class="badge" :class="r.sentiment === 'positive' ? 'badge-success' : r.sentiment === 'negative' ? 'badge-danger' : 'badge-neutral'" style="margin-left:4px">
+                {{ r.sentiment }}
+              </span>
+            </div>
+            <div class="finding-prompt">
+              <span class="finding-label">Prompt:</span> {{ r.prompt }}
+            </div>
+            <div v-if="r.mention_context" class="finding-context">
+              <span class="finding-label">Found in:</span> "{{ r.mention_context }}"
+            </div>
+            <div v-if="r.error_message" class="finding-error">
+              <span class="finding-label">Error:</span> {{ r.error_message }}
+            </div>
+            <details v-if="r.response_text" class="finding-response">
+              <summary class="text-xs text-muted" style="cursor:pointer">View full LLM response</summary>
+              <pre class="response-pre">{{ r.response_text }}</pre>
+            </details>
+          </div>
+        </div>
+      </div>
+
       <!-- Recommendations -->
       <div v-if="recommendations.length" class="card" style="margin-bottom:24px">
         <div class="card-header">
@@ -233,6 +267,8 @@ const auditError = ref('')
 const selectedAuditId = ref(null)
 const latestBreakdown = ref([])
 const recommendations = ref([])
+const auditDetail = ref(null)
+const showFindings = ref(true)
 const confirmDeleteId = ref(null)
 let pollTimer = null
 
@@ -362,16 +398,19 @@ async function selectAudit(audit) {
   selectedAuditId.value = audit.id
   latestBreakdown.value = []
   recommendations.value = []
+  auditDetail.value = null
 
   if (audit.status !== 'completed') return
 
   try {
-    const [bRes, rRes] = await Promise.all([
+    const [bRes, rRes, dRes] = await Promise.all([
       llmRankingApi.breakdown(websiteId, audit.id),
       llmRankingApi.recommendations(websiteId, audit.id),
+      llmRankingApi.getAudit(websiteId, audit.id),
     ])
     latestBreakdown.value = bRes.data?.data || bRes.data?.results || bRes.data || []
     recommendations.value = rRes.data?.data?.recommendations || rRes.data?.recommendations || []
+    auditDetail.value = dRes.data?.data || dRes.data || null
   } catch (e) {
     console.error('Audit breakdown fetch error', e)
   }
@@ -558,6 +597,39 @@ onBeforeUnmount(stopPolling)
   color: var(--text-secondary);
 }
 .provider-name { font-size: var(--font-sm); font-weight: 600; color: var(--text-primary); }
+
+/* Detailed Findings */
+.findings-list { display: flex; flex-direction: column; gap: 12px; padding: 16px; }
+.finding-card {
+  border: 1px solid var(--border-color);
+  border-left: 3px solid var(--text-muted);
+  border-radius: var(--radius-md);
+  padding: 12px 16px;
+  background: var(--bg-base);
+}
+.finding-card.finding-mentioned { border-left-color: var(--color-success); }
+.finding-card.finding-failed { border-left-color: var(--color-danger); opacity: 0.6; }
+.finding-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.finding-provider { font-weight: 700; font-size: var(--font-sm); color: var(--text-primary); }
+.finding-label { font-weight: 600; color: var(--text-muted); font-size: var(--font-xs); text-transform: uppercase; letter-spacing: 0.5px; }
+.finding-prompt { font-size: var(--font-sm); color: var(--text-secondary); margin-bottom: 6px; line-height: 1.5; }
+.finding-context { font-size: var(--font-sm); color: var(--color-success); font-style: italic; margin-bottom: 6px; }
+.finding-error { font-size: var(--font-xs); color: var(--color-danger); margin-bottom: 6px; }
+.finding-response { margin-top: 8px; }
+.response-pre {
+  margin-top: 8px;
+  padding: 12px;
+  background: var(--bg-surface);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-xs);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 300px;
+  overflow-y: auto;
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+}
 
 /* Recommendations */
 .recs-list { display: flex; flex-direction: column; gap: 0; }
