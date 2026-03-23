@@ -36,9 +36,12 @@
             </p>
             <div class="flex gap-8">
               <span class="badge" :class="mentionBadge(latestAudit.mention_rate)">
-                {{ Math.round((latestAudit.mention_rate || 0) * 100) }}% mention rate
+                {{ Math.round(latestAudit.mention_rate || 0) }}% mention rate
               </span>
-              <span class="badge badge-neutral">{{ latestAudit.providers_queried || 0 }} providers queried</span>
+              <span class="badge badge-neutral">{{ (latestAudit.providers_queried || []).length }} providers queried</span>
+            </div>
+            <div v-if="latestAudit.status === 'running'" class="audit-running-notice">
+              <span class="pulse-dot"></span> Audit is running... results will appear shortly
             </div>
           </div>
         </div>
@@ -49,15 +52,15 @@
             v-for="p in latestBreakdown"
             :key="p.provider"
             class="provider-card"
-            :class="{ 'provider-mentioned': p.is_mentioned }"
+            :class="{ 'provider-mentioned': p.mentioned > 0 }"
           >
             <div class="provider-icon">{{ providerInitial(p.provider) }}</div>
-            <div class="provider-name">{{ providerLabel(p.provider) }}</div>
-            <span class="badge" :class="p.is_mentioned ? 'badge-success' : 'badge-neutral'">
-              {{ p.is_mentioned ? 'Mentioned' : 'Not mentioned' }}
+            <div class="provider-name">{{ p.provider_display || providerLabel(p.provider) }}</div>
+            <span class="badge" :class="p.mentioned > 0 ? 'badge-success' : 'badge-neutral'">
+              {{ p.mention_rate }}% mentioned
             </span>
-            <div v-if="p.mention_rank" class="text-xs text-muted" style="margin-top:4px">Rank #{{ p.mention_rank }}</div>
-            <div class="text-xs" :class="sentimentTextClass(p.sentiment)" style="margin-top:2px">{{ p.sentiment }}</div>
+            <div v-if="p.avg_rank" class="text-xs text-muted" style="margin-top:4px">Avg rank #{{ p.avg_rank }}</div>
+            <div class="text-xs" style="margin-top:2px;color:var(--text-muted)">{{ p.succeeded }}/{{ p.total_prompts }} queries</div>
           </div>
         </div>
       </div>
@@ -112,7 +115,7 @@
                   {{ audit.overall_score ?? '—' }}
                 </span>
               </td>
-              <td class="text-sm">{{ Math.round((audit.mention_rate || 0) * 100) }}%</td>
+              <td class="text-sm">{{ Math.round(audit.mention_rate || 0) }}%</td>
               <td><span class="badge" :class="auditStatusBadge(audit.status)">{{ audit.status }}</span></td>
               <td>
                 <!-- Inline delete confirmation -->
@@ -181,7 +184,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
 import { useToast } from '@/composables/useToast'
 import llmRankingApi from '@/api/llm_ranking'
@@ -199,6 +202,7 @@ const selectedAuditId = ref(null)
 const latestBreakdown = ref([])
 const recommendations = ref([])
 const confirmDeleteId = ref(null)
+let pollTimer = null
 
 const customPromptsText = ref('')
 const auditForm = ref({
@@ -233,7 +237,8 @@ function ringFillStyle(score) {
 }
 
 function mentionBadge(rate) {
-  const pct = (rate || 0) * 100
+  // mention_rate is already 0-100 from backend
+  const pct = rate || 0
   return pct >= 60 ? 'badge-success' : pct >= 30 ? 'badge-warning' : 'badge-neutral'
 }
 
@@ -243,10 +248,6 @@ function providerLabel(p) {
 
 function providerInitial(p) {
   return { claude: 'A', gpt4: 'G', gemini: 'G', perplexity: 'P' }[p] || p[0].toUpperCase()
-}
-
-function sentimentTextClass(s) {
-  return { positive: 'text-success', neutral: 'text-muted', negative: 'text-danger' }[s] || 'text-muted'
 }
 
 function formatDate(dt) {
@@ -276,10 +277,17 @@ function openRunAudit() {
 
 async function submitAudit() {
   if (!auditForm.value.business_name) { auditError.value = 'Business name is required.'; return }
+  if (!auditForm.value.industry) { auditError.value = 'Industry is required.'; return }
+  if (!auditForm.value.providers.length) { auditError.value = 'Select at least one provider.'; return }
   running.value = true
   auditError.value = ''
   try {
-    const payload = { ...auditForm.value }
+    const payload = {
+      business_name: auditForm.value.business_name,
+      industry: auditForm.value.industry,
+      location: auditForm.value.location,
+      providers: auditForm.value.providers,
+    }
     if (customPromptsText.value.trim()) {
       payload.custom_prompts = customPromptsText.value.split('\n').map(s => s.trim()).filter(Boolean)
     }
@@ -289,6 +297,8 @@ async function submitAudit() {
     selectedAuditId.value = audit.id
     showRunForm.value = false
     toast.success('Audit queued. Results will appear once complete.')
+    // Start polling for results
+    startPolling()
   } catch (err) {
     auditError.value = err.displayMessage || 'Failed to start audit.'
   } finally {
@@ -300,13 +310,16 @@ async function selectAudit(audit) {
   selectedAuditId.value = audit.id
   latestBreakdown.value = []
   recommendations.value = []
+
+  if (audit.status !== 'completed') return
+
   try {
     const [bRes, rRes] = await Promise.all([
       llmRankingApi.breakdown(websiteId, audit.id),
       llmRankingApi.recommendations(websiteId, audit.id),
     ])
-    latestBreakdown.value = bRes.data?.results || bRes.data || []
-    recommendations.value = rRes.data?.recommendations || rRes.data || []
+    latestBreakdown.value = bRes.data?.data || bRes.data?.results || bRes.data || []
+    recommendations.value = rRes.data?.data?.recommendations || rRes.data?.recommendations || []
   } catch (e) {
     console.error('Audit breakdown fetch error', e)
   }
@@ -328,14 +341,57 @@ async function confirmDelete(audit) {
   }
 }
 
+// Auto-polling for running audits
+function startPolling() {
+  stopPolling()
+  pollTimer = setInterval(async () => {
+    const hasRunning = audits.value.some(a => a.status === 'pending' || a.status === 'running')
+    if (!hasRunning) {
+      stopPolling()
+      return
+    }
+    try {
+      const { data } = await llmRankingApi.listAudits(websiteId)
+      const newAudits = data?.data?.results || data?.results || data || []
+      // Check if any previously running audit has completed
+      for (const newA of newAudits) {
+        const oldA = audits.value.find(a => a.id === newA.id)
+        if (oldA && (oldA.status === 'pending' || oldA.status === 'running') && newA.status === 'completed') {
+          toast.success(`Audit for "${newA.business_name}" completed! Score: ${newA.overall_score}/100`)
+        }
+      }
+      audits.value = newAudits
+      // Load breakdown for the latest completed audit
+      if (audits.value.length && audits.value[0].status === 'completed' && !latestBreakdown.value.length) {
+        await selectAudit(audits.value[0])
+      }
+    } catch (e) {
+      console.error('Poll error', e)
+    }
+  }, 5000)
+}
+
+function stopPolling() {
+  if (pollTimer) {
+    clearInterval(pollTimer)
+    pollTimer = null
+  }
+}
+
 async function fetchData() {
   loading.value = true
   try {
     const { data } = await llmRankingApi.listAudits(websiteId)
-    audits.value = data?.results || data || []
+    audits.value = data?.data?.results || data?.results || data || []
     if (audits.value.length) {
       selectedAuditId.value = audits.value[0].id
-      await selectAudit(audits.value[0])
+      if (audits.value[0].status === 'completed') {
+        await selectAudit(audits.value[0])
+      }
+      // Start polling if any audits are running
+      if (audits.value.some(a => a.status === 'pending' || a.status === 'running')) {
+        startPolling()
+      }
     }
   } catch (e) {
     console.error('LLM ranking fetch error', e)
@@ -346,6 +402,7 @@ async function fetchData() {
 }
 
 onMounted(fetchData)
+onBeforeUnmount(stopPolling)
 </script>
 
 <style scoped>
@@ -361,6 +418,28 @@ onMounted(fetchData)
 .score-num { font-size: 26px; font-weight: 800; color: var(--text-primary); line-height: 1; }
 .score-denom { font-size: var(--font-xs); color: var(--text-muted); }
 .score-meta { flex: 1; }
+
+/* Running audit notice */
+.audit-running-notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  font-size: var(--font-sm);
+  color: var(--color-warning);
+  font-weight: 500;
+}
+.pulse-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-warning);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.8); }
+}
 
 /* Provider grid */
 .provider-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }

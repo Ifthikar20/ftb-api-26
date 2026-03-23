@@ -41,6 +41,7 @@ class LLMRankingAudit(TimestampMixin):
     business_name = models.CharField(max_length=200, blank=True)
     business_description = models.TextField(blank=True)
     industry = models.CharField(max_length=100, blank=True)
+    location = models.CharField(max_length=200, blank=True)
     keywords = models.JSONField(default=list)
     # Aggregate scores
     overall_score = models.IntegerField(default=0, db_index=True)  # 0-100

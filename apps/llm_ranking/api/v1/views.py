@@ -52,7 +52,11 @@ class LLMRankingAuditListView(APIView):
                 description=data["business_description"],
                 keywords=data["keywords"],
                 use_case=data["use_case"],
+                location=data.get("location", ""),
             )
+
+        # Use selected providers or default to all
+        selected_providers = data.get("providers") or ["claude", "gpt4", "gemini", "perplexity"]
 
         audit = LLMRankingAudit.objects.create(
             website=website,
@@ -60,8 +64,10 @@ class LLMRankingAuditListView(APIView):
             business_name=data["business_name"],
             business_description=data["business_description"],
             industry=data["industry"],
+            location=data.get("location", ""),
             keywords=data["keywords"],
             prompts=prompts,
+            providers_queried=selected_providers,
         )
 
         # Queue async task

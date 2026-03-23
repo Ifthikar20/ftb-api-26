@@ -58,6 +58,7 @@ class RunAuditSerializer(serializers.Serializer):
     business_name = serializers.CharField(max_length=200)
     business_description = serializers.CharField(required=False, default="", allow_blank=True)
     industry = serializers.CharField(max_length=100)
+    location = serializers.CharField(max_length=200, required=False, default="", allow_blank=True)
     keywords = serializers.ListField(
         child=serializers.CharField(max_length=100),
         required=False,
@@ -71,4 +72,10 @@ class RunAuditSerializer(serializers.Serializer):
         required=False,
         default=list,
         max_length=10,
+    )
+    # Which providers to query (defaults to all)
+    providers = serializers.ListField(
+        child=serializers.ChoiceField(choices=["claude", "gpt4", "gemini", "perplexity"]),
+        required=False,
+        default=list,
     )

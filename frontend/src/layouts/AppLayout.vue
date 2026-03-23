@@ -43,10 +43,7 @@
           <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="5" r="3" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M2 14c0-3 3-5 6-5s6 2 6 5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></span>
           <span v-if="!appStore.sidebarCollapsed" class="nav-text">Leads</span>
         </router-link>
-        <router-link :to="competitorsRoute" class="nav-link" exact-active-class="active">
-          <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><rect x="2" y="4" width="5" height="10" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="9" y="2" width="5" height="12" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></span>
-          <span v-if="!appStore.sidebarCollapsed" class="nav-text">Competitors</span>
-        </router-link>
+
         <router-link :to="auditsRoute" class="nav-link" exact-active-class="active">
           <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="11" y1="11" x2="14" y2="14" stroke="currentColor" stroke-width="1.5"/></svg></span>
           <span v-if="!appStore.sidebarCollapsed" class="nav-text">Audits</span>
@@ -254,7 +251,7 @@ const websiteId = computed(() => appStore.activeWebsite?.id)
 const pageKey = computed(() => `${route.name || 'page'}-${route.params.websiteId || ''}`)
 const analyticsRoute = computed(() => websiteId.value ? `/analytics/${websiteId.value}` : '/websites')
 const leadsRoute = computed(() => websiteId.value ? `/leads/${websiteId.value}` : '/websites')
-const competitorsRoute = computed(() => websiteId.value ? `/competitors/${websiteId.value}` : '/websites')
+
 const auditsRoute = computed(() => websiteId.value ? `/audits/${websiteId.value}` : '/websites')
 const heatmapRoute = computed(() => websiteId.value ? `/heatmap/${websiteId.value}` : '/websites')
 const keywordsRoute = computed(() => websiteId.value ? `/keywords/${websiteId.value}` : '/websites')
@@ -269,7 +266,7 @@ const pageTint = computed(() => {
   if (path.startsWith('/dashboard') || path === '/') return 'var(--tint-dashboard)'
   if (path.startsWith('/analytics')) return 'var(--tint-analytics)'
   if (path.startsWith('/leads')) return 'var(--tint-leads)'
-  if (path.startsWith('/competitors')) return 'var(--tint-competitors)'
+
   if (path.startsWith('/audits')) return 'var(--tint-audits)'
   if (path.startsWith('/heatmap')) return 'var(--tint-analytics)'
   if (path.startsWith('/keywords')) return 'var(--tint-leads)'
@@ -293,7 +290,7 @@ function switchWebsite(id) {
   const routeMap = [
     { prefix: '/analytics/', target: `/analytics/${id}` },
     { prefix: '/leads/', target: `/leads/${id}` },
-    { prefix: '/competitors/', target: `/competitors/${id}` },
+
     { prefix: '/audits/', target: `/audits/${id}` },
     { prefix: '/heatmap/', target: `/heatmap/${id}` },
     { prefix: '/keywords/', target: `/keywords/${id}` },

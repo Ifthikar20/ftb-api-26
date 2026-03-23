@@ -15,7 +15,7 @@ logger = logging.getLogger("apps")
 # Providers and human labels
 PROVIDERS = ["claude", "gpt4", "gemini", "perplexity"]
 
-# Default prompt templates. {industry}, {description}, {keywords} are interpolated.
+# Default prompt templates. {industry}, {use_case}, {location} are interpolated.
 DEFAULT_PROMPT_TEMPLATES = [
     "What are the best {industry} tools available right now?",
     "Can you recommend a {industry} platform that helps with {use_case}?",
@@ -25,6 +25,18 @@ DEFAULT_PROMPT_TEMPLATES = [
     "What are the leading {industry} products recommended by experts?",
 ]
 
+LOCATION_PROMPT_TEMPLATES = [
+    "What are the best {industry} tools in {location}?",
+    "Can you recommend a {industry} platform for businesses in {location}?",
+]
+
+# System instruction to encourage numbered lists for accurate rank extraction
+SYSTEM_INSTRUCTION = (
+    "When listing tools, platforms, or products, please use a numbered list "
+    "(1., 2., 3., etc.) and include a brief description for each. "
+    "Be specific and mention actual product/company names."
+)
+
 
 class LLMRankingService:
 
@@ -32,21 +44,31 @@ class LLMRankingService:
 
     @staticmethod
     def generate_prompts(*, business_name: str, industry: str, description: str,
-                         keywords: list, use_case: str = "") -> list[str]:
+                         keywords: list, use_case: str = "",
+                         location: str = "") -> list[str]:
         """
         Generate discovery prompts from business context.
         Uses Claude to produce additional natural-language variants.
         """
         use_case = use_case or (keywords[0] if keywords else industry)
         base_prompts = [
-            t.format(industry=industry or "software", use_case=use_case)
+            t.format(industry=industry or "software", use_case=use_case,
+                     location=location or "the US")
             for t in DEFAULT_PROMPT_TEMPLATES
         ]
+
+        # Add location-specific prompts
+        if location:
+            base_prompts += [
+                t.format(industry=industry or "software", location=location)
+                for t in LOCATION_PROMPT_TEMPLATES
+            ]
 
         # Use Claude to generate additional natural variants
         try:
             import anthropic
             client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+            loc_hint = f"\nLocation: {location}" if location else ""
             resp = client.messages.create(
                 model="claude-sonnet-4-20250514",
                 max_tokens=512,
@@ -58,7 +80,7 @@ class LLMRankingService:
                         f"Business: {business_name}\n"
                         f"Industry: {industry}\n"
                         f"Description: {description}\n"
-                        f"Keywords: {', '.join(keywords)}\n\n"
+                        f"Keywords: {', '.join(keywords)}{loc_hint}\n\n"
                         "Return ONLY a JSON array of 4 question strings, no other text."
                     ),
                 }],
@@ -96,6 +118,7 @@ class LLMRankingService:
             resp = client.messages.create(
                 model="claude-sonnet-4-20250514",
                 max_tokens=1024,
+                system=SYSTEM_INSTRUCTION,
                 messages=[{"role": "user", "content": prompt}],
             )
             return True, resp.content[0].text.strip(), ""
@@ -114,7 +137,10 @@ class LLMRankingService:
             resp = client.chat.completions.create(
                 model="gpt-4o-mini",
                 max_tokens=1024,
-                messages=[{"role": "user", "content": prompt}],
+                messages=[
+                    {"role": "system", "content": SYSTEM_INSTRUCTION},
+                    {"role": "user", "content": prompt},
+                ],
             )
             return True, resp.choices[0].message.content.strip(), ""
         except Exception as e:
@@ -130,7 +156,8 @@ class LLMRankingService:
             import google.generativeai as genai
             genai.configure(api_key=api_key)
             model = genai.GenerativeModel("gemini-1.5-flash")
-            resp = model.generate_content(prompt)
+            full_prompt = f"{SYSTEM_INSTRUCTION}\n\n{prompt}"
+            resp = model.generate_content(full_prompt)
             return True, resp.text.strip(), ""
         except Exception as e:
             return False, "", str(e)
@@ -151,10 +178,13 @@ class LLMRankingService:
                 },
                 json={
                     "model": "llama-3.1-sonar-small-128k-online",
-                    "messages": [{"role": "user", "content": prompt}],
+                    "messages": [
+                        {"role": "system", "content": SYSTEM_INSTRUCTION},
+                        {"role": "user", "content": prompt},
+                    ],
                     "max_tokens": 1024,
                 },
-                timeout=20,
+                timeout=30,
             )
             resp.raise_for_status()
             text = resp.json()["choices"][0]["message"]["content"].strip()
@@ -163,6 +193,30 @@ class LLMRankingService:
             return False, "", str(e)
 
     # ── Response analysis ──────────────────────────────────────────────────
+
+    @staticmethod
+    def _build_search_terms(business_name: str, keywords: list) -> list[str]:
+        """
+        Build a list of search terms from the business name and keywords.
+        Includes the full name plus individual significant words.
+        """
+        terms = []
+        name_lower = business_name.lower().strip()
+        if name_lower:
+            terms.append(name_lower)
+            # Also add individual words longer than 3 chars (to catch partial names)
+            # e.g. "Acme Corp" -> also match "acme"
+            for word in name_lower.split():
+                if len(word) > 3 and word not in terms:
+                    terms.append(word)
+
+        # Add keywords but only substantial ones (>3 chars) to avoid false positives
+        for k in keywords:
+            k_lower = k.lower().strip()
+            if k_lower and len(k_lower) > 3 and k_lower not in terms:
+                terms.append(k_lower)
+
+        return terms
 
     @staticmethod
     def _analyze_mention(
@@ -178,12 +232,14 @@ class LLMRankingService:
           is_mentioned, mention_rank, sentiment, confidence_score, mention_context
         """
         text_lower = response_text.lower()
-        name_lower = business_name.lower()
+        name_lower = business_name.lower().strip()
 
-        # Build search terms: business name + keywords
-        search_terms = [name_lower] + [k.lower() for k in keywords if k]
+        # Build search terms
+        search_terms = LLMRankingService._build_search_terms(business_name, keywords)
 
+        # Check for mention using exact substring match
         is_mentioned = any(term in text_lower for term in search_terms if term)
+
         if not is_mentioned:
             return {
                 "is_mentioned": False,
@@ -193,29 +249,58 @@ class LLMRankingService:
                 "mention_context": "",
             }
 
-        # Estimate rank by finding position among numbered/bulleted list items
+        # ── Rank extraction ──
+        # Parse list items from multiple common formats:
+        # 1. Numbered lists: "1. Item", "1) Item", "1: Item"
+        # 2. Bulleted lists: "- Item", "* Item", "• Item"
+        # 3. Bold headers: "**Item** — description"
+        # 4. Markdown headers within lists: "### 1. Item"
         lines = response_text.split("\n")
         rank = None
         context = ""
         item_index = 0
+
         for line in lines:
             line_stripped = line.strip()
-            # Count list items (numbered or bulleted)
-            if re.match(r"^(\d+[\.\)]|[-*•])\s+", line_stripped):
+            if not line_stripped:
+                continue
+
+            # Check if this line represents a list item
+            is_list_item = False
+
+            # Numbered: "1.", "1)", "1:"
+            if re.match(r"^(\d+)[\.\):\s]+\s*", line_stripped):
+                is_list_item = True
+            # Markdown heading with number: "### 1. Item" or "## Item"
+            elif re.match(r"^#{1,4}\s+(\d+[\.\)]\s+)?", line_stripped):
+                is_list_item = True
+            # Bulleted: "- Item", "* Item", "• Item"
+            elif re.match(r"^[-*•]\s+", line_stripped):
+                is_list_item = True
+            # Bold header: "**Item**" at start of line
+            elif re.match(r"^\*\*[^*]+\*\*", line_stripped):
+                is_list_item = True
+
+            if is_list_item:
                 item_index += 1
-                if any(term in line_stripped.lower() for term in search_terms if term):
+                line_lower = line_stripped.lower()
+                if any(term in line_lower for term in search_terms if term):
                     rank = item_index
                     context = line_stripped[:300]
                     break
-            elif any(term in line_stripped.lower() for term in search_terms if term) and not context:
-                context = line_stripped[:300]
+            else:
+                # Still check non-list lines for context
+                line_lower = line_stripped.lower()
+                if any(term in line_lower for term in search_terms if term) and not context:
+                    context = line_stripped[:300]
 
-        # Sentiment analysis using simple heuristics + Claude
+        # Sentiment analysis
         sentiment = LLMRankingService._classify_sentiment(
             context=context or response_text[:500],
             business_name=business_name,
         )
 
+        # Higher confidence when we found an explicit rank
         confidence = 90.0 if rank is not None else 70.0
         return {
             "is_mentioned": True,
@@ -232,10 +317,12 @@ class LLMRankingService:
         positive_signals = [
             "recommend", "best", "top", "leading", "excellent", "great", "popular",
             "trusted", "powerful", "easy", "effective", "reliable", "industry-leading",
+            "innovative", "standout", "favorite", "preferred", "robust", "comprehensive",
         ]
         negative_signals = [
             "avoid", "poor", "bad", "expensive", "difficult", "limited",
-            "unreliable", "not recommended", "worse",
+            "unreliable", "not recommended", "worse", "lacking", "outdated",
+            "steep learning curve", "overpriced", "clunky",
         ]
         pos = sum(1 for s in positive_signals if s in context_lower)
         neg = sum(1 for s in negative_signals if s in context_lower)
@@ -329,12 +416,24 @@ class LLMRankingService:
             LLMRankingResult.PROVIDER_PERPLEXITY: LLMRankingService._query_perplexity,
         }
 
-        all_results = []
-        providers_queried = []
+        # Only query user-selected providers (stored at audit creation)
+        selected_providers = audit.providers_queried or list(provider_map.keys())
 
-        for provider, query_fn in provider_map.items():
+        all_results = []
+        providers_succeeded = []
+
+        for provider in selected_providers:
+            query_fn = provider_map.get(provider)
+            if not query_fn:
+                continue
+
             for prompt in audit.prompts:
-                succeeded, response_text, error = query_fn(prompt)
+                try:
+                    succeeded, response_text, error = query_fn(prompt)
+                except Exception as exc:
+                    succeeded, response_text, error = False, "", str(exc)
+                    logger.warning("Provider %s threw for audit %s: %s", provider, audit_id, exc)
+
                 analysis = (
                     LLMRankingService._analyze_mention(
                         response_text=response_text,
@@ -367,7 +466,7 @@ class LLMRankingService:
                 all_results.append(result)
 
             if any(r.provider == provider and r.query_succeeded for r in all_results):
-                providers_queried.append(provider)
+                providers_succeeded.append(provider)
 
         # Compute aggregate scores
         scores = LLMRankingService.compute_overall_score(all_results)
@@ -376,7 +475,7 @@ class LLMRankingService:
         audit.overall_score = scores["overall_score"]
         audit.mention_rate = scores["mention_rate"]
         audit.avg_mention_rank = scores["avg_mention_rank"]
-        audit.providers_queried = providers_queried
+        audit.providers_queried = providers_succeeded
         audit.completed_at = timezone.now()
         audit.save(update_fields=[
             "status", "overall_score", "mention_rate", "avg_mention_rank",

@@ -86,7 +86,8 @@ const pageHelp = [
   { page: 'heatmap', icon: '', label: 'Heatmaps', help: 'Visualize where visitors click on your pages. Requires the tracking pixel to capture click coordinates. Hotter colors = more clicks.' },
   { page: 'keywords', icon: '', label: 'Keywords', help: 'Track your search engine rankings for specific keywords. Add keywords manually and monitor their position over time.' },
   { page: 'leads', icon: '', label: 'Leads', help: 'Captured visitor and form submission data. Leads are created when visitors interact with forms on your tracked site.' },
-  { page: 'competitors', icon: '', label: 'Competitors', help: 'Monitor competitor websites. Add competitor URLs to track their changes, keyword gaps, and SEO movements.' },
+
+
   { page: 'audits', icon: '', label: 'Audits', help: 'Run a full SEO, performance, mobile, security, and content audit on your website. Click "Run Audit" to scan your site right now.' },
   { page: 'strategy', icon: '', label: 'Strategy', help: 'AI-generated marketing strategy based on your audit results and analytics data.' },
   { page: 'billing', icon: '', label: 'Billing', help: 'Manage your subscription, view usage, and compare plan features.' },
