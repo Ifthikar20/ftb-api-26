@@ -16,8 +16,8 @@ defineProps({
 
 <style scoped>
 .brief-text {
-  font-size: var(--font-base);
+  font-size: var(--font-sm);
   color: var(--text-secondary);
-  line-height: 1.8;
+  line-height: 1.7;
 }
 </style>

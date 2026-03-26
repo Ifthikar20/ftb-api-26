@@ -25,60 +25,65 @@
       <!-- Nav -->
       <nav class="sidebar-nav">
         <div class="nav-section-label">Overview</div>
-        <router-link to="/dashboard" class="nav-link" exact-active-class="active">
+        <router-link to="/dashboard" class="nav-link" exact-active-class="active" style="--nav-color: #5B8DEF">
           <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/><rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg></span>
           <span v-if="!appStore.sidebarCollapsed" class="nav-text">Dashboard</span>
         </router-link>
-        <router-link to="/websites" class="nav-link" exact-active-class="active">
+        <router-link to="/websites" class="nav-link" exact-active-class="active" style="--nav-color: #8b5cf6">
           <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="1" y1="8" x2="15" y2="8" stroke="currentColor" stroke-width="1.5"/><ellipse cx="8" cy="8" rx="3" ry="7" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></span>
           <span v-if="!appStore.sidebarCollapsed" class="nav-text">Projects</span>
         </router-link>
 
         <div class="nav-section-label">Intelligence</div>
-        <router-link :to="analyticsRoute" class="nav-link" exact-active-class="active">
+        <router-link :to="analyticsRoute" class="nav-link" exact-active-class="active" style="--nav-color: #f97316">
           <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M2 14V6l4-4 4 4 4-4v12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg></span>
           <span v-if="!appStore.sidebarCollapsed" class="nav-text">Analytics</span>
         </router-link>
-        <router-link :to="leadsRoute" class="nav-link" exact-active-class="active">
+        <router-link :to="leadsRoute" class="nav-link" exact-active-class="active" style="--nav-color: #22c55e">
           <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="5" r="3" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M2 14c0-3 3-5 6-5s6 2 6 5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></span>
           <span v-if="!appStore.sidebarCollapsed" class="nav-text">Leads</span>
         </router-link>
 
-        <router-link :to="auditsRoute" class="nav-link" exact-active-class="active">
+        <router-link :to="auditsRoute" class="nav-link" exact-active-class="active" style="--nav-color: #06b6d4">
           <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="11" y1="11" x2="14" y2="14" stroke="currentColor" stroke-width="1.5"/></svg></span>
           <span v-if="!appStore.sidebarCollapsed" class="nav-text">Audits</span>
         </router-link>
-        <router-link :to="heatmapRoute" class="nav-link" exact-active-class="active">
+        <router-link :to="heatmapRoute" class="nav-link" exact-active-class="active" style="--nav-color: #ef4444">
           <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="1" width="14" height="14" rx="2"/><circle cx="6" cy="6" r="2" fill="currentColor" opacity="0.6"/><circle cx="10" cy="5" r="1.5" fill="currentColor" opacity="0.4"/><circle cx="8" cy="10" r="2.5" fill="currentColor" opacity="0.8"/></svg></span>
           <span v-if="!appStore.sidebarCollapsed" class="nav-text">Heatmaps</span>
         </router-link>
-        <router-link :to="keywordsRoute" class="nav-link" exact-active-class="active">
+        <router-link :to="keywordsRoute" class="nav-link" exact-active-class="active" style="--nav-color: #eab308">
           <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 12l4-4 3 3 5-7"/><circle cx="14" cy="4" r="1.5" fill="currentColor"/></svg></span>
           <span v-if="!appStore.sidebarCollapsed" class="nav-text">Keywords</span>
         </router-link>
-        <router-link :to="strategyRoute" class="nav-link" exact-active-class="active">
+        <router-link :to="strategyRoute" class="nav-link" exact-active-class="active" style="--nav-color: #a855f7">
           <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1l2 4h4l-3 3 1 4-4-2-4 2 1-4-3-3h4z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg></span>
           <span v-if="!appStore.sidebarCollapsed" class="nav-text">Strategy</span>
         </router-link>
-        <router-link :to="agentsRoute" class="nav-link" exact-active-class="active">
+        <router-link :to="agentsRoute" class="nav-link" exact-active-class="active" style="--nav-color: #14b8a6">
           <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="6" r="3"/><path d="M3 14c0-3 2.2-5 5-5s5 2 5 5"/><path d="M12 4l2-2M4 4L2 2" stroke-linecap="round"/></svg></span>
           <span v-if="!appStore.sidebarCollapsed" class="nav-text">Agents</span>
         </router-link>
-        <router-link :to="campaignsRoute" class="nav-link" exact-active-class="active">
+        <router-link :to="campaignsRoute" class="nav-link" exact-active-class="active" style="--nav-color: #3b82f6">
           <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 3h12c.6 0 1 .4 1 1v8c0 .6-.4 1-1 1H2c-.6 0-1-.4-1-1V4c0-.6.4-1 1-1z"/><polyline points="14,4 8,9 2,4"/></svg></span>
           <span v-if="!appStore.sidebarCollapsed" class="nav-text">Campaigns</span>
         </router-link>
-        <router-link :to="llmRankingRoute" class="nav-link" exact-active-class="active">
+        <router-link :to="llmRankingRoute" class="nav-link" exact-active-class="active" style="--nav-color: #ec4899">
           <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 4v4l3 2"/><path d="M5 2l6 0" stroke-linecap="round"/></svg></span>
           <span v-if="!appStore.sidebarCollapsed" class="nav-text">LLM Ranking</span>
         </router-link>
 
+        <router-link to="/rewards" class="nav-link" exact-active-class="active" style="--nav-color: #f59e0b">
+          <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 1l2 4h4l-3 3 1 4-4-2-4 2 1-4-3-3h4z" stroke-linejoin="round"/></svg></span>
+          <span v-if="!appStore.sidebarCollapsed" class="nav-text">Rewards</span>
+        </router-link>
+
         <div class="nav-section-label">Account</div>
-        <router-link to="/billing" class="nav-link" exact-active-class="active">
+        <router-link to="/billing" class="nav-link" exact-active-class="active" style="--nav-color: #64748b">
           <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="3" width="14" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="1" y1="7" x2="15" y2="7" stroke="currentColor" stroke-width="1.5"/></svg></span>
           <span v-if="!appStore.sidebarCollapsed" class="nav-text">Billing</span>
         </router-link>
-        <router-link to="/settings" class="nav-link" exact-active-class="active">
+        <router-link to="/settings" class="nav-link" exact-active-class="active" style="--nav-color: #78716c">
           <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="8" r="2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3 3l1.5 1.5M11.5 11.5L13 13M13 3l-1.5 1.5M4.5 11.5L3 13" stroke="currentColor" stroke-width="1.5"/></svg></span>
           <span v-if="!appStore.sidebarCollapsed" class="nav-text">Settings</span>
         </router-link>
@@ -125,6 +130,13 @@
         </div>
 
         <div class="topbar-actions">
+          <!-- Gamification Points Badge -->
+          <router-link to="/rewards" class="points-badge" title="Your rewards">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1l2 4h4l-3 3 1 4-4-2-4 2 1-4-3-3h4z"/></svg>
+            <span class="points-value">{{ userPoints }} pts</span>
+            <span class="points-level">Lv {{ userLevel }}</span>
+          </router-link>
+
           <!-- Theme Toggle -->
           <button class="theme-toggle" @click="appStore.toggleTheme" :title="appStore.theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'">
             <svg v-if="appStore.theme === 'light'" width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M15 10A7 7 0 1 1 8 3a5 5 0 0 0 7 7z"/></svg>
@@ -242,6 +254,7 @@ import { useAppStore } from '@/stores/app'
 import { useToast } from '@/composables/useToast'
 import websitesApi from '@/api/websites'
 import billingApi from '@/api/billing'
+import gamificationApi from '@/api/gamification'
 import HelpButton from '@/components/HelpButton.vue'
 import OnboardingTooltip from '@/components/OnboardingTooltip.vue'
 import ToastContainer from '@/components/ToastContainer.vue'
@@ -258,6 +271,10 @@ const showAddProject = ref(false)
 const creating = ref(false)
 const createError = ref('')
 const newProject = ref({ name: '', url: '', industry: '' })
+
+// Gamification
+const userPoints = ref(0)
+const userLevel = ref(1)
 
 // ── Command palette search ──
 const showSearch = ref(false)
@@ -456,6 +473,13 @@ onMounted(async () => {
   } catch {}
   // Search keyboard shortcut
   document.addEventListener('keydown', handleGlobalKeydown)
+  // Gamification progress
+  try {
+    const { data } = await gamificationApi.progress()
+    const p = data?.data || data
+    userPoints.value = p?.total_points || 0
+    userLevel.value = p?.current_level || 1
+  } catch {}
 })
 
 onUnmounted(() => {
@@ -565,7 +589,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 10px;
   padding: 9px 12px;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-sm);
   font-size: var(--font-base);
   font-weight: 500;
   color: var(--text-secondary);
@@ -573,17 +597,32 @@ onUnmounted(() => {
   text-decoration: none;
 }
 
+.nav-link .nav-icon {
+  color: var(--nav-color, var(--text-secondary));
+  transition: all var(--transition-fast);
+}
+
 .nav-link:hover {
   color: var(--text-primary);
   background: rgba(0, 0, 0, 0.04);
 }
 
+.nav-link:hover .nav-icon {
+  color: var(--nav-color, var(--text-primary));
+  filter: drop-shadow(0 0 4px var(--nav-color, transparent));
+}
+
 [data-theme="dark"] .nav-link:hover { background: rgba(255, 255, 255, 0.06); }
 
 .nav-link.active {
-  color: var(--text-primary);
-  background: var(--bg-surface);
+  color: var(--nav-color, var(--text-primary));
+  background: color-mix(in srgb, var(--nav-color, var(--bg-surface)) 8%, transparent);
   font-weight: 600;
+}
+
+.nav-link.active .nav-icon {
+  color: var(--nav-color, var(--text-primary));
+  filter: drop-shadow(0 0 6px var(--nav-color, transparent));
 }
 
 .nav-icon { width: 24px; text-align: center; display: flex; align-items: center; justify-content: center; }
@@ -647,6 +686,39 @@ onUnmounted(() => {
   gap: 8px;
 }
 
+.points-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: var(--radius-full);
+  background: linear-gradient(135deg, #fef3c7, #fde68a);
+  color: #92400e;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-decoration: none;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+}
+
+.points-badge:hover {
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.4);
+  transform: translateY(-1px);
+}
+
+.points-badge svg { color: #f59e0b; flex-shrink: 0; }
+.points-value { letter-spacing: 0.02em; }
+.points-level {
+  padding-left: 6px;
+  border-left: 1px solid rgba(146, 64, 14, 0.2);
+  opacity: 0.7;
+}
+
+[data-theme="dark"] .points-badge {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.15), rgba(217, 119, 6, 0.1));
+  color: #fbbf24;
+}
+
 .topbar-btn {
   position: relative;
   background: none;
@@ -679,16 +751,20 @@ onUnmounted(() => {
   min-height: calc(100vh - var(--topbar-height));
 }
 
-/* Page transition — outgoing fades out quickly, incoming fades in */
+/* Page transition — smooth slide-up + fade (Framer-like) */
 .page-fade-leave-active {
-  transition: opacity 80ms ease;
+  transition: opacity 120ms ease, transform 120ms ease;
 }
 .page-fade-enter-active {
-  transition: opacity 160ms ease;
+  transition: opacity 280ms cubic-bezier(0.23, 1, 0.32, 1), transform 280ms cubic-bezier(0.23, 1, 0.32, 1);
 }
-.page-fade-enter-from,
+.page-fade-enter-from {
+  opacity: 0;
+  transform: translateY(8px);
+}
 .page-fade-leave-to {
   opacity: 0;
+  transform: translateY(-4px);
 }
 
 /* Responsive */

@@ -63,6 +63,7 @@ const routes = [
     protect('/agents/:websiteId', 'agents', () => import('@/pages/AgentsPage.vue'), true),
     protect('/campaigns/:websiteId', 'campaigns', () => import('@/pages/CampaignsPage.vue'), true),
     protect('/llm-ranking/:websiteId', 'llm-ranking', () => import('@/pages/LLMRankingPage.vue'), true),
+    protect('/rewards', 'rewards', () => import('@/pages/RewardsPage.vue')),
     protect('/billing', 'billing', () => import('@/pages/BillingPage.vue')),
     protect('/settings', 'settings', () => import('@/pages/SettingsPage.vue')),
 

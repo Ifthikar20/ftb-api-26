@@ -5,8 +5,8 @@
         <h1 class="page-title">Leads</h1>
         <p class="page-subtitle">Track, score, and manage your website leads.</p>
       </div>
-      <div class="flex gap-8">
-        <select v-if="activeTab === 'table'" class="form-input" v-model="statusFilter" @change="fetchData" style="width:auto">
+      <div class="header-actions">
+        <select v-if="activeTab === 'table'" class="filter-select" v-model="statusFilter" @change="fetchData">
           <option value="">All Statuses</option>
           <option value="new">New</option>
           <option value="contacted">Contacted</option>
@@ -18,162 +18,153 @@
       </div>
     </div>
 
-    <!-- ═══ AI Prompt — Always Visible ═══ -->
-    <div class="ai-search-card card">
-      <h3 class="card-title" style="margin-bottom:4px">Describe your ideal lead</h3>
-      <p class="text-sm text-muted" style="margin-bottom:16px">Use natural language to find leads from LinkedIn and Twitter profiles.</p>
-      <textarea
-        v-model="aiPrompt"
-        class="ai-prompt-input"
-        rows="3"
-        placeholder='e.g. "SaaS founders in Austin who tweet about growth marketing" or "VP of Engineering at healthcare startups in NYC"'
-        @keydown.meta.enter="runAISearch"
-        @keydown.ctrl.enter="runAISearch"
-      ></textarea>
-      <div class="ai-search-actions">
-        <div class="ai-example-prompts">
-          <span class="text-xs text-muted">Try:</span>
-          <button class="ai-example-btn" @click="aiPrompt = 'SaaS founders in San Francisco'">SaaS founders in SF</button>
-          <button class="ai-example-btn" @click="aiPrompt = 'Marketing directors at e-commerce companies'">E-com marketing directors</button>
-          <button class="ai-example-btn" @click="aiPrompt = 'CTO at fintech startups raising Series A'">Fintech CTOs</button>
+    <!-- ═══ AI Search — Glassmorphism ═══ -->
+    <div class="ai-search-card">
+      <div class="ai-search-inner">
+        <div class="ai-search-header">
+          <div class="ai-search-title">
+            <svg class="ai-sparkle" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.4 7.2H22l-6 4.8 2.4 7.2L12 16.4l-6.4 4.8 2.4-7.2-6-4.8h7.6z"/></svg>
+            <span>AI Lead Finder</span>
+          </div>
+          <span class="ai-badge">AI-POWERED</span>
         </div>
-        <button class="btn btn-primary" @click="runAISearch" :disabled="aiSearching || !aiPrompt.trim()">
-          <span v-if="aiSearching" class="ai-spinner"></span>
-          {{ aiSearching ? 'Searching...' : 'Find Leads' }}
-        </button>
+        <div class="ai-search-input-wrap">
+          <input
+            v-model="aiPrompt"
+            class="ai-search-input"
+            type="text"
+            placeholder='Describe your ideal lead — e.g. "SaaS founders in Austin who tweet about growth marketing"'
+            @keydown.enter="runAISearch"
+          />
+          <button class="ai-search-btn" @click="runAISearch" :disabled="aiSearching || !aiPrompt.trim()">
+            <span v-if="aiSearching" class="ai-spinner"></span>
+            <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4z"/></svg>
+          </button>
+        </div>
+        <div class="ai-chips">
+          <button class="ai-chip" @click="aiPrompt = 'SaaS founders in San Francisco'">SaaS founders in SF</button>
+          <button class="ai-chip" @click="aiPrompt = 'Marketing directors at e-commerce companies'">E-com marketing directors</button>
+          <button class="ai-chip" @click="aiPrompt = 'CTO at fintech startups raising Series A'">Fintech CTOs</button>
+          <button class="ai-chip" @click="aiPrompt = 'VP of Engineering at healthcare startups'">Healthcare VPEs</button>
+        </div>
+        <div v-if="aiSearching" class="ai-search-progress">
+          <div class="ai-progress-bar"><div class="ai-progress-fill"></div></div>
+          <span class="ai-progress-text">Searching LinkedIn, X, and the web…</span>
+        </div>
       </div>
     </div>
 
     <!-- Tabs -->
-    <div class="tabs">
-      <button class="tab" :class="{ active: activeTab === 'table' }" @click="activeTab = 'table'">Table</button>
-      <button class="tab" :class="{ active: activeTab === 'pipeline' }" @click="activeTab = 'pipeline'">Pipeline</button>
+    <div class="leads-tabs">
+      <button class="leads-tab" :class="{ active: activeTab === 'table' }" @click="activeTab = 'table'">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+        Cards
+      </button>
+      <button class="leads-tab" :class="{ active: activeTab === 'pipeline' }" @click="activeTab = 'pipeline'">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3h6v6H3zM15 3h6v6h-6zM9 15h6v6H9z"/><path d="M6 9v3h3M18 9v6h-3M9 18H6v-3" stroke-dasharray="2 2"/></svg>
+        Pipeline
+      </button>
     </div>
 
     <div v-if="loading" class="loading-state">Loading leads...</div>
 
-    <!-- ════════════════ TABLE VIEW ════════════════ -->
+    <!-- ════════════════ CARD VIEW ════════════════ -->
     <template v-else-if="activeTab === 'table'">
-      <div class="stats-grid" style="margin-bottom: 24px">
-        <div class="stat-card"><div class="stat-label">Total Leads</div><div class="stat-value">{{ allTableLeads.length }}</div></div>
-        <div class="stat-card"><div class="stat-label">Hot Leads</div><div class="stat-value">{{ hotCount }}</div></div>
-        <div class="stat-card"><div class="stat-label">Avg Score</div><div class="stat-value">{{ avgScore }}</div></div>
+      <!-- Stats Pills -->
+      <div class="stats-pills">
+        <div class="stat-pill"><span class="stat-pill-dot" style="background:#3b82f6"></span> Total <strong>{{ allTableLeads.length }}</strong></div>
+        <div class="stat-pill"><span class="stat-pill-dot" style="background:#ef4444"></span> Hot <strong>{{ hotCount }}</strong></div>
+        <div class="stat-pill"><span class="stat-pill-dot" style="background:#f59e0b"></span> Avg <strong>{{ avgScore }}</strong></div>
+        <div v-if="aiResults.length" class="stat-pill stat-pill-ai">
+          <span class="stat-pill-dot" style="background:#8b5cf6"></span> AI Found <strong>{{ aiResults.length }}</strong>
+          <button class="pill-clear" @click="clearAIResults">✕</button>
+        </div>
       </div>
 
-      <!-- AI Search Loading -->
-      <div v-if="aiSearching" class="ai-loading card" style="text-align:center;padding:32px">
-        <div class="ai-spinner-lg"></div>
-        <p class="text-sm text-muted" style="margin-top:12px">Searching X, LinkedIn, and the web for matching leads...</p>
+      <!-- Select All / Action Row -->
+      <div v-if="allTableLeads.length" class="select-row">
+        <label class="select-all-label">
+          <input type="checkbox" class="modern-check" :checked="aiSelected.length === allTableLeads.length && allTableLeads.length > 0" @change="toggleAllAI" />
+          <span>Select all {{ allTableLeads.length }}</span>
+        </label>
+        <div v-if="aiSelected.length" class="select-info">
+          <span>{{ aiSelected.length }} selected</span>
+        </div>
       </div>
 
-      <!-- AI Results Summary Bar -->
-      <div v-if="aiResults.length" class="ai-table-bar" style="margin-bottom:16px">
-        <div class="ai-table-bar-left">
-          <h3 style="margin:0;font-size:var(--font-md)">{{ aiResults.length }} AI leads found</h3>
-          <div class="ai-meta">
-            <span v-if="aiMeta.sources_searched" class="text-xs text-muted">
-              LinkedIn: {{ aiMeta.sources_searched.linkedin || 0 }} | X: {{ aiMeta.sources_searched.twitter || 0 }}<template v-if="aiMeta.sources_searched.web"> | Web: {{ aiMeta.sources_searched.web }}</template>
-            </span>
-            <span v-if="aiMeta.engine === 'openclaw'" class="badge badge-success" style="font-size:9px">OpenClaw</span>
-            <span v-else-if="!aiMeta.has_google_search" class="badge badge-neutral" style="font-size:9px">AI-generated</span>
+      <!-- Lead Cards Grid -->
+      <div class="lead-cards-grid">
+        <div
+          v-for="(lead, i) in sortedTableLeads"
+          :key="lead._rowId || i"
+          class="lead-card"
+          :class="{ 'lead-card-selected': aiSelected.includes(i) }"
+          :style="{ '--card-delay': i * 50 + 'ms' }"
+          @click="openLeadDetail(lead)"
+        >
+          <!-- Checkbox -->
+          <div class="lead-card-check" @click.stop>
+            <input type="checkbox" class="modern-check" :checked="aiSelected.includes(i)" @change="toggleAiSelect(i)" />
+          </div>
+
+          <!-- Avatar + Score -->
+          <div class="lead-card-top">
+            <div class="lead-avatar" :class="scoreTier(lead.relevance_score || lead.score || 0)">
+              <span class="lead-initials">{{ initials(lead) }}</span>
+              <svg class="score-ring" width="48" height="48" viewBox="0 0 48 48">
+                <circle cx="24" cy="24" r="21" fill="none" stroke="var(--ring-track)" stroke-width="3" />
+                <circle cx="24" cy="24" r="21" fill="none" stroke="var(--ring-color)" stroke-width="3"
+                  :stroke-dasharray="132"
+                  :stroke-dashoffset="132 - (132 * (lead.relevance_score || lead.score || 0) / 100)"
+                  stroke-linecap="round"
+                  transform="rotate(-90 24 24)"
+                />
+              </svg>
+            </div>
+            <div class="lead-card-identity">
+              <span class="lead-card-name">{{ lead.name || 'Anonymous' }}</span>
+              <span class="lead-card-role" v-if="lead.title">{{ lead.title }}</span>
+            </div>
+            <span class="lead-card-score" :class="scoreTier(lead.relevance_score || lead.score || 0)">{{ lead.relevance_score || lead.score || 0 }}</span>
+          </div>
+
+          <!-- Details -->
+          <div class="lead-card-details">
+            <div class="lead-detail-row" v-if="lead.company">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 21h18M5 21V7l7-4 7 4v14"/><path d="M9 21v-4h6v4"/></svg>
+              <span>{{ lead.company }}</span>
+            </div>
+            <div class="lead-detail-row" v-if="lead.email">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 7l10 7 10-7"/></svg>
+              <span class="detail-email">{{ lead.email }}</span>
+            </div>
+            <div class="lead-detail-row" v-if="lead.location">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2C8.1 2 5 5.1 5 9c0 5.2 7 13 7 13s7-7.8 7-13c0-3.9-3.1-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>
+              <span>{{ lead.location }}</span>
+            </div>
+          </div>
+
+          <!-- Footer -->
+          <div class="lead-card-footer">
+            <span class="src-tag" :class="'src-' + (lead.source || 'ai')">{{ (lead.source || 'ai').toUpperCase() }}</span>
+            <div class="lead-card-links">
+              <a v-if="lead.linkedin_url" :href="lead.linkedin_url" target="_blank" class="card-link" title="LinkedIn" @click.stop>
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M0 1.146C0 .513.526 0 1.175 0h13.65C15.474 0 16 .513 16 1.146v13.708c0 .633-.526 1.146-1.175 1.146H1.175C.526 16 0 15.487 0 14.854V1.146zm4.943 12.248V6.169H2.542v7.225h2.401zm-1.2-8.212c.837 0 1.358-.554 1.358-1.248-.015-.709-.52-1.248-1.342-1.248-.822 0-1.359.54-1.359 1.248 0 .694.521 1.248 1.327 1.248h.016zm4.908 8.212V9.359c0-.216.016-.432.08-.586.173-.431.568-.878 1.232-.878.869 0 1.216.662 1.216 1.634v3.865h2.401V9.25c0-2.22-1.184-3.252-2.764-3.252-1.274 0-1.845.7-2.165 1.193V6.169H6.29c.032.68 0 7.225 0 7.225h2.361z"/></svg>
+              </a>
+              <a v-if="lead.twitter_url" :href="lead.twitter_url" target="_blank" class="card-link" title="X" @click.stop>
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M5.026 15c6.038 0 9.341-5.003 9.341-9.334 0-.14 0-.282-.006-.422A6.685 6.685 0 0016 3.542a6.658 6.658 0 01-1.889.518 3.301 3.301 0 001.447-1.817 6.533 6.533 0 01-2.087.793A3.286 3.286 0 007.875 6.03 9.325 9.325 0 011.114 2.1 3.323 3.323 0 002.13 6.574A3.203 3.203 0 01.64 6.14v.04a3.288 3.288 0 002.632 3.218 3.203 3.203 0 01-.865.115c-.212 0-.418-.02-.62-.058a3.283 3.283 0 003.067 2.277A6.588 6.588 0 01.78 13.58a6.32 6.32 0 01-.78-.045A9.344 9.344 0 005.026 15z"/></svg>
+              </a>
+              <a v-if="lead.website || lead.company_url" :href="lead.website || lead.company_url" target="_blank" class="card-link" title="Website" @click.stop>
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M2 8h12M8 2a10 10 0 0 1 3 6 10 10 0 0 1-3 6 10 10 0 0 1-3-6 10 10 0 0 1 3-6z"/></svg>
+              </a>
+            </div>
           </div>
         </div>
-        <div class="ai-table-bar-right">
-          <span v-if="aiSelected.length" class="text-sm" style="color:var(--brand-accent);font-weight:600">{{ aiSelected.length }} selected</span>
-          <button class="btn btn-secondary btn-sm" :disabled="!aiSelected.length" @click="addSelectedToPipeline">
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" style="vertical-align:-2px;margin-right:4px"><path d="M1 4h4v4H1zM6 2h4v8H6zM11 5h4v3h-4z"/></svg>
-            Add to Pipeline
-          </button>
-          <button class="btn btn-primary btn-sm" @click="clearAIResults" style="padding:4px 12px">Clear Results</button>
-        </div>
-      </div>
 
-      <!-- Unified Leads Table -->
-      <div class="card ai-table-card">
-        <table class="data-table ai-data-table">
-          <thead>
-            <tr>
-              <th style="width:32px" v-if="aiResults.length">
-                <input type="checkbox" class="ai-check" :checked="aiSelected.length === allTableLeads.length && allTableLeads.length > 0" @change="toggleAllAI" />
-              </th>
-              <th class="sortable-th" @click="setAiSort('name')">
-                Contact
-                <span class="sort-icon" v-if="aiSortKey === 'name'">{{ aiSortDir === 'asc' ? '\u25B2' : '\u25BC' }}</span>
-              </th>
-              <th class="sortable-th" @click="setAiSort('company')">
-                Company
-                <span class="sort-icon" v-if="aiSortKey === 'company'">{{ aiSortDir === 'asc' ? '\u25B2' : '\u25BC' }}</span>
-              </th>
-              <th class="sortable-th" @click="setAiSort('email')">
-                Email
-                <span class="sort-icon" v-if="aiSortKey === 'email'">{{ aiSortDir === 'asc' ? '\u25B2' : '\u25BC' }}</span>
-              </th>
-              <th class="sortable-th" @click="setAiSort('phone')" style="width:130px">Phone</th>
-              <th class="sortable-th" @click="setAiSort('location')" style="width:130px">
-                Location
-                <span class="sort-icon" v-if="aiSortKey === 'location'">{{ aiSortDir === 'asc' ? '\u25B2' : '\u25BC' }}</span>
-              </th>
-              <th class="sortable-th" @click="setAiSort('relevance_score')" style="width:72px">
-                Score
-                <span class="sort-icon" v-if="aiSortKey === 'relevance_score'">{{ aiSortDir === 'asc' ? '\u25B2' : '\u25BC' }}</span>
-              </th>
-              <th style="width:56px">Src</th>
-              <th style="width:72px"></th>
-            </tr>
-          </thead>
-          <TransitionGroup name="table-row" tag="tbody">
-            <tr v-for="(lead, i) in sortedTableLeads" :key="lead._rowId || i"
-                :class="{ 'row-selected': aiSelected.includes(i) }"
-                :style="{ '--row-delay': i * 40 + 'ms' }"
-                @click="aiResults.length ? toggleAiSelect(i) : openLeadDetail(lead)"
-                class="lead-row">
-              <td v-if="aiResults.length" @click.stop>
-                <input type="checkbox" class="ai-check" :checked="aiSelected.includes(i)" @change="toggleAiSelect(i)" />
-              </td>
-              <td>
-                <div class="contact-cell">
-                  <span class="contact-name">{{ lead.name || 'Anonymous' }}</span>
-                  <span class="contact-role" v-if="lead.title">{{ lead.title }}</span>
-                </div>
-              </td>
-              <td>
-                <span class="company-text">{{ lead.company || '--' }}</span>
-              </td>
-              <td>
-                <span class="email-text" :class="{ active: lead.email }">{{ lead.email || '--' }}</span>
-              </td>
-              <td class="mono-text">{{ lead.phone || '--' }}</td>
-              <td class="dim-text">{{ lead.location || '--' }}</td>
-              <td>
-                <div class="score-cell">
-                  <div class="score-bar">
-                    <div class="score-fill" :class="scoreColor(lead.relevance_score || lead.score || 0)" :style="{ width: (lead.relevance_score || lead.score || 0) + '%' }"></div>
-                  </div>
-                  <span class="score-num">{{ lead.relevance_score || lead.score || 0 }}</span>
-                </div>
-              </td>
-              <td><span class="src-tag" :class="'src-' + (lead.source || 'ai')">{{ (lead.source || 'ai').toUpperCase() }}</span></td>
-              <td @click.stop>
-                <div class="row-actions">
-                  <a v-if="lead.linkedin_url" :href="lead.linkedin_url" target="_blank" class="row-link" title="LinkedIn">
-                    <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><path d="M0 1.146C0 .513.526 0 1.175 0h13.65C15.474 0 16 .513 16 1.146v13.708c0 .633-.526 1.146-1.175 1.146H1.175C.526 16 0 15.487 0 14.854V1.146zm4.943 12.248V6.169H2.542v7.225h2.401zm-1.2-8.212c.837 0 1.358-.554 1.358-1.248-.015-.709-.52-1.248-1.342-1.248-.822 0-1.359.54-1.359 1.248 0 .694.521 1.248 1.327 1.248h.016zm4.908 8.212V9.359c0-.216.016-.432.08-.586.173-.431.568-.878 1.232-.878.869 0 1.216.662 1.216 1.634v3.865h2.401V9.25c0-2.22-1.184-3.252-2.764-3.252-1.274 0-1.845.7-2.165 1.193V6.169H6.29c.032.68 0 7.225 0 7.225h2.361z"/></svg>
-                  </a>
-                  <a v-if="lead.twitter_url" :href="lead.twitter_url" target="_blank" class="row-link" title="X / Twitter">
-                    <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><path d="M5.026 15c6.038 0 9.341-5.003 9.341-9.334 0-.14 0-.282-.006-.422A6.685 6.685 0 0016 3.542a6.658 6.658 0 01-1.889.518 3.301 3.301 0 001.447-1.817 6.533 6.533 0 01-2.087.793A3.286 3.286 0 007.875 6.03 9.325 9.325 0 011.114 2.1 3.323 3.323 0 002.13 6.574A3.203 3.203 0 01.64 6.14v.04a3.288 3.288 0 002.632 3.218 3.203 3.203 0 01-.865.115c-.212 0-.418-.02-.62-.058a3.283 3.283 0 003.067 2.277A6.588 6.588 0 01.78 13.58a6.32 6.32 0 01-.78-.045A9.344 9.344 0 005.026 15z"/></svg>
-                  </a>
-                  <a v-if="lead.website || lead.company_url" :href="lead.website || lead.company_url" target="_blank" class="row-link" title="Website">
-                    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M2 8h12M8 2a10 10 0 0 1 3 6 10 10 0 0 1-3 6 10 10 0 0 1-3-6 10 10 0 0 1 3-6z"/></svg>
-                  </a>
-                </div>
-              </td>
-            </tr>
-          </TransitionGroup>
-        </table>
-        <div v-if="allTableLeads.length === 0 && !aiSearching" class="empty-guide">
+        <!-- Empty State -->
+        <div v-if="allTableLeads.length === 0 && !aiSearching" class="lead-empty-state">
           <div class="empty-icon-wrap">
-            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="1.2">
-              <circle cx="12" cy="7" r="4"/><path d="M5.5 21c0-3.5 3-6 6.5-6s6.5 2.5 6.5 6"/>
-            </svg>
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="1"><circle cx="12" cy="7" r="4"/><path d="M5.5 21c0-3.5 3-6 6.5-6s6.5 2.5 6.5 6"/></svg>
           </div>
           <h3 class="empty-title">No leads yet</h3>
           <p class="empty-desc">Use the AI prompt above to discover leads, or they'll appear here as visitors interact with your site.</p>
@@ -185,17 +176,33 @@
         <div class="card-header"><h3 class="card-title" style="font-size:var(--font-xs);text-transform:uppercase;letter-spacing:0.1em;color:var(--text-muted)">Why This Lead Matches</h3></div>
         <p class="text-sm" style="color:var(--text-secondary);line-height:1.6;margin:0">{{ sortedTableLeads[aiSelected[0]]?.reason || 'No reason provided.' }}</p>
       </div>
+
+      <!-- Sticky Action Bar -->
+      <Transition name="action-bar">
+        <div v-if="aiSelected.length > 0" class="sticky-action-bar">
+          <div class="action-bar-inner">
+            <span class="action-bar-count">{{ aiSelected.length }} lead{{ aiSelected.length > 1 ? 's' : '' }} selected</span>
+            <div class="action-bar-buttons">
+              <button class="action-btn action-btn-secondary" @click="aiSelected = []">Deselect All</button>
+              <button class="action-btn action-btn-primary" @click="addSelectedToPipeline">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" style="vertical-align:-2px;margin-right:4px"><path d="M1 4h4v4H1zM6 2h4v8H6zM11 5h4v3h-4z"/></svg>
+                View in Pipeline →
+              </button>
+            </div>
+          </div>
+        </div>
+      </Transition>
     </template>
 
     <!-- ════════════════ PIPELINE VIEW ════════════════ -->
     <template v-else-if="activeTab === 'pipeline'">
       <!-- Empty state when pipeline has no nodes -->
-      <div v-if="nodes.length === 0" class="card" style="text-align:center;padding:48px 20px">
-        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="1.2" style="margin:0 auto 12px;display:block;opacity:0.45">
+      <div v-if="nodes.length === 0" class="pipeline-empty card">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="1" style="opacity:0.4">
           <path d="M3 3h6v6H3zM15 3h6v6h-6zM9 15h6v6H9z"/><path d="M6 9v3h3M18 9v6h-3M9 18H6v-3" stroke-dasharray="2 2"/>
         </svg>
-        <h3 style="margin:0 0 6px;font-size:var(--font-md);font-weight:600;color:var(--text-primary)">No pipeline yet</h3>
-        <p style="font-size:var(--font-sm);color:var(--text-muted);max-width:340px;margin:0 auto;line-height:1.5">Select leads from the Table tab and click <strong>Add to Pipeline</strong> to start building your outreach flow.</p>
+        <h3>No pipeline yet</h3>
+        <p>Select leads from the Cards tab and click <strong>View in Pipeline →</strong> to start building your outreach flow.</p>
       </div>
 
       <div v-else class="pipeline-wrapper">
@@ -222,8 +229,6 @@
             </div>
           </div>
         </div>
-
-
 
         <!-- ── Canvas ── -->
         <div class="pipeline-canvas-wrap" @drop="onDrop" @dragover.prevent @dragenter.prevent>
@@ -252,41 +257,29 @@
         </div>
       </div>
 
-      <!-- Node Detail Panel (below canvas) -->
-      <div class="pipeline-detail-grid" v-if="selectedPipelineNode">
-        <div class="card" style="grid-column:1/-1">
-          <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
-            <h3 class="card-title">{{ selectedPipelineNode.data.label }} <span class="badge badge-neutral" style="margin-left:6px">{{ filteredLeads.length }}</span></h3>
-            <!-- Action buttons based on node type -->
-            <div style="display:flex;gap:8px">
-              <button v-if="selectedPipelineNode.data.connectorId === 'send-email' && filteredLeads.length" class="btn btn-primary btn-sm" @click="bulkEmailFromPipeline">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="vertical-align:-2px;margin-right:4px"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4z"/></svg>
-                Send to All {{ filteredLeads.length }}
-              </button>
-              <button v-if="selectedPipelineNode.data.connectorId === 'linkedin-outreach' && filteredLeads.length" class="btn btn-secondary btn-sm" @click="openAllLinkedIn">
-                <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style="vertical-align:-2px;margin-right:4px"><path d="M0 1.146C0 .513.526 0 1.175 0h13.65C15.474 0 16 .513 16 1.146v13.708c0 .633-.526 1.146-1.175 1.146H1.175C.526 16 0 15.487 0 14.854V1.146z"/></svg>
-                Open All Profiles
-              </button>
-            </div>
+      <!-- Node Detail Panel — Mini-Card Layout -->
+      <div class="pipeline-detail" v-if="selectedPipelineNode">
+        <div class="pipeline-detail-header">
+          <h3>{{ selectedPipelineNode.data.label }} <span class="badge badge-neutral">{{ filteredLeads.length }}</span></h3>
+          <div class="pipeline-detail-actions">
+            <button v-if="selectedPipelineNode.data.connectorId === 'send-email' && filteredLeads.length" class="btn btn-primary btn-sm" @click="bulkEmailFromPipeline">
+              Send to All {{ filteredLeads.length }}
+            </button>
+            <button v-if="selectedPipelineNode.data.connectorId === 'linkedin-outreach' && filteredLeads.length" class="btn btn-secondary btn-sm" @click="openAllLinkedIn">
+              Open All Profiles
+            </button>
           </div>
-          <div class="lead-list">
-            <div class="lead-list-item" v-for="lead in filteredLeads" :key="lead.name || lead.email" @click="openLeadDetail(lead)">
-              <div style="flex:1;min-width:0">
-                <div style="font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-primary)">{{ lead.name || 'Anonymous' }}</div>
-                <div style="font-size:11px;color:var(--text-muted);margin-top:1px">
-                  {{ lead.company || '--' }}
-                  <span v-if="lead.email" style="margin-left:6px;color:var(--brand-accent)">{{ lead.email }}</span>
-                </div>
-              </div>
-              <!-- Per-lead actions -->
-              <a v-if="selectedPipelineNode.data.connectorId === 'linkedin-outreach' && lead.linkedin_url" :href="lead.linkedin_url" target="_blank" class="btn btn-secondary btn-sm" @click.stop style="font-size:11px;padding:4px 10px">
-                Open LinkedIn
-              </a>
-              <button v-else-if="selectedPipelineNode.data.connectorId === 'send-email' && lead.email" class="btn btn-secondary btn-sm" @click.stop="openEmailCompose(lead)" style="font-size:11px;padding:4px 10px">
-                Draft Email
-              </button>
-              <span v-else-if="selectedPipelineNode.data.connectorId" class="score-num" style="font-size:12px">{{ lead.relevance_score || lead.score || '--' }}</span>
+        </div>
+        <div class="pipeline-lead-cards">
+          <div v-for="lead in filteredLeads" :key="lead.name || lead.email" class="pipeline-mini-card" @click="openLeadDetail(lead)">
+            <div class="mini-card-avatar" :class="scoreTier(lead.relevance_score || lead.score || 0)">{{ initials(lead) }}</div>
+            <div class="mini-card-info">
+              <span class="mini-card-name">{{ lead.name || 'Anonymous' }}</span>
+              <span class="mini-card-meta">{{ lead.company || '--' }} <span v-if="lead.email" class="mini-card-email">{{ lead.email }}</span></span>
             </div>
+            <a v-if="selectedPipelineNode.data.connectorId === 'linkedin-outreach' && lead.linkedin_url" :href="lead.linkedin_url" target="_blank" class="btn btn-secondary btn-sm" @click.stop style="font-size:11px;padding:4px 10px">Open</a>
+            <button v-else-if="selectedPipelineNode.data.connectorId === 'send-email' && lead.email" class="btn btn-secondary btn-sm" @click.stop="openEmailCompose(lead)" style="font-size:11px;padding:4px 10px">Draft</button>
+            <span v-else class="mini-card-score" :class="scoreTier(lead.relevance_score || lead.score || 0)">{{ lead.relevance_score || lead.score || '--' }}</span>
           </div>
           <div v-if="filteredLeads.length === 0" class="text-sm text-muted" style="text-align:center;padding:24px">
             No leads in this node. Connect it to a source node to pass leads through.
@@ -338,6 +331,8 @@
     </div>
   </div>
 </template>
+
+
 
 <script setup>
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
@@ -795,108 +790,526 @@ async function sendEmail() {
 <style scoped>
 .loading-state { text-align: center; padding: 80px 20px; font-size: var(--font-md); color: var(--text-muted); }
 
-/* ── Contact Cell (compact, inline) ── */
-.contact-cell { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
-.contact-name {
+/* ── Header ── */
+.header-actions { display: flex; gap: 8px; align-items: center; }
+.filter-select {
+  padding: 6px 12px;
+  font-size: var(--font-xs);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-full);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+/* ═══════════════════════════════════════
+   AI Search — Glassmorphism
+   ═══════════════════════════════════════ */
+.ai-search-card {
+  margin-bottom: 24px;
+  padding: 2px;
+  border-radius: calc(var(--radius-lg) + 2px);
+  background: linear-gradient(135deg, #6366f1, #8b5cf6, #a855f7, #6366f1);
+  background-size: 300% 300%;
+  animation: gradient-shift 6s ease infinite;
+}
+
+@keyframes gradient-shift {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+.ai-search-inner {
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  padding: 20px 24px;
+}
+
+.ai-search-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.ai-search-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--font-base);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.ai-sparkle {
+  color: #8b5cf6;
+  animation: sparkle-pulse 2s ease-in-out infinite;
+}
+
+@keyframes sparkle-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.15); opacity: 0.7; }
+}
+
+.ai-badge {
+  font-size: 0.55rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  padding: 3px 10px;
+  border-radius: var(--radius-full);
+  background: linear-gradient(135deg, #8b5cf6, #6366f1);
+  color: white;
+}
+
+.ai-search-input-wrap {
+  display: flex;
+  gap: 8px;
+}
+
+.ai-search-input {
+  flex: 1;
+  padding: 12px 16px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  font-size: var(--font-sm);
+  font-family: var(--font-family);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  transition: all 0.25s ease;
+}
+
+.ai-search-input:focus {
+  outline: none;
+  border-color: #8b5cf6;
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.15), 0 0 20px rgba(139, 92, 246, 0.06);
+}
+
+.ai-search-btn {
+  padding: 0 18px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: linear-gradient(135deg, #8b5cf6, #6366f1);
+  color: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.ai-search-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3); }
+.ai-search-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.ai-chips {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.ai-chip {
+  padding: 4px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-full);
+  font-size: 0.68rem;
+  font-family: var(--font-family);
+  color: var(--text-muted);
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.ai-chip:hover {
+  border-color: #8b5cf6;
+  color: #8b5cf6;
+  background: rgba(139, 92, 246, 0.04);
+}
+
+.ai-search-progress { margin-top: 12px; }
+.ai-progress-bar { height: 3px; border-radius: 2px; background: var(--bg-surface); overflow: hidden; }
+.ai-progress-fill {
+  height: 100%;
+  width: 40%;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #8b5cf6, #6366f1);
+  animation: progress-slide 1.5s ease-in-out infinite;
+}
+@keyframes progress-slide {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(350%); }
+}
+.ai-progress-text { font-size: var(--font-xs); color: var(--text-muted); margin-top: 6px; display: block; }
+
+/* ── Spinner ── */
+@keyframes spin { to { transform: rotate(360deg); } }
+.ai-spinner {
+  display: inline-block;
+  width: 14px; height: 14px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+/* ═══════════════════════════════════════
+   Tabs
+   ═══════════════════════════════════════ */
+.leads-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 20px;
+  background: var(--bg-surface);
+  padding: 4px;
+  border-radius: var(--radius-md);
+  width: fit-content;
+}
+
+.leads-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 16px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--font-xs);
   font-weight: 600;
-  font-size: 13px;
+  font-family: var(--font-family);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.leads-tab:hover { color: var(--text-primary); }
+.leads-tab.active {
+  background: var(--bg-card);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-sm);
+}
+
+/* ═══════════════════════════════════════
+   Stats Pills
+   ═══════════════════════════════════════ */
+.stats-pills {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.stat-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: var(--radius-full);
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  font-size: var(--font-xs);
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.stat-pill strong {
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.stat-pill-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.stat-pill-ai { background: rgba(139, 92, 246, 0.06); border-color: rgba(139, 92, 246, 0.15); }
+.pill-clear {
+  margin-left: 4px;
+  background: none; border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 0 2px;
+}
+.pill-clear:hover { color: var(--text-primary); }
+
+/* ── Select Row ── */
+.select-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  padding: 0 4px;
+}
+
+.select-all-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--font-xs);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.select-info { font-size: var(--font-xs); font-weight: 600; color: var(--brand-accent); }
+
+.modern-check {
+  width: 15px; height: 15px;
+  cursor: pointer;
+  accent-color: #8b5cf6;
+}
+
+/* ═══════════════════════════════════════
+   Lead Cards Grid
+   ═══════════════════════════════════════ */
+.lead-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 14px;
+}
+
+@keyframes card-enter {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.lead-card {
+  position: relative;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 18px 20px 14px;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+  animation: card-enter 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: var(--card-delay, 0ms);
+}
+
+.lead-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+  border-color: var(--border-hover);
+}
+
+.lead-card-selected {
+  border-color: #8b5cf6;
+  box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.12);
+}
+
+.lead-card-check {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.lead-card:hover .lead-card-check,
+.lead-card-selected .lead-card-check { opacity: 1; }
+
+/* ── Avatar + Score Ring ── */
+.lead-card-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.lead-avatar {
+  position: relative;
+  width: 48px; height: 48px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.lead-initials {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  z-index: 1;
+}
+
+.score-ring {
+  position: absolute;
+  top: 0; left: 0;
+}
+
+.score-hot   { --ring-color: #22c55e; --ring-track: rgba(34, 197, 94, 0.12); }
+.score-warm  { --ring-color: #f59e0b; --ring-track: rgba(245, 158, 11, 0.12); }
+.score-cold  { --ring-color: #94a3b8; --ring-track: rgba(148, 163, 184, 0.12); }
+
+.lead-card-identity {
+  flex: 1;
+  min-width: 0;
+}
+
+.lead-card-name {
+  display: block;
+  font-weight: 700;
+  font-size: var(--font-sm);
   color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.contact-role {
-  font-size: 11px;
+
+.lead-card-role {
+  display: block;
+  font-size: 0.68rem;
   color: var(--text-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  flex-shrink: 1;
+  margin-top: 1px;
 }
-.contact-role::before { content: '\00B7'; margin-right: 5px; color: var(--border-color); }
 
-/* ── Company ── */
-.company-text { font-size: 13px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
-
-/* ── Email ── */
-.email-text { font-size: 12px; color: var(--text-muted); }
-.email-text.active { color: var(--brand-accent); }
-
-/* ── Minor cells ── */
-.mono-text { font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
-.dim-text { font-size: 12px; color: var(--text-muted); }
-
-/* ── Score Bar ── */
-.score-cell { display: flex; align-items: center; gap: 6px; width: 100%; }
-.score-bar {
-  flex: 1;
-  height: 4px;
-  background: var(--bg-surface);
-  border-radius: 2px;
-  overflow: hidden;
-  min-width: 28px;
+.lead-card-score {
+  font-size: 1.1rem;
+  font-weight: 800;
+  flex-shrink: 0;
 }
-.score-fill {
-  height: 100%;
-  border-radius: 2px;
-  transition: width 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+
+.lead-card-score.score-hot  { color: #22c55e; }
+.lead-card-score.score-warm { color: #f59e0b; }
+.lead-card-score.score-cold { color: #94a3b8; }
+
+/* ── Details ── */
+.lead-card-details {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border-color) 50%, transparent);
 }
-.fill-high { background: var(--color-success, #22c55e); }
-.fill-mid  { background: var(--color-warning, #f59e0b); }
-.fill-low  { background: var(--text-muted); }
-.score-num { font-size: 11px; font-weight: 600; color: var(--text-secondary); min-width: 18px; text-align: right; font-variant-numeric: tabular-nums; }
+
+.lead-detail-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--font-xs);
+  color: var(--text-secondary);
+}
+
+.lead-detail-row svg { color: var(--text-muted); flex-shrink: 0; }
+.detail-email { color: var(--brand-accent); }
+
+/* ── Footer ── */
+.lead-card-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.lead-card-links { display: flex; gap: 4px; }
+.card-link {
+  display: flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  transition: all 0.12s;
+}
+.card-link:hover { background: var(--bg-surface); color: var(--text-primary); }
 
 /* ── Source Tag ── */
 .src-tag {
-  font-size: 9px;
+  font-size: 0.55rem;
   font-weight: 700;
   letter-spacing: 0.04em;
-  padding: 2px 6px;
-  border-radius: 3px;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
   text-transform: uppercase;
 }
-.src-ai { background: rgba(91,141,239,0.08); color: var(--brand-accent); }
+.src-ai { background: rgba(139, 92, 246, 0.08); color: #8b5cf6; }
 .src-x { background: rgba(0,0,0,0.05); color: var(--text-secondary); }
 .src-linkedin { background: rgba(10,102,194,0.08); color: #0a66c2; }
 .src-web { background: rgba(148,163,184,0.08); color: var(--text-muted); }
 .src-openclaw { background: rgba(34,197,94,0.08); color: #22c55e; }
 
-/* ── Row Actions ── */
-.row-actions { display: flex; gap: 2px; opacity: 0; transition: opacity 0.15s; }
-.lead-row:hover .row-actions { opacity: 1; }
-.row-link {
-  display: flex; align-items: center; justify-content: center;
-  width: 26px; height: 26px;
-  border-radius: 4px;
-  color: var(--text-muted);
-  transition: background 0.12s, color 0.12s;
-}
-.row-link:hover { background: var(--bg-surface); color: var(--text-primary); }
-
-/* ── Row Animations ── */
-@keyframes row-enter {
-  from { opacity: 0; transform: translateY(6px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-.lead-row {
-  cursor: pointer;
-  animation: row-enter 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
-  animation-delay: var(--row-delay, 0ms);
-}
-.table-row-enter-active { animation: row-enter 0.25s cubic-bezier(0.22, 1, 0.36, 1) both; }
-.table-row-leave-active { transition: opacity 0.15s, transform 0.15s; }
-.table-row-leave-to { opacity: 0; transform: translateX(-8px); }
-.table-row-move { transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1); }
-
 /* ── Empty State ── */
-.empty-guide { text-align: center; padding: 48px 20px; }
-.empty-icon-wrap { margin-bottom: 12px; display: flex; justify-content: center; opacity: 0.45; }
+.lead-empty-state {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 60px 20px;
+}
+.empty-icon-wrap { margin-bottom: 12px; display: flex; justify-content: center; opacity: 0.35; }
 .empty-title { margin: 0 0 6px; color: var(--text-primary); font-size: var(--font-md); font-weight: 600; }
 .empty-desc { font-size: var(--font-sm); color: var(--text-muted); max-width: 340px; margin: 0 auto; line-height: 1.5; }
 
-/* ══════════════════════════════════════
-   Pipeline Wrapper
-   ══════════════════════════════════════ */
+/* ═══════════════════════════════════════
+   Sticky Action Bar
+   ═══════════════════════════════════════ */
+.sticky-action-bar {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+}
+
+.action-bar-inner {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 20px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-full);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12);
+  backdrop-filter: blur(12px);
+}
+
+.action-bar-count {
+  font-size: var(--font-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.action-bar-buttons { display: flex; gap: 8px; }
+
+.action-btn {
+  padding: 6px 16px;
+  border-radius: var(--radius-full);
+  font-size: var(--font-xs);
+  font-weight: 600;
+  font-family: var(--font-family);
+  cursor: pointer;
+  transition: all 0.15s;
+  border: none;
+  white-space: nowrap;
+}
+
+.action-btn-secondary {
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+}
+.action-btn-secondary:hover { border-color: var(--text-primary); color: var(--text-primary); }
+
+.action-btn-primary {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: white;
+}
+.action-btn-primary:hover { box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3); transform: translateY(-1px); }
+
+/* Action bar transition */
+.action-bar-enter-active { transition: all 0.3s cubic-bezier(0.22, 1, 0.36, 1); }
+.action-bar-leave-active { transition: all 0.2s ease; }
+.action-bar-enter-from,
+.action-bar-leave-to { opacity: 0; transform: translateX(-50%) translateY(20px); }
+
+/* ═══════════════════════════════════════
+   Pipeline
+   ═══════════════════════════════════════ */
+.pipeline-empty {
+  text-align: center;
+  padding: 60px 20px;
+}
+.pipeline-empty h3 { margin: 12px 0 6px; font-size: var(--font-md); font-weight: 600; color: var(--text-primary); }
+.pipeline-empty p { font-size: var(--font-sm); color: var(--text-muted); max-width: 380px; margin: 0 auto; line-height: 1.5; }
+
 .pipeline-wrapper {
   display: flex;
   gap: 0;
@@ -915,71 +1328,18 @@ async function sendEmail() {
   max-height: 700px;
 }
 
-.cs-header {
-  padding: 16px 14px 12px;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.cs-title {
-  font-size: var(--font-base);
-  font-weight: 700;
-  color: var(--text-primary);
-}
-
-.cs-subtitle {
-  font-size: var(--font-xs);
-  color: var(--text-muted);
-  margin-top: 2px;
-}
-
+.cs-header { padding: 16px 14px 12px; border-bottom: 1px solid var(--border-color); }
+.cs-title { font-size: var(--font-base); font-weight: 700; color: var(--text-primary); }
+.cs-subtitle { font-size: var(--font-xs); color: var(--text-muted); margin-top: 2px; }
 .cs-section { padding: 8px 0; }
-
-.cs-section-label {
-  font-size: 9px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--text-muted);
-  padding: 4px 14px 6px;
-}
-
-.cs-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 14px;
-  cursor: grab;
-  transition: background var(--transition-fast);
-  border-left: 3px solid transparent;
-}
-
-.cs-item:hover {
-  background: var(--bg-surface);
-  border-left-color: var(--brand-accent);
-}
-
+.cs-section-label { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); padding: 4px 14px 6px; }
+.cs-item { display: flex; align-items: center; gap: 10px; padding: 8px 14px; cursor: grab; transition: background var(--transition-fast); border-left: 3px solid transparent; }
+.cs-item:hover { background: var(--bg-surface); border-left-color: var(--brand-accent); }
 .cs-item:active { cursor: grabbing; }
-
 .cs-item-icon { font-size: 18px; flex-shrink: 0; }
-
 .cs-item-info { min-width: 0; }
-
-.cs-item-name {
-  font-size: var(--font-sm);
-  font-weight: 600;
-  color: var(--text-primary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.cs-item-desc {
-  font-size: 10px;
-  color: var(--text-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
+.cs-item-name { font-size: var(--font-sm); font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cs-item-desc { font-size: 10px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* ── Canvas ── */
 .pipeline-canvas-wrap {
@@ -989,7 +1349,6 @@ async function sendEmail() {
   border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
   overflow: hidden;
 }
-
 .pipeline-flow { width: 100%; height: 700px; }
 
 :deep(.vue-flow) { background: var(--bg-card) !important; }
@@ -1003,283 +1362,88 @@ async function sendEmail() {
 :deep(.vue-flow__minimap) { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); box-shadow: var(--shadow-sm); }
 :deep(.vue-flow__connection-line) { stroke: var(--brand-accent); stroke-width: 2; }
 
-/* ── Detail Panel ── */
-.pipeline-detail-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
-}
-
-.corr-list { display: flex; flex-direction: column; gap: 6px; }
-.corr-row { display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: var(--bg-surface); border-radius: var(--radius-sm); }
-.intel-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.intel-cell { background: var(--bg-surface); border-radius: var(--radius-sm); padding: 8px 10px; }
-.intel-label { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
-.intel-value { font-size: var(--font-sm); font-weight: 700; color: var(--text-primary); margin-top: 2px; }
-.lead-list { display: flex; flex-direction: column; gap: 4px; }
-.lead-list-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: var(--radius-sm); cursor: pointer; transition: background var(--transition-fast); }
-.lead-list-item:hover { background: var(--bg-surface); }
-
-@media (max-width: 900px) {
-  .pipeline-wrapper { flex-direction: column; }
-  .connector-sidebar { width: 100%; max-height: 200px; border-radius: var(--radius-lg) var(--radius-lg) 0 0; border-right: 1px solid var(--border-color); border-bottom: none; }
-  .pipeline-canvas-wrap { border-radius: 0 0 var(--radius-lg) var(--radius-lg); }
-  .pipeline-detail-grid { grid-template-columns: 1fr; }
-  .ai-results-grid { grid-template-columns: 1fr; }
-}
-
-/* ═══════════════════════════════════════
-   AI Lead Finder
-   ═══════════════════════════════════════ */
-.ai-finder { max-width: 960px; }
-
-.ai-search-card { margin-bottom: 24px; }
-
-.ai-prompt-input {
-  width: 100%;
-  padding: 14px 16px;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  font-size: var(--font-sm);
-  font-family: var(--font-family);
-  background: var(--bg-surface);
-  color: var(--text-primary);
-  resize: vertical;
-  transition: border-color 0.2s;
-}
-.ai-prompt-input:focus {
-  outline: none;
-  border-color: var(--brand-accent);
-  box-shadow: 0 0 0 3px rgba(91, 141, 239, 0.1);
-}
-
-.ai-search-actions {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-top: 12px;
-  gap: 12px;
-}
-
-.ai-example-prompts {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-.ai-example-btn {
-  background: var(--bg-surface);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-full);
-  padding: 4px 10px;
-  font-size: 11px;
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: all 0.15s;
-  font-family: var(--font-family);
-}
-.ai-example-btn:hover {
-  border-color: var(--brand-accent);
-  color: var(--brand-accent);
-}
-
-.ai-loading {
-  text-align: center;
-  padding: 60px 20px;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-.ai-spinner {
-  display: inline-block;
-  width: 14px;
-  height: 14px;
-  border: 2px solid rgba(255,255,255,0.3);
-  border-top-color: #fff;
-  border-radius: 50%;
-  animation: spin 0.6s linear infinite;
-  margin-right: 6px;
-  vertical-align: middle;
-}
-.ai-spinner-lg {
-  display: inline-block;
-  width: 32px;
-  height: 32px;
-  border: 3px solid var(--border-color);
-  border-top-color: var(--brand-accent);
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-
-.ai-results-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
-}
-.ai-meta { display: flex; gap: 8px; align-items: center; }
-
-.ai-results-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 16px;
-}
-
-@keyframes ai-card-in {
-  from { opacity: 0; transform: translateY(16px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-.ai-lead-card {
-  animation: ai-card-in 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.ai-lead-top {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-.ai-lead-name {
-  font-weight: 700;
-  font-size: var(--font-sm);
-  color: var(--text-primary);
-}
-.ai-score {
-  font-weight: 800;
-  font-size: var(--font-lg);
-  flex-shrink: 0;
-}
-
-.ai-lead-details {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-.ai-lead-detail {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: var(--font-xs);
-  color: var(--text-secondary);
-}
-
-.ai-lead-reason {
-  font-size: var(--font-xs);
-  color: var(--text-muted);
-  line-height: 1.5;
-  margin: 0;
-  border-left: 2px solid var(--brand-accent);
-  padding-left: 8px;
-}
-
-.ai-lead-actions {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding-top: 8px;
-  border-top: 1px solid var(--border-color);
-}
-
-.ai-social-links { display: flex; gap: 8px; }
-.ai-social-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
-  border-radius: var(--radius-sm);
-  font-size: 11px;
-  font-weight: 600;
-  text-decoration: none;
-  transition: all 0.15s;
-}
-.ai-social-link.li { background: rgba(10, 102, 194, 0.08); color: #0a66c2; }
-.ai-social-link.li:hover { background: rgba(10, 102, 194, 0.18); }
-.ai-social-link.tw { background: rgba(29, 161, 242, 0.08); color: #1da1f2; }
-.ai-social-link.tw:hover { background: rgba(29, 161, 242, 0.18); }
-
-.ai-empty {
-  text-align: center;
-  padding: 40px 20px;
-  color: var(--text-muted);
-}
-
-/* ── AI Sortable Results Table ── */
-.ai-table-bar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
-  flex-wrap: wrap;
-  gap: 12px;
-}
-.ai-table-bar-left { display: flex; flex-direction: column; gap: 4px; }
-.ai-table-bar-right { display: flex; align-items: center; gap: 8px; }
-
-.ai-table-card {
-  overflow-x: auto;
-  padding: 0;
-  border-radius: var(--radius-lg);
-}
-.ai-data-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13px;
-  table-layout: fixed;
-}
-.ai-data-table thead { position: sticky; top: 0; z-index: 1; }
-.ai-data-table th {
+/* ── Pipeline Detail Panel — Mini Cards ── */
+.pipeline-detail {
+  margin-top: 16px;
   background: var(--bg-card);
-  padding: 9px 12px;
-  text-align: left;
-  font-weight: 500;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-muted);
-  border-bottom: 1px solid var(--border-color);
-  white-space: nowrap;
-}
-.sortable-th {
-  cursor: pointer;
-  user-select: none;
-  transition: color 0.15s;
-}
-.sortable-th:hover { color: var(--text-primary); }
-.sort-icon {
-  display: inline-block;
-  font-size: 8px;
-  margin-left: 2px;
-  color: var(--brand-accent);
-}
-
-.ai-data-table td {
-  padding: 8px 12px;
-  border-bottom: 1px solid color-mix(in srgb, var(--border-color) 50%, transparent);
-  vertical-align: middle;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
-.ai-data-table tbody tr {
-  cursor: pointer;
-  transition: background 0.12s ease;
-}
-.ai-data-table tbody tr:hover { background: var(--bg-hover); }
-.ai-data-table tbody tr.row-selected { background: rgba(91, 141, 239, 0.04); }
-.ai-data-table tbody tr.row-selected:hover { background: rgba(91, 141, 239, 0.08); }
 
-.ai-check {
-  width: 14px;
-  height: 14px;
-  cursor: pointer;
-  accent-color: var(--brand-accent);
+.pipeline-detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-color);
 }
+
+.pipeline-detail-header h3 {
+  font-size: var(--font-base);
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.pipeline-detail-actions { display: flex; gap: 8px; }
+
+.pipeline-lead-cards {
+  padding: 12px 16px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 8px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.pipeline-mini-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.pipeline-mini-card:hover { background: var(--bg-hover); transform: translateX(2px); }
+
+.mini-card-avatar {
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+  color: white;
+}
+.mini-card-avatar.score-hot  { background: linear-gradient(135deg, #22c55e, #16a34a); }
+.mini-card-avatar.score-warm { background: linear-gradient(135deg, #f59e0b, #d97706); }
+.mini-card-avatar.score-cold { background: linear-gradient(135deg, #94a3b8, #64748b); }
+
+.mini-card-info { flex: 1; min-width: 0; }
+.mini-card-name { font-weight: 600; font-size: 12px; color: var(--text-primary); display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mini-card-meta { font-size: 11px; color: var(--text-muted); display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mini-card-email { margin-left: 4px; color: var(--brand-accent); }
+.mini-card-score { font-size: 13px; font-weight: 700; }
+.mini-card-score.score-hot  { color: #22c55e; }
+.mini-card-score.score-warm { color: #f59e0b; }
+.mini-card-score.score-cold { color: #94a3b8; }
 
 /* ── Email Compose ── */
 .email-sent-msg { text-align: center; padding: 8px; color: var(--color-success); font-size: var(--font-sm); font-weight: 600; }
 .email-error-msg { text-align: center; padding: 8px; color: var(--color-danger); font-size: var(--font-sm); }
 .email-history-item { padding: 10px 12px; background: var(--bg-surface); border-radius: var(--radius-sm); margin-bottom: 8px; }
+
+/* ── Responsive ── */
+@media (max-width: 900px) {
+  .pipeline-wrapper { flex-direction: column; }
+  .connector-sidebar { width: 100%; max-height: 200px; border-radius: var(--radius-lg) var(--radius-lg) 0 0; border-right: 1px solid var(--border-color); border-bottom: none; }
+  .pipeline-canvas-wrap { border-radius: 0 0 var(--radius-lg) var(--radius-lg); }
+  .lead-cards-grid { grid-template-columns: 1fr; }
+  .pipeline-lead-cards { grid-template-columns: 1fr; }
+}
 </style>

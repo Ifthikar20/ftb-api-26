@@ -23,6 +23,7 @@ urlpatterns = [
     path("api/v1/billing/", include("apps.billing.api.v1.urls")),
     path("api/v1/agents/", include("apps.agents.api.v1.urls")),
     path("api/v1/llm-ranking/", include("apps.llm_ranking.api.v1.urls")),
+    path("", include("apps.gamification.urls")),
 
     # Pixel ingestion (high throughput)
     path("api/v1/track/", include("apps.analytics.api.v1.pixel_urls")),

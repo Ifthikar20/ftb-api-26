@@ -60,6 +60,7 @@ LOCAL_APPS = [
     "apps.billing",
     "apps.agents",
     "apps.llm_ranking",
+    "apps.gamification",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -350,3 +351,6 @@ SPECTACULAR_SETTINGS = {
     "VERSION": "1.0.0",
     "SERVE_INCLUDE_SCHEMA": False,
 }
+
+# ── GAMIFICATION ──
+GAMIFICATION_ENABLED = env.bool("GAMIFICATION_ENABLED", default=True)

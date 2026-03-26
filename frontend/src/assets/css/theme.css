@@ -7,14 +7,15 @@
    Light Mode (default)
    ════════════════════════════════════════ */
 :root {
-  /* Surfaces — clean neutral foundation */
-  --bg-root: #f5f6f8;
+  /* Surfaces — soft gray bg, white cards pop through contrast */
+  --bg-root: #f0f1f3;
   --bg-sidebar: #ffffff;
-  --bg-surface: #f0f2f5;
+  --bg-surface: #f5f6f8;
   --bg-card: #ffffff;
-  --bg-card-hover: #f8f9fb;
+  --bg-card-hover: #fafbfc;
   --bg-input: #ffffff;
   --bg-overlay: rgba(15, 23, 42, 0.45);
+  --bg-base: #f5f6f8;
 
   /* Brand — dark primary + blue accent */
   --brand-primary: #1e293b;
@@ -47,17 +48,19 @@
   --border-hover: rgba(15, 23, 42, 0.16);
   --border-focus: var(--brand-accent);
 
-  /* Shadows */
-  --shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.04), 0 1px 2px rgba(15, 23, 42, 0.03);
-  --shadow-md: 0 4px 14px rgba(15, 23, 42, 0.06);
-  --shadow-lg: 0 12px 40px rgba(15, 23, 42, 0.08);
+  /* Shadows — soft, modern design */
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-md: 0 2px 8px rgba(15, 23, 42, 0.06);
+  --shadow-lg: 0 8px 24px rgba(15, 23, 42, 0.08);
+  --shadow-card: 0 1px 4px rgba(15, 23, 42, 0.04), 0 4px 16px rgba(15, 23, 42, 0.04);
+  --shadow-card-hover: 0 2px 8px rgba(15, 23, 42, 0.06), 0 8px 24px rgba(15, 23, 42, 0.06);
   --shadow-glow: 0 0 0 3px rgba(91, 141, 239, 0.15);
 
-  /* Radius */
+  /* Radius — rounded modern feel */
   --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
-  --radius-xl: 24px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+  --radius-xl: 28px;
   --radius-full: 9999px;
 
   /* Spacing */
@@ -70,9 +73,9 @@
   --transition-base: 250ms ease;
   --transition-slow: 400ms ease;
 
-  /* Typography */
+  /* Typography — single consistent sans-serif */
   --font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-display: 'DM Serif Display', Georgia, serif;
+  --font-display: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-xs: 0.6875rem;
   --font-sm: 0.75rem;
   --font-base: 0.8125rem;
@@ -127,6 +130,8 @@
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
   --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.4);
   --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.5);
+  --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.2);
+  --shadow-card-hover: 0 4px 12px rgba(0, 0, 0, 0.4), 0 12px 32px rgba(0, 0, 0, 0.3);
   --shadow-glow: 0 0 0 3px rgba(107, 158, 255, 0.15);
 
   color-scheme: dark;

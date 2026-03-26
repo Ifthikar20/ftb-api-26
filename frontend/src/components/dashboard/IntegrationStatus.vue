@@ -100,18 +100,6 @@ const totalCount = computed(() =>
 <style scoped>
 .integration-card {
   position: relative;
-  overflow: hidden;
-}
-
-.integration-card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 3px;
-  background: linear-gradient(90deg, var(--color-success), var(--brand-accent, #6366f1), var(--color-warning));
-  opacity: 0.7;
 }
 
 .title-icon {

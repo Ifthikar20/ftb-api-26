@@ -7,8 +7,8 @@
       <div v-for="item in activity" :key="item.text" class="activity-item">
         <span class="activity-dot" :style="{ background: item.color }"></span>
         <div>
-          <div class="text-sm">{{ item.text }}</div>
-          <div class="text-xs text-muted">{{ item.time }}</div>
+          <div class="activity-text">{{ item.text }}</div>
+          <div class="activity-time">{{ item.time }}</div>
         </div>
       </div>
     </div>
@@ -22,23 +22,35 @@ defineProps({
 </script>
 
 <style scoped>
-.activity-list { display: flex; flex-direction: column; gap: 6px; }
+.activity-list { display: flex; flex-direction: column; gap: 4px; }
 
 .activity-item {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
-  padding: 10px 0;
+  gap: 12px;
+  padding: 12px 0;
   border-bottom: 1px solid var(--border-color);
 }
 
 .activity-item:last-child { border-bottom: none; }
 
 .activity-dot {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
-  margin-top: 6px;
+  margin-top: 5px;
   flex-shrink: 0;
+}
+
+.activity-text {
+  font-size: var(--font-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.activity-time {
+  font-size: var(--font-xs);
+  color: var(--text-muted);
+  margin-top: 2px;
 }
 </style>

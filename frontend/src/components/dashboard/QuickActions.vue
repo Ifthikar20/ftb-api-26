@@ -5,7 +5,7 @@
     </div>
     <div class="actions-list">
       <router-link v-for="action in actions" :key="action.label" :to="action.to" class="action-row">
-        <div>
+        <div class="action-content">
           <div class="action-label">{{ action.label }}</div>
           <div class="action-desc">{{ action.desc }}</div>
         </div>
@@ -27,18 +27,24 @@ defineProps({
 .action-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 14px 4px;
+  gap: 12px;
+  padding: 12px 4px;
   border-bottom: 1px solid var(--border-color);
   text-decoration: none;
   color: inherit;
-  transition: all var(--transition-fast);
+  transition: background var(--transition-fast);
 }
 
-.action-row:hover { padding-left: 8px; }
+.action-row:hover {
+  background: var(--bg-surface);
+}
+
 .action-row:last-child { border-bottom: none; }
 
-.action-label { font-size: var(--font-base); font-weight: 600; color: var(--text-primary); }
-.action-desc { font-size: var(--font-xs); color: var(--text-muted); }
-.action-arrow { color: var(--text-muted); font-size: var(--font-lg); }
+.action-content { flex: 1; }
+
+.action-label { font-size: var(--font-sm); font-weight: 600; color: var(--text-primary); }
+.action-desc { font-size: var(--font-xs); color: var(--text-muted); margin-top: 1px; }
+.action-arrow { color: var(--text-muted); font-size: var(--font-base); transition: transform var(--transition-fast); }
+.action-row:hover .action-arrow { transform: translateX(3px); color: var(--text-secondary); }
 </style>

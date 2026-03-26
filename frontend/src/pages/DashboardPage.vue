@@ -3,14 +3,15 @@
     <div v-if="loading" class="loading-state">Loading dashboard...</div>
     <template v-else>
       <GreetingHeader :timeOfDay="timeOfDay" :firstName="firstName" />
-      <StatsGrid :stats="stats" />
+      <StatsGrid :stats="stats" class="stagger-enter" />
 
-      <div class="content-grid">
-        <MorningBrief :brief="brief" />
+      <div class="content-grid stagger-enter">
+        <MorningBrief :brief="brief" class="tint-blue" />
         <QuickActions :actions="quickActions" />
-        <WeeklyTasks :tasks="actions" />
+        <WeeklyTasks :tasks="actions" class="tint-green" />
         <RecentActivity :activity="activity" />
         <AgentActivity :runs="agentRuns" />
+        <TrendInsights class="tint-lavender" />
         <IntegrationStatus :integrations="integrations" />
       </div>
     </template>
@@ -31,6 +32,7 @@ import WeeklyTasks from '@/components/dashboard/WeeklyTasks.vue'
 import RecentActivity from '@/components/dashboard/RecentActivity.vue'
 import AgentActivity from '@/components/dashboard/AgentActivity.vue'
 import IntegrationStatus from '@/components/dashboard/IntegrationStatus.vue'
+import TrendInsights from '@/components/dashboard/TrendInsights.vue'
 
 const authStore = useAuthStore()
 const firstName = computed(() => (authStore.user?.full_name || 'there').split(' ')[0])
@@ -90,5 +92,30 @@ onMounted(async () => {
   padding: 80px 20px;
   font-size: var(--font-md);
   color: var(--text-muted);
+}
+
+/* Subtle card color tints */
+.tint-blue {
+  background: linear-gradient(135deg, #f0f7ff 0%, #ffffff 60%) !important;
+}
+
+.tint-green {
+  background: linear-gradient(135deg, #f0fdf4 0%, #ffffff 60%) !important;
+}
+
+.tint-lavender {
+  background: linear-gradient(135deg, #f5f3ff 0%, #ffffff 60%) !important;
+}
+
+[data-theme="dark"] .tint-blue {
+  background: linear-gradient(135deg, rgba(91, 141, 239, 0.06) 0%, var(--bg-card) 60%) !important;
+}
+
+[data-theme="dark"] .tint-green {
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.06) 0%, var(--bg-card) 60%) !important;
+}
+
+[data-theme="dark"] .tint-lavender {
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.06) 0%, var(--bg-card) 60%) !important;
 }
 </style>
