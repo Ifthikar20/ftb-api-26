@@ -460,8 +460,9 @@ watch(points, () => nextTick(() => drawHeatmap()))
 /* Stats */
 .heatmap-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
 .stat-pill {
-  background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-lg);
+  background: var(--bg-card); border: none; border-radius: var(--radius-md);
   padding: 14px 16px; display: flex; flex-direction: column; gap: 4px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.03);
 }
 .stat-label { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; }
 .stat-value { font-size: 20px; font-weight: 700; color: var(--text-primary); }
@@ -589,7 +590,7 @@ watch(points, () => nextTick(() => drawHeatmap()))
 .heat-bar-fill { height: 100%; border-radius: 20px; transition: width 0.5s ease; }
 
 /* Empty */
-.empty-guide { text-align: center; padding: 50px 30px; background: var(--bg-card); border: 2px dashed var(--border-color); border-radius: var(--radius-lg); }
+.empty-guide { text-align: center; padding: 50px 30px; background: var(--bg-card); border: 2px dashed var(--border-color); border-radius: var(--radius-md); }
 .empty-guide-icon { font-size: 48px; margin-bottom: 12px; }
 .empty-guide h3 { font-size: var(--font-lg); color: var(--text-primary); margin: 0 0 8px; }
 .empty-guide p { font-size: var(--font-sm); color: var(--text-secondary); max-width: 440px; margin: 0 auto 12px; line-height: 1.5; }

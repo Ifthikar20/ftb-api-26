@@ -128,12 +128,13 @@ function copyPixel() {
   gap: 8px;
   padding: 20px;
   background: var(--bg-surface);
-  border: 1px solid var(--border-color);
+  border: none;
   border-radius: var(--radius-md);
   cursor: pointer;
   transition: all var(--transition-fast);
   font-size: var(--font-sm);
   color: var(--text-secondary);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
 }
 
 .nav-tile:hover {

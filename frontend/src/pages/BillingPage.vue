@@ -377,7 +377,7 @@ onMounted(async () => {
 .savings-banner {
   background: var(--text-primary);
   color: var(--text-inverse);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   padding: 28px 32px;
   margin-bottom: 32px;
 }
@@ -405,13 +405,14 @@ onMounted(async () => {
 
 .pricing-card {
   background: var(--bg-card);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg);
+  border: none;
+  border-radius: var(--radius-md);
   padding: 28px 24px;
   display: flex;
   flex-direction: column;
   position: relative;
   transition: all var(--transition-base);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.03);
 }
 
 .pricing-card:hover { box-shadow: var(--shadow-lg); transform: translateY(-2px); }

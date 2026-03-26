@@ -264,7 +264,7 @@ onMounted(fetchGrader)
 .score-title { font-size: 13px; color: var(--text-secondary); margin-top: 8px; font-weight: 600; }
 
 .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
-.stat-block { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 20px 16px; text-align: center; }
+.stat-block { background: var(--bg-card); border: none; border-radius: var(--radius-md); padding: 20px 16px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.03); }
 .stat-number { font-size: 24px; font-weight: 700; margin-bottom: 4px; }
 .stat-desc { font-size: 12px; color: var(--text-muted); }
 .stat-red .stat-number { color: var(--color-danger, #ef4444); }

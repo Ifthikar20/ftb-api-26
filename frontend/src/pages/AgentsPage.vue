@@ -334,9 +334,9 @@ onBeforeUnmount(() => {
   right: 0;
   margin-top: 8px;
   background: var(--bg-card);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lg);
+  border: none;
+  border-radius: var(--radius-md);
+  box-shadow: 0 12px 40px rgba(0,0,0,0.15);
   min-width: 320px;
   z-index: 100;
   overflow: hidden;
@@ -365,9 +365,9 @@ onBeforeUnmount(() => {
 .approval-card {
   background: var(--bg-card);
   border: 1px solid var(--color-warning);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   padding: 20px;
-  box-shadow: 0 0 0 1px rgba(255, 180, 60, 0.15);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.03);
 }
 
 .approval-header { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }

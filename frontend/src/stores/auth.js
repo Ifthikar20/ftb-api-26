@@ -77,6 +77,7 @@ export const useAuthStore = defineStore('auth', () => {
     function clearAuth() {
         accessToken.value = null
         user.value = null
+        localStorage.removeItem('fb-session')
     }
 
     return {

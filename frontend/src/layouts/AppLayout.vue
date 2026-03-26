@@ -142,7 +142,7 @@
         </div>
       </header>
 
-      <main class="page-content" :style="{ background: pageTint }">
+      <main class="page-content">
         <router-view v-slot="{ Component }">
           <transition name="page-fade" mode="out-in">
             <keep-alive :max="10">
@@ -385,25 +385,7 @@ const agentsRoute = computed(() => websiteId.value ? `/agents/${websiteId.value}
 const campaignsRoute = computed(() => websiteId.value ? `/campaigns/${websiteId.value}` : '/websites')
 const llmRankingRoute = computed(() => websiteId.value ? `/llm-ranking/${websiteId.value}` : '/websites')
 
-// Dynamic page background tint based on current route
-const pageTint = computed(() => {
-  const path = route.path
-  if (path.startsWith('/dashboard') || path === '/') return 'var(--tint-dashboard)'
-  if (path.startsWith('/analytics')) return 'var(--tint-analytics)'
-  if (path.startsWith('/leads')) return 'var(--tint-leads)'
 
-  if (path.startsWith('/audits')) return 'var(--tint-audits)'
-  if (path.startsWith('/heatmap')) return 'var(--tint-analytics)'
-  if (path.startsWith('/keywords')) return 'var(--tint-leads)'
-  if (path.startsWith('/strategy')) return 'var(--tint-strategy)'
-  if (path.startsWith('/agents')) return 'var(--tint-strategy)'
-  if (path.startsWith('/campaigns')) return 'var(--tint-leads)'
-  if (path.startsWith('/llm-ranking')) return 'var(--tint-analytics)'
-  if (path.startsWith('/billing')) return 'var(--tint-billing)'
-  if (path.startsWith('/settings')) return 'var(--tint-settings)'
-  if (path.startsWith('/websites')) return 'var(--tint-dashboard)'
-  return 'var(--bg-page-tint)'
-})
 
 function switchWebsite(id) {
   const website = appStore.websites.find(w => w.id === id)
@@ -600,7 +582,7 @@ onUnmounted(() => {
 
 .nav-link.active {
   color: var(--text-primary);
-  background: var(--bg-page-tint);
+  background: var(--bg-surface);
   font-weight: 600;
 }
 
@@ -693,7 +675,7 @@ onUnmounted(() => {
 .page-content {
   flex: 1;
   padding: 32px;
-  background: var(--bg-page-tint);
+  background: var(--bg-root);
   min-height: calc(100vh - var(--topbar-height));
 }
 

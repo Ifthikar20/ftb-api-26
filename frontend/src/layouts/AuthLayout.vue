@@ -10,7 +10,7 @@
 
       <div class="auth-hero">
         <h1 class="auth-headline">Marketing Intelligence, <br/><em>Simplified.</em></h1>
-        <p class="auth-tagline">Track visitors, score leads, spy on competitors, and grow with AI-powered strategy — all in one place.</p>
+        <p class="auth-tagline">Track visitors, score leads, audit your site, and grow with AI — all in one platform.</p>
         <span class="version-badge">v2.1</span>
       </div>
 
@@ -81,7 +81,7 @@ onMounted(() => {
 /* ── Left Panel ── */
 .auth-left {
   flex: 1;
-  background: var(--bg-page-tint);
+  background: var(--bg-root);
   display: flex;
   flex-direction: column;
   justify-content: center;
