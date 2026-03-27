@@ -61,6 +61,7 @@ LOCAL_APPS = [
     "apps.agents",
     "apps.llm_ranking",
     "apps.gamification",
+    "apps.compliance",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -143,6 +144,7 @@ SIMPLE_JWT = {
 MIDDLEWARE = [
     "core.middleware.request_id.RequestIDMiddleware",
     "core.middleware.security_headers.SecurityHeadersMiddleware",
+    "apps.billing.middleware.rate_limiter.WebhookRateLimitMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "core.middleware.request_sanitizer.RequestSanitizerMiddleware",

@@ -27,7 +27,7 @@ class WebsiteService:
             existing.industry = industry or existing.industry
             existing.platform_type = platform_type
             existing.save()
-            audit_log("website.restored", user=user, metadata={"website_id": str(existing.id)})
+            audit_log("website.restored", user=user, action="update", resource_type="website", resource_id=str(existing.id), metadata={"url": validated_url})
             return existing
 
         website = Website.objects.create(
@@ -35,7 +35,7 @@ class WebsiteService:
             platform_type=platform_type,
         )
         WebsiteSettings.objects.create(website=website)
-        audit_log("website.created", user=user, metadata={"website_id": str(website.id)})
+        audit_log("website.created", user=user, action="create", resource_type="website", resource_id=str(website.id), metadata={"url": validated_url})
         return website
 
     @staticmethod
@@ -52,13 +52,13 @@ class WebsiteService:
         for field in allowed_fields & kwargs.keys():
             setattr(website, field, kwargs[field])
         website.save()
-        audit_log("website.updated", user=user, metadata={"website_id": str(website.id)})
+        audit_log("website.updated", user=user, action="update", resource_type="website", resource_id=str(website.id), metadata={"fields": list(kwargs.keys())})
         return website
 
     @staticmethod
     def delete(*, website: Website, user) -> None:
         website.soft_delete(user=user)
-        audit_log("website.deleted", user=user, metadata={"website_id": str(website.id)})
+        audit_log("website.deleted", user=user, action="delete", resource_type="website", resource_id=str(website.id))
 
     @staticmethod
     def regenerate_pixel_key(*, website: Website, user) -> Website:
@@ -67,5 +67,5 @@ class WebsiteService:
         website.pixel_verified = False
         website.pixel_verified_at = None
         website.save(update_fields=["pixel_key", "pixel_verified", "pixel_verified_at"])
-        audit_log("website.pixel_regenerated", user=user, metadata={"website_id": str(website.id)})
+        audit_log("website.pixel_regenerated", user=user, action="update", resource_type="website", resource_id=str(website.id))
         return website

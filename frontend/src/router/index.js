@@ -23,6 +23,20 @@ const routes = [
         redirect: '/'
     },
 
+    /* ── Legal (public) ── */
+    {
+        path: '/terms',
+        name: 'terms',
+        component: () => import('@/pages/legal/TermsPage.vue'),
+        meta: { public: true }
+    },
+    {
+        path: '/privacy',
+        name: 'privacy',
+        component: () => import('@/pages/legal/PrivacyPage.vue'),
+        meta: { public: true }
+    },
+
     /* ── Auth (public) ── */
     {
         path: '/login',
@@ -64,6 +78,7 @@ const routes = [
     protect('/campaigns/:websiteId', 'campaigns', () => import('@/pages/CampaignsPage.vue'), true),
     protect('/llm-ranking/:websiteId', 'llm-ranking', () => import('@/pages/LLMRankingPage.vue'), true),
     protect('/rewards', 'rewards', () => import('@/pages/RewardsPage.vue')),
+    protect('/integrations', 'integrations', () => import('@/pages/IntegrationsPage.vue')),
     protect('/billing', 'billing', () => import('@/pages/BillingPage.vue')),
     protect('/settings', 'settings', () => import('@/pages/SettingsPage.vue')),
 

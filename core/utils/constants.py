@@ -1,10 +1,80 @@
 from django.db import models
 
 
+class Segment(models.TextChoices):
+    INDIVIDUAL = "individual", "Individual"
+    ENTERPRISE = "enterprise", "Enterprise"
+
+
 class Plan(models.TextChoices):
-    STARTER = "starter", "Starter"
-    GROWTH = "growth", "Growth"
-    SCALE = "scale", "Scale"
+    INDIVIDUAL = "individual", "Individual"
+    ENTERPRISE = "enterprise", "Enterprise"
+    # Legacy aliases for migration compatibility
+    STARTER = "starter", "Starter (Legacy)"
+    GROWTH = "growth", "Growth (Legacy)"
+    SCALE = "scale", "Scale (Legacy)"
+
+
+# ── Feature limits per plan ──────────────────────────────────────────
+# Individual = $14/mo flat.  Enterprise = custom pricing per user.
+PLAN_LIMITS = {
+    Plan.INDIVIDUAL: {
+        "segment": Segment.INDIVIDUAL,
+        "price_monthly": 14,
+        "price_yearly": 140,
+        "projects": 3,
+        "pageviews": 50_000,
+        "team_members": 1,
+        "ai_credits_monthly": 100,
+        "integrations": 2,
+        "competitors": 5,
+        "audits_on_demand": True,
+        "ai_strategy_chat": True,
+        "pipeline_builder": True,
+        "trend_intelligence": True,
+        "sso": False,
+        "api_access": False,
+        "white_label": False,
+        "dedicated_support": False,
+        # Visible tabs
+        "tabs": [
+            "dashboard", "projects", "analytics", "leads",
+            "audits", "heatmaps", "keywords", "strategy",
+            "campaigns", "integrations", "billing", "settings",
+        ],
+    },
+    Plan.ENTERPRISE: {
+        "segment": Segment.ENTERPRISE,
+        "price_monthly": -1,  # custom
+        "price_yearly": -1,
+        "projects": -1,
+        "pageviews": -1,
+        "team_members": -1,  # based on contract
+        "ai_credits_monthly": -1,  # unlimited
+        "integrations": -1,
+        "competitors": -1,
+        "audits_on_demand": True,
+        "ai_strategy_chat": True,
+        "pipeline_builder": True,
+        "trend_intelligence": True,
+        "sso": True,
+        "api_access": True,
+        "white_label": True,
+        "dedicated_support": True,
+        # All tabs visible
+        "tabs": [
+            "dashboard", "projects", "analytics", "leads",
+            "audits", "heatmaps", "keywords", "strategy",
+            "agents", "campaigns", "llm_ranking",
+            "integrations", "billing", "settings",
+        ],
+    },
+}
+
+# Legacy aliases → map to Individual
+PLAN_LIMITS[Plan.STARTER] = PLAN_LIMITS[Plan.INDIVIDUAL]
+PLAN_LIMITS[Plan.GROWTH] = PLAN_LIMITS[Plan.INDIVIDUAL]
+PLAN_LIMITS[Plan.SCALE] = PLAN_LIMITS[Plan.ENTERPRISE]
 
 
 class UserRole(models.TextChoices):

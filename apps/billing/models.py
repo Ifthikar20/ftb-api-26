@@ -70,3 +70,32 @@ class UsageRecord(TimestampMixin):
 
     def __str__(self):
         return f"Usage({self.metric}: {self.count})"
+
+
+class BillingEvent(TimestampMixin):
+    """
+    Idempotency guard + event sourcing audit trail for Stripe webhooks.
+
+    Every incoming webhook writes an event record BEFORE processing.
+    If the stripe_event_id already exists, the handler short-circuits.
+    This prevents double-processing from Stripe retries or replay attacks.
+    """
+
+    stripe_event_id = models.CharField(max_length=100, unique=True, db_index=True)
+    event_type = models.CharField(max_length=80)
+    payload = models.JSONField(default=dict)
+    processed = models.BooleanField(default=False)
+    processing_error = models.TextField(blank=True, default="")
+    processing_time_ms = models.IntegerField(null=True, blank=True)
+
+    class Meta:
+        db_table = "billing_event"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["event_type", "-created_at"]),
+            models.Index(fields=["processed", "-created_at"]),
+        ]
+
+    def __str__(self):
+        status = "✓" if self.processed else "✗"
+        return f"BillingEvent({status} {self.event_type} {self.stripe_event_id})"

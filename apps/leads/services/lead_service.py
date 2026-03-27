@@ -31,7 +31,7 @@ class LeadService:
     def update_status(*, lead: Lead, status: str, user) -> Lead:
         lead.status = status
         lead.save(update_fields=["status", "updated_at"])
-        audit_log("lead.status_updated", user=user, metadata={"lead_id": str(lead.id), "status": status})
+        audit_log("lead.status_updated", user=user, action="update", resource_type="lead", resource_id=str(lead.id), metadata={"status": status, "website_id": str(lead.website_id)})
 
         # Dispatch outbound webhook for downstream integrations
         try:
@@ -70,6 +70,7 @@ class LeadService:
                 lead.visitor.geo_country if lead.visitor else "",
                 lead.created_at.isoformat(),
             ])
+        audit_log("lead.exported_csv", action="export", resource_type="lead", metadata={"website_id": website_id, "count": leads.count()})
         return output.getvalue()
 
     @staticmethod
@@ -108,6 +109,8 @@ class LeadService:
             ws.cell(row=row_idx, column=7, value=lead.source)
             ws.cell(row=row_idx, column=8, value=lead.visitor.geo_country if lead.visitor else "")
             ws.cell(row=row_idx, column=9, value=lead.created_at.isoformat())
+
+        audit_log("lead.exported_xlsx", action="export", resource_type="lead", metadata={"website_id": website_id, "count": leads.count()})
 
         output = BytesIO()
         wb.save(output)

@@ -1,70 +1,81 @@
+"""
+Plan definitions — 2-tier model (Individual + Enterprise).
+
+This is the single source of truth for plan metadata exposed via the API.
+For feature-level gating, use constants.PLAN_LIMITS instead.
+"""
+
 PLANS = [
     {
-        "id": "starter",
-        "name": "Starter",
-        "price_monthly": 29,
-        "price_yearly": 290,
+        "id": "individual",
+        "name": "Individual",
+        "segment": "individual",
+        "price_monthly": 14,
+        "price_yearly": 140,
+        "popular": True,
         "features": [
-            "1 website",
-            "Up to 10,000 pageviews/month",
-            "Basic lead tracking",
-            "3 competitor tracking",
-            "Weekly website audit",
+            "3 projects",
+            "Up to 50,000 pageviews/month",
+            "100 AI credits/month",
+            "Lead scoring & hot alerts",
+            "5 competitor tracking",
+            "SEO audits on-demand",
+            "AI strategy & morning briefs",
+            "Pipeline builder",
+            "Trend intelligence",
+            "2 integrations (Slack/Discord/Telegram)",
             "Email support",
         ],
         "limits": {
-            "websites": 1,
-            "pageviews": 10000,
-            "competitors": 3,
+            "projects": 3,
+            "pageviews": 50_000,
+            "competitors": 5,
             "team_members": 1,
+            "ai_credits": 100,
+            "integrations": 2,
         },
     },
     {
-        "id": "growth",
-        "name": "Growth",
-        "price_monthly": 79,
-        "price_yearly": 790,
-        "popular": True,
+        "id": "enterprise",
+        "name": "Enterprise",
+        "segment": "enterprise",
+        "price_monthly": -1,  # Custom
+        "price_yearly": -1,
         "features": [
-            "Up to 5 websites",
-            "Unlimited pageviews",
-            "AI strategy & chat",
-            "10 competitor tracking",
-            "Content calendar",
-            "5 team members",
-            "Priority support",
-        ],
-        "limits": {
-            "websites": 5,
-            "pageviews": -1,  # Unlimited
-            "competitors": 10,
-            "team_members": 5,
-        },
-    },
-    {
-        "id": "scale",
-        "name": "Scale",
-        "price_monthly": 199,
-        "price_yearly": 1990,
-        "features": [
-            "Unlimited websites",
-            "Unlimited pageviews",
-            "AI strategy & chat",
-            "50 competitor tracking",
-            "Content calendar",
+            "Everything in Individual",
+            "Unlimited projects & pageviews",
+            "Unlimited AI credits",
             "Unlimited team members",
-            "API access",
-            "White label",
-            "Dedicated support",
+            "Unlimited competitor tracking",
+            "Unlimited integrations",
+            "SSO / SAML authentication",
+            "Full API access",
+            "White-label reports",
+            "Agents & LLM Ranking",
+            "Organization-level billing",
+            "Dedicated support & SLA",
+            "Custom onboarding",
         ],
         "limits": {
-            "websites": -1,
+            "projects": -1,
             "pageviews": -1,
-            "competitors": 50,
+            "competitors": -1,
             "team_members": -1,
+            "ai_credits": -1,
+            "integrations": -1,
         },
     },
 ]
+
+# Legacy plan name → 2-tier mapping
+_LEGACY_MAP = {
+    "starter": "individual",
+    "growth": "individual",
+    "free": "individual",
+    "scale": "enterprise",
+    "team": "enterprise",
+    "business": "enterprise",
+}
 
 
 class PlanService:
@@ -73,5 +84,10 @@ class PlanService:
         return PLANS
 
     @staticmethod
-    def get_plan(plan_id: str) -> dict:
-        return next((p for p in PLANS if p["id"] == plan_id), None)
+    def get_plan(plan_id: str) -> dict | None:
+        resolved = _LEGACY_MAP.get(plan_id, plan_id)
+        return next((p for p in PLANS if p["id"] == resolved), None)
+
+    @staticmethod
+    def get_plan_for_segment(segment: str) -> dict | None:
+        return next((p for p in PLANS if p["segment"] == segment), None)

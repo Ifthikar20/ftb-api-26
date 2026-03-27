@@ -28,7 +28,7 @@
             <span class="integration-name">{{ intg.name }}</span>
             <span class="integration-desc">{{ intg.desc }}</span>
           </div>
-          <button class="btn-sm btn-outline" @click="$emit('connect', intg.type)">Connect</button>
+          <button class="btn-sm btn-outline" @click="goToIntegrations(intg.type)">Connect</button>
         </div>
       </div>
     </div>
@@ -36,7 +36,10 @@
 </template>
 
 <script setup>
+import { useRouter } from 'vue-router'
 defineEmits(['connect'])
+const router = useRouter()
+function goToIntegrations(type) { router.push('/integrations') }
 
 const trends = [
   {

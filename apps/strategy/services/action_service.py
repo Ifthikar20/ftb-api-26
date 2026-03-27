@@ -27,7 +27,7 @@ class ActionService:
             action.completed_at = timezone.now()
         action.save(update_fields=["status", "completed_at", "updated_at"])
 
-        audit_log("action.updated", user=user, metadata={"action_id": str(action_id), "status": status})
+        audit_log("strategy.action_updated", user=user, action="update", resource_type="action", resource_id=str(action_id), metadata={"status": status, "website_id": website_id})
 
         # Update strategy completion
         strategy = action.strategy

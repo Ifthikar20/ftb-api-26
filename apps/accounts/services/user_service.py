@@ -22,7 +22,7 @@ class UserService:
             setattr(profile, field, kwargs[field])
         profile.save()
 
-        audit_log("user.profile_updated", user=user)
+        audit_log("user.profile_updated", user=user, action="update", resource_type="user", resource_id=str(user.id), metadata={"fields": list(kwargs.keys())})
         return user
 
     @staticmethod
@@ -33,13 +33,14 @@ class UserService:
         user.full_name = "Deleted User"
         user.company_name = ""
         user.save(update_fields=["is_active", "email", "full_name", "company_name"])
-        audit_log("user.account_deleted", metadata={"user_id": str(user.id)})
+        audit_log("user.account_deleted", action="delete", resource_type="user", resource_id=str(user.id), metadata={"user_id": str(user.id)})
 
     @staticmethod
     def export_data(*, user: User) -> dict:
         """GDPR Article 15 — export all user data."""
         from apps.websites.models import Website
 
+        audit_log("user.data_exported", user=user, action="export", resource_type="user", resource_id=str(user.id))
         return {
             "profile": {
                 "id": str(user.id),
@@ -58,4 +59,4 @@ class UserService:
     def mark_onboarding_complete(*, user: User) -> None:
         user.onboarding_complete = True
         user.save(update_fields=["onboarding_complete"])
-        audit_log("user.onboarding_complete", user=user)
+        audit_log("user.onboarding_complete", user=user, action="update", resource_type="user", resource_id=str(user.id))

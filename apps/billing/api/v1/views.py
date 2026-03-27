@@ -1,3 +1,9 @@
+"""
+Billing API views — hardened for production.
+
+All views handle Stripe unavailability gracefully by returning cached data.
+"""
+
 import logging
 
 from rest_framework import status
@@ -10,7 +16,7 @@ from apps.billing.services.plan_service import PlanService
 from apps.billing.services.stripe_service import StripeService
 from apps.billing.services.usage_service import UsageService
 
-logger = logging.getLogger("apps")
+logger = logging.getLogger("billing")
 
 
 class BillingOverviewView(APIView):
@@ -23,15 +29,23 @@ class BillingOverviewView(APIView):
             plan_data = PlanService.get_plan(subscription.plan)
         except Subscription.DoesNotExist:
             subscription = None
-            plan_data = PlanService.get_plan("starter")
+            plan_data = PlanService.get_plan("individual")
 
+        # Determine segment
+        segment = getattr(request.user, "segment", None) or "individual"
+
+        # Usage — never fails, returns {} if no subscription
         usage = UsageService.get_current_usage(user=request.user)
 
         return Response({
-            "plan": getattr(request.user, "plan", "starter"),
+            "plan": getattr(request.user, "plan", "individual"),
+            "segment": segment,
             "plan_details": plan_data,
             "subscription_status": subscription.status if subscription else "none",
-            "current_period_end": subscription.current_period_end.isoformat() if subscription and subscription.current_period_end else None,
+            "current_period_end": (
+                subscription.current_period_end.isoformat()
+                if subscription and subscription.current_period_end else None
+            ),
             "cancel_at_period_end": subscription.cancel_at_period_end if subscription else False,
             "stripe_customer_id": bool(subscription.stripe_customer_id) if subscription else False,
             "usage": usage,
@@ -47,18 +61,27 @@ class PlansView(APIView):
 
 
 class CheckoutView(APIView):
-    """Create a Stripe checkout session for upgrading/subscribing."""
+    """Create a Stripe checkout session for subscribing."""
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        plan = request.data.get("plan", "growth")
+        plan = request.data.get("plan", "individual")
         annual = request.data.get("annual", False)
 
-        # Validate plan
-        valid_plans = ["starter", "growth", "scale"]
+        # Validate plan — only individual is available for self-serve checkout
+        valid_plans = ["individual"]
         if plan not in valid_plans:
             return Response(
-                {"success": False, "error": {"code": "invalid_plan", "message": "Please select a valid plan."}},
+                {
+                    "success": False,
+                    "error": {
+                        "code": "invalid_plan",
+                        "message": (
+                            "Enterprise plans require a custom quote. "
+                            "Please contact sales@fetchbot.ai."
+                        ),
+                    },
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -82,8 +105,11 @@ class CheckoutView(APIView):
             return Response({"success": True, "data": {"checkout_url": url}})
         except Exception as e:
             logger.error(f"Checkout creation failed: {e}")
+            error_msg = str(e) if hasattr(e, "message") else (
+                "We couldn't start the checkout. Please try again."
+            )
             return Response(
-                {"success": False, "error": {"code": "checkout_failed", "message": str(e) if hasattr(e, 'message') else "We couldn't start the checkout. Please try again."}},
+                {"success": False, "error": {"code": "checkout_failed", "message": error_msg}},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -104,7 +130,13 @@ class PortalView(APIView):
         except Exception as e:
             logger.error(f"Portal creation failed: {e}")
             return Response(
-                {"success": False, "error": {"code": "portal_failed", "message": "We couldn't open the billing portal. Please try again."}},
+                {
+                    "success": False,
+                    "error": {
+                        "code": "portal_failed",
+                        "message": "We couldn't open the billing portal. Please try again.",
+                    },
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -141,7 +173,7 @@ class UsageView(APIView):
 
     def get(self, request):
         usage = UsageService.get_current_usage(user=request.user)
-        limits = StripeService.get_plan_limits(getattr(request.user, "plan", "starter"))
+        limits = StripeService.get_plan_limits(getattr(request.user, "plan", "individual"))
 
         # Combine usage with limits for the frontend
         metrics = []

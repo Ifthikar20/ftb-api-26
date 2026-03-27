@@ -56,8 +56,8 @@ class OAuthService:
         if created:
             user.set_unusable_password()
             user.save()
-            audit_log("user.registered", user=user, metadata={"method": "google_oauth"})
+            audit_log("user.registered", user=user, action="create", resource_type="user", resource_id=str(user.id), metadata={"method": "google_oauth"})
         else:
-            audit_log("user.login", user=user, metadata={"method": "google_oauth"})
+            audit_log("user.login", user=user, action="login", resource_type="user", resource_id=str(user.id), metadata={"method": "google_oauth"})
 
         return user

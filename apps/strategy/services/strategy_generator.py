@@ -52,7 +52,7 @@ class StrategyGenerator:
                 ai_reasoning=action_data.get("reasoning", ""),
             )
 
-        audit_log("strategy.generated", metadata={"website_id": str(website.id), "plan_type": plan_type})
+        audit_log("strategy.generated", action="create", resource_type="strategy", resource_id=str(strategy.id), metadata={"website_id": str(website.id), "plan_type": plan_type})
         return strategy
 
     @staticmethod

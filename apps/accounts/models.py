@@ -5,7 +5,7 @@ from django.db import models
 from django.utils import timezone
 
 from core.mixins.timestamp_mixin import TimestampMixin
-from core.utils.constants import Plan
+from core.utils.constants import Plan, Segment
 
 from .managers import UserManager
 
@@ -18,6 +18,9 @@ class User(AbstractBaseUser, PermissionsMixin, TimestampMixin):
     full_name = models.CharField(max_length=200)
     company_name = models.CharField(max_length=200, blank=True)
     plan = models.CharField(max_length=20, choices=Plan.choices, default=Plan.STARTER)
+    segment = models.CharField(
+        max_length=20, choices=Segment.choices, default=Segment.INDIVIDUAL
+    )
 
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
@@ -41,6 +44,58 @@ class User(AbstractBaseUser, PermissionsMixin, TimestampMixin):
     @property
     def first_name(self):
         return self.full_name.split()[0] if self.full_name else ""
+
+    @property
+    def effective_plan(self):
+        """Return the plan to use for feature gating (org plan overrides personal plan for enterprise)."""
+        if hasattr(self, "_org_cache"):
+            return self._org_cache.plan
+        membership = self.org_memberships.select_related("organization").first()
+        if membership:
+            self._org_cache = membership.organization
+            return membership.organization.plan
+        return self.plan
+
+
+class Organization(TimestampMixin):
+    """Enterprise organization — shared billing entity."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=200)
+    slug = models.SlugField(max_length=80, unique=True)
+    owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name="owned_orgs")
+    plan = models.CharField(max_length=20, choices=Plan.choices, default=Plan.ENTERPRISE)
+    logo_url = models.URLField(blank=True)
+
+    class Meta:
+        db_table = "accounts_organization"
+
+    def __str__(self):
+        return self.name
+
+
+class OrganizationMember(TimestampMixin):
+    """Membership linking users to an organization."""
+
+    ROLE_CHOICES = [
+        ("owner", "Owner"),
+        ("admin", "Admin"),
+        ("member", "Member"),
+        ("viewer", "Viewer"),
+    ]
+
+    organization = models.ForeignKey(
+        Organization, on_delete=models.CASCADE, related_name="members"
+    )
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="org_memberships")
+    role = models.CharField(max_length=20, choices=ROLE_CHOICES, default="member")
+
+    class Meta:
+        db_table = "accounts_organizationmember"
+        unique_together = [("organization", "user")]
+
+    def __str__(self):
+        return f"{self.user.email} → {self.organization.name} ({self.role})"
 
 
 class UserProfile(TimestampMixin):

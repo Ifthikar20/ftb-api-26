@@ -40,7 +40,7 @@ class AuthService:
             is_email_verified=False,
         )
 
-        audit_log("user.registered", user=user, metadata={"method": "email"})
+        audit_log("user.registered", user=user, action="create", resource_type="user", resource_id=str(user.id), metadata={"method": "email"})
         return user
 
     @staticmethod
@@ -84,7 +84,7 @@ class AuthService:
         user.save(update_fields=["last_login"])
 
         refresh = RefreshToken.for_user(user)
-        audit_log("user.login", user=user, metadata={"ip": ip_address})
+        audit_log("user.login", user=user, action="login", resource_type="user", resource_id=str(user.id), metadata={"ip": ip_address})
 
         return {
             "access": str(refresh.access_token),
@@ -104,7 +104,7 @@ class AuthService:
         try:
             token = RefreshToken(refresh_token)
             token.blacklist()
-            audit_log("user.logout", user=user)
+            audit_log("user.logout", user=user, action="logout", resource_type="user", resource_id=str(user.id))
         except Exception:
             pass
 
@@ -158,7 +158,7 @@ class AuthService:
         user.is_email_verified = True
         user.save(update_fields=["is_email_verified"])
 
-        audit_log("user.email_verified", user=user)
+        audit_log("user.email_verified", user=user, action="update", resource_type="user", resource_id=str(user.id))
         return user
 
     @staticmethod
@@ -192,7 +192,7 @@ class AuthService:
         reset_token.used = True
         reset_token.save(update_fields=["used"])
 
-        audit_log("user.password_reset", user=user)
+        audit_log("user.password_reset", user=user, action="update", resource_type="user", resource_id=str(user.id))
         return user
 
     @staticmethod
@@ -202,4 +202,4 @@ class AuthService:
             raise ValueError("Current password is incorrect.")
         user.set_password(new_password)
         user.save(update_fields=["password"])
-        audit_log("user.password_changed", user=user)
+        audit_log("user.password_changed", user=user, action="update", resource_type="user", resource_id=str(user.id))
