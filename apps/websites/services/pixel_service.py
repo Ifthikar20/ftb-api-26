@@ -46,7 +46,7 @@ class PixelService:
                 website.pixel_verified = True
                 website.pixel_verified_at = timezone.now()
                 website.save(update_fields=["pixel_verified", "pixel_verified_at"])
-                audit_log("pixel.verified", metadata={"website_id": str(website.id)})
+                audit_log("pixel.verified", action="update", resource_type="website", resource_id=str(website.id), metadata={"url": website.url})
                 return True
         except Exception as e:
             logger.warning(f"Pixel verification failed for {website.url}: {e}")

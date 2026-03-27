@@ -133,7 +133,7 @@ class StripeService:
 
         subscription.stripe_customer_id = customer.id
         subscription.save(update_fields=["stripe_customer_id"])
-        audit_log("billing.customer_created", user=user, metadata={"customer_id": customer.id})
+        audit_log("billing.customer_created", user=user, action="create", resource_type="stripe_customer", resource_id=customer.id, metadata={"customer_id": customer.id})
         return customer.id
 
     # ──────────────────────────────────
@@ -185,7 +185,7 @@ class StripeService:
             allow_promotion_codes=True,
         )
 
-        audit_log("billing.checkout_created", user=user, metadata={"plan": plan, "annual": annual})
+        audit_log("billing.checkout_created", user=user, action="create", resource_type="checkout_session", resource_id=session.id, metadata={"plan": plan, "annual": annual})
         return session.url
 
     # ──────────────────────────────────
@@ -204,7 +204,7 @@ class StripeService:
             customer=customer_id,
             return_url=return_url,
         )
-        audit_log("billing.portal_opened", user=user)
+        audit_log("billing.portal_opened", user=user, action="read", resource_type="billing_portal", resource_id=session.id)
         return session.url
 
     # ──────────────────────────────────
@@ -240,7 +240,7 @@ class StripeService:
             user.plan = plan
             user.save(update_fields=["plan"])
 
-            audit_log("billing.subscription_activated", user=user, metadata={"plan": plan})
+            audit_log("billing.subscription_activated", user=user, action="create", resource_type="subscription", resource_id=session.get("subscription", ""), metadata={"plan": plan})
             logger.info(f"Subscription activated: user={user.email}, plan={plan}")
 
         except Exception as e:
@@ -296,7 +296,7 @@ class StripeService:
             if new_status == "canceled" and old_status != "canceled":
                 subscription.user.plan = "individual"
                 subscription.user.save(update_fields=["plan"])
-                audit_log("billing.subscription_canceled", user=subscription.user)
+                audit_log("billing.subscription_canceled", user=subscription.user, action="delete", resource_type="subscription", resource_id=sub_id)
                 logger.info(f"Subscription canceled: user={subscription.user.email}")
 
             logger.info(f"Subscription updated: {sub_id}, status={new_status}")
@@ -354,6 +354,11 @@ class StripeService:
             audit_log(
                 "billing.payment_failed",
                 user=subscription.user,
+                action="webhook",
+                resource_type="invoice",
+                resource_id=invoice.get("id", ""),
+                success=False,
+                error_message="Payment failed",
                 metadata={"invoice_id": invoice.get("id")},
             )
             logger.warning(
