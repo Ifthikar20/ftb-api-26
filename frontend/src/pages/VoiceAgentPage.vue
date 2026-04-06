@@ -15,7 +15,24 @@
       </div>
     </div>
 
-    <!-- Stats Row -->
+    <!-- Status Banner -->
+    <div v-if="config.is_active" class="agent-status-banner status-enabled">
+      <div class="status-icon">⚡</div>
+      <div class="status-content">
+        <strong>Agent Enabled</strong>
+        <p>Your voice agent configuration is saved. To start receiving live calls, connect your voice providers (Groq + LiveKit) in the server environment.</p>
+      </div>
+      <div class="status-actions">
+        <button class="btn btn-sm btn-secondary" @click="activeTab = 'settings'">Configure Settings</button>
+      </div>
+    </div>
+    <div v-else class="agent-status-banner status-inactive">
+      <div class="status-icon">🔇</div>
+      <div class="status-content">
+        <strong>Agent Inactive</strong>
+        <p>Click "Activate Agent" to enable the voice agent. Then configure your settings and connect voice providers.</p>
+      </div>
+    </div>
     <div class="stats-grid" style="margin-bottom: 24px">
       <div class="stat-card">
         <div class="stat-label">Total Calls</div>
@@ -761,6 +778,30 @@ function formatTime(iso) {
 
 <style scoped>
 .voice-agent-page { max-width: 1200px; }
+
+.agent-status-banner {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 20px;
+  border-radius: 10px;
+  margin-bottom: 20px;
+  border: 1px solid;
+}
+.agent-status-banner .status-icon { font-size: 24px; flex-shrink: 0; }
+.agent-status-banner .status-content { flex: 1; }
+.agent-status-banner .status-content strong { display: block; font-size: var(--font-sm); margin-bottom: 2px; }
+.agent-status-banner .status-content p { margin: 0; font-size: 12px; color: var(--text-muted); line-height: 1.4; }
+.agent-status-banner .status-actions { flex-shrink: 0; }
+.status-enabled {
+  background: rgba(34, 197, 94, 0.06);
+  border-color: rgba(34, 197, 94, 0.2);
+}
+.status-enabled strong { color: #22c55e; }
+.status-inactive {
+  background: var(--bg-secondary);
+  border-color: var(--border);
+}
 
 .tab-bar {
   display: flex;
