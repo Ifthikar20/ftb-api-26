@@ -1,23 +1,27 @@
 """
-LiveKit Voice Agent — self-hosted voice pipeline.
+LiveKit Voice Agent — multi-provider voice pipeline.
 
 Architecture:
   Phone Call -> Telnyx SIP -> LiveKit Server -> This Agent
-                                                  |
-                                      Deepgram STT (streaming)
-                                                  |
-                                      GPT-4o-mini (OpenAI API)
-                                                  |
-                                      Kokoro TTS (self-hosted)
-                                                  |
-                                          Audio back to caller
+                                                   |
+                                        STT (Groq Whisper / Self-hosted Whisper)
+                                                   |
+                                        LLM (Groq Llama / Self-hosted vLLM)
+                                                   |
+                                        TTS (Edge-TTS / Self-hosted Kokoro)
+                                                   |
+                                           Audio back to caller
 
-Cost: ~$0.017/min vs $0.14-0.27/min on Retell AI (88-94% savings)
+Provider Modes (set VOICE_PROVIDER_MODE env var):
+  "groq"       — Groq Whisper + Groq Llama 3.1 + Edge-TTS  ($0/min — free tier)
+  "selfhosted" — Faster-Whisper + vLLM + Kokoro             ($0/min — own GPU)
+  "openai"     — Deepgram + GPT-4o-mini + OpenAI TTS        (~$0.01/min — API)
 
 Requirements:
-  pip install livekit-agents livekit-plugins-deepgram livekit-plugins-openai livekit-plugins-silero
+  pip install livekit-agents livekit-plugins-openai livekit-plugins-silero
 
 To run:
+  VOICE_PROVIDER_MODE=groq GROQ_API_KEY=gsk_... \\
   python -m apps.voice_agent.services.livekit_agent
 """
 
@@ -40,7 +44,13 @@ try:
         llm,
     )
     from livekit.agents.voice import VoiceSession
-    from livekit.plugins import deepgram, openai, silero
+    from livekit.plugins import openai, silero
+
+    # Optional plugins — only needed for specific provider modes
+    try:
+        from livekit.plugins import deepgram
+    except ImportError:
+        deepgram = None
 
     LIVEKIT_AVAILABLE = True
 except ImportError:
@@ -223,6 +233,91 @@ Instructions:
 """
 
 
+# ── Voice Provider Factory ───────────────────────────────────────────────────
+
+def _get_voice_providers():
+    """
+    Build STT, LLM, and TTS instances based on VOICE_PROVIDER_MODE env var.
+
+    Supported modes:
+      "groq"       — FREE: Groq LLM + Groq Whisper STT + OpenAI-compatible TTS
+      "selfhosted" — FREE: vLLM + Faster-Whisper + Kokoro (all on your GPU)
+      "openai"     — PAID: GPT-4o-mini + Deepgram STT + OpenAI TTS
+    """
+    mode = os.environ.get("VOICE_PROVIDER_MODE", "groq")
+    logger.info("Voice provider mode: %s", mode)
+
+    if mode == "groq":
+        # ── Groq: Free Tier ──────────────────────────────────────────────
+        # LLM: Groq's Llama 3.1 (OpenAI-compatible API, free)
+        groq_key = os.environ.get("GROQ_API_KEY", "")
+        groq_model = os.environ.get("GROQ_MODEL", "llama-3.1-70b-versatile")
+
+        stt = openai.STT(
+            model="whisper-large-v3",
+            base_url="https://api.groq.com/openai/v1",
+            api_key=groq_key,
+            language="en",
+        )
+        llm_instance = openai.LLM(
+            model=groq_model,
+            base_url="https://api.groq.com/openai/v1",
+            api_key=groq_key,
+            temperature=0.7,
+        )
+        # TTS: OpenAI-compatible endpoint
+        # For free testing, Groq doesn't have TTS — so we use OpenAI TTS
+        # (costs ~$0.015/1K chars = ~$0.01/min — pennies for testing)
+        # OR point to a self-hosted Kokoro TTS if available
+        tts_url = os.environ.get("TTS_BASE_URL", "")
+        if tts_url:
+            tts = openai.TTS(
+                model="kokoro",
+                voice="af_heart",
+                base_url=tts_url,
+                api_key="not-needed",
+            )
+        else:
+            tts = openai.TTS(model="tts-1", voice="alloy")
+
+    elif mode == "selfhosted":
+        # ── Self-Hosted: All on your GPU ─────────────────────────────────
+        vllm_url = os.environ.get("SELFHOSTED_LLM_URL", "http://vllm:8000/v1")
+        whisper_url = os.environ.get("SELFHOSTED_STT_URL", "http://whisper:8080/v1")
+        kokoro_url = os.environ.get("SELFHOSTED_TTS_URL", "http://kokoro:8880/v1")
+        vllm_model = os.environ.get("SELFHOSTED_LLM_MODEL", "Qwen/Qwen2.5-7B-Instruct-AWQ")
+
+        stt = openai.STT(
+            model="Systran/faster-whisper-large-v3",
+            base_url=whisper_url,
+            api_key="not-needed",
+            language="en",
+        )
+        llm_instance = openai.LLM(
+            model=vllm_model,
+            base_url=vllm_url,
+            api_key="not-needed",
+            temperature=0.7,
+        )
+        tts = openai.TTS(
+            model="kokoro",
+            voice="af_heart",
+            base_url=kokoro_url,
+            api_key="not-needed",
+        )
+
+    else:
+        # ── OpenAI: Paid APIs (default fallback) ─────────────────────────
+        if deepgram is not None:
+            stt = deepgram.STT(model="nova-2", language="en")
+        else:
+            stt = openai.STT(model="whisper-1")
+        llm_instance = openai.LLM(model="gpt-4o-mini", temperature=0.7)
+        tts = openai.TTS(model="tts-1", voice="alloy")
+
+    return stt, llm_instance, tts
+
+
 def _create_voice_session(system_prompt, website_id):
     """
     Shared factory: creates a VoiceSession with STT/LLM/TTS and tool handlers.
@@ -231,15 +326,13 @@ def _create_voice_session(system_prompt, website_id):
     Used by both create_voice_agent() and run_agent_worker() to avoid duplication.
     """
     async def start(ctx, greeting):
-        model = openai.LLM(model="gpt-4o-mini", temperature=0.7)
+        stt, llm_instance, tts = _get_voice_providers()
 
         agent = VoiceSession(
             vad=silero.VAD.load(),
-            stt=deepgram.STT(model="nova-2", language="en"),
-            llm=model,
-            tts=openai.TTS(model="tts-1", voice="alloy"),
-            # For self-hosted Kokoro TTS, replace above with:
-            # tts=KokoroTTS(model_path="/path/to/kokoro", voice="default"),
+            stt=stt,
+            llm=llm_instance,
+            tts=tts,
         )
 
         @agent.on("function_call")
@@ -263,7 +356,7 @@ def create_voice_agent(system_prompt, greeting):
     if not LIVEKIT_AVAILABLE:
         raise RuntimeError(
             "LiveKit Agents SDK not installed. "
-            "Install with: pip install livekit-agents livekit-plugins-deepgram "
+            "Install with: pip install livekit-agents "
             "livekit-plugins-openai livekit-plugins-silero"
         )
 
@@ -283,18 +376,18 @@ def run_agent_worker():
     Start the LiveKit agent worker process.
 
     Run with:
+      VOICE_PROVIDER_MODE=groq \\
+      GROQ_API_KEY=gsk_... \\
       LIVEKIT_URL=wss://your-livekit-server.com \\
       LIVEKIT_API_KEY=your-key \\
       LIVEKIT_API_SECRET=your-secret \\
-      DEEPGRAM_API_KEY=your-key \\
-      OPENAI_API_KEY=your-key \\
       python -m apps.voice_agent.services.livekit_agent
     """
     if not LIVEKIT_AVAILABLE:
         print(
             "ERROR: LiveKit Agents SDK not installed.\n"
             "Install with:\n"
-            "  pip install livekit-agents livekit-plugins-deepgram "
+            "  pip install livekit-agents "
             "livekit-plugins-openai livekit-plugins-silero"
         )
         return
@@ -337,4 +430,3 @@ def run_agent_worker():
 
 if __name__ == "__main__":
     run_agent_worker()
-
