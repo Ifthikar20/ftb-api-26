@@ -67,7 +67,12 @@
     </div>
 
     <div v-if="loading" class="loading-state">Loading leads...</div>
-
+    <div v-else-if="fetchError" class="leads-error-state">
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--color-danger)" stroke-width="1.5" style="opacity:0.6"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      <h3 class="error-title">Couldn't load leads</h3>
+      <p class="error-desc">{{ fetchError }}</p>
+      <button class="btn btn-secondary btn-sm" @click="fetchData" style="margin-top:12px">Try Again</button>
+    </div>
     <!-- ════════════════ CARD VIEW ════════════════ -->
     <template v-else-if="activeTab === 'table'">
       <!-- Stats Pills -->
@@ -356,6 +361,7 @@ const { screenToFlowCoordinate: vfScreenToFlow } = useVueFlow()
 const flowRef = ref(null)
 
 const loading = ref(true)
+const fetchError = ref('')
 const leads = ref([])
 const statusFilter = ref('')
 const activeTab = ref('table')
@@ -379,7 +385,15 @@ const allTableLeads = computed(() => {
   if (aiResults.value.length) {
     return aiResults.value.map((lead, i) => ({ ...lead, _rowId: 'ai-' + i, _isAI: true }))
   }
-  return leads.value.map((lead, i) => ({ ...lead, _rowId: lead.id || 'lead-' + i, _isAI: false, relevance_score: lead.score || 0 }))
+  return leads.value.map((lead, i) => ({
+    ...lead,
+    _rowId: lead.id || 'lead-' + i,
+    _isAI: false,
+    relevance_score: lead.score || 0,
+    // Map backend field names to the display field names the template expects
+    location: lead.location || lead.geo_country || '',
+    title: lead.title || lead.device_type || '',
+  }))
 })
 
 const sortedTableLeads = computed(() => {
@@ -674,13 +688,17 @@ function miniMapNodeColor(node) {
 
 async function fetchData() {
   loading.value = true
+  fetchError.value = ''
   try {
     const params = {}
     if (statusFilter.value) params.status = statusFilter.value
     const { data } = await leadsApi.list(websiteId, params)
     leads.value = data?.results || data?.data?.results || data?.data || data || []
-  } catch (e) { /* toast auto-triggered */ }
-  finally { loading.value = false }
+  } catch (e) {
+    fetchError.value = e.displayMessage || 'Failed to load leads. Please check your connection and try again.'
+  } finally {
+    loading.value = false
+  }
 }
 
 async function handleExport() {
@@ -789,6 +807,18 @@ async function sendEmail() {
 
 <style scoped>
 .loading-state { text-align: center; padding: 80px 20px; font-size: var(--font-md); color: var(--text-muted); }
+
+/* ── Error State ── */
+.leads-error-state {
+  text-align: center;
+  padding: 80px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.error-title { margin: 0; font-size: var(--font-md); font-weight: 600; color: var(--text-primary); }
+.error-desc { margin: 0; font-size: var(--font-sm); color: var(--text-muted); max-width: 340px; line-height: 1.5; }
 
 /* ── Header ── */
 .header-actions { display: flex; gap: 8px; align-items: center; }

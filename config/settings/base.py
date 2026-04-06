@@ -62,6 +62,7 @@ LOCAL_APPS = [
     "apps.llm_ranking",
     "apps.gamification",
     "apps.compliance",
+    "apps.voice_agent",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -317,6 +318,23 @@ CANVA_CLIENT_ID = env("CANVA_CLIENT_ID", default="")
 CANVA_CLIENT_SECRET = env("CANVA_CLIENT_SECRET", default="")
 GEMINI_API_KEY = env("GEMINI_API_KEY", default="")
 PERPLEXITY_API_KEY = env("PERPLEXITY_API_KEY", default="")
+
+# ── Voice Agent ──
+# Option A: Retell AI (managed, ~$0.14-0.27/min)
+RETELL_API_KEY = env("RETELL_API_KEY", default="")
+
+# Option B: Self-hosted via LiveKit + Deepgram + OpenAI (~$0.017/min, 88-94% cheaper)
+LIVEKIT_URL = env("LIVEKIT_URL", default="")
+LIVEKIT_API_KEY = env("LIVEKIT_API_KEY", default="")
+LIVEKIT_API_SECRET = env("LIVEKIT_API_SECRET", default="")
+DEEPGRAM_API_KEY = env("DEEPGRAM_API_KEY", default="")
+VOICE_AGENT_BACKEND = env("VOICE_AGENT_BACKEND", default="selfhosted")  # "retell", "livekit", or "selfhosted"
+
+# Option C: Fully self-hosted (complete privacy — no external API calls)
+SELFHOSTED_LLM_URL = env("SELFHOSTED_LLM_URL", default="http://localhost:8000/v1")
+SELFHOSTED_STT_URL = env("SELFHOSTED_STT_URL", default="http://localhost:8001/v1")
+SELFHOSTED_TTS_URL = env("SELFHOSTED_TTS_URL", default="http://localhost:8002")
+SELFHOSTED_LLM_MODEL = env("SELFHOSTED_LLM_MODEL", default="Qwen/Qwen2.5-7B-Instruct-AWQ")
 DEFAULT_FROM_EMAIL = env("SERVER_EMAIL", default="noreply@growthpilot.io")
 
 # ── LOGGING ──

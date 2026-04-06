@@ -23,6 +23,7 @@ urlpatterns = [
     path("api/v1/billing/", include("apps.billing.api.v1.urls")),
     path("api/v1/agents/", include("apps.agents.api.v1.urls")),
     path("api/v1/llm-ranking/", include("apps.llm_ranking.api.v1.urls")),
+    path("api/v1/voice-agent/", include("apps.voice_agent.api.v1.urls")),
     path("", include("apps.gamification.urls")),
 
     # Pixel ingestion (high throughput)

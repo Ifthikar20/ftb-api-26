@@ -1,0 +1,112 @@
+# Voice Agent — Self-Hosted GPU Stack
+#
+# Runs the entire voice pipeline on a single A10G (24GB):
+#   - vLLM: Qwen2.5-7B-Instruct-AWQ (conversation + extraction)
+#   - Faster-Whisper: large-v3 INT8 (speech-to-text)
+#   - Kokoro TTS: ONNX on CPU (text-to-speech)
+#   - LiveKit: Real-time audio orchestration
+#
+# VRAM budget on A10G (24GB):
+#   vLLM (7B AWQ):      ~6 GB
+#   Whisper (INT8):      ~1.6 GB
+#   KV cache + overhead: ~12 GB
+#   Total:               ~20 GB (fits with headroom)
+#
+# Cost: ~$0.003-0.005/min per call (~$275-350/month on RunPod A10G)
+#
+# Usage:
+#   docker compose up -d
+#
+# Prerequisites:
+#   - NVIDIA GPU with >= 24GB VRAM (A10G, RTX 4090, A40)
+#   - Docker with NVIDIA Container Toolkit
+#   - HuggingFace token for gated models (optional)
+
+services:
+
+  # ── LLM: vLLM serving Qwen2.5-7B-Instruct-AWQ ──
+  llm:
+    image: vllm/vllm-openai:latest
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    ports:
+      - "8000:8000"
+    command: >
+      --model ${LLM_MODEL:-Qwen/Qwen2.5-7B-Instruct-AWQ}
+      --quantization awq
+      --host 0.0.0.0
+      --port 8000
+      --max-model-len 4096
+      --gpu-memory-utilization 0.55
+      --enable-auto-tool-choice
+      --tool-call-parser hermes
+      --dtype half
+    environment:
+      - HUGGING_FACE_HUB_TOKEN=${HF_TOKEN:-}
+    volumes:
+      - hf-cache:/root/.cache/huggingface
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # ── STT: Faster-Whisper large-v3 (INT8) ──
+  stt:
+    image: fedirz/faster-whisper-server:latest-cuda
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    ports:
+      - "8001:8000"
+    environment:
+      - WHISPER__MODEL=Systran/faster-whisper-large-v3
+      - WHISPER__INFERENCE_DEVICE=cuda
+      - WHISPER__COMPUTE_TYPE=int8
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # ── TTS: Kokoro TTS on CPU (ONNX runtime) ──
+  tts:
+    build:
+      context: ./kokoro-tts
+      dockerfile: Dockerfile
+    ports:
+      - "8002:8000"
+    # No GPU needed — runs entirely on CPU via ONNX
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # ── LiveKit Server (real-time audio routing) ──
+  livekit:
+    image: livekit/livekit-server:latest
+    ports:
+      - "7880:7880"   # HTTP
+      - "7881:7881"   # WebSocket
+      - "7882:7882"   # TURN/UDP
+    command: >
+      --config /etc/livekit.yaml
+    volumes:
+      - ./livekit.yaml:/etc/livekit.yaml:ro
+    restart: unless-stopped
+
+volumes:
+  hf-cache:
