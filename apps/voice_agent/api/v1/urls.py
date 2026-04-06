@@ -30,6 +30,14 @@ urlpatterns = [
     # Call extraction (AI analysis results)
     path("<uuid:website_id>/calls/<uuid:call_id>/extraction/", views.CallExtractionView.as_view(), name="voice-call-extraction"),
 
+    # Phone numbers
+    path("<uuid:website_id>/phone-numbers/", views.PhoneNumberListView.as_view(), name="voice-phone-list"),
+    path("<uuid:website_id>/phone-numbers/<uuid:number_id>/", views.PhoneNumberDetailView.as_view(), name="voice-phone-detail"),
+
+    # Agent context documents (knowledge base)
+    path("<uuid:website_id>/context-docs/", views.AgentContextDocumentListView.as_view(), name="voice-context-list"),
+    path("<uuid:website_id>/context-docs/<uuid:doc_id>/", views.AgentContextDocumentDetailView.as_view(), name="voice-context-detail"),
+
     # Retell AI webhook (no website_id — determined from agent_id in payload)
     path("webhook/retell/", views.RetellWebhookView.as_view(), name="voice-retell-webhook"),
 ]

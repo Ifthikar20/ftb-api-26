@@ -10,13 +10,15 @@ from rest_framework.views import APIView
 
 from apps.voice_agent.api.v1.serializers import (
     AgentConfigSerializer,
+    AgentContextDocumentSerializer,
     CalendarEventSerializer,
     CallbackReminderSerializer,
     CallExtractionSerializer,
     CallLogSerializer,
     CallTodoSerializer,
+    PhoneNumberSerializer,
 )
-from apps.voice_agent.models import AgentConfig, CalendarEvent
+from apps.voice_agent.models import AgentConfig, AgentContextDocument, CalendarEvent, PhoneNumber
 from apps.voice_agent.services.calendar_service import CalendarService
 from apps.voice_agent.services.call_service import CallService
 from apps.websites.services.website_service import WebsiteService
@@ -669,3 +671,89 @@ class RetellWebhookView(APIView):
         return Response({
             "result": f"Available slots on {date.strftime('%B %d, %Y')}: {slot_list}{more}"
         })
+
+
+# ── Phone Numbers ─────────────────────────────────────────────────────────────
+
+
+class PhoneNumberListView(APIView):
+    """List and add work phone numbers for a website."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, website_id):
+        website = WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        numbers = PhoneNumber.objects.filter(website=website)
+        return Response(PhoneNumberSerializer(numbers, many=True).data)
+
+    def post(self, request, website_id):
+        website = WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        serializer = PhoneNumberSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save(website=website)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+class PhoneNumberDetailView(APIView):
+    """Update or delete a phone number."""
+
+    permission_classes = [IsAuthenticated]
+
+    def _get_number(self, request, website_id, number_id):
+        website = WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        return PhoneNumber.objects.get(id=number_id, website=website)
+
+    def put(self, request, website_id, number_id):
+        number = self._get_number(request, website_id, number_id)
+        serializer = PhoneNumberSerializer(number, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+    def delete(self, request, website_id, number_id):
+        number = self._get_number(request, website_id, number_id)
+        number.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+# ── Agent Context Documents ───────────────────────────────────────────────────
+
+
+class AgentContextDocumentListView(APIView):
+    """List and create agent knowledge-base documents."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, website_id):
+        website = WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        docs = AgentContextDocument.objects.filter(website=website)
+        return Response(AgentContextDocumentSerializer(docs, many=True).data)
+
+    def post(self, request, website_id):
+        website = WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        serializer = AgentContextDocumentSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save(website=website)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+class AgentContextDocumentDetailView(APIView):
+    """Update or delete a context document."""
+
+    permission_classes = [IsAuthenticated]
+
+    def _get_doc(self, request, website_id, doc_id):
+        website = WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        return AgentContextDocument.objects.get(id=doc_id, website=website)
+
+    def put(self, request, website_id, doc_id):
+        doc = self._get_doc(request, website_id, doc_id)
+        serializer = AgentContextDocumentSerializer(doc, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+    def delete(self, request, website_id, doc_id):
+        doc = self._get_doc(request, website_id, doc_id)
+        doc.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)

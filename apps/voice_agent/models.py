@@ -6,6 +6,75 @@ from django.db import models
 from core.mixins.timestamp_mixin import TimestampMixin
 
 
+class PhoneNumber(TimestampMixin):
+    """Work phone numbers added by the user. Calls from these can be forwarded to the AI agent."""
+
+    PROVIDER_TELNYX = "telnyx"
+    PROVIDER_TWILIO = "twilio"
+    PROVIDER_RETELL = "retell"
+    PROVIDER_OTHER = "other"
+    PROVIDER_CHOICES = [
+        (PROVIDER_TELNYX, "Telnyx"),
+        (PROVIDER_TWILIO, "Twilio"),
+        (PROVIDER_RETELL, "Retell AI"),
+        (PROVIDER_OTHER, "Other"),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    website = models.ForeignKey(
+        "websites.Website", on_delete=models.CASCADE, related_name="phone_numbers"
+    )
+    number = models.CharField(
+        max_length=30,
+        help_text="E.164 format, e.g. +12025551234",
+    )
+    label = models.CharField(
+        max_length=100, blank=True,
+        help_text="Human-readable label, e.g. 'Main Line', 'Sales Line'",
+    )
+    provider = models.CharField(
+        max_length=20, choices=PROVIDER_CHOICES, default=PROVIDER_TELNYX
+    )
+    is_active = models.BooleanField(default=True)
+    forwarded_to_agent = models.BooleanField(
+        default=True,
+        help_text="Route inbound calls from this number to the AI voice agent.",
+    )
+
+    class Meta:
+        db_table = "voice_agent_phonenumber"
+        ordering = ["created_at"]
+        unique_together = [("website", "number")]
+
+    def __str__(self):
+        label = f" ({self.label})" if self.label else ""
+        return f"{self.number}{label}"
+
+
+class AgentContextDocument(TimestampMixin):
+    """Markdown knowledge-base documents injected into the agent system prompt at call time."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    website = models.ForeignKey(
+        "websites.Website", on_delete=models.CASCADE, related_name="agent_context_docs"
+    )
+    title = models.CharField(max_length=200, help_text="e.g. 'Services & Pricing', 'FAQs'")
+    content = models.TextField(help_text="Markdown content injected into the AI system prompt.")
+    is_active = models.BooleanField(
+        default=True, help_text="Only active documents are included in calls."
+    )
+    sort_order = models.IntegerField(
+        default=0, help_text="Lower values appear first in the prompt."
+    )
+
+    class Meta:
+        db_table = "voice_agent_contextdocument"
+        ordering = ["sort_order", "created_at"]
+
+    def __str__(self):
+        return f"{self.title} ({'active' if self.is_active else 'inactive'})"
+
+
 class AgentConfig(TimestampMixin):
     """Per-website voice agent configuration. Supports Retell AI, LiveKit, or fully self-hosted."""
 
