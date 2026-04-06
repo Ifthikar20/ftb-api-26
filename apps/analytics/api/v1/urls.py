@@ -15,6 +15,10 @@ urlpatterns = [
     path("<uuid:website_id>/keywords/suggestions/", keyword_views.KeywordSuggestionsView.as_view(), name="keywords-suggestions"),
     path("<uuid:website_id>/keywords/interest/", keyword_views.KeywordInterestView.as_view(), name="keywords-interest"),
     path("<uuid:website_id>/keywords/scan/", keyword_scan_views.KeywordScanView.as_view(), name="keywords-scan"),
+    path("<uuid:website_id>/keywords/scan-config/", keyword_views.KeywordScanConfigView.as_view(), name="keywords-scan-config"),
+    path("<uuid:website_id>/keywords/platform-content/", keyword_views.PlatformContentListView.as_view(), name="keywords-platform-content"),
+    path("<uuid:website_id>/keywords/platform-content/<uuid:post_id>/", keyword_views.PlatformContentDetailView.as_view(), name="keywords-platform-content-detail"),
+    path("<uuid:website_id>/keywords/comparison/", keyword_views.KeywordComparisonView.as_view(), name="keywords-comparison"),
     path("<uuid:website_id>/keywords/", keyword_views.KeywordListCreateView.as_view(), name="keywords-list-create"),
     path("<uuid:website_id>/keywords/<uuid:keyword_id>/history/", keyword_views.KeywordHistoryView.as_view(), name="keyword-history"),
 

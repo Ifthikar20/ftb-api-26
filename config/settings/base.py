@@ -54,15 +54,13 @@ LOCAL_APPS = [
     "apps.analytics",
     "apps.leads",
 
-    "apps.audits",
-    "apps.strategy",
     "apps.notifications",
     "apps.billing",
     "apps.agents",
     "apps.llm_ranking",
-    "apps.gamification",
     "apps.compliance",
     "apps.voice_agent",
+    "apps.social_leads",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -321,6 +319,15 @@ PERPLEXITY_API_KEY = env("PERPLEXITY_API_KEY", default="")
 
 # ── Voice Agent ──
 # Option A: Retell AI (managed, ~$0.14-0.27/min)
+# ── Social Leads (Facebook, LinkedIn, X) ──
+FACEBOOK_APP_ID = env("FACEBOOK_APP_ID", default="")
+FACEBOOK_APP_SECRET = env("FACEBOOK_APP_SECRET", default="")
+LINKEDIN_CLIENT_ID = env("LINKEDIN_CLIENT_ID", default="")
+LINKEDIN_CLIENT_SECRET = env("LINKEDIN_CLIENT_SECRET", default="")
+TIKTOK_APP_ID = env("TIKTOK_APP_ID", default="")
+TIKTOK_APP_SECRET = env("TIKTOK_APP_SECRET", default="")
+
+# ── Voice Agent ──
 RETELL_API_KEY = env("RETELL_API_KEY", default="")
 
 # Option B: Self-hosted via LiveKit + Deepgram + OpenAI (~$0.017/min, 88-94% cheaper)
@@ -371,6 +378,3 @@ SPECTACULAR_SETTINGS = {
     "VERSION": "1.0.0",
     "SERVE_INCLUDE_SCHEMA": False,
 }
-
-# ── GAMIFICATION ──
-GAMIFICATION_ENABLED = env.bool("GAMIFICATION_ENABLED", default=True)

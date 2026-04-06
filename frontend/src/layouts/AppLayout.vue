@@ -44,10 +44,6 @@
           <span v-if="!appStore.sidebarCollapsed" class="nav-text">Leads</span>
         </router-link>
 
-        <router-link :to="auditsRoute" class="nav-link" exact-active-class="active" style="--nav-color: #06b6d4">
-          <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="11" y1="11" x2="14" y2="14" stroke="currentColor" stroke-width="1.5"/></svg></span>
-          <span v-if="!appStore.sidebarCollapsed" class="nav-text">Audits</span>
-        </router-link>
         <router-link :to="heatmapRoute" class="nav-link" exact-active-class="active" style="--nav-color: #ef4444">
           <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="1" width="14" height="14" rx="2"/><circle cx="6" cy="6" r="2" fill="currentColor" opacity="0.6"/><circle cx="10" cy="5" r="1.5" fill="currentColor" opacity="0.4"/><circle cx="8" cy="10" r="2.5" fill="currentColor" opacity="0.8"/></svg></span>
           <span v-if="!appStore.sidebarCollapsed" class="nav-text">Heatmaps</span>
@@ -55,10 +51,6 @@
         <router-link :to="keywordsRoute" class="nav-link" exact-active-class="active" style="--nav-color: #eab308">
           <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 12l4-4 3 3 5-7"/><circle cx="14" cy="4" r="1.5" fill="currentColor"/></svg></span>
           <span v-if="!appStore.sidebarCollapsed" class="nav-text">Keywords</span>
-        </router-link>
-        <router-link :to="strategyRoute" class="nav-link" exact-active-class="active" style="--nav-color: #a855f7">
-          <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1l2 4h4l-3 3 1 4-4-2-4 2 1-4-3-3h4z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg></span>
-          <span v-if="!appStore.sidebarCollapsed" class="nav-text">Strategy</span>
         </router-link>
         <router-link :to="agentsRoute" class="nav-link" exact-active-class="active" style="--nav-color: #14b8a6">
           <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="6" r="3"/><path d="M3 14c0-3 2.2-5 5-5s5 2 5 5"/><path d="M12 4l2-2M4 4L2 2" stroke-linecap="round"/></svg></span>
@@ -75,11 +67,6 @@
         <router-link :to="llmRankingRoute" class="nav-link" exact-active-class="active" style="--nav-color: #ec4899">
           <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 4v4l3 2"/><path d="M5 2l6 0" stroke-linecap="round"/></svg></span>
           <span v-if="!appStore.sidebarCollapsed" class="nav-text">LLM Ranking</span>
-        </router-link>
-
-        <router-link to="/rewards" class="nav-link" exact-active-class="active" style="--nav-color: #f59e0b">
-          <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 1l2 4h4l-3 3 1 4-4-2-4 2 1-4-3-3h4z" stroke-linejoin="round"/></svg></span>
-          <span v-if="!appStore.sidebarCollapsed" class="nav-text">Rewards</span>
         </router-link>
 
         <router-link to="/integrations" class="nav-link" exact-active-class="active" style="--nav-color: #22c55e">
@@ -139,13 +126,6 @@
         </div>
 
         <div class="topbar-actions">
-          <!-- Gamification Points Badge -->
-          <router-link to="/rewards" class="points-badge" title="Your rewards">
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1l2 4h4l-3 3 1 4-4-2-4 2 1-4-3-3h4z"/></svg>
-            <span class="points-value">{{ userPoints }} pts</span>
-            <span class="points-level">Lv {{ userLevel }}</span>
-          </router-link>
-
           <!-- Theme Toggle -->
           <button class="theme-toggle" @click="appStore.toggleTheme" :title="appStore.theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'">
             <svg v-if="appStore.theme === 'light'" width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M15 10A7 7 0 1 1 8 3a5 5 0 0 0 7 7z"/></svg>
@@ -263,7 +243,6 @@ import { useAppStore } from '@/stores/app'
 import { useToast } from '@/composables/useToast'
 import websitesApi from '@/api/websites'
 import billingApi from '@/api/billing'
-import gamificationApi from '@/api/gamification'
 import HelpButton from '@/components/HelpButton.vue'
 import OnboardingTooltip from '@/components/OnboardingTooltip.vue'
 import ToastContainer from '@/components/ToastContainer.vue'
@@ -281,10 +260,6 @@ const creating = ref(false)
 const createError = ref('')
 const newProject = ref({ name: '', url: '', industry: '' })
 
-// Gamification
-const userPoints = ref(0)
-const userLevel = ref(1)
-
 // ── Command palette search ──
 const showSearch = ref(false)
 const searchQuery = ref('')
@@ -297,10 +272,8 @@ const searchPages = [
   { name: 'websites', label: 'Projects', description: 'Manage your tracked websites', category: 'Navigation', route: '/websites', icon: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="7"/><line x1="1" y1="8" x2="15" y2="8"/><ellipse cx="8" cy="8" rx="3" ry="7"/></svg>' },
   { name: 'analytics', label: 'Analytics', description: 'Visitor data, traffic sources, engagement', category: 'Intelligence', routeFn: () => analyticsRoute.value, icon: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 14V6l4-4 4 4 4-4v12"/></svg>' },
   { name: 'leads', label: 'Leads', description: 'Lead capture and pipeline management', category: 'Intelligence', routeFn: () => leadsRoute.value, icon: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="5" r="3"/><path d="M2 14c0-3 3-5 6-5s6 2 6 5"/></svg>' },
-  { name: 'audits', label: 'Audits', description: 'SEO, performance, and security audits', category: 'Intelligence', routeFn: () => auditsRoute.value, icon: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="5"/><line x1="11" y1="11" x2="14" y2="14"/></svg>' },
   { name: 'heatmaps', label: 'Heatmaps', description: 'Visual click and scroll behavior', category: 'Intelligence', routeFn: () => heatmapRoute.value, icon: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="1" width="14" height="14" rx="2"/><circle cx="6" cy="6" r="2" fill="currentColor" opacity="0.6"/><circle cx="10" cy="10" r="2.5" fill="currentColor" opacity="0.8"/></svg>' },
   { name: 'keywords', label: 'Keywords', description: 'Keyword ranking and tracking', category: 'Intelligence', routeFn: () => keywordsRoute.value, icon: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 12l4-4 3 3 5-7"/><circle cx="14" cy="4" r="1.5" fill="currentColor"/></svg>' },
-  { name: 'strategy', label: 'Strategy', description: 'AI-powered growth recommendations', category: 'Intelligence', routeFn: () => strategyRoute.value, icon: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 1l2 4h4l-3 3 1 4-4-2-4 2 1-4-3-3h4z"/></svg>' },
   { name: 'agents', label: 'Agents', description: 'AI agents for automation tasks', category: 'Intelligence', routeFn: () => agentsRoute.value, icon: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="6" r="3"/><path d="M3 14c0-3 2.2-5 5-5s5 2 5 5"/><path d="M12 4l2-2M4 4L2 2" stroke-linecap="round"/></svg>' },
   { name: 'campaigns', label: 'Campaigns', description: 'Email campaigns and outreach', category: 'Intelligence', routeFn: () => campaignsRoute.value, icon: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 3h12c.6 0 1 .4 1 1v8c0 .6-.4 1-1 1H2c-.6 0-1-.4-1-1V4c0-.6.4-1 1-1z"/><polyline points="14,4 8,9 2,4"/></svg>' },
   { name: 'voice-agent', label: 'Voice Agent', description: 'AI phone agent, call logs, appointments, and callbacks', category: 'Intelligence', routeFn: () => voiceAgentRoute.value, icon: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 1.5h2.5a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1H4L2 9V2.5a1 1 0 0 1 1-1z"/><path d="M10.5 8.5H13a1 1 0 0 1 1 1V13L11.5 11H10.5a1 1 0 0 1-1-1V9.5a1 1 0 0 1 1-1z"/></svg>' },
@@ -378,12 +351,6 @@ const onboardingSteps = [
     position: 'right',
   },
   {
-    target: '.nav-link[href*="audits"], a[href*="audits"]',
-    title: 'Run Site Audits',
-    message: 'Click "Run Audit" to scan your website for SEO, performance, mobile, security, and content issues — with actionable recommendations.',
-    position: 'right',
-  },
-  {
     target: '.help-trigger',
     title: 'Need Help?',
     message: 'Click the ? button anytime for quick start guides, page-specific help, and setup instructions.',
@@ -412,10 +379,8 @@ const pageKey = computed(() => `${route.name || 'page'}-${route.params.websiteId
 const analyticsRoute = computed(() => websiteId.value ? `/analytics/${websiteId.value}` : '/websites')
 const leadsRoute = computed(() => websiteId.value ? `/leads/${websiteId.value}` : '/websites')
 
-const auditsRoute = computed(() => websiteId.value ? `/audits/${websiteId.value}` : '/websites')
 const heatmapRoute = computed(() => websiteId.value ? `/heatmap/${websiteId.value}` : '/websites')
 const keywordsRoute = computed(() => websiteId.value ? `/keywords/${websiteId.value}` : '/websites')
-const strategyRoute = computed(() => websiteId.value ? `/strategy/${websiteId.value}` : '/websites')
 const agentsRoute = computed(() => websiteId.value ? `/agents/${websiteId.value}` : '/websites')
 const campaignsRoute = computed(() => websiteId.value ? `/campaigns/${websiteId.value}` : '/websites')
 const voiceAgentRoute = computed(() => websiteId.value ? `/voice-agent/${websiteId.value}` : '/websites')
@@ -433,11 +398,8 @@ function switchWebsite(id) {
   const routeMap = [
     { prefix: '/analytics/', target: `/analytics/${id}` },
     { prefix: '/leads/', target: `/leads/${id}` },
-
-    { prefix: '/audits/', target: `/audits/${id}` },
     { prefix: '/heatmap/', target: `/heatmap/${id}` },
     { prefix: '/keywords/', target: `/keywords/${id}` },
-    { prefix: '/strategy/', target: `/strategy/${id}` },
     { prefix: '/websites/', target: `/websites/${id}` },
     { prefix: '/campaigns/', target: `/campaigns/${id}` },
     { prefix: '/llm-ranking/', target: `/llm-ranking/${id}` },
@@ -492,13 +454,6 @@ onMounted(async () => {
   } catch {}
   // Search keyboard shortcut
   document.addEventListener('keydown', handleGlobalKeydown)
-  // Gamification progress
-  try {
-    const { data } = await gamificationApi.progress()
-    const p = data?.data || data
-    userPoints.value = p?.total_points || 0
-    userLevel.value = p?.current_level || 1
-  } catch {}
 })
 
 onUnmounted(() => {
@@ -703,39 +658,6 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 8px;
-}
-
-.points-badge {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 12px;
-  border-radius: var(--radius-full);
-  background: linear-gradient(135deg, #fef3c7, #fde68a);
-  color: #92400e;
-  font-size: 0.7rem;
-  font-weight: 700;
-  text-decoration: none;
-  transition: all var(--transition-fast);
-  white-space: nowrap;
-}
-
-.points-badge:hover {
-  box-shadow: 0 0 12px rgba(245, 158, 11, 0.4);
-  transform: translateY(-1px);
-}
-
-.points-badge svg { color: #f59e0b; flex-shrink: 0; }
-.points-value { letter-spacing: 0.02em; }
-.points-level {
-  padding-left: 6px;
-  border-left: 1px solid rgba(146, 64, 14, 0.2);
-  opacity: 0.7;
-}
-
-[data-theme="dark"] .points-badge {
-  background: linear-gradient(135deg, rgba(245, 158, 11, 0.15), rgba(217, 119, 6, 0.1));
-  color: #fbbf24;
 }
 
 .topbar-btn {

@@ -273,6 +273,109 @@
           <div v-else class="fc-empty">Scan your website to see which pages were crawled and what keywords each page targets.</div>
         </div>
 
+        <!-- Scan Schedule -->
+        <div v-if="cardId === 'scan_schedule'" class="card feature-card">
+          <div class="fc-head">
+            <div class="fc-icon"><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 5v3l2 2"/></svg></div>
+            <div class="fc-title-wrap"><h3 class="fc-title">DOM Scan Schedule</h3><p class="fc-sub">Configure automatic keyword re-scanning</p></div>
+            <button class="fc-remove" @click="removeCard(cardId)" title="Remove">x</button>
+          </div>
+          <div class="fc-body">
+            <div class="scan-config-form">
+              <div class="sc-row">
+                <label class="sc-label">Auto-scan</label>
+                <button class="toggle-btn" :class="{ 'toggle-on': scanConfig.is_auto_scan_enabled }" @click="toggleAutoScan">
+                  {{ scanConfig.is_auto_scan_enabled ? 'Enabled' : 'Disabled' }}
+                </button>
+              </div>
+              <div class="sc-row">
+                <label class="sc-label">Interval</label>
+                <div class="interval-grid">
+                  <button v-for="opt in intervalOptions" :key="opt.value" class="interval-btn" :class="{ 'ib-active': scanConfig.scan_interval_hours === opt.value }" @click="setScanInterval(opt.value)">{{ opt.label }}</button>
+                </div>
+              </div>
+              <div class="sc-row">
+                <label class="sc-label">Max pages</label>
+                <div class="depth-row">
+                  <input type="range" min="1" max="20" v-model.number="scanConfig.scan_depth" @change="saveScanConfig" class="depth-slider" />
+                  <span class="depth-val">{{ scanConfig.scan_depth }}</span>
+                </div>
+              </div>
+              <div class="sc-meta">
+                <span v-if="scanConfig.last_scanned_at">Last scanned: {{ formatDate(scanConfig.last_scanned_at) }}</span>
+                <span v-if="scanConfig.next_scan_at"> · Next: {{ formatDate(scanConfig.next_scan_at) }}</span>
+                <span v-if="!scanConfig.last_scanned_at" class="text-muted">Not yet scanned</span>
+              </div>
+              <div class="sc-stats">
+                <div class="fc-stat"><span class="fc-stat-val">{{ scanConfig.total_scans || 0 }}</span><span class="fc-stat-lbl">Total Scans</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Platform Comparison -->
+        <div v-if="cardId === 'platform_comparison'" class="card feature-card">
+          <div class="fc-head">
+            <div class="fc-icon"><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="5" height="10" rx="1"/><rect x="9" y="3" width="5" height="10" rx="1"/></svg></div>
+            <div class="fc-title-wrap"><h3 class="fc-title">Platform Comparison</h3><p class="fc-sub">Compare site keywords vs social posts</p></div>
+            <button class="fc-remove" @click="removeCard(cardId)" title="Remove">x</button>
+          </div>
+          <div class="fc-body">
+            <div class="pc-actions">
+              <div class="pc-filter-row">
+                <select v-model="pcFilter" class="form-select-sm">
+                  <option value="">All platforms</option>
+                  <option value="linkedin">LinkedIn</option>
+                  <option value="x">X (Twitter)</option>
+                  <option value="facebook">Facebook</option>
+                  <option value="instagram">Instagram</option>
+                  <option value="blog">Blog / Article</option>
+                  <option value="other">Other</option>
+                </select>
+                <button class="btn btn-secondary btn-sm" @click="showAddPostModal = true">+ Add Post</button>
+                <button class="btn btn-secondary btn-sm" @click="loadComparison" :disabled="comparisonLoading">{{ comparisonLoading ? 'Loading...' : 'Compare' }}</button>
+              </div>
+            </div>
+
+            <!-- Posts list -->
+            <div v-if="platformPosts.length" class="posts-list">
+              <div v-for="post in filteredPosts.slice(0, 5)" :key="post.id" class="post-row">
+                <div class="post-row-left">
+                  <span class="platform-badge" :class="'pb-' + post.platform">{{ post.platform_display }}</span>
+                  <span class="post-title">{{ post.title || post.content.slice(0, 60) }}</span>
+                </div>
+                <button class="btn-icon-danger" @click="deletePost(post.id)" title="Remove">x</button>
+              </div>
+            </div>
+            <div v-else class="fc-empty">No platform posts added yet. Add posts from LinkedIn, X, or other platforms to compare keywords.</div>
+
+            <!-- Comparison results -->
+            <div v-if="comparison" class="comparison-results">
+              <div class="cr-tabs">
+                <button v-for="tab in ['overlap', 'gaps', 'opportunities']" :key="tab" class="cr-tab" :class="{ 'cr-tab-active': compTab === tab }" @click="compTab = tab">
+                  {{ tab.charAt(0).toUpperCase() + tab.slice(1) }}
+                  <span class="cr-count">{{ comparison[tab]?.length || 0 }}</span>
+                </button>
+              </div>
+              <div class="cr-body">
+                <div v-if="compTab === 'overlap'" class="cr-desc">Keywords present on your site AND in your posts</div>
+                <div v-if="compTab === 'gaps'" class="cr-desc">Keywords on your site but missing from posts — consider adding to content</div>
+                <div v-if="compTab === 'opportunities'" class="cr-desc">Keywords in your posts but not yet on your site — potential content gaps</div>
+                <div class="cr-chips">
+                  <template v-if="compTab !== 'opportunities'">
+                    <span v-for="kw in (comparison[compTab] || [])" :key="kw" class="cr-chip" :class="'cr-' + compTab">{{ kw }}</span>
+                  </template>
+                  <template v-else>
+                    <span v-for="item in (comparison.opportunities || [])" :key="item.keyword" class="cr-chip cr-opp" :title="'Found in: ' + item.platforms.join(', ')">{{ item.keyword }}</span>
+                  </template>
+                  <span v-if="!comparison[compTab]?.length && compTab !== 'opportunities'" class="text-muted text-sm">None</span>
+                  <span v-if="!comparison.opportunities?.length && compTab === 'opportunities'" class="text-muted text-sm">None</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- Dynamic SEO Optimizer -->
         <div v-if="cardId === 'seo_optimizer'" class="card feature-card fc-highlight">
           <div class="fc-head">
@@ -330,6 +433,37 @@
       </div>
     </Teleport>
 
+    <!-- Add Platform Post Modal -->
+    <Teleport to="body">
+      <div v-if="showAddPostModal" class="modal-overlay" @click.self="showAddPostModal = false">
+        <div class="modal-card">
+          <h3 class="modal-title">Add Platform Post</h3>
+          <div class="modal-body">
+            <label class="form-label">Platform</label>
+            <select v-model="newPost.platform" class="form-input">
+              <option value="linkedin">LinkedIn</option>
+              <option value="x">X (Twitter)</option>
+              <option value="facebook">Facebook</option>
+              <option value="instagram">Instagram</option>
+              <option value="blog">Blog / Article</option>
+              <option value="other">Other</option>
+            </select>
+            <label class="form-label" style="margin-top:12px">Title (optional)</label>
+            <input v-model="newPost.title" class="form-input" placeholder="Post title or headline" />
+            <label class="form-label" style="margin-top:12px">Content</label>
+            <textarea v-model="newPost.content" class="form-input" rows="5" placeholder="Paste the post text here..." style="resize:vertical"></textarea>
+            <label class="form-label" style="margin-top:12px">URL (optional)</label>
+            <input v-model="newPost.url" class="form-input" placeholder="https://..." />
+            <p v-if="addPostError" class="text-danger text-sm" style="margin-top:8px">{{ addPostError }}</p>
+          </div>
+          <div class="modal-actions">
+            <button class="btn btn-secondary" @click="showAddPostModal = false">Cancel</button>
+            <button class="btn btn-primary" @click="addPost" :disabled="addingPost">{{ addingPost ? 'Adding...' : 'Add Post' }}</button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
     <!-- Add Keyword Modal -->
     <Teleport to="body">
       <div v-if="showAddModal" class="modal-overlay" @click.self="showAddModal = false">
@@ -368,6 +502,31 @@ const newKw = ref({ keyword: '', target_url: '' })
 const scanData = ref({})
 const scanLoading = ref(false)
 
+// Scan config
+const scanConfig = ref({ is_auto_scan_enabled: true, scan_interval_hours: 24, scan_depth: 5, last_scanned_at: null, next_scan_at: null, total_scans: 0 })
+const intervalOptions = [
+  { value: 1, label: 'Hourly' },
+  { value: 6, label: 'Every 6h' },
+  { value: 24, label: 'Daily' },
+  { value: 168, label: 'Weekly' },
+]
+
+// Platform comparison
+const platformPosts = ref([])
+const pcFilter = ref('')
+const comparison = ref(null)
+const comparisonLoading = ref(false)
+const compTab = ref('gaps')
+const showAddPostModal = ref(false)
+const newPost = ref({ platform: 'linkedin', title: '', content: '', url: '' })
+const addingPost = ref(false)
+const addPostError = ref('')
+
+const filteredPosts = computed(() => {
+  if (!pcFilter.value) return platformPosts.value
+  return platformPosts.value.filter(p => p.platform === pcFilter.value)
+})
+
 // Card system
 const STORAGE_KEY = 'ftb_kw_cards'
 const availableCards = [
@@ -381,6 +540,8 @@ const availableCards = [
   { id: 'geo_seo', name: 'Geo SEO & Tagging', desc: 'Regional optimization and geo tag detection', icon: 'GS' },
   { id: 'seo_optimizer', name: 'Dynamic SEO Optimizer', desc: 'Auto-optimize schema, OG, canonical on your live site', icon: 'SO' },
   { id: 'pages_scanned', name: 'Pages Scanned', desc: 'Per-page keyword breakdown', icon: 'PS' },
+  { id: 'scan_schedule', name: 'DOM Scan Schedule', desc: 'Configure automatic keyword re-scanning intervals', icon: 'SC' },
+  { id: 'platform_comparison', name: 'Platform Comparison', desc: 'Compare site keywords vs LinkedIn, X, and other posts', icon: 'PC' },
 ]
 
 const defaultCards = ['site_audit', 'keyword_research', 'position_tracking', 'ai_analysis']
@@ -456,12 +617,57 @@ async function addKeyword() {
   finally { adding.value = false }
 }
 
+// Scan config functions
+async function loadScanConfig() {
+  try { const res = await analyticsApi.getScanConfig(props.websiteId); scanConfig.value = res.data } catch (e) {}
+}
+async function saveScanConfig() {
+  try { const res = await analyticsApi.updateScanConfig(props.websiteId, scanConfig.value); scanConfig.value = res.data } catch (e) {}
+}
+async function toggleAutoScan() {
+  scanConfig.value.is_auto_scan_enabled = !scanConfig.value.is_auto_scan_enabled
+  await saveScanConfig()
+}
+async function setScanInterval(hours) {
+  scanConfig.value.scan_interval_hours = hours
+  await saveScanConfig()
+}
+function formatDate(iso) {
+  if (!iso) return ''
+  try { return new Date(iso).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) } catch { return iso }
+}
+
+// Platform content functions
+async function loadPlatformPosts() {
+  try { const res = await analyticsApi.getPlatformContent(props.websiteId); platformPosts.value = res.data || [] } catch (e) {}
+}
+async function addPost() {
+  if (!newPost.value.content.trim()) return
+  addingPost.value = true; addPostError.value = ''
+  try {
+    await analyticsApi.addPlatformContent(props.websiteId, newPost.value)
+    await loadPlatformPosts()
+    showAddPostModal.value = false
+    newPost.value = { platform: 'linkedin', title: '', content: '', url: '' }
+  } catch (e) { addPostError.value = e?.response?.data?.error || 'Failed to add post' }
+  finally { addingPost.value = false }
+}
+async function deletePost(pid) {
+  try { await analyticsApi.deletePlatformContent(props.websiteId, pid); await loadPlatformPosts() } catch (e) {}
+}
+async function loadComparison() {
+  comparisonLoading.value = true
+  try { const res = await analyticsApi.keywordComparison(props.websiteId); comparison.value = res.data } catch (e) {}
+  finally { comparisonLoading.value = false }
+}
+
 onMounted(async () => {
   loadCards()
   await fetchKeywords()
   try { const res = await analyticsApi.keywordScan(props.websiteId); const d = res.data?.data || res.data || {}; if (d.score != null) scanData.value = d } catch (e) {}
   // Fetch embed code
   try { const res = await analyticsApi.seoEmbed(props.websiteId); embedCode.value = res.data?.data?.embed_code || '' } catch (e) {}
+  await Promise.all([loadScanConfig(), loadPlatformPosts()])
   loading.value = false
 })
 
@@ -647,6 +853,49 @@ function copyEmbed() {
 .ef-title { font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 6px; }
 .ef-list { display: flex; flex-wrap: wrap; gap: 4px; }
 .ef-item { font-size: 10px; padding: 2px 8px; background: rgba(34,197,94,0.08); color: #16a34a; border-radius: var(--radius-full); font-weight: 600; }
+
+/* Scan Schedule Card */
+.scan-config-form { display: flex; flex-direction: column; gap: 12px; }
+.sc-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.sc-label { font-size: 11px; font-weight: 700; color: var(--text-primary); width: 80px; flex-shrink: 0; text-transform: uppercase; letter-spacing: 0.03em; }
+.toggle-btn { padding: 4px 14px; border-radius: var(--radius-full); border: 1px solid var(--border-color); font-size: 11px; font-weight: 700; cursor: pointer; background: var(--bg-surface); color: var(--text-muted); transition: all 0.15s; }
+.toggle-on { background: rgba(99,102,241,0.12); border-color: var(--brand-accent); color: var(--brand-accent); }
+.interval-grid { display: flex; gap: 4px; flex-wrap: wrap; }
+.interval-btn { padding: 3px 10px; border-radius: var(--radius-full); border: 1px solid var(--border-color); font-size: 10px; font-weight: 600; cursor: pointer; background: var(--bg-surface); color: var(--text-muted); transition: all 0.15s; }
+.ib-active { background: var(--brand-accent); border-color: var(--brand-accent); color: white; }
+.depth-row { display: flex; align-items: center; gap: 8px; flex: 1; }
+.depth-slider { flex: 1; accent-color: var(--brand-accent); }
+.depth-val { font-size: 12px; font-weight: 700; color: var(--brand-accent); min-width: 20px; }
+.sc-meta { font-size: 10px; color: var(--text-muted); }
+.sc-stats { display: flex; gap: 8px; }
+
+/* Platform Comparison Card */
+.pc-actions { margin-bottom: 10px; }
+.pc-filter-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.form-select-sm { height: 32px; padding: 0 8px; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--bg-surface); color: var(--text-primary); font-size: 12px; }
+.posts-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
+.post-row { display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-md); }
+.post-row-left { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; }
+.platform-badge { font-size: 9px; font-weight: 800; padding: 2px 6px; border-radius: var(--radius-full); background: rgba(99,102,241,0.1); color: var(--brand-accent); flex-shrink: 0; text-transform: uppercase; }
+.pb-linkedin { background: rgba(10,102,194,0.1); color: #0a66c2; }
+.pb-x { background: rgba(0,0,0,0.06); color: var(--text-primary); }
+.pb-facebook { background: rgba(24,119,242,0.1); color: #1877f2; }
+.pb-instagram { background: rgba(225,48,108,0.1); color: #e1306c; }
+.pb-blog { background: rgba(34,197,94,0.1); color: #16a34a; }
+.post-title { font-size: 11px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.btn-icon-danger { width: 22px; height: 22px; border: none; background: transparent; color: var(--text-muted); font-size: 16px; cursor: pointer; border-radius: 4px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.btn-icon-danger:hover { background: rgba(239,68,68,0.1); color: #ef4444; }
+.comparison-results { border-top: 1px solid var(--border-color); padding-top: 10px; margin-top: 8px; }
+.cr-tabs { display: flex; gap: 4px; margin-bottom: 8px; }
+.cr-tab { flex: 1; padding: 5px; font-size: 10px; font-weight: 700; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--bg-surface); cursor: pointer; color: var(--text-muted); display: flex; align-items: center; justify-content: center; gap: 4px; }
+.cr-tab-active { border-color: var(--brand-accent); background: rgba(99,102,241,0.08); color: var(--brand-accent); }
+.cr-count { background: var(--bg-card); border-radius: 10px; padding: 0 5px; font-size: 9px; }
+.cr-desc { font-size: 10px; color: var(--text-muted); margin-bottom: 8px; line-height: 1.4; }
+.cr-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.cr-chip { font-size: 10px; padding: 2px 8px; border-radius: var(--radius-full); font-weight: 600; }
+.cr-overlap { background: rgba(99,102,241,0.1); color: var(--brand-accent); }
+.cr-gaps { background: rgba(245,158,11,0.1); color: #d97706; }
+.cr-opp { background: rgba(34,197,94,0.1); color: #16a34a; }
 
 /* Responsive */
 @media (max-width: 900px) { .cards-grid { grid-template-columns: 1fr; } .split-screen { grid-template-columns: 1fr; } .ai-engine-grid { grid-template-columns: 1fr; } .alt-grid { grid-template-columns: 1fr; } .comp-grid { grid-template-columns: 1fr; } }

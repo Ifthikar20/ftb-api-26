@@ -32,4 +32,16 @@ export default {
 
     // Call extraction (AI analysis)
     getExtraction: (wid, callId) => api.get(`/voice-agent/${wid}/calls/${callId}/extraction/`),
+
+    // Phone numbers
+    getPhoneNumbers: (wid) => api.get(`/voice-agent/${wid}/phone-numbers/`),
+    addPhoneNumber: (wid, data) => api.post(`/voice-agent/${wid}/phone-numbers/`, data),
+    updatePhoneNumber: (wid, nid, data) => api.put(`/voice-agent/${wid}/phone-numbers/${nid}/`, data),
+    deletePhoneNumber: (wid, nid) => api.delete(`/voice-agent/${wid}/phone-numbers/${nid}/`),
+
+    // Agent context documents (knowledge base)
+    getContextDocs: (wid) => api.get(`/voice-agent/${wid}/context-docs/`),
+    createContextDoc: (wid, data) => api.post(`/voice-agent/${wid}/context-docs/`, data),
+    updateContextDoc: (wid, did, data) => api.put(`/voice-agent/${wid}/context-docs/${did}/`, data),
+    deleteContextDoc: (wid, did) => api.delete(`/voice-agent/${wid}/context-docs/${did}/`),
 }

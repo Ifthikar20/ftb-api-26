@@ -64,6 +64,144 @@
       </button>
     </div>
 
+    <!-- Tab: Phone Numbers -->
+    <div v-if="activeTab === 'phones'" class="tab-content">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px">
+        <p class="text-sm text-muted">Add your work phone numbers. Enable forwarding to route calls to the AI agent.</p>
+        <button class="btn btn-primary btn-sm" @click="showPhoneModal = true">+ Add Number</button>
+      </div>
+
+      <div v-if="loading.phones" class="loading-state">Loading phone numbers...</div>
+      <div v-else-if="!phoneNumbers.length" class="empty-state">
+        <p>No phone numbers added yet. Add your work number and enable forwarding to start receiving AI-handled calls.</p>
+      </div>
+      <div v-else class="data-table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Number</th>
+              <th>Label</th>
+              <th>Provider</th>
+              <th>Forward to Agent</th>
+              <th>Active</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="num in phoneNumbers" :key="num.id">
+              <td class="font-medium">{{ num.number }}</td>
+              <td>{{ num.label || '-' }}</td>
+              <td><span class="provider-badge">{{ num.provider }}</span></td>
+              <td>
+                <span v-if="num.forwarded_to_agent" class="status-pill status-completed">Yes</span>
+                <span v-else class="status-pill status-dismissed">No</span>
+              </td>
+              <td>
+                <span v-if="num.is_active" class="status-pill status-confirmed">Active</span>
+                <span v-else class="status-pill status-cancelled">Inactive</span>
+              </td>
+              <td style="display: flex; gap: 6px">
+                <button class="btn btn-secondary btn-xs" @click="editPhone(num)">Edit</button>
+                <button class="btn btn-danger btn-xs" @click="deletePhone(num.id)">Remove</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card" style="margin-top: 24px; max-width: 680px">
+        <h3 class="card-title" style="margin-bottom: 8px">How Call Forwarding Works</h3>
+        <p class="text-sm text-muted" style="margin-bottom: 12px">To route calls from your business number to the AI agent:</p>
+        <ol class="text-sm" style="padding-left: 20px; display: flex; flex-direction: column; gap: 6px; color: var(--text-secondary)">
+          <li>Add your work phone number above with <strong>Forward to Agent</strong> enabled.</li>
+          <li>Log in to your phone carrier portal (Telnyx, Twilio, or your mobile provider).</li>
+          <li>Set up call forwarding to the SIP endpoint shown in <strong>Settings</strong> (the Forwarding Number field).</li>
+          <li>Callers will be answered by the AI immediately — 24/7.</li>
+        </ol>
+      </div>
+    </div>
+
+    <!-- Tab: Social Leads -->
+    <div v-if="activeTab === 'social'" class="tab-content">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px">
+        <p class="text-sm text-muted">Connect Facebook, LinkedIn, and other platforms to automatically import leads.</p>
+        <button class="btn btn-primary btn-sm" @click="showSourceModal = true">+ Connect Platform</button>
+      </div>
+
+      <!-- Connected Sources -->
+      <div v-if="socialSources.length" class="social-sources-grid" style="margin-bottom: 24px">
+        <div v-for="src in socialSources" :key="src.id" class="social-source-card">
+          <div class="social-source-header">
+            <div>
+              <div class="font-semibold">{{ src.platform_display }}</div>
+              <div class="text-sm text-muted">{{ src.label || src.form_id }}</div>
+            </div>
+            <span class="status-pill" :class="src.is_active ? 'status-confirmed' : 'status-dismissed'">
+              {{ src.is_active ? 'Active' : 'Inactive' }}
+            </span>
+          </div>
+          <div class="social-source-stats">
+            <span class="text-sm"><strong>{{ src.total_leads_imported }}</strong> leads imported</span>
+            <span v-if="src.last_synced_at" class="text-xs text-muted">Last sync: {{ formatDate(src.last_synced_at) }}</span>
+          </div>
+          <div style="display: flex; gap: 8px; margin-top: 12px">
+            <button v-if="src.platform === 'linkedin'" class="btn btn-secondary btn-xs" @click="syncLinkedIn(src.id)" :disabled="syncing === src.id">
+              {{ syncing === src.id ? 'Syncing...' : 'Sync Now' }}
+            </button>
+            <button class="btn btn-danger btn-xs" @click="deleteSource(src.id)">Remove</button>
+          </div>
+          <div v-if="src.platform === 'facebook'" class="webhook-hint text-xs text-muted" style="margin-top: 8px; background: var(--bg-surface); padding: 8px; border-radius: 6px;">
+            Webhook URL: <code>/api/v1/social-leads/webhook/facebook/</code><br>
+            Verify Token: <code>{{ src.webhook_verify_token }}</code>
+          </div>
+        </div>
+      </div>
+      <div v-else-if="!loading.social" class="empty-state">
+        <p>No platforms connected. Click "Connect Platform" to start importing leads from Facebook, LinkedIn, or X.</p>
+      </div>
+
+      <!-- Recent Social Leads -->
+      <h3 class="section-title" style="margin-bottom: 12px">Recent Social Leads</h3>
+      <div v-if="loading.social" class="loading-state">Loading...</div>
+      <div v-else-if="!socialLeads.length" class="empty-state" style="padding: 20px">
+        <p>No social leads yet. Connect a platform above to start importing.</p>
+      </div>
+      <div v-else class="data-table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Email</th>
+              <th>Phone</th>
+              <th>Platform</th>
+              <th>Company</th>
+              <th>Date</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="lead in socialLeads" :key="lead.id">
+              <td class="font-medium">{{ lead.full_name }}</td>
+              <td>{{ lead.email || '-' }}</td>
+              <td>{{ lead.phone || '-' }}</td>
+              <td><span class="provider-badge">{{ lead.platform_display }}</span></td>
+              <td>{{ lead.company || '-' }}</td>
+              <td class="text-muted">{{ formatDate(lead.created_at) }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- X CSV Import -->
+      <div class="card" style="margin-top: 24px; max-width: 680px">
+        <h3 class="card-title" style="margin-bottom: 8px">Import from X (Twitter)</h3>
+        <p class="text-sm text-muted" style="margin-bottom: 12px">X does not support real-time lead webhooks. Export leads from X Ads Manager as CSV and paste the JSON array below.</p>
+        <textarea v-model="xCsvJson" class="form-input" rows="4" placeholder='[{"name": "John", "email": "john@example.com", "phone": "+1234567890"}, ...]'></textarea>
+        <button class="btn btn-primary btn-sm" style="margin-top: 10px" @click="importXLeads" :disabled="importingX">
+          {{ importingX ? 'Importing...' : 'Import' }}
+        </button>
+      </div>
+    </div>
+
     <!-- Tab: Calls -->
     <div v-if="activeTab === 'calls'" class="tab-content">
       <div class="filter-row" style="margin-bottom: 16px">
@@ -325,6 +463,40 @@
         </div>
       </div>
 
+      <!-- Knowledge Base / Context Documents -->
+      <div class="card" style="max-width: 700px; margin-top: 24px">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px">
+          <div>
+            <h3 class="card-title">Knowledge Base</h3>
+            <p class="text-sm text-muted" style="margin-top: 4px">Markdown documents injected into the agent prompt. The AI reads these to answer caller questions.</p>
+          </div>
+          <button class="btn btn-primary btn-sm" @click="showDocModal = true">+ Add Document</button>
+        </div>
+
+        <div v-if="loading.docs" class="loading-state" style="padding: 20px 0">Loading...</div>
+        <div v-else-if="!contextDocs.length" class="empty-state" style="padding: 20px 0">
+          <p>No documents yet. Add your Services & Pricing, FAQs, or Policies to help the agent answer questions accurately.</p>
+        </div>
+        <div v-else class="docs-list">
+          <div v-for="doc in contextDocs" :key="doc.id" class="doc-card">
+            <div class="doc-header">
+              <div>
+                <div class="font-semibold">{{ doc.title }}</div>
+                <div class="text-xs text-muted">{{ doc.content.length }} characters</div>
+              </div>
+              <div style="display: flex; align-items: center; gap: 8px">
+                <span class="status-pill" :class="doc.is_active ? 'status-confirmed' : 'status-dismissed'">
+                  {{ doc.is_active ? 'Active' : 'Inactive' }}
+                </span>
+                <button class="btn btn-secondary btn-xs" @click="editDoc(doc)">Edit</button>
+                <button class="btn btn-danger btn-xs" @click="deleteDoc(doc.id)">Delete</button>
+              </div>
+            </div>
+            <pre class="doc-preview">{{ doc.content.slice(0, 200) }}{{ doc.content.length > 200 ? '...' : '' }}</pre>
+          </div>
+        </div>
+      </div>
+
       <!-- Cost Estimator -->
       <div class="card" style="max-width: 700px; margin-top: 24px">
         <h3 class="card-title" style="margin-bottom: 12px">Cost Comparison</h3>
@@ -452,6 +624,118 @@
       </div>
     </div>
 
+    <!-- Add / Edit Phone Number Modal -->
+    <div v-if="showPhoneModal" class="modal-overlay" @click.self="closePhoneModal">
+      <div class="modal-card" style="max-width: 480px">
+        <h3 class="card-title" style="margin-bottom: 16px">{{ editingPhone ? 'Edit Phone Number' : 'Add Phone Number' }}</h3>
+        <div class="form-group">
+          <label class="form-label">Number (E.164 format)</label>
+          <input v-model="phoneForm.number" class="form-input" placeholder="+12025551234" :disabled="!!editingPhone" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Label</label>
+          <input v-model="phoneForm.label" class="form-input" placeholder="Main Line, Sales, Support..." />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Provider</label>
+          <select v-model="phoneForm.provider" class="form-input">
+            <option value="telnyx">Telnyx</option>
+            <option value="twilio">Twilio</option>
+            <option value="retell">Retell AI</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px">
+            <input type="checkbox" v-model="phoneForm.forwarded_to_agent" />
+            Forward inbound calls to AI agent
+          </label>
+        </div>
+        <div class="form-group">
+          <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px">
+            <input type="checkbox" v-model="phoneForm.is_active" />
+            Active
+          </label>
+        </div>
+        <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px">
+          <button class="btn btn-secondary" @click="closePhoneModal">Cancel</button>
+          <button class="btn btn-primary" @click="savePhone" :disabled="savingPhone">{{ savingPhone ? 'Saving...' : 'Save' }}</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Add / Edit Context Document Modal -->
+    <div v-if="showDocModal" class="modal-overlay" @click.self="closeDocModal">
+      <div class="modal-card" style="max-width: 640px">
+        <h3 class="card-title" style="margin-bottom: 16px">{{ editingDoc ? 'Edit Document' : 'Add Knowledge Document' }}</h3>
+        <div class="form-group">
+          <label class="form-label">Title</label>
+          <input v-model="docForm.title" class="form-input" placeholder="Services & Pricing, FAQs, Policies..." />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Content (Markdown)</label>
+          <textarea v-model="docForm.content" class="form-input" rows="12" placeholder="# Services&#10;&#10;## Web Development&#10;- Custom websites: $3,000 - $15,000&#10;..."></textarea>
+          <p class="form-hint">{{ docForm.content.length }} / 10,000 characters</p>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Sort Order</label>
+          <input v-model.number="docForm.sort_order" class="form-input" type="number" min="0" style="width: 100px" />
+          <p class="form-hint">Lower numbers appear first in the agent prompt.</p>
+        </div>
+        <div class="form-group">
+          <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px">
+            <input type="checkbox" v-model="docForm.is_active" />
+            Active (include in agent prompt)
+          </label>
+        </div>
+        <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px">
+          <button class="btn btn-secondary" @click="closeDocModal">Cancel</button>
+          <button class="btn btn-primary" @click="saveDoc" :disabled="savingDoc">{{ savingDoc ? 'Saving...' : 'Save' }}</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Connect Social Platform Modal -->
+    <div v-if="showSourceModal" class="modal-overlay" @click.self="showSourceModal = false">
+      <div class="modal-card" style="max-width: 520px">
+        <h3 class="card-title" style="margin-bottom: 16px">Connect Social Platform</h3>
+        <div class="form-group">
+          <label class="form-label">Platform</label>
+          <select v-model="sourceForm.platform" class="form-input">
+            <option value="facebook">Facebook Lead Ads</option>
+            <option value="instagram">Instagram (via Facebook)</option>
+            <option value="linkedin">LinkedIn Lead Gen Forms</option>
+            <option value="tiktok">TikTok Lead Generation</option>
+            <option value="google">Google Lead Form Extensions</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Label</label>
+          <input v-model="sourceForm.label" class="form-input" placeholder="e.g. Facebook - Summer Campaign" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Ad Account ID / Page ID</label>
+          <input v-model="sourceForm.account_id" class="form-input" placeholder="12345678" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Lead Form ID</label>
+          <input v-model="sourceForm.form_id" class="form-input" placeholder="Lead Gen Form ID from the platform" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Access Token</label>
+          <input v-model="sourceForm.access_token" class="form-input" placeholder="OAuth access token from the platform" type="password" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Campaign Name (optional)</label>
+          <input v-model="sourceForm.campaign_name" class="form-input" placeholder="Summer 2026 Campaign" />
+        </div>
+        <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px">
+          <button class="btn btn-secondary" @click="showSourceModal = false">Cancel</button>
+          <button class="btn btn-primary" @click="saveSource" :disabled="savingSource">{{ savingSource ? 'Connecting...' : 'Connect' }}</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Add Reminder Modal -->
     <div v-if="showReminderModal" class="modal-overlay" @click.self="showReminderModal = false">
       <div class="modal-card" style="max-width: 500px">
@@ -486,6 +770,7 @@ import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useAppStore } from '@/stores/app'
 import { useToast } from '@/composables/useToast'
 import voiceAgentApi from '@/api/voiceAgent'
+import socialLeadsApi from '@/api/socialLeads'
 
 const props = defineProps({ websiteId: String })
 const appStore = useAppStore()
@@ -499,6 +784,8 @@ const tabs = computed(() => [
   { id: 'todos', label: 'Todos', badge: todoStats.value.open || null },
   { id: 'calendar', label: 'Calendar', badge: events.value.length || null },
   { id: 'reminders', label: 'Reminders', badge: reminders.value.length || null },
+  { id: 'phones', label: 'Phone Numbers' },
+  { id: 'social', label: 'Social Leads', badge: socialLeads.value.length || null },
   { id: 'settings', label: 'Settings' },
 ])
 
@@ -525,8 +812,32 @@ const availableSlots = ref([])
 const availabilityDate = ref('')
 const selectedCall = ref(null)
 
+// Phone numbers
+const phoneNumbers = ref([])
+const showPhoneModal = ref(false)
+const editingPhone = ref(null)
+const savingPhone = ref(false)
+const phoneForm = reactive({ number: '', label: '', provider: 'telnyx', is_active: true, forwarded_to_agent: true })
+
+// Context documents
+const contextDocs = ref([])
+const showDocModal = ref(false)
+const editingDoc = ref(null)
+const savingDoc = ref(false)
+const docForm = reactive({ title: '', content: '', is_active: true, sort_order: 0 })
+
+// Social leads
+const socialSources = ref([])
+const socialLeads = ref([])
+const showSourceModal = ref(false)
+const savingSource = ref(false)
+const syncing = ref(null)
+const xCsvJson = ref('')
+const importingX = ref(false)
+const sourceForm = reactive({ platform: 'facebook', label: '', account_id: '', form_id: '', access_token: '', campaign_name: '' })
+
 // Loading states
-const loading = reactive({ calls: false, events: false, reminders: false, todos: false })
+const loading = reactive({ calls: false, events: false, reminders: false, todos: false, phones: false, docs: false, social: false })
 const saving = ref(false)
 const activating = ref(false)
 const webCallLoading = ref(false)
@@ -545,7 +856,7 @@ const weekdays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'satur
 const callFilter = reactive({ status: '', direction: '' })
 
 // Track which tabs have been loaded
-const _loaded = reactive({ calls: false, calendar: false, reminders: false, todos: false, settings: false })
+const _loaded = reactive({ calls: false, calendar: false, reminders: false, todos: false, settings: false, phones: false, social: false })
 
 onMounted(() => {
   loadConfig()
@@ -555,9 +866,12 @@ onMounted(() => {
 
 // Lazy-load tab data on first visit
 watch(activeTab, (tab) => {
-  if (tab === 'todos' && !_loaded.todos)     { loadTodos(); loadTodoStats(); _loaded.todos = true }
-  if (tab === 'calendar' && !_loaded.calendar) { loadEvents(); _loaded.calendar = true }
+  if (tab === 'todos' && !_loaded.todos)         { loadTodos(); loadTodoStats(); _loaded.todos = true }
+  if (tab === 'calendar' && !_loaded.calendar)   { loadEvents(); _loaded.calendar = true }
   if (tab === 'reminders' && !_loaded.reminders) { loadReminders(); _loaded.reminders = true }
+  if (tab === 'phones' && !_loaded.phones)       { loadPhoneNumbers(); _loaded.phones = true }
+  if (tab === 'social' && !_loaded.social)       { loadSocialSources(); loadSocialLeads(); _loaded.social = true }
+  if (tab === 'settings' && !_loaded.settings)   { loadContextDocs(); _loaded.settings = true }
 })
 
 async function loadConfig() {
@@ -743,6 +1057,172 @@ async function dismissReminder(id) {
     toast.success('Reminder dismissed.')
     loadReminders()
   } catch { toast.error('Failed to dismiss reminder.') }
+}
+
+// ── Phone Numbers ──────────────────────────────────────────────────────────────
+
+async function loadPhoneNumbers() {
+  loading.phones = true
+  try {
+    const res = await voiceAgentApi.getPhoneNumbers(wid.value)
+    phoneNumbers.value = res.data || res
+  } catch {} finally { loading.phones = false }
+}
+
+function editPhone(num) {
+  editingPhone.value = num
+  Object.assign(phoneForm, {
+    number: num.number,
+    label: num.label,
+    provider: num.provider,
+    is_active: num.is_active,
+    forwarded_to_agent: num.forwarded_to_agent,
+  })
+  showPhoneModal.value = true
+}
+
+function closePhoneModal() {
+  showPhoneModal.value = false
+  editingPhone.value = null
+  Object.assign(phoneForm, { number: '', label: '', provider: 'telnyx', is_active: true, forwarded_to_agent: true })
+}
+
+async function savePhone() {
+  savingPhone.value = true
+  try {
+    if (editingPhone.value) {
+      await voiceAgentApi.updatePhoneNumber(wid.value, editingPhone.value.id, phoneForm)
+      toast.success('Phone number updated.')
+    } else {
+      await voiceAgentApi.addPhoneNumber(wid.value, phoneForm)
+      toast.success('Phone number added.')
+    }
+    closePhoneModal()
+    loadPhoneNumbers()
+  } catch { toast.error('Failed to save phone number.') } finally { savingPhone.value = false }
+}
+
+async function deletePhone(id) {
+  try {
+    await voiceAgentApi.deletePhoneNumber(wid.value, id)
+    toast.success('Phone number removed.')
+    loadPhoneNumbers()
+  } catch { toast.error('Failed to remove phone number.') }
+}
+
+// ── Context Documents ──────────────────────────────────────────────────────────
+
+async function loadContextDocs() {
+  loading.docs = true
+  try {
+    const res = await voiceAgentApi.getContextDocs(wid.value)
+    contextDocs.value = res.data || res
+  } catch {} finally { loading.docs = false }
+}
+
+function editDoc(doc) {
+  editingDoc.value = doc
+  Object.assign(docForm, {
+    title: doc.title,
+    content: doc.content,
+    is_active: doc.is_active,
+    sort_order: doc.sort_order,
+  })
+  showDocModal.value = true
+}
+
+function closeDocModal() {
+  showDocModal.value = false
+  editingDoc.value = null
+  Object.assign(docForm, { title: '', content: '', is_active: true, sort_order: 0 })
+}
+
+async function saveDoc() {
+  savingDoc.value = true
+  try {
+    if (editingDoc.value) {
+      await voiceAgentApi.updateContextDoc(wid.value, editingDoc.value.id, docForm)
+      toast.success('Document updated.')
+    } else {
+      await voiceAgentApi.createContextDoc(wid.value, docForm)
+      toast.success('Document created.')
+    }
+    closeDocModal()
+    loadContextDocs()
+  } catch { toast.error('Failed to save document.') } finally { savingDoc.value = false }
+}
+
+async function deleteDoc(id) {
+  try {
+    await voiceAgentApi.deleteContextDoc(wid.value, id)
+    toast.success('Document deleted.')
+    loadContextDocs()
+  } catch { toast.error('Failed to delete document.') }
+}
+
+// ── Social Leads ───────────────────────────────────────────────────────────────
+
+async function loadSocialSources() {
+  try {
+    const res = await socialLeadsApi.getSources(wid.value)
+    socialSources.value = res.data || res
+  } catch {}
+}
+
+async function loadSocialLeads() {
+  loading.social = true
+  try {
+    const res = await socialLeadsApi.getLeads(wid.value, { page_size: 20 })
+    socialLeads.value = res.results || res.data || []
+  } catch {} finally { loading.social = false }
+}
+
+async function saveSource() {
+  savingSource.value = true
+  try {
+    await socialLeadsApi.createSource(wid.value, sourceForm)
+    toast.success('Platform connected.')
+    showSourceModal.value = false
+    Object.assign(sourceForm, { platform: 'facebook', label: '', account_id: '', form_id: '', access_token: '', campaign_name: '' })
+    loadSocialSources()
+  } catch { toast.error('Failed to connect platform.') } finally { savingSource.value = false }
+}
+
+async function deleteSource(id) {
+  try {
+    await socialLeadsApi.deleteSource(wid.value, id)
+    toast.success('Platform disconnected.')
+    loadSocialSources()
+  } catch { toast.error('Failed to disconnect platform.') }
+}
+
+async function syncLinkedIn(sourceId) {
+  syncing.value = sourceId
+  try {
+    const res = await socialLeadsApi.syncLinkedIn(wid.value, sourceId)
+    const count = res.data?.leads_imported ?? res.leads_imported ?? 0
+    toast.success(`LinkedIn sync complete. ${count} leads imported.`)
+    loadSocialSources()
+    loadSocialLeads()
+  } catch { toast.error('LinkedIn sync failed.') } finally { syncing.value = null }
+}
+
+async function importXLeads() {
+  let rows
+  try {
+    rows = JSON.parse(xCsvJson.value)
+  } catch {
+    toast.error('Invalid JSON. Paste a valid array of lead objects.')
+    return
+  }
+  importingX.value = true
+  try {
+    const res = await socialLeadsApi.importX(wid.value, rows)
+    const count = res.data?.leads_imported ?? res.leads_imported ?? 0
+    toast.success(`Imported ${count} leads from X.`)
+    xCsvJson.value = ''
+    loadSocialLeads()
+  } catch { toast.error('Import failed.') } finally { importingX.value = false }
 }
 
 function toggleDay(day, checked) {
@@ -1040,5 +1520,74 @@ function formatTime(iso) {
   text-align: center;
   padding: 40px 20px;
   color: var(--text-muted);
+}
+
+/* Provider badge */
+.provider-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+  text-transform: capitalize;
+}
+
+/* Context documents */
+.docs-list { display: flex; flex-direction: column; gap: 10px; }
+.doc-card {
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 14px;
+  background: var(--bg-card);
+}
+.doc-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 8px;
+}
+.doc-preview {
+  font-size: 12px;
+  color: var(--text-muted);
+  background: var(--bg-surface);
+  border-radius: 6px;
+  padding: 8px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 80px;
+  overflow: hidden;
+  margin: 0;
+}
+
+/* Social leads */
+.social-sources-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+}
+.social-source-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 16px;
+}
+.social-source-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 10px;
+}
+.social-source-stats {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.section-title {
+  font-size: var(--font-base);
+  font-weight: 600;
+  color: var(--text-primary);
 }
 </style>

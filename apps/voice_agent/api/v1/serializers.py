@@ -2,11 +2,13 @@ from rest_framework import serializers
 
 from apps.voice_agent.models import (
     AgentConfig,
+    AgentContextDocument,
     CalendarEvent,
     CallbackReminder,
     CallExtraction,
     CallLog,
     CallTodo,
+    PhoneNumber,
 )
 
 
@@ -111,6 +113,26 @@ class CallTodoSerializer(serializers.ModelSerializer):
             "call_caller_name", "call_caller_phone",
             "created_at", "updated_at",
         ]
+
+
+class PhoneNumberSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PhoneNumber
+        fields = [
+            "id", "number", "label", "provider", "is_active",
+            "forwarded_to_agent", "created_at", "updated_at",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]
+
+
+class AgentContextDocumentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AgentContextDocument
+        fields = [
+            "id", "title", "content", "is_active", "sort_order",
+            "created_at", "updated_at",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]
 
 
 class CallExtractionSerializer(serializers.ModelSerializer):
