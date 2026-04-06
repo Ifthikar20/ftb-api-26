@@ -223,9 +223,39 @@ Instructions:
 """
 
 
+def _create_voice_session(system_prompt, website_id):
+    """
+    Shared factory: creates a VoiceSession with STT/LLM/TTS and tool handlers.
+    Returns an async callable(ctx, greeting) that starts the session.
+
+    Used by both create_voice_agent() and run_agent_worker() to avoid duplication.
+    """
+    async def start(ctx, greeting):
+        model = openai.LLM(model="gpt-4o-mini", temperature=0.7)
+
+        agent = VoiceSession(
+            vad=silero.VAD.load(),
+            stt=deepgram.STT(model="nova-2", language="en"),
+            llm=model,
+            tts=openai.TTS(model="tts-1", voice="alloy"),
+            # For self-hosted Kokoro TTS, replace above with:
+            # tts=KokoroTTS(model_path="/path/to/kokoro", voice="default"),
+        )
+
+        @agent.on("function_call")
+        async def on_function_call(call):
+            result = await _handle_tool_call(call.name, call.arguments, website_id)
+            await call.resolve(result)
+
+        agent.start(ctx.room)
+        await agent.say(greeting)
+
+    return start
+
+
 def create_voice_agent(system_prompt, greeting):
     """
-    Create and return a LiveKit voice agent configuration.
+    Create and return a LiveKit agent entrypoint function.
 
     This function is the entry point for the LiveKit agent worker.
     It returns the agent setup that LiveKit will use for each call.
@@ -239,40 +269,9 @@ def create_voice_agent(system_prompt, greeting):
 
     async def entrypoint(ctx: JobContext):
         await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
-
         website_id = _get_website_id_from_metadata(ctx.room.metadata)
-
-        # Build the LLM with tools
-        model = openai.LLM(
-            model="gpt-4o-mini",
-            temperature=0.7,
-        )
-
-        agent = VoiceSession(
-            vad=silero.VAD.load(),
-            stt=deepgram.STT(
-                model="nova-2",
-                language="en",
-            ),
-            llm=model,
-            tts=openai.TTS(
-                model="tts-1",
-                voice="alloy",
-            ),
-            # For self-hosted Kokoro TTS, replace above with:
-            # tts=KokoroTTS(model_path="/path/to/kokoro", voice="default"),
-        )
-
-        # Register tool handlers
-        @agent.on("function_call")
-        async def on_function_call(call):
-            result = await _handle_tool_call(call.name, call.arguments, website_id)
-            await call.resolve(result)
-
-        agent.start(ctx.room)
-
-        # Send greeting
-        await agent.say(greeting)
+        start = _create_voice_session(system_prompt, website_id)
+        await start(ctx, greeting)
 
     return entrypoint
 
@@ -329,25 +328,13 @@ def run_agent_worker():
             "Hello! Thank you for calling. How can I help you today?",
         )
 
-        model = openai.LLM(model="gpt-4o-mini", temperature=0.7)
-
-        agent = VoiceSession(
-            vad=silero.VAD.load(),
-            stt=deepgram.STT(model="nova-2", language="en"),
-            llm=model,
-            tts=openai.TTS(model="tts-1", voice="alloy"),
-        )
-
-        @agent.on("function_call")
-        async def on_function_call(call):
-            result = await _handle_tool_call(call.name, call.arguments, website_id)
-            await call.resolve(result)
-
-        agent.start(ctx.room)
-        await agent.say(greeting)
+        # Reuse the shared agent factory
+        _start_session = _create_voice_session(system_prompt, website_id)
+        await _start_session(ctx, greeting)
 
     cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint))
 
 
 if __name__ == "__main__":
     run_agent_worker()
+

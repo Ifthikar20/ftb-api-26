@@ -67,7 +67,10 @@ class CallLog(TimestampMixin):
     website = models.ForeignKey(
         "websites.Website", on_delete=models.CASCADE, related_name="call_logs"
     )
-    retell_call_id = models.CharField(max_length=200, unique=True, db_index=True)
+    external_call_id = models.CharField(
+        max_length=200, blank=True, db_index=True,
+        help_text="External call identifier (Retell call_id, LiveKit room name, etc.)",
+    )
     direction = models.CharField(
         max_length=10, choices=DIRECTION_CHOICES, default=DIRECTION_INBOUND
     )

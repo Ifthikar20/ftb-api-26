@@ -73,8 +73,12 @@ class CalendarService:
         available = []
         for slot in slots:
             conflict = False
-            for booked_start, booked_end in booked_ranges:
-                if slot["start"] < booked_end and slot["end"] > booked_start:
+            slot_start = datetime.strptime(slot["start"], "%H:%M").time()
+            slot_end = datetime.strptime(slot["end"], "%H:%M").time()
+            for booked_start_str, booked_end_str in booked_ranges:
+                booked_start = datetime.strptime(booked_start_str, "%H:%M").time()
+                booked_end = datetime.strptime(booked_end_str, "%H:%M").time()
+                if slot_start < booked_end and slot_end > booked_start:
                     conflict = True
                     break
             if not conflict:

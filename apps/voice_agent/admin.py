@@ -25,7 +25,7 @@ class CallLogAdmin(admin.ModelAdmin):
     )
     list_filter = ("status", "direction", "sentiment")
     search_fields = ("caller_phone", "caller_name", "caller_email", "summary")
-    readonly_fields = ("id", "retell_call_id", "created_at", "updated_at")
+    readonly_fields = ("id", "external_call_id", "created_at", "updated_at")
     ordering = ("-created_at",)
 
 

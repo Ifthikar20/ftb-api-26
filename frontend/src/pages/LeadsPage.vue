@@ -390,8 +390,7 @@ const allTableLeads = computed(() => {
     _rowId: lead.id || 'lead-' + i,
     _isAI: false,
     relevance_score: lead.score || 0,
-    // Map backend field names to the display field names the template expects
-    location: lead.location || lead.geo_country || '',
+    // 'location' is already provided by the backend serializer (maps from geo_country)
     title: lead.title || lead.device_type || '',
   }))
 })

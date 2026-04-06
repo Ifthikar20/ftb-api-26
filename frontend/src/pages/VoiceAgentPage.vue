@@ -465,7 +465,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useAppStore } from '@/stores/app'
 import { useToast } from '@/composables/useToast'
 import voiceAgentApi from '@/api/voiceAgent'
@@ -527,14 +527,20 @@ const weekdays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'satur
 
 const callFilter = reactive({ status: '', direction: '' })
 
+// Track which tabs have been loaded
+const _loaded = reactive({ calls: false, calendar: false, reminders: false, todos: false, settings: false })
+
 onMounted(() => {
   loadConfig()
   loadStats()
-  loadCalls()
-  loadEvents()
-  loadReminders()
-  loadTodos()
-  loadTodoStats()
+  loadCalls()  // default tab
+})
+
+// Lazy-load tab data on first visit
+watch(activeTab, (tab) => {
+  if (tab === 'todos' && !_loaded.todos)     { loadTodos(); loadTodoStats(); _loaded.todos = true }
+  if (tab === 'calendar' && !_loaded.calendar) { loadEvents(); _loaded.calendar = true }
+  if (tab === 'reminders' && !_loaded.reminders) { loadReminders(); _loaded.reminders = true }
 })
 
 async function loadConfig() {

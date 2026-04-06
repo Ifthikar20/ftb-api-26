@@ -46,7 +46,7 @@ class CallService:
     def process_call_started(website_id, data):
         """Handle call_started webhook from Retell AI."""
         call_log, _ = CallLog.objects.update_or_create(
-            retell_call_id=data["call_id"],
+            external_call_id=data["call_id"],
             defaults={
                 "website_id": website_id,
                 "direction": data.get("direction", "inbound"),
@@ -60,7 +60,7 @@ class CallService:
             "call_started",
             extra={
                 "call_id": str(call_log.id),
-                "retell_call_id": data["call_id"],
+                "external_call_id": data["call_id"],
                 "caller": data.get("from_number", ""),
             },
         )
@@ -71,7 +71,7 @@ class CallService:
     def process_call_ended(website_id, data):
         """Handle call_ended webhook from Retell AI with transcript and extracted data."""
         call_data = data.get("call", {})
-        retell_call_id = data.get("call_id", call_data.get("call_id", ""))
+        external_call_id = data.get("call_id", call_data.get("call_id", ""))
 
         transcript = call_data.get("transcript", "")
         if isinstance(transcript, list):
@@ -105,7 +105,7 @@ class CallService:
             defaults["caller_company"] = extracted.get("caller_company", "")
 
         call_log, _ = CallLog.objects.update_or_create(
-            retell_call_id=retell_call_id,
+            external_call_id=external_call_id,
             defaults=defaults,
         )
 
@@ -133,13 +133,13 @@ class CallService:
     @staticmethod
     def process_call_analyzed(website_id, data):
         """Handle post-call analysis webhook with deeper insights."""
-        retell_call_id = data.get("call_id", "")
+        external_call_id = data.get("call_id", "")
         analysis = data.get("call_analysis", {})
 
         try:
-            call_log = CallLog.objects.get(retell_call_id=retell_call_id)
+            call_log = CallLog.objects.get(external_call_id=external_call_id)
         except CallLog.DoesNotExist:
-            logger.warning("call_analyzed_orphan", extra={"retell_call_id": retell_call_id})
+            logger.warning("call_analyzed_orphan", extra={"external_call_id": external_call_id})
             return None
 
         if analysis.get("call_summary"):

@@ -77,9 +77,13 @@ class AgentConfigView(APIView):
 
 
 def _get_backend():
-    """Return the configured voice agent backend ('retell' or 'livekit')."""
+    """Return the configured voice agent backend ('retell', 'livekit', or 'selfhosted')."""
     from django.conf import settings as s
-    return getattr(s, "VOICE_AGENT_BACKEND", "retell")
+    backend = getattr(s, "VOICE_AGENT_BACKEND", "selfhosted")
+    if backend not in ("retell", "livekit", "selfhosted"):
+        logger.warning("invalid_voice_backend", extra={"backend": backend})
+        return "selfhosted"
+    return backend
 
 
 class AgentActivateView(APIView):
@@ -97,20 +101,21 @@ class AgentActivateView(APIView):
         if action == "activate":
             backend = _get_backend()
 
-            if backend == "livekit":
-                # LiveKit: no external agent creation needed — the agent worker
-                # picks up calls automatically via SIP trunk config.
+            if backend in ("livekit", "selfhosted"):
+                # LiveKit / Self-hosted: no external agent creation needed — the
+                # agent worker picks up calls via SIP trunk or direct connection.
                 config.is_active = True
                 config.save(update_fields=["is_active", "updated_at"])
+                cost = "~$0.017" if backend == "livekit" else "~$0.003-0.005"
                 return Response(
                     {
                         **AgentConfigSerializer(config).data,
-                        "backend": "livekit",
-                        "cost_per_min": "~$0.017",
+                        "backend": backend,
+                        "cost_per_min": cost,
                         "message": (
-                            "Voice agent activated (self-hosted). "
-                            "Ensure the LiveKit agent worker is running and "
-                            "SIP trunk is configured with your Telnyx number."
+                            f"Voice agent activated ({backend}). "
+                            "Ensure the agent worker is running and "
+                            "SIP trunk is configured."
                         ),
                     },
                     status=status.HTTP_201_CREATED,
@@ -150,7 +155,7 @@ class AgentActivateView(APIView):
 
 
 class WebCallView(APIView):
-    """Create a browser-based voice call session. Supports both backends."""
+    """Create a browser-based voice call session. Supports all three backends."""
 
     permission_classes = [IsAuthenticated]
 
@@ -166,7 +171,7 @@ class WebCallView(APIView):
 
         backend = _get_backend()
 
-        if backend == "livekit":
+        if backend in ("livekit", "selfhosted"):
             try:
                 from apps.voice_agent.services.livekit_service import LiveKitService
 
@@ -496,6 +501,20 @@ class RetellWebhookView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
+        # Verify webhook signature to prevent spoofed events
+        if settings.RETELL_API_KEY:
+            from apps.voice_agent.services.retell_service import RetellService
+
+            signature = request.headers.get("X-Retell-Signature", "")
+            if not signature or not RetellService.verify_webhook_signature(
+                request.body, signature, settings.RETELL_API_KEY
+            ):
+                logger.warning("retell_webhook_invalid_signature")
+                return Response(
+                    {"error": "Invalid webhook signature."},
+                    status=status.HTTP_401_UNAUTHORIZED,
+                )
+
         event = request.data.get("event", "")
         data = request.data.get("data", request.data)
 
@@ -560,11 +579,11 @@ class RetellWebhookView(APIView):
 
         # Look up the call log for linking
         call_log = None
-        retell_call_id = args.get("call_id", "")
-        if retell_call_id:
+        external_call_id = args.get("call_id", "")
+        if external_call_id:
             from apps.voice_agent.models import CallLog
 
-            call_log = CallLog.objects.filter(retell_call_id=retell_call_id).first()
+            call_log = CallLog.objects.filter(external_call_id=external_call_id).first()
 
         try:
             event = CalendarService.book_appointment(
@@ -606,11 +625,11 @@ class RetellWebhookView(APIView):
                 remind_at = parsed
 
         call_log = None
-        retell_call_id = data.get("call_id", "")
-        if retell_call_id:
+        external_call_id = data.get("call_id", "")
+        if external_call_id:
             from apps.voice_agent.models import CallLog
 
-            call_log = CallLog.objects.filter(retell_call_id=retell_call_id).first()
+            call_log = CallLog.objects.filter(external_call_id=external_call_id).first()
 
         reminder = CallService.create_callback_reminder(
             website_id=website_id,
