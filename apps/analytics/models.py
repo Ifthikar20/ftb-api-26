@@ -211,3 +211,129 @@ class KeywordRankHistory(models.Model):
 
     def __str__(self):
         return f"Rank({self.tracked_keyword.keyword} #{self.rank} on {self.date})"
+
+
+class KeywordScanConfig(TimestampMixin):
+    """
+    Per-website configuration for automatic DOM keyword scanning.
+    Controls how frequently FetchBot re-scans the website's DOM to
+    refresh keyword data and compare against tracked rankings.
+    """
+
+    INTERVAL_HOURLY = 1
+    INTERVAL_6H = 6
+    INTERVAL_DAILY = 24
+    INTERVAL_WEEKLY = 168
+    INTERVAL_CHOICES = [
+        (INTERVAL_HOURLY, "Every hour"),
+        (INTERVAL_6H, "Every 6 hours"),
+        (INTERVAL_DAILY, "Daily"),
+        (INTERVAL_WEEKLY, "Weekly"),
+    ]
+
+    website = models.OneToOneField(
+        "websites.Website", on_delete=models.CASCADE, related_name="keyword_scan_config"
+    )
+    is_auto_scan_enabled = models.BooleanField(
+        default=True, help_text="Automatically re-scan the DOM at the configured interval."
+    )
+    scan_interval_hours = models.IntegerField(
+        default=INTERVAL_DAILY,
+        help_text="How often to re-scan (in hours). Common values: 1, 6, 24, 168.",
+    )
+    scan_depth = models.IntegerField(
+        default=5,
+        help_text="Maximum number of pages to crawl per scan.",
+    )
+    last_scanned_at = models.DateTimeField(null=True, blank=True)
+    next_scan_at = models.DateTimeField(null=True, blank=True)
+    total_scans = models.IntegerField(default=0)
+
+    class Meta:
+        db_table = "analytics_keywordscanconfig"
+
+    def __str__(self):
+        return f"ScanConfig({self.website.name}, every {self.scan_interval_hours}h)"
+
+
+class PlatformContent(TimestampMixin):
+    """
+    A piece of content (post, article, caption) from a social platform.
+    Keywords are extracted from the content and compared against website keywords
+    to surface gaps and opportunities.
+    """
+
+    PLATFORM_LINKEDIN = "linkedin"
+    PLATFORM_X = "x"
+    PLATFORM_FACEBOOK = "facebook"
+    PLATFORM_INSTAGRAM = "instagram"
+    PLATFORM_BLOG = "blog"
+    PLATFORM_OTHER = "other"
+    PLATFORM_CHOICES = [
+        (PLATFORM_LINKEDIN, "LinkedIn"),
+        (PLATFORM_X, "X (Twitter)"),
+        (PLATFORM_FACEBOOK, "Facebook"),
+        (PLATFORM_INSTAGRAM, "Instagram"),
+        (PLATFORM_BLOG, "Blog / Article"),
+        (PLATFORM_OTHER, "Other"),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    website = models.ForeignKey(
+        "websites.Website", on_delete=models.CASCADE, related_name="platform_content"
+    )
+    platform = models.CharField(max_length=20, choices=PLATFORM_CHOICES, default=PLATFORM_LINKEDIN)
+    title = models.CharField(max_length=300, blank=True, help_text="Post title or first line")
+    content = models.TextField(help_text="Full text of the post or article")
+    url = models.URLField(max_length=2000, blank=True, help_text="Link to the original post")
+    published_at = models.DateTimeField(null=True, blank=True)
+
+    # Keywords extracted from this content (populated automatically on save)
+    extracted_keywords = models.JSONField(
+        default=list,
+        help_text='[{"keyword": "...", "density": 1.2, "count": 3}, ...]',
+    )
+
+    # Deduplication
+    platform_post_id = models.CharField(
+        max_length=300, blank=True, db_index=True,
+        help_text="Platform-native post ID to prevent duplicates.",
+    )
+
+    class Meta:
+        db_table = "analytics_platformcontent"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["website", "platform"]),
+        ]
+
+    def __str__(self):
+        return f"PlatformContent({self.get_platform_display()}, {self.title[:60] or self.content[:60]})"
+
+    def extract_keywords_from_content(self) -> list:
+        """
+        Simple keyword extraction from content text.
+        Returns list of {"keyword": str, "count": int, "density": float}.
+        """
+        import re
+        from collections import Counter
+
+        text = f"{self.title} {self.content}".lower()
+        words = re.findall(r"\b[a-z][a-z0-9\-]{2,}\b", text)
+
+        stopwords = {
+            "the", "and", "for", "are", "was", "were", "this", "that", "with",
+            "have", "has", "had", "not", "but", "from", "they", "will", "can",
+            "all", "our", "your", "their", "you", "its", "into", "out", "about",
+            "been", "would", "could", "should", "also", "more", "some", "than",
+            "when", "what", "how", "why", "who", "which", "just", "very", "here",
+            "there", "each", "any", "one", "two", "three", "new", "get", "use",
+        }
+        words = [w for w in words if w not in stopwords and len(w) >= 3]
+
+        word_count = len(words) or 1
+        counts = Counter(words)
+        return [
+            {"keyword": w, "count": c, "density": round(c / word_count * 100, 2)}
+            for w, c in counts.most_common(20)
+        ]

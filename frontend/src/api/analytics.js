@@ -49,4 +49,16 @@ export default {
     keywordScan: (wid) => api.get(`/analytics/${wid}/keywords/scan/`),
     keywordScanTrigger: (wid) => api.post(`/analytics/${wid}/keywords/scan/`),
     seoEmbed: (wid) => api.get(`/analytics/${wid}/seo-embed/`),
+
+    // Scan schedule config
+    getScanConfig: (wid) => api.get(`/analytics/${wid}/keywords/scan-config/`),
+    updateScanConfig: (wid, data) => api.put(`/analytics/${wid}/keywords/scan-config/`, data),
+
+    // Platform content (social posts for keyword comparison)
+    getPlatformContent: (wid, params) => api.get(`/analytics/${wid}/keywords/platform-content/`, { params }),
+    addPlatformContent: (wid, data) => api.post(`/analytics/${wid}/keywords/platform-content/`, data),
+    deletePlatformContent: (wid, pid) => api.delete(`/analytics/${wid}/keywords/platform-content/${pid}/`),
+
+    // Keyword gap comparison
+    keywordComparison: (wid) => api.get(`/analytics/${wid}/keywords/comparison/`),
 }
