@@ -15,7 +15,8 @@ class AgentConfigSerializer(serializers.ModelSerializer):
         model = AgentConfig
         fields = [
             "id", "is_active", "retell_agent_id", "phone_number",
-            "greeting_message", "system_prompt", "business_name",
+            "forwarding_number", "greeting_message", "system_prompt",
+            "business_context", "business_name",
             "business_hours", "appointment_duration_minutes", "timezone",
             "created_at", "updated_at",
         ]

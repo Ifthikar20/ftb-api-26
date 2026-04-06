@@ -25,7 +25,17 @@ class AgentConfig(TimestampMixin):
             "and capture their contact information. Always confirm details before booking."
         )
     )
+    business_context = models.TextField(
+        blank=True,
+        default="",
+        help_text="Markdown knowledge base about the business — services, pricing, FAQs, policies, etc.",
+    )
     business_name = models.CharField(max_length=200, blank=True)
+    forwarding_number = models.CharField(
+        max_length=30,
+        blank=True,
+        help_text="The SIP/Telnyx number that the business forwards their calls to.",
+    )
     business_hours = models.JSONField(
         default=dict,
         help_text="Business hours per day, e.g. {'monday': {'start': '09:00', 'end': '17:00'}}",
