@@ -54,13 +54,10 @@ LOCAL_APPS = [
     "apps.analytics",
     "apps.leads",
 
-    "apps.audits",
-    "apps.strategy",
     "apps.notifications",
     "apps.billing",
     "apps.agents",
     "apps.llm_ranking",
-    "apps.gamification",
     "apps.compliance",
     "apps.voice_agent",
 ]
@@ -371,6 +368,3 @@ SPECTACULAR_SETTINGS = {
     "VERSION": "1.0.0",
     "SERVE_INCLUDE_SCHEMA": False,
 }
-
-# ── GAMIFICATION ──
-GAMIFICATION_ENABLED = env.bool("GAMIFICATION_ENABLED", default=True)

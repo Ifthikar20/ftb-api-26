@@ -70,15 +70,12 @@ const routes = [
     protect('/analytics/:websiteId', 'analytics', () => import('@/pages/AnalyticsPage.vue'), true),
     protect('/leads/:websiteId', 'leads', () => import('@/pages/LeadsPage.vue'), true),
 
-    protect('/audits/:websiteId', 'audits', () => import('@/pages/AuditsPage.vue'), true),
     protect('/heatmap/:websiteId', 'heatmap', () => import('@/pages/HeatmapPage.vue'), true),
     protect('/keywords/:websiteId', 'keywords', () => import('@/pages/KeywordsPage.vue'), true),
-    protect('/strategy/:websiteId', 'strategy', () => import('@/pages/StrategyPage.vue'), true),
     protect('/agents/:websiteId', 'agents', () => import('@/pages/AgentsPage.vue'), true),
     protect('/campaigns/:websiteId', 'campaigns', () => import('@/pages/CampaignsPage.vue'), true),
     protect('/voice-agent/:websiteId', 'voice-agent', () => import('@/pages/VoiceAgentPage.vue'), true),
     protect('/llm-ranking/:websiteId', 'llm-ranking', () => import('@/pages/LLMRankingPage.vue'), true),
-    protect('/rewards', 'rewards', () => import('@/pages/RewardsPage.vue')),
     protect('/integrations', 'integrations', () => import('@/pages/IntegrationsPage.vue')),
     protect('/billing', 'billing', () => import('@/pages/BillingPage.vue')),
     protect('/settings', 'settings', () => import('@/pages/SettingsPage.vue')),
@@ -135,7 +132,7 @@ router.beforeEach(async (to, from, next) => {
     }
 
     // Guard: project-specific pages require an active project
-    const projectPages = ['analytics', 'leads', 'audits', 'heatmap', 'keywords', 'strategy', 'agents', 'campaigns', 'llm-ranking', 'voice-agent', 'website-detail']
+    const projectPages = ['analytics', 'leads', 'heatmap', 'keywords', 'agents', 'campaigns', 'llm-ranking', 'voice-agent', 'website-detail']
     if (projectPages.includes(to.name) && auth.isAuthenticated) {
         const app = useAppStore()
         if (!app.activeWebsite) {
