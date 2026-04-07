@@ -337,3 +337,111 @@ class PlatformContent(TimestampMixin):
             {"keyword": w, "count": c, "density": round(c / word_count * 100, 2)}
             for w, c in counts.most_common(20)
         ]
+
+
+class KeywordAlert(TimestampMixin):
+    """
+    Alert rule that fires when a tracked keyword moves more than `threshold`
+    positions in either direction (or a specific direction).
+    """
+
+    DIRECTION_ANY = "any"
+    DIRECTION_IMPROVED = "improved"
+    DIRECTION_DECLINED = "declined"
+    DIRECTION_CHOICES = [
+        (DIRECTION_ANY, "Any change"),
+        (DIRECTION_IMPROVED, "Improved only"),
+        (DIRECTION_DECLINED, "Declined only"),
+    ]
+
+    METHOD_EMAIL = "email"
+    METHOD_IN_APP = "in_app"
+    METHOD_CHOICES = [
+        (METHOD_EMAIL, "Email"),
+        (METHOD_IN_APP, "In-app"),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    website = models.ForeignKey(
+        "websites.Website", on_delete=models.CASCADE, related_name="keyword_alerts"
+    )
+    tracked_keyword = models.ForeignKey(
+        TrackedKeyword,
+        on_delete=models.CASCADE,
+        related_name="alerts",
+        null=True,
+        blank=True,
+        help_text="Leave blank to apply this alert to all tracked keywords.",
+    )
+    threshold = models.IntegerField(
+        default=3,
+        help_text="Trigger when rank changes by at least this many positions.",
+    )
+    direction = models.CharField(max_length=20, choices=DIRECTION_CHOICES, default=DIRECTION_ANY)
+    notification_method = models.CharField(max_length=20, choices=METHOD_CHOICES, default=METHOD_EMAIL)
+    is_active = models.BooleanField(default=True)
+    last_triggered_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "analytics_keywordalert"
+
+    def __str__(self):
+        kw = self.tracked_keyword.keyword if self.tracked_keyword else "all keywords"
+        return f"Alert({kw}, >{self.threshold} pos, {self.direction})"
+
+
+class KeywordAlertEvent(TimestampMixin):
+    """A single firing of a KeywordAlert."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    alert = models.ForeignKey(KeywordAlert, on_delete=models.CASCADE, related_name="events")
+    keyword = models.CharField(max_length=300)
+    old_rank = models.IntegerField(null=True, blank=True)
+    new_rank = models.IntegerField(null=True, blank=True)
+    change = models.IntegerField(help_text="Positive = improved (rank went up), negative = declined.")
+    triggered_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "analytics_keywordalertevent"
+        ordering = ["-triggered_at"]
+
+    def __str__(self):
+        direction = "up" if self.change > 0 else "down"
+        return f"AlertEvent({self.keyword} moved {abs(self.change)} {direction})"
+
+
+class CompetitorDomain(TimestampMixin):
+    """A competitor domain to track keyword rankings against."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    website = models.ForeignKey(
+        "websites.Website", on_delete=models.CASCADE, related_name="competitors"
+    )
+    domain = models.CharField(max_length=300, help_text="e.g. competitor.com (no https://)")
+    name = models.CharField(max_length=200, blank=True, help_text="Friendly label")
+    is_active = models.BooleanField(default=True)
+    last_checked_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "analytics_competitordomain"
+        unique_together = [("website", "domain")]
+
+    def __str__(self):
+        return f"Competitor({self.domain})"
+
+
+class CompetitorKeywordRank(TimestampMixin):
+    """A snapshot of a competitor's rank for one keyword."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    competitor = models.ForeignKey(CompetitorDomain, on_delete=models.CASCADE, related_name="ranks")
+    keyword = models.CharField(max_length=300, db_index=True)
+    rank = models.IntegerField(null=True, blank=True)
+    checked_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        db_table = "analytics_competitorkeywordrank"
+        ordering = ["-checked_at"]
+
+    def __str__(self):
+        return f"CompRank({self.competitor.domain}, {self.keyword}, #{self.rank})"

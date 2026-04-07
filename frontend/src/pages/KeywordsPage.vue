@@ -334,6 +334,8 @@
                 </select>
                 <button class="btn btn-secondary btn-sm" @click="showAddPostModal = true">+ Add Post</button>
                 <button class="btn btn-secondary btn-sm" @click="loadComparison" :disabled="comparisonLoading">{{ comparisonLoading ? 'Loading...' : 'Compare' }}</button>
+                <button v-if="comparison" class="btn btn-secondary btn-sm" @click="exportComparison('csv')">CSV</button>
+                <button v-if="comparison" class="btn btn-secondary btn-sm" @click="exportComparison('html')">Report</button>
               </div>
             </div>
 
@@ -408,6 +410,170 @@
           </div>
         </div>
 
+        <!-- Keyword Alerts -->
+        <div v-if="cardId === 'keyword_alerts'" class="card feature-card">
+          <div class="fc-head">
+            <div class="fc-icon"><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2a5 5 0 015 5v2l1 2H2l1-2V7a5 5 0 015-5z"/><path d="M6.5 13.5a1.5 1.5 0 003 0"/></svg></div>
+            <div class="fc-title-wrap"><h3 class="fc-title">Keyword Alerts</h3><p class="fc-sub">Get notified on significant rank changes</p></div>
+            <button class="fc-remove" @click="removeCard(cardId)" title="Remove">x</button>
+          </div>
+          <div class="fc-body">
+            <!-- Recent events -->
+            <div v-if="alertEvents.length" class="alert-events">
+              <div class="al-events-label">Recent Triggers</div>
+              <div v-for="ev in alertEvents.slice(0, 4)" :key="ev.id" class="al-event-row">
+                <span class="al-kw">{{ ev.keyword }}</span>
+                <span class="al-change" :class="ev.direction === 'improved' ? 'al-up' : 'al-down'">
+                  {{ ev.direction === 'improved' ? '+' : '' }}{{ ev.direction === 'improved' ? ev.change : -ev.change }} pos
+                </span>
+                <span class="al-date">{{ formatDate(ev.triggered_at) }}</span>
+              </div>
+            </div>
+
+            <!-- Alert rules list -->
+            <div v-if="alerts.length" class="alerts-list" style="margin-top:10px">
+              <div class="al-events-label">Active Rules</div>
+              <div v-for="al in alerts" :key="al.id" class="al-rule-row">
+                <div class="al-rule-info">
+                  <span class="al-kw">{{ al.keyword }}</span>
+                  <span class="al-meta">moves &gt;{{ al.threshold }} pos · {{ al.direction }} · {{ al.notification_method }}</span>
+                </div>
+                <div class="al-rule-actions">
+                  <button class="toggle-btn" :class="{ 'toggle-on': al.is_active }" @click="toggleAlert(al)" style="font-size:9px;padding:2px 8px">{{ al.is_active ? 'On' : 'Off' }}</button>
+                  <button class="btn-icon-danger" @click="deleteAlert(al.id)">x</button>
+                </div>
+              </div>
+            </div>
+            <div v-if="!alerts.length && !alertEvents.length" class="fc-empty">No alerts configured yet.</div>
+
+            <button class="btn btn-secondary btn-sm" style="margin-top:10px" @click="showAddAlertModal = true">+ Add Alert</button>
+          </div>
+        </div>
+
+        <!-- Competitor Tracking -->
+        <div v-if="cardId === 'competitor_tracking'" class="card feature-card">
+          <div class="fc-head">
+            <div class="fc-icon"><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="5" cy="6" r="3"/><circle cx="11" cy="6" r="3"/><path d="M5 9v4M11 9v4M8 10v3"/></svg></div>
+            <div class="fc-title-wrap"><h3 class="fc-title">Competitor Tracking</h3><p class="fc-sub">Compare your rankings against competitors</p></div>
+            <button class="fc-remove" @click="removeCard(cardId)" title="Remove">x</button>
+          </div>
+          <div class="fc-body">
+            <!-- Competitor list -->
+            <div class="comp-domain-list">
+              <div v-for="c in competitors" :key="c.id" class="comp-domain-row">
+                <div class="comp-domain-info">
+                  <span class="comp-domain-name">{{ c.name || c.domain }}</span>
+                  <span class="comp-domain-url">{{ c.domain }}</span>
+                </div>
+                <div class="comp-domain-actions">
+                  <button class="btn btn-secondary btn-sm" @click="refreshCompetitor(c.id)" :disabled="competitorLoading === c.id">
+                    {{ competitorLoading === c.id ? 'Checking...' : 'Refresh' }}
+                  </button>
+                  <button class="btn-icon-danger" @click="deleteCompetitor(c.id)">x</button>
+                </div>
+              </div>
+              <div v-if="!competitors.length" class="fc-empty">No competitors added yet.</div>
+            </div>
+            <button class="btn btn-secondary btn-sm" style="margin-top:8px" @click="showAddCompetitorModal = true">+ Add Competitor</button>
+
+            <!-- Overlap table -->
+            <div v-if="competitorOverlap" class="comp-overlap-section">
+              <div class="al-events-label" style="margin-top:14px">Keyword Rankings Side-by-Side</div>
+              <div class="table-responsive">
+                <table class="data-table data-table-sm">
+                  <thead>
+                    <tr>
+                      <th>Keyword</th>
+                      <th class="text-center">Us</th>
+                      <th v-for="c in competitorOverlap.competitors" :key="c.id" class="text-center">{{ c.name }}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="row in competitorOverlap.keywords" :key="row.keyword">
+                      <td>{{ row.keyword }}</td>
+                      <td class="text-center"><span class="rank-badge" :class="rankClass(row.our_rank)">{{ row.our_rank || '--' }}</span></td>
+                      <td v-for="c in row.competitors" :key="c.id" class="text-center">
+                        <span class="rank-badge" :class="rankClass(c.rank)">{{ c.rank || '--' }}</span>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <button class="btn btn-secondary btn-sm" style="margin-top:6px" @click="loadCompetitorOverlap">Refresh Table</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Historical Trend Charts -->
+        <div v-if="cardId === 'history_charts'" class="card feature-card" style="grid-column: span 2">
+          <div class="fc-head">
+            <div class="fc-icon"><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="2,12 6,7 10,9 14,4"/></svg></div>
+            <div class="fc-title-wrap"><h3 class="fc-title">Historical Rank Charts</h3><p class="fc-sub">Visualize keyword position over time</p></div>
+            <button class="fc-remove" @click="removeCard(cardId)" title="Remove">x</button>
+          </div>
+          <div class="fc-body">
+            <div v-if="!keywords.length" class="fc-empty">No tracked keywords. Track keywords in Position Tracking and scan your site to populate rank history.</div>
+            <template v-else>
+              <div class="chart-controls">
+                <div class="chart-kw-picker">
+                  <label class="sc-label">Keywords</label>
+                  <div class="kw-chip-row">
+                    <button
+                      v-for="kw in keywords.slice(0, 10)"
+                      :key="kw.id"
+                      class="kw-chip-btn"
+                      :class="{ 'kc-active': selectedChartKws.includes(kw.id) }"
+                      @click="toggleChartKw(kw.id)"
+                    >{{ kw.keyword }}</button>
+                  </div>
+                </div>
+              </div>
+              <div v-if="chartLoading" class="fc-empty">Loading chart data...</div>
+              <div v-else-if="chartDatasets.length" class="chart-wrapper">
+                <svg class="rank-chart" :viewBox="`0 0 ${chartW} ${chartH}`" preserveAspectRatio="none">
+                  <!-- Y axis grid lines + labels -->
+                  <g v-for="gridY in chartGridY" :key="gridY.rank">
+                    <line :x1="chartPadL" :y1="gridY.y" :x2="chartW - chartPadR" :y2="gridY.y" stroke="var(--border-color)" stroke-width="0.5"/>
+                    <text :x="chartPadL - 4" :y="gridY.y + 4" text-anchor="end" font-size="9" fill="var(--text-muted)">#{{ gridY.rank }}</text>
+                  </g>
+                  <!-- X axis labels (dates) -->
+                  <g v-for="(label, i) in chartXLabels" :key="i">
+                    <text :x="label.x" :y="chartH - chartPadB + 12" text-anchor="middle" font-size="8" fill="var(--text-muted)">{{ label.text }}</text>
+                  </g>
+                  <!-- Lines per keyword -->
+                  <g v-for="(ds, di) in chartDatasets" :key="ds.id">
+                    <polyline
+                      :points="ds.points"
+                      fill="none"
+                      :stroke="chartColors[di % chartColors.length]"
+                      stroke-width="2"
+                      stroke-linejoin="round"
+                      stroke-linecap="round"
+                    />
+                    <!-- Dots -->
+                    <circle
+                      v-for="(pt, pi) in ds.dots"
+                      :key="pi"
+                      :cx="pt.x"
+                      :cy="pt.y"
+                      r="3"
+                      :fill="chartColors[di % chartColors.length]"
+                    />
+                  </g>
+                </svg>
+                <!-- Legend -->
+                <div class="chart-legend">
+                  <div v-for="(ds, di) in chartDatasets" :key="ds.id" class="cl-item">
+                    <span class="cl-dot" :style="{ background: chartColors[di % chartColors.length] }"></span>
+                    <span class="cl-label">{{ ds.keyword }}</span>
+                  </div>
+                </div>
+              </div>
+              <div v-else class="fc-empty">Select keywords above and make sure they have rank history. Run a scan to populate data.</div>
+            </template>
+          </div>
+        </div>
+
       </template>
     </div>
 
@@ -429,6 +595,63 @@
             </div>
           </div>
           <div class="modal-actions"><button class="btn btn-primary" @click="showCardPicker = false">Done</button></div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- Add Alert Modal -->
+    <Teleport to="body">
+      <div v-if="showAddAlertModal" class="modal-overlay" @click.self="showAddAlertModal = false">
+        <div class="modal-card">
+          <h3 class="modal-title">Add Keyword Alert</h3>
+          <div class="modal-body">
+            <label class="form-label">Keyword</label>
+            <select v-model="newAlert.tracked_keyword_id" class="form-input">
+              <option value="">All tracked keywords</option>
+              <option v-for="kw in keywords" :key="kw.id" :value="kw.id">{{ kw.keyword }}</option>
+            </select>
+            <label class="form-label" style="margin-top:12px">Trigger when rank moves more than</label>
+            <div style="display:flex;align-items:center;gap:8px">
+              <input type="number" v-model.number="newAlert.threshold" min="1" max="50" class="form-input" style="width:80px" />
+              <span class="text-sm text-muted">positions</span>
+            </div>
+            <label class="form-label" style="margin-top:12px">Direction</label>
+            <select v-model="newAlert.direction" class="form-input">
+              <option value="any">Any change</option>
+              <option value="improved">Improved only</option>
+              <option value="declined">Declined only</option>
+            </select>
+            <label class="form-label" style="margin-top:12px">Notification via</label>
+            <select v-model="newAlert.notification_method" class="form-input">
+              <option value="email">Email</option>
+              <option value="in_app">In-app</option>
+            </select>
+            <p v-if="addAlertError" class="text-danger text-sm" style="margin-top:8px">{{ addAlertError }}</p>
+          </div>
+          <div class="modal-actions">
+            <button class="btn btn-secondary" @click="showAddAlertModal = false">Cancel</button>
+            <button class="btn btn-primary" @click="addAlert" :disabled="addingAlert">{{ addingAlert ? 'Saving...' : 'Create Alert' }}</button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- Add Competitor Modal -->
+    <Teleport to="body">
+      <div v-if="showAddCompetitorModal" class="modal-overlay" @click.self="showAddCompetitorModal = false">
+        <div class="modal-card">
+          <h3 class="modal-title">Add Competitor</h3>
+          <div class="modal-body">
+            <label class="form-label">Domain</label>
+            <input v-model="newCompetitor.domain" class="form-input" placeholder="e.g. competitor.com" autofocus />
+            <label class="form-label" style="margin-top:12px">Label (optional)</label>
+            <input v-model="newCompetitor.name" class="form-input" placeholder="e.g. Main rival" />
+            <p v-if="addCompetitorError" class="text-danger text-sm" style="margin-top:8px">{{ addCompetitorError }}</p>
+          </div>
+          <div class="modal-actions">
+            <button class="btn btn-secondary" @click="showAddCompetitorModal = false">Cancel</button>
+            <button class="btn btn-primary" @click="addCompetitor" :disabled="addingCompetitor">{{ addingCompetitor ? 'Adding...' : 'Add' }}</button>
+          </div>
         </div>
       </div>
     </Teleport>
@@ -527,6 +750,58 @@ const filteredPosts = computed(() => {
   return platformPosts.value.filter(p => p.platform === pcFilter.value)
 })
 
+// Alerts
+const alerts = ref([])
+const alertEvents = ref([])
+const showAddAlertModal = ref(false)
+const addingAlert = ref(false)
+const addAlertError = ref('')
+const newAlert = ref({ tracked_keyword_id: '', threshold: 3, direction: 'any', notification_method: 'email' })
+
+// Competitors
+const competitors = ref([])
+const competitorOverlap = ref(null)
+const competitorLoading = ref(null)
+const showAddCompetitorModal = ref(false)
+const addingCompetitor = ref(false)
+const addCompetitorError = ref('')
+const newCompetitor = ref({ domain: '', name: '' })
+
+// History chart
+const selectedChartKws = ref([])
+const chartLoading = ref(false)
+const chartDatasets = ref([])
+const chartW = 560
+const chartH = 220
+const chartPadL = 36
+const chartPadR = 10
+const chartPadB = 20
+const chartPadT = 12
+const chartColors = ['#6366f1', '#22c55e', '#f59e0b', '#ef4444', '#06b6d4', '#a855f7', '#ec4899', '#14b8a6']
+
+// Computed chart grid / axes
+const chartGridY = computed(() => {
+  const ranks = [1, 5, 10, 20, 50]
+  const maxRank = 50
+  return ranks.map(r => ({
+    rank: r,
+    y: chartPadT + ((r - 1) / (maxRank - 1)) * (chartH - chartPadT - chartPadB),
+  }))
+})
+const chartXLabels = computed(() => {
+  if (!chartDatasets.value.length) return []
+  const dates = chartDatasets.value[0]?.dates || []
+  if (!dates.length) return []
+  const step = Math.max(1, Math.floor(dates.length / 5))
+  return dates.reduce((acc, d, i) => {
+    if (i % step === 0 || i === dates.length - 1) {
+      const x = chartPadL + (i / (dates.length - 1 || 1)) * (chartW - chartPadL - chartPadR)
+      acc.push({ x, text: d.slice(5) }) // MM-DD
+    }
+    return acc
+  }, [])
+})
+
 // Card system
 const STORAGE_KEY = 'ftb_kw_cards'
 const availableCards = [
@@ -542,6 +817,9 @@ const availableCards = [
   { id: 'pages_scanned', name: 'Pages Scanned', desc: 'Per-page keyword breakdown', icon: 'PS' },
   { id: 'scan_schedule', name: 'DOM Scan Schedule', desc: 'Configure automatic keyword re-scanning intervals', icon: 'SC' },
   { id: 'platform_comparison', name: 'Platform Comparison', desc: 'Compare site keywords vs LinkedIn, X, and other posts', icon: 'PC' },
+  { id: 'keyword_alerts', name: 'Keyword Alerts', desc: 'Get notified when keywords move more than N positions', icon: 'AL' },
+  { id: 'competitor_tracking', name: 'Competitor Tracking', desc: 'Track how competitors rank for your keywords', icon: 'CT' },
+  { id: 'history_charts', name: 'Historical Charts', desc: 'Visualize keyword rank trends over time', icon: 'HC' },
 ]
 
 const defaultCards = ['site_audit', 'keyword_research', 'position_tracking', 'ai_analysis']
@@ -617,6 +895,109 @@ async function addKeyword() {
   finally { adding.value = false }
 }
 
+// Alert functions
+async function loadAlerts() {
+  try {
+    const [ra, re] = await Promise.all([
+      analyticsApi.getAlerts(props.websiteId),
+      analyticsApi.getAlertEvents(props.websiteId),
+    ])
+    alerts.value = ra.data || []
+    alertEvents.value = re.data || []
+  } catch (e) {}
+}
+async function addAlert() {
+  addingAlert.value = true; addAlertError.value = ''
+  try {
+    const payload = { ...newAlert.value }
+    if (!payload.tracked_keyword_id) delete payload.tracked_keyword_id
+    await analyticsApi.createAlert(props.websiteId, payload)
+    await loadAlerts()
+    showAddAlertModal.value = false
+    newAlert.value = { tracked_keyword_id: '', threshold: 3, direction: 'any', notification_method: 'email' }
+  } catch (e) { addAlertError.value = e?.response?.data?.error || 'Failed to create alert' }
+  finally { addingAlert.value = false }
+}
+async function toggleAlert(al) {
+  try { await analyticsApi.updateAlert(props.websiteId, al.id, { is_active: !al.is_active }); await loadAlerts() } catch (e) {}
+}
+async function deleteAlert(aid) {
+  try { await analyticsApi.deleteAlert(props.websiteId, aid); await loadAlerts() } catch (e) {}
+}
+
+// Competitor functions
+async function loadCompetitors() {
+  try { const res = await analyticsApi.getCompetitors(props.websiteId); competitors.value = res.data || [] } catch (e) {}
+}
+async function addCompetitor() {
+  addingCompetitor.value = true; addCompetitorError.value = ''
+  try {
+    await analyticsApi.addCompetitor(props.websiteId, newCompetitor.value)
+    await loadCompetitors()
+    showAddCompetitorModal.value = false
+    newCompetitor.value = { domain: '', name: '' }
+  } catch (e) { addCompetitorError.value = e?.response?.data?.error || 'Failed to add competitor' }
+  finally { addingCompetitor.value = false }
+}
+async function deleteCompetitor(cid) {
+  try { await analyticsApi.deleteCompetitor(props.websiteId, cid); await loadCompetitors(); competitorOverlap.value = null } catch (e) {}
+}
+async function refreshCompetitor(cid) {
+  competitorLoading.value = cid
+  try { await analyticsApi.refreshCompetitor(props.websiteId, cid) } catch (e) {}
+  finally { competitorLoading.value = null }
+}
+async function loadCompetitorOverlap() {
+  try { const res = await analyticsApi.getCompetitorOverlap(props.websiteId); competitorOverlap.value = res.data } catch (e) {}
+}
+
+// Export comparison
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a'); a.href = url; a.download = filename; a.click()
+  setTimeout(() => URL.revokeObjectURL(url), 5000)
+}
+async function exportComparison(fmt) {
+  try {
+    const res = await analyticsApi.exportComparison(props.websiteId, fmt)
+    downloadBlob(res.data, `keyword-gap-report.${fmt}`)
+  } catch (e) {}
+}
+
+// History chart functions
+async function toggleChartKw(kwId) {
+  const idx = selectedChartKws.value.indexOf(kwId)
+  if (idx >= 0) selectedChartKws.value.splice(idx, 1)
+  else if (selectedChartKws.value.length < 5) selectedChartKws.value.push(kwId)
+  await buildChartDatasets()
+}
+async function buildChartDatasets() {
+  if (!selectedChartKws.value.length) { chartDatasets.value = []; return }
+  chartLoading.value = true
+  try {
+    const results = await Promise.all(
+      selectedChartKws.value.map(id => analyticsApi.keywordHistory(props.websiteId, id))
+    )
+    const maxRank = 50
+    chartDatasets.value = results.map((res, i) => {
+      const kwId = selectedChartKws.value[i]
+      const kw = keywords.value.find(k => k.id === kwId)
+      const history = (res.data?.history || []).slice(-30) // last 30 days
+      const dates = history.map(h => h.date)
+      const n = dates.length
+      const dots = history.map((h, j) => {
+        const rank = Math.min(h.rank || maxRank, maxRank)
+        const x = chartPadL + (n > 1 ? (j / (n - 1)) : 0.5) * (chartW - chartPadL - chartPadR)
+        const y = chartPadT + ((rank - 1) / (maxRank - 1)) * (chartH - chartPadT - chartPadB)
+        return { x, y, rank: h.rank }
+      })
+      const points = dots.map(d => `${d.x},${d.y}`).join(' ')
+      return { id: kwId, keyword: kw?.keyword || kwId, dates, dots, points }
+    })
+  } catch (e) { chartDatasets.value = [] }
+  finally { chartLoading.value = false }
+}
+
 // Scan config functions
 async function loadScanConfig() {
   try { const res = await analyticsApi.getScanConfig(props.websiteId); scanConfig.value = res.data } catch (e) {}
@@ -667,7 +1048,7 @@ onMounted(async () => {
   try { const res = await analyticsApi.keywordScan(props.websiteId); const d = res.data?.data || res.data || {}; if (d.score != null) scanData.value = d } catch (e) {}
   // Fetch embed code
   try { const res = await analyticsApi.seoEmbed(props.websiteId); embedCode.value = res.data?.data?.embed_code || '' } catch (e) {}
-  await Promise.all([loadScanConfig(), loadPlatformPosts()])
+  await Promise.all([loadScanConfig(), loadPlatformPosts(), loadAlerts(), loadCompetitors()])
   loading.value = false
 })
 
@@ -897,7 +1278,50 @@ function copyEmbed() {
 .cr-gaps { background: rgba(245,158,11,0.1); color: #d97706; }
 .cr-opp { background: rgba(34,197,94,0.1); color: #16a34a; }
 
+/* Keyword Alerts */
+.alert-events { display: flex; flex-direction: column; gap: 4px; }
+.al-events-label { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 4px; }
+.al-event-row { display: flex; align-items: center; gap: 8px; padding: 5px 8px; background: var(--bg-surface); border-radius: var(--radius-md); font-size: 11px; }
+.al-kw { font-weight: 700; color: var(--text-primary); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.al-change { font-size: 11px; font-weight: 700; padding: 1px 6px; border-radius: var(--radius-full); flex-shrink: 0; }
+.al-up { background: rgba(34,197,94,0.12); color: #16a34a; }
+.al-down { background: rgba(239,68,68,0.1); color: #dc2626; }
+.al-date { font-size: 9px; color: var(--text-muted); flex-shrink: 0; }
+.alerts-list { display: flex; flex-direction: column; gap: 4px; }
+.al-rule-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 8px; background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-md); }
+.al-rule-info { flex: 1; min-width: 0; }
+.al-meta { font-size: 9px; color: var(--text-muted); display: block; margin-top: 1px; }
+.al-rule-actions { display: flex; align-items: center; gap: 4px; }
+
+/* Competitor Tracking */
+.comp-domain-list { display: flex; flex-direction: column; gap: 6px; }
+.comp-domain-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-md); }
+.comp-domain-info { flex: 1; min-width: 0; }
+.comp-domain-name { font-size: 12px; font-weight: 700; color: var(--text-primary); display: block; }
+.comp-domain-url { font-size: 10px; color: var(--text-muted); }
+.comp-domain-actions { display: flex; align-items: center; gap: 4px; }
+.comp-overlap-section { margin-top: 4px; }
+
+/* History Charts */
+.chart-controls { margin-bottom: 12px; }
+.kw-chip-row { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.kw-chip-btn { padding: 3px 10px; border-radius: var(--radius-full); border: 1px solid var(--border-color); font-size: 10px; font-weight: 600; cursor: pointer; background: var(--bg-surface); color: var(--text-muted); transition: all 0.15s; }
+.kc-active { border-color: var(--brand-accent); background: rgba(99,102,241,0.1); color: var(--brand-accent); }
+.chart-wrapper { display: flex; flex-direction: column; gap: 8px; }
+.rank-chart { width: 100%; height: 220px; display: block; overflow: visible; }
+.chart-legend { display: flex; flex-wrap: wrap; gap: 10px; }
+.cl-item { display: flex; align-items: center; gap: 5px; font-size: 10px; color: var(--text-secondary); }
+.cl-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.cl-label { font-weight: 600; }
+
 /* Responsive */
-@media (max-width: 900px) { .cards-grid { grid-template-columns: 1fr; } .split-screen { grid-template-columns: 1fr; } .ai-engine-grid { grid-template-columns: 1fr; } .alt-grid { grid-template-columns: 1fr; } .comp-grid { grid-template-columns: 1fr; } }
+@media (max-width: 900px) {
+  .cards-grid { grid-template-columns: 1fr; }
+  .split-screen { grid-template-columns: 1fr; }
+  .ai-engine-grid { grid-template-columns: 1fr; }
+  .alt-grid { grid-template-columns: 1fr; }
+  .comp-grid { grid-template-columns: 1fr; }
+  [style*="grid-column: span 2"] { grid-column: span 1 !important; }
+}
 @media (max-width: 600px) { .page-header { flex-direction: column; align-items: flex-start; gap: 10px; } .fc-stat-row { flex-direction: column; } }
 </style>
