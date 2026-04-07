@@ -411,42 +411,151 @@
         </div>
 
         <!-- Keyword Alerts -->
-        <div v-if="cardId === 'keyword_alerts'" class="card feature-card">
+        <div v-if="cardId === 'keyword_alerts'" class="card feature-card kw-alert-card">
           <div class="fc-head">
-            <div class="fc-icon"><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2a5 5 0 015 5v2l1 2H2l1-2V7a5 5 0 015-5z"/><path d="M6.5 13.5a1.5 1.5 0 003 0"/></svg></div>
-            <div class="fc-title-wrap"><h3 class="fc-title">Keyword Alerts</h3><p class="fc-sub">Get notified on significant rank changes</p></div>
-            <button class="fc-remove" @click="removeCard(cardId)" title="Remove">x</button>
+            <div class="fc-icon alert-bell-icon">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2a5 5 0 015 5v2l1 2H2l1-2V7a5 5 0 015-5z"/><path d="M6.5 13.5a1.5 1.5 0 003 0"/></svg>
+              <span v-if="alertEvents.length" class="bell-dot"></span>
+            </div>
+            <div class="fc-title-wrap">
+              <h3 class="fc-title">Keyword Alerts</h3>
+              <p class="fc-sub">Get notified when rankings move significantly</p>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px">
+              <button class="al-add-btn" @click="showInlineAlertForm = !showInlineAlertForm" :class="{ 'al-add-active': showInlineAlertForm }">
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg>
+                New rule
+              </button>
+              <button class="fc-remove" @click="removeCard(cardId)" title="Remove">×</button>
+            </div>
           </div>
+
+          <!-- Inline Create Form (slide-in) -->
+          <transition name="alert-form-slide">
+            <div v-if="showInlineAlertForm" class="al-inline-form">
+              <div class="al-form-title">Create alert rule</div>
+              <div class="al-form-grid">
+                <div class="al-field">
+                  <label class="al-label">Keyword</label>
+                  <select v-model="newAlert.tracked_keyword_id" class="al-select">
+                    <option value="">All tracked keywords</option>
+                    <option v-for="kw in keywords" :key="kw.id" :value="kw.id">{{ kw.keyword }}</option>
+                  </select>
+                </div>
+                <div class="al-field al-field-sm">
+                  <label class="al-label">Threshold</label>
+                  <div class="al-threshold-row">
+                    <button class="al-step-btn" @click="newAlert.threshold = Math.max(1, newAlert.threshold - 1)">−</button>
+                    <span class="al-threshold-val">{{ newAlert.threshold }}</span>
+                    <button class="al-step-btn" @click="newAlert.threshold = Math.min(50, newAlert.threshold + 1)">+</button>
+                    <span class="al-threshold-unit">positions</span>
+                  </div>
+                </div>
+              </div>
+              <div class="al-form-row2">
+                <div class="al-pill-group">
+                  <span class="al-pill-label">Direction</span>
+                  <button v-for="opt in [{ v: 'any', l: 'Any' }, { v: 'improved', l: 'Improved' }, { v: 'declined', l: 'Declined' }]"
+                    :key="opt.v"
+                    class="al-pill" :class="{ 'al-pill-active': newAlert.direction === opt.v }"
+                    @click="newAlert.direction = opt.v">{{ opt.l }}</button>
+                </div>
+                <div class="al-pill-group">
+                  <span class="al-pill-label">Notify via</span>
+                  <button v-for="opt in [{ v: 'email', l: 'Email' }, { v: 'in_app', l: 'In-app' }]"
+                    :key="opt.v"
+                    class="al-pill" :class="{ 'al-pill-active': newAlert.notification_method === opt.v }"
+                    @click="newAlert.notification_method = opt.v">{{ opt.l }}</button>
+                </div>
+              </div>
+              <div v-if="addAlertError" class="al-form-error">{{ addAlertError }}</div>
+              <div class="al-form-actions">
+                <button class="al-cancel-btn" @click="showInlineAlertForm = false; addAlertError = ''">Cancel</button>
+                <button class="al-save-btn" @click="addAlert" :disabled="addingAlert">
+                  <svg v-if="addingAlert" class="al-spinner" width="12" height="12" viewBox="0 0 12 12"><circle cx="6" cy="6" r="4" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="16" stroke-dashoffset="6" opacity="0.4"/></svg>
+                  {{ addingAlert ? 'Saving…' : 'Create rule' }}
+                </button>
+              </div>
+            </div>
+          </transition>
+
           <div class="fc-body">
-            <!-- Recent events -->
-            <div v-if="alertEvents.length" class="alert-events">
-              <div class="al-events-label">Recent Triggers</div>
-              <div v-for="ev in alertEvents.slice(0, 4)" :key="ev.id" class="al-event-row">
-                <span class="al-kw">{{ ev.keyword }}</span>
-                <span class="al-change" :class="ev.direction === 'improved' ? 'al-up' : 'al-down'">
-                  {{ ev.direction === 'improved' ? '+' : '' }}{{ ev.direction === 'improved' ? ev.change : -ev.change }} pos
-                </span>
-                <span class="al-date">{{ formatDate(ev.triggered_at) }}</span>
+
+            <!-- Active Rules -->
+            <div v-if="alerts.length" class="al-rules-section">
+              <div class="al-section-label">
+                <span>Active rules</span>
+                <span class="al-count-badge">{{ alerts.filter(a => a.is_active).length }}</span>
+              </div>
+              <div class="al-rules-list">
+                <div v-for="al in alerts" :key="al.id" class="al-rule-item" :class="{ 'al-rule-muted': !al.is_active }">
+                  <div class="al-rule-left">
+                    <div class="al-rule-kw">
+                      <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 1a3.5 3.5 0 013.5 3.5v1L10 7H0l1.5-2.5V4.5A3.5 3.5 0 015 1z"/><path d="M3.5 8.5a1.5 1.5 0 003 0"/></svg>
+                      {{ al.keyword }}
+                    </div>
+                    <div class="al-rule-meta">
+                      <span class="al-badge al-badge-threshold">{{ '>' }}{{ al.threshold }} pos</span>
+                      <span class="al-badge" :class="{
+                        'al-badge-any': al.direction === 'any',
+                        'al-badge-up': al.direction === 'improved',
+                        'al-badge-down': al.direction === 'declined'
+                      }">{{ al.direction }}</span>
+                      <span class="al-badge al-badge-method">
+                        <svg v-if="al.notification_method === 'email'" width="9" height="9" viewBox="0 0 9 9" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="0.5" y="1.5" width="8" height="6" rx="1"/><path d="M0.5 2.5l4 3 4-3"/></svg>
+                        <svg v-else width="9" height="9" viewBox="0 0 9 9" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4.5 1a3 3 0 013 3v1L9 7H0l1.5-2V4a3 3 0 013-3z"/></svg>
+                        {{ al.notification_method === 'email' ? 'Email' : 'In-app' }}
+                      </span>
+                    </div>
+                  </div>
+                  <div class="al-rule-right">
+                    <button class="al-toggle" :class="{ 'al-toggle-on': al.is_active }" @click="toggleAlert(al)" :title="al.is_active ? 'Disable' : 'Enable'">
+                      <span class="al-toggle-knob"></span>
+                    </button>
+                    <button class="al-delete-btn" @click="deleteAlert(al.id)" title="Delete rule">
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="2" y1="2" x2="10" y2="10"/><line x1="10" y1="2" x2="2" y2="10"/></svg>
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
 
-            <!-- Alert rules list -->
-            <div v-if="alerts.length" class="alerts-list" style="margin-top:10px">
-              <div class="al-events-label">Active Rules</div>
-              <div v-for="al in alerts" :key="al.id" class="al-rule-row">
-                <div class="al-rule-info">
-                  <span class="al-kw">{{ al.keyword }}</span>
-                  <span class="al-meta">moves &gt;{{ al.threshold }} pos · {{ al.direction }} · {{ al.notification_method }}</span>
-                </div>
-                <div class="al-rule-actions">
-                  <button class="toggle-btn" :class="{ 'toggle-on': al.is_active }" @click="toggleAlert(al)" style="font-size:9px;padding:2px 8px">{{ al.is_active ? 'On' : 'Off' }}</button>
-                  <button class="btn-icon-danger" @click="deleteAlert(al.id)">x</button>
+            <!-- Recent Trigger Events -->
+            <div v-if="alertEvents.length" class="al-events-section">
+              <div class="al-section-label" style="margin-top:14px">
+                <span>Recent triggers</span>
+                <span class="al-count-badge al-count-orange">{{ alertEvents.length }}</span>
+              </div>
+              <div class="al-events-list">
+                <div v-for="ev in alertEvents.slice(0, 6)" :key="ev.id" class="al-event-item">
+                  <div class="al-event-icon" :class="ev.direction === 'improved' ? 'al-ei-up' : 'al-ei-down'">
+                    <svg v-if="ev.direction === 'improved'" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2"><polyline points="2,7 5,3 8,7"/></svg>
+                    <svg v-else width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2"><polyline points="2,3 5,7 8,3"/></svg>
+                  </div>
+                  <div class="al-event-body">
+                    <span class="al-event-kw">{{ ev.keyword }}</span>
+                    <span class="al-event-detail">
+                      {{ ev.direction === 'improved' ? 'climbed' : 'dropped' }}
+                      <strong>{{ Math.abs(ev.change) }} positions</strong>
+                      <span class="al-rank-change">
+                        #{{ ev.old_rank }} → #{{ ev.new_rank }}
+                      </span>
+                    </span>
+                  </div>
+                  <span class="al-event-time">{{ formatDate(ev.triggered_at) }}</span>
                 </div>
               </div>
             </div>
-            <div v-if="!alerts.length && !alertEvents.length" class="fc-empty">No alerts configured yet.</div>
 
-            <button class="btn btn-secondary btn-sm" style="margin-top:10px" @click="showAddAlertModal = true">+ Add Alert</button>
+            <!-- Empty state -->
+            <div v-if="!alerts.length && !alertEvents.length" class="al-empty-state">
+              <div class="al-empty-icon">
+                <svg width="28" height="28" viewBox="0 0 28 28" fill="none" stroke="var(--text-muted)" stroke-width="1.2"><path d="M14 4a8 8 0 018 8v3l2 3H4l2-3v-3a8 8 0 018-8z"/><path d="M11 22a3 3 0 006 0"/></svg>
+              </div>
+              <p class="al-empty-text">No alert rules yet.</p>
+              <p class="al-empty-sub">Click <strong>New rule</strong> above to get notified when keywords move.</p>
+            </div>
+
           </div>
         </div>
 
@@ -599,43 +708,6 @@
       </div>
     </Teleport>
 
-    <!-- Add Alert Modal -->
-    <Teleport to="body">
-      <div v-if="showAddAlertModal" class="modal-overlay" @click.self="showAddAlertModal = false">
-        <div class="modal-card">
-          <h3 class="modal-title">Add Keyword Alert</h3>
-          <div class="modal-body">
-            <label class="form-label">Keyword</label>
-            <select v-model="newAlert.tracked_keyword_id" class="form-input">
-              <option value="">All tracked keywords</option>
-              <option v-for="kw in keywords" :key="kw.id" :value="kw.id">{{ kw.keyword }}</option>
-            </select>
-            <label class="form-label" style="margin-top:12px">Trigger when rank moves more than</label>
-            <div style="display:flex;align-items:center;gap:8px">
-              <input type="number" v-model.number="newAlert.threshold" min="1" max="50" class="form-input" style="width:80px" />
-              <span class="text-sm text-muted">positions</span>
-            </div>
-            <label class="form-label" style="margin-top:12px">Direction</label>
-            <select v-model="newAlert.direction" class="form-input">
-              <option value="any">Any change</option>
-              <option value="improved">Improved only</option>
-              <option value="declined">Declined only</option>
-            </select>
-            <label class="form-label" style="margin-top:12px">Notification via</label>
-            <select v-model="newAlert.notification_method" class="form-input">
-              <option value="email">Email</option>
-              <option value="in_app">In-app</option>
-            </select>
-            <p v-if="addAlertError" class="text-danger text-sm" style="margin-top:8px">{{ addAlertError }}</p>
-          </div>
-          <div class="modal-actions">
-            <button class="btn btn-secondary" @click="showAddAlertModal = false">Cancel</button>
-            <button class="btn btn-primary" @click="addAlert" :disabled="addingAlert">{{ addingAlert ? 'Saving...' : 'Create Alert' }}</button>
-          </div>
-        </div>
-      </div>
-    </Teleport>
-
     <!-- Add Competitor Modal -->
     <Teleport to="body">
       <div v-if="showAddCompetitorModal" class="modal-overlay" @click.self="showAddCompetitorModal = false">
@@ -753,7 +825,7 @@ const filteredPosts = computed(() => {
 // Alerts
 const alerts = ref([])
 const alertEvents = ref([])
-const showAddAlertModal = ref(false)
+const showInlineAlertForm = ref(false)
 const addingAlert = ref(false)
 const addAlertError = ref('')
 const newAlert = ref({ tracked_keyword_id: '', threshold: 3, direction: 'any', notification_method: 'email' })
@@ -913,7 +985,7 @@ async function addAlert() {
     if (!payload.tracked_keyword_id) delete payload.tracked_keyword_id
     await analyticsApi.createAlert(props.websiteId, payload)
     await loadAlerts()
-    showAddAlertModal.value = false
+    showInlineAlertForm.value = false
     newAlert.value = { tracked_keyword_id: '', threshold: 3, direction: 'any', notification_method: 'email' }
   } catch (e) { addAlertError.value = e?.response?.data?.error || 'Failed to create alert' }
   finally { addingAlert.value = false }
@@ -1278,20 +1350,192 @@ function copyEmbed() {
 .cr-gaps { background: rgba(245,158,11,0.1); color: #d97706; }
 .cr-opp { background: rgba(34,197,94,0.1); color: #16a34a; }
 
-/* Keyword Alerts */
-.alert-events { display: flex; flex-direction: column; gap: 4px; }
-.al-events-label { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 4px; }
-.al-event-row { display: flex; align-items: center; gap: 8px; padding: 5px 8px; background: var(--bg-surface); border-radius: var(--radius-md); font-size: 11px; }
-.al-kw { font-weight: 700; color: var(--text-primary); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.al-change { font-size: 11px; font-weight: 700; padding: 1px 6px; border-radius: var(--radius-full); flex-shrink: 0; }
-.al-up { background: rgba(34,197,94,0.12); color: #16a34a; }
-.al-down { background: rgba(239,68,68,0.1); color: #dc2626; }
-.al-date { font-size: 9px; color: var(--text-muted); flex-shrink: 0; }
-.alerts-list { display: flex; flex-direction: column; gap: 4px; }
-.al-rule-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 8px; background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-md); }
-.al-rule-info { flex: 1; min-width: 0; }
-.al-meta { font-size: 9px; color: var(--text-muted); display: block; margin-top: 1px; }
-.al-rule-actions { display: flex; align-items: center; gap: 4px; }
+/* ── Keyword Alert Card ───────────────────────────────────────────────── */
+.kw-alert-card { position: relative; overflow: visible; }
+
+/* Bell icon with notification dot */
+.alert-bell-icon { position: relative; display: flex; align-items: center; justify-content: center; }
+.bell-dot { position: absolute; top: -2px; right: -2px; width: 7px; height: 7px; border-radius: 50%; background: #ef4444; border: 1.5px solid var(--bg-card); animation: bell-pulse 2s infinite; }
+@keyframes bell-pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.3); opacity: 0.7; } }
+
+/* New rule button */
+.al-add-btn {
+  display: flex; align-items: center; gap: 5px;
+  padding: 4px 10px; border-radius: var(--radius-full);
+  border: 1px solid var(--border-color);
+  background: var(--bg-surface); color: var(--text-secondary);
+  font-size: 11px; font-weight: 600; cursor: pointer;
+  transition: all 0.15s;
+}
+.al-add-btn:hover { border-color: var(--brand-accent); color: var(--brand-accent); background: rgba(99,102,241,0.06); }
+.al-add-active { border-color: var(--brand-accent); color: var(--brand-accent); background: rgba(99,102,241,0.08); }
+
+/* Inline slide-in form */
+.alert-form-slide-enter-active,
+.alert-form-slide-leave-active { transition: max-height 0.22s ease, opacity 0.2s ease; overflow: hidden; }
+.alert-form-slide-enter-from,
+.alert-form-slide-leave-to { max-height: 0; opacity: 0; }
+.alert-form-slide-enter-to,
+.alert-form-slide-leave-from { max-height: 300px; opacity: 1; }
+
+.al-inline-form {
+  margin: 0 -1px;
+  padding: 14px 16px;
+  background: var(--bg-surface);
+  border-top: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border-color);
+}
+.al-form-title { font-size: 11px; font-weight: 700; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 12px; }
+.al-form-grid { display: grid; grid-template-columns: 1fr auto; gap: 10px; margin-bottom: 10px; }
+.al-field { display: flex; flex-direction: column; gap: 4px; }
+.al-label { font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.al-select {
+  height: 32px; padding: 0 8px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-card); color: var(--text-primary);
+  font-size: 12px; outline: none;
+  transition: border-color 0.15s;
+}
+.al-select:focus { border-color: var(--brand-accent); }
+.al-threshold-row { display: flex; align-items: center; gap: 4px; }
+.al-step-btn {
+  width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--border-color);
+  background: var(--bg-card); color: var(--text-primary); font-size: 16px; font-weight: 400;
+  cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.12s;
+  line-height: 1;
+}
+.al-step-btn:hover { border-color: var(--brand-accent); color: var(--brand-accent); }
+.al-threshold-val { font-size: 18px; font-weight: 800; color: var(--brand-accent); min-width: 26px; text-align: center; }
+.al-threshold-unit { font-size: 10px; color: var(--text-muted); white-space: nowrap; }
+.al-form-row2 { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 12px; }
+.al-pill-group { display: flex; align-items: center; gap: 4px; }
+.al-pill-label { font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; margin-right: 2px; }
+.al-pill {
+  padding: 3px 10px; border-radius: var(--radius-full);
+  border: 1px solid var(--border-color);
+  background: var(--bg-card); color: var(--text-muted);
+  font-size: 11px; font-weight: 600; cursor: pointer; transition: all 0.12s;
+}
+.al-pill:hover { border-color: var(--brand-accent); color: var(--brand-accent); }
+.al-pill-active { background: var(--brand-accent); border-color: var(--brand-accent); color: white; }
+.al-form-error { font-size: 11px; color: #ef4444; margin-bottom: 8px; }
+.al-form-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.al-cancel-btn {
+  padding: 6px 14px; border-radius: var(--radius-md);
+  border: 1px solid var(--border-color); background: transparent;
+  color: var(--text-muted); font-size: 12px; font-weight: 600; cursor: pointer;
+  transition: all 0.12s;
+}
+.al-cancel-btn:hover { color: var(--text-primary); border-color: var(--text-muted); }
+.al-save-btn {
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 16px; border-radius: var(--radius-md);
+  border: none; background: var(--brand-accent); color: white;
+  font-size: 12px; font-weight: 700; cursor: pointer; transition: all 0.12s;
+}
+.al-save-btn:hover:not(:disabled) { background: var(--brand-hover, #4f46e5); }
+.al-save-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.al-spinner { animation: spin 0.8s linear infinite; }
+
+/* Section labels */
+.al-section-label {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 10px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.05em; color: var(--text-muted);
+  margin-bottom: 8px;
+}
+.al-count-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 18px; height: 16px; padding: 0 5px;
+  border-radius: var(--radius-full); background: rgba(99,102,241,0.12);
+  color: var(--brand-accent); font-size: 9px; font-weight: 800;
+}
+.al-count-orange { background: rgba(245,158,11,0.12); color: #d97706; }
+
+/* Rule items */
+.al-rules-list { display: flex; flex-direction: column; gap: 5px; }
+.al-rule-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 9px 11px; border: 1px solid var(--border-color);
+  border-radius: var(--radius-md); background: var(--bg-surface);
+  transition: border-color 0.15s;
+}
+.al-rule-item:hover { border-color: rgba(99,102,241,0.3); }
+.al-rule-muted { opacity: 0.55; }
+.al-rule-left { display: flex; flex-direction: column; gap: 5px; flex: 1; min-width: 0; }
+.al-rule-kw {
+  display: flex; align-items: center; gap: 5px;
+  font-size: 12px; font-weight: 700; color: var(--text-primary);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.al-rule-kw svg { color: var(--text-muted); flex-shrink: 0; }
+.al-rule-meta { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.al-badge {
+  display: inline-flex; align-items: center; gap: 3px;
+  padding: 1px 6px; border-radius: var(--radius-full);
+  font-size: 9px; font-weight: 700; letter-spacing: 0.02em;
+  border: 1px solid transparent;
+}
+.al-badge-threshold { background: rgba(99,102,241,0.08); color: var(--brand-accent); border-color: rgba(99,102,241,0.2); }
+.al-badge-any { background: var(--bg-card); color: var(--text-muted); border-color: var(--border-color); }
+.al-badge-up { background: rgba(34,197,94,0.1); color: #16a34a; border-color: rgba(34,197,94,0.25); }
+.al-badge-down { background: rgba(239,68,68,0.08); color: #dc2626; border-color: rgba(239,68,68,0.2); }
+.al-badge-method { background: var(--bg-card); color: var(--text-secondary); border-color: var(--border-color); }
+.al-rule-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+
+/* Custom toggle switch */
+.al-toggle {
+  width: 30px; height: 16px; border-radius: 8px;
+  border: none; cursor: pointer; padding: 0;
+  background: var(--border-color); position: relative;
+  transition: background 0.2s;
+}
+.al-toggle-on { background: var(--brand-accent); }
+.al-toggle-knob {
+  position: absolute; top: 2px; left: 2px;
+  width: 12px; height: 12px; border-radius: 50%;
+  background: white; transition: left 0.2s;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+.al-toggle-on .al-toggle-knob { left: 16px; }
+.al-delete-btn {
+  width: 22px; height: 22px; border-radius: 4px;
+  border: none; background: transparent; color: var(--text-muted);
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  transition: all 0.12s;
+}
+.al-delete-btn:hover { background: rgba(239,68,68,0.1); color: #dc2626; }
+
+/* Event list */
+.al-events-section { }
+.al-events-list { display: flex; flex-direction: column; gap: 4px; }
+.al-event-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 10px; border-radius: var(--radius-md);
+  background: var(--bg-surface); border: 1px solid var(--border-color);
+}
+.al-event-icon {
+  width: 20px; height: 20px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.al-ei-up { background: rgba(34,197,94,0.12); color: #16a34a; }
+.al-ei-down { background: rgba(239,68,68,0.1); color: #dc2626; }
+.al-event-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.al-event-kw { font-size: 12px; font-weight: 700; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.al-event-detail { font-size: 10px; color: var(--text-muted); }
+.al-event-detail strong { color: var(--text-secondary); }
+.al-rank-change { font-size: 10px; color: var(--text-muted); margin-left: 4px; font-variant-numeric: tabular-nums; }
+.al-event-time { font-size: 9px; color: var(--text-muted); flex-shrink: 0; white-space: nowrap; }
+
+/* Empty state */
+.al-empty-state { display: flex; flex-direction: column; align-items: center; padding: 24px 12px; text-align: center; }
+.al-empty-icon { opacity: 0.35; margin-bottom: 10px; }
+.al-empty-text { font-size: 13px; font-weight: 700; color: var(--text-primary); margin: 0 0 4px; }
+.al-empty-sub { font-size: 11px; color: var(--text-muted); margin: 0; line-height: 1.5; }
+.al-empty-sub strong { color: var(--text-secondary); }
 
 /* Competitor Tracking */
 .comp-domain-list { display: flex; flex-direction: column; gap: 6px; }
