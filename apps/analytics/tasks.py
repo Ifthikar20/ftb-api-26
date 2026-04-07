@@ -29,7 +29,7 @@ def check_keyword_alerts():
 
     from apps.analytics.models import KeywordAlert, KeywordAlertEvent, TrackedKeyword
 
-    for alert in KeywordAlert.objects.filter(is_active=True).select_related("tracked_keyword", "website"):
+    for alert in KeywordAlert.objects.filter(is_active=True).select_related("tracked_keyword", "website", "website__user"):
         if alert.tracked_keyword:
             keywords = [alert.tracked_keyword]
         else:

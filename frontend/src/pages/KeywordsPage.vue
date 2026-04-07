@@ -44,11 +44,13 @@
               <div class="fc-stat"><span class="fc-stat-val">{{ scanData.page_meta?.word_count?.toLocaleString() || 0 }}</span><span class="fc-stat-lbl">Total Words</span></div>
             </div>
             <div class="fc-breakdown" v-if="scanData.score_breakdown">
-              <div v-for="(comp, key) in scanData.score_breakdown" :key="key" v-if="comp && comp.label" class="fc-br-row">
-                <span class="fc-br-name">{{ comp.label }}</span>
-                <div class="fc-br-bar"><div class="fc-br-fill" :style="{ width: comp.score + '%' }" :class="comp.score >= 70 ? 'b-good' : comp.score >= 40 ? 'b-mid' : 'b-bad'"></div></div>
-                <span class="fc-br-num">{{ comp.score }}</span>
-              </div>
+              <template v-for="(comp, key) in scanData.score_breakdown" :key="key">
+                <div v-if="comp && comp.label" class="fc-br-row">
+                  <span class="fc-br-name">{{ comp.label }}</span>
+                  <div class="fc-br-bar"><div class="fc-br-fill" :style="{ width: comp.score + '%' }" :class="comp.score >= 70 ? 'b-good' : comp.score >= 40 ? 'b-mid' : 'b-bad'"></div></div>
+                  <span class="fc-br-num">{{ comp.score }}</span>
+                </div>
+              </template>
             </div>
           </div>
           <div v-else class="fc-empty">Click <strong>Scan Website</strong> to audit your site for 140+ SEO issues and get your health score.</div>
@@ -1011,10 +1013,8 @@ const avgPosition = computed(() => {
 const improved = computed(() => keywords.value.filter(k => k.rank_change > 0).length)
 const declined = computed(() => keywords.value.filter(k => k.rank_change < 0).length)
 
-function cleanUrl(url) { if (!url) return ''; try { return new URL(url).pathname } catch { return url } }
 function cleanPagePath(url) { if (!url) return url; try { const u = new URL(url); return u.pathname === '/' ? '/ (Homepage)' : u.pathname } catch { return url } }
 function rankClass(rank) { if (!rank) return ''; if (rank <= 3) return 'rank-top3'; if (rank <= 10) return 'rank-top10'; if (rank <= 20) return 'rank-top20'; return 'rank-low' }
-function diffClass(d) { if (d < 30) return 'diff-easy'; if (d < 60) return 'diff-medium'; return 'diff-hard' }
 function formatFeature(f) {
   const map = { organic: 'Organic', paid: 'Ads', featured_snippet: 'Featured', people_also_ask: 'PAA', local_pack: 'Local', images: 'Images', video: 'Video', knowledge_graph: 'KG', carousel: 'Carousel', shopping: 'Shopping' }
   return map[f] || f.replace(/_/g, ' ')
@@ -1672,6 +1672,7 @@ function copyEmbed() {
 }
 .ct-refresh-btn:hover:not(:disabled) { border-color: var(--brand-accent); color: var(--brand-accent); }
 .ct-refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.ct-refreshing { opacity: 0.7; pointer-events: none; }
 .ct-spin { animation: spin 0.8s linear infinite; }
 .ct-compare-row { margin: 6px 0; }
 .ct-compare-btn {
