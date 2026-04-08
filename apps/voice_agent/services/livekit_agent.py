@@ -35,13 +35,10 @@ logger = logging.getLogger("apps")
 LIVEKIT_AVAILABLE = False
 try:
     from livekit.agents import (
-        Agent,
-        AgentSession,
         AutoSubscribe,
         JobContext,
         WorkerOptions,
         cli,
-        llm,
     )
     from livekit.agents.voice import VoiceSession
     from livekit.plugins import openai, silero
@@ -137,8 +134,6 @@ async def _handle_tool_call(tool_name, arguments, website_id):
     Execute a tool call by hitting the Django API.
     This runs during the call to schedule appointments, check availability, etc.
     """
-    import json
-
     import httpx
 
     base = _get_django_api_base()

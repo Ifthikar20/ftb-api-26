@@ -615,8 +615,9 @@ class RetellWebhookView(APIView):
 
     def _tool_callback(self, website_id, args, data):
         """Handle the request_callback tool call."""
-        from django.utils import timezone as tz
         from datetime import timedelta
+
+        from django.utils import timezone as tz
 
         # Default to 1 hour from now if no time specified
         remind_at = tz.now() + timedelta(hours=1)

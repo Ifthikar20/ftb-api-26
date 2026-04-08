@@ -6,10 +6,8 @@ and linking calls to leads.
 """
 
 import logging
-from datetime import datetime, timedelta
 
 from django.utils import timezone
-from django.utils.dateparse import parse_datetime
 
 from apps.voice_agent.models import CallbackReminder, CallLog
 
@@ -158,7 +156,6 @@ class CallService:
     @staticmethod
     def _link_to_lead(call_log):
         """Try to link a call to an existing lead by phone number."""
-        from apps.analytics.models import Visitor
         from apps.leads.models import Lead
 
         # Check if any visitor/lead has this phone in extracted data

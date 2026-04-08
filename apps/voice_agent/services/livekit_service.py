@@ -8,7 +8,6 @@ and agent dispatch for the self-hosted voice pipeline.
 import logging
 import os
 
-import requests
 from django.conf import settings
 
 logger = logging.getLogger("apps")

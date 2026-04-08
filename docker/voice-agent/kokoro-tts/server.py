@@ -13,7 +13,6 @@ Endpoints:
 import io
 import os
 
-import numpy as np
 import soundfile as sf
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import Response
@@ -86,7 +85,7 @@ async def synthesize(req: SynthesizeRequest):
             speed=req.speed,
         )
     except Exception as e:
-        raise HTTPException(500, f"TTS synthesis failed: {str(e)}")
+        raise HTTPException(500, f"TTS synthesis failed: {str(e)}") from e
 
     # Convert to WAV bytes
     buf = io.BytesIO()

@@ -133,8 +133,8 @@ class FacebookLeadService:
     def _fetch_lead(cls, lead_id: str, access_token: str) -> dict:
         """Fetch full lead data from Facebook Graph API."""
         try:
-            import urllib.request
             import json
+            import urllib.request
 
             url = f"{cls.GRAPH_BASE}/{lead_id}?fields=field_data,created_time&access_token={access_token}"
             with urllib.request.urlopen(url, timeout=10) as resp:
@@ -218,9 +218,9 @@ class LinkedInLeadService:
     def _fetch_responses(cls, source: SocialLeadSource) -> list:
         """Fetch lead gen form responses from LinkedIn API."""
         try:
-            import urllib.request
-            import urllib.parse
             import json
+            import urllib.parse
+            import urllib.request
 
             params = urllib.parse.urlencode({
                 "q": "owner",
@@ -261,8 +261,6 @@ class XLeadService:
         Import leads from a CSV export from X Ads Manager.
         Expected columns: name, email, phone (any order, case-insensitive headers).
         """
-        from apps.leads.models import Lead
-
         source, _ = SocialLeadSource.objects.get_or_create(
             website=website,
             platform=SocialLeadSource.PLATFORM_X,

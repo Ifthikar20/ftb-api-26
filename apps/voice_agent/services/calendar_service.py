@@ -104,8 +104,8 @@ class CalendarService:
         """Book a new appointment and block the calendar slot."""
         try:
             config = AgentConfig.objects.get(website_id=website_id)
-        except AgentConfig.DoesNotExist:
-            raise ValueError("Voice agent not configured for this website.")
+        except AgentConfig.DoesNotExist as exc:
+            raise ValueError("Voice agent not configured for this website.") from exc
 
         if end_time is None:
             end_time = start_time + timedelta(minutes=config.appointment_duration_minutes)
@@ -158,8 +158,8 @@ class CalendarService:
         """Cancel an appointment and free the slot."""
         try:
             event = CalendarEvent.objects.get(id=event_id, website_id=website_id)
-        except CalendarEvent.DoesNotExist:
-            raise ValueError("Appointment not found.")
+        except CalendarEvent.DoesNotExist as exc:
+            raise ValueError("Appointment not found.") from exc
 
         if event.status in (CalendarEvent.STATUS_CANCELLED, CalendarEvent.STATUS_COMPLETED):
             raise ValueError(f"Cannot cancel an appointment that is already {event.status}.")
@@ -179,8 +179,8 @@ class CalendarService:
         """Update appointment status."""
         try:
             event = CalendarEvent.objects.get(id=event_id, website_id=website_id)
-        except CalendarEvent.DoesNotExist:
-            raise ValueError("Appointment not found.")
+        except CalendarEvent.DoesNotExist as exc:
+            raise ValueError("Appointment not found.") from exc
 
         valid_statuses = [c[0] for c in CalendarEvent.STATUS_CHOICES]
         if new_status not in valid_statuses:

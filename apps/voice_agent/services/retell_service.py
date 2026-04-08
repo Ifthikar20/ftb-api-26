@@ -10,7 +10,6 @@ Handles communication with Retell AI API for:
 
 import hashlib
 import hmac
-import json
 import logging
 
 import requests

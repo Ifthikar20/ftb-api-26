@@ -1,5 +1,5 @@
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Callable, Optional
 
 
 @dataclass(frozen=True)
@@ -69,7 +69,7 @@ class IntegrationConfig:
     # Signature: (integration: Integration) -> None. Called by
     # `apps.websites.tasks.refresh_expiring_tokens` when token_expires_at is
     # within the refresh buffer. Set to None for non-OAuth integrations.
-    refresh_token_fn: Optional[Callable] = None
+    refresh_token_fn: Callable | None = None
 
     def tier_entitlement(self, plan: str) -> TierEntitlement:
         """Get entitlement for a plan tier."""

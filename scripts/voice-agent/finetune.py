@@ -114,15 +114,15 @@ def train(args):
     tokenizer.save_pretrained(args.output)
 
     print("Training complete!")
-    print(f"\nTo merge into a full model, run:")
-    print(f"  python scripts/voice-agent/finetune.py --merge \\")
+    print("\nTo merge into a full model, run:")
+    print("  python scripts/voice-agent/finetune.py --merge \\")
     print(f"    --base-model {args.base_model} \\")
     print(f"    --lora {args.output} \\")
-    print(f"    --output models/voice-agent-merged")
-    print(f"\nTo serve with vLLM:")
-    print(f"  python -m vllm.entrypoints.openai.api_server \\")
-    print(f"    --model models/voice-agent-merged \\")
-    print(f"    --quantization awq --host 0.0.0.0 --port 8000")
+    print("    --output models/voice-agent-merged")
+    print("\nTo serve with vLLM:")
+    print("  python -m vllm.entrypoints.openai.api_server \\")
+    print("    --model models/voice-agent-merged \\")
+    print("    --quantization awq --host 0.0.0.0 --port 8000")
 
 
 def merge(args):
@@ -154,12 +154,12 @@ def merge(args):
     )
 
     print("Merge complete!")
-    print(f"\nTo quantize for deployment (AWQ):")
-    print(f"  pip install autoawq")
-    print(f"  python -c \"")
-    print(f"    from awq import AutoAWQForCausalLM")
+    print("\nTo quantize for deployment (AWQ):")
+    print("  pip install autoawq")
+    print("  python -c \"")
+    print("    from awq import AutoAWQForCausalLM")
     print(f"    model = AutoAWQForCausalLM.from_pretrained('{args.output}')\"")
-    print(f"    model.quantize(tokenizer, quant_config={{'w_bit': 4, 'q_group_size': 128}})")
+    print("    model.quantize(tokenizer, quant_config={'w_bit': 4, 'q_group_size': 128})")
     print(f"    model.save_quantized('{args.output}-awq')")
 
 

@@ -17,7 +17,6 @@ import stripe
 from django.conf import settings
 from django.db import IntegrityError, transaction
 from django.http import HttpResponse, JsonResponse
-from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
@@ -162,8 +161,8 @@ def stripe_webhook(request):
         # Distinguish transient vs permanent errors:
         # - Database errors → 500 (Stripe will retry)
         # - Application logic errors → 200 (don't retry, it'll fail again)
-        from django.db import OperationalError, DatabaseError
-        if isinstance(e, (OperationalError, DatabaseError)):
+        from django.db import DatabaseError, OperationalError
+        if isinstance(e, OperationalError | DatabaseError):
             return HttpResponse(status=500)
 
         # Business logic error — return 200 so Stripe doesn't retry
