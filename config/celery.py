@@ -10,12 +10,26 @@ app = Celery("growthpilot")
 app.config_from_object("django.conf:settings", namespace="CELERY")
 app.autodiscover_tasks()
 
+# ── Queue topology ──
+# Slow third-party API calls must not block pixel/analytics aggregation.
+#   default      — analytics, leads, pixel, accounts (fast, in-process work)
+#   integrations — HubSpot, Semrush, Google Ads, OAuth token refresh
+#   webhooks     — outbound webhook delivery (user-controlled URLs, slow, isolated)
+#   ai           — strategy generation, LLM ranking, voice agent
+app.conf.task_default_queue = "default"
+app.conf.task_routes = {
+    # webhooks
+    "apps.websites.tasks.deliver_webhook": {"queue": "webhooks"},
+    # integrations / OAuth
+    "apps.websites.tasks.refresh_expiring_tokens": {"queue": "integrations"},
+    "apps.competitors.tasks.*": {"queue": "integrations"},
+    # AI / LLM
+    "apps.llm_ranking.tasks.*": {"queue": "ai"},
+    "apps.voice_agent.tasks.*": {"queue": "ai"},
+}
+
 app.conf.beat_schedule = {
     # ── Daily ──
-    "morning-brief": {
-        "task": "apps.strategy.tasks.generate_morning_briefs",
-        "schedule": crontab(minute=0, hour=6),
-    },
     "daily-lead-rescoring": {
         "task": "apps.leads.tasks.rescore_all_leads",
         "schedule": crontab(minute=0, hour=2),
@@ -33,14 +47,15 @@ app.conf.beat_schedule = {
         "task": "apps.notifications.tasks.send_weekly_reports",
         "schedule": crontab(minute=0, hour=9, day_of_week=1),
     },
-    "scheduled-audits": {
-        "task": "apps.audits.tasks.run_scheduled_audits",
-        "schedule": crontab(minute=0, hour=4, day_of_week=1),
-    },
     # ── Hourly ──
     "analytics-aggregation": {
         "task": "apps.analytics.tasks.aggregate_hourly_metrics",
         "schedule": crontab(minute=5),
+    },
+    # ── Every 15 minutes ──
+    "refresh-expiring-oauth-tokens": {
+        "task": "apps.websites.tasks.refresh_expiring_tokens",
+        "schedule": crontab(minute="*/15"),
     },
     # ── Monthly ──
     "hard-delete-expired": {

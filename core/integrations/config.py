@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from typing import Callable, Optional
 
 
 @dataclass(frozen=True)
@@ -63,6 +64,12 @@ class IntegrationConfig:
 
     # Webhook event types this integration can emit
     webhook_events: list[str] = field(default_factory=list)
+
+    # Optional callable that refreshes an Integration's OAuth tokens in place.
+    # Signature: (integration: Integration) -> None. Called by
+    # `apps.websites.tasks.refresh_expiring_tokens` when token_expires_at is
+    # within the refresh buffer. Set to None for non-OAuth integrations.
+    refresh_token_fn: Optional[Callable] = None
 
     def tier_entitlement(self, plan: str) -> TierEntitlement:
         """Get entitlement for a plan tier."""
