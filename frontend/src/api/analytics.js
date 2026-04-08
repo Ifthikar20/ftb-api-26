@@ -61,4 +61,20 @@ export default {
 
     // Keyword gap comparison
     keywordComparison: (wid) => api.get(`/analytics/${wid}/keywords/comparison/`),
+    exportComparison: (wid, fmt) => api.get(`/analytics/${wid}/keywords/comparison/export/?format=${fmt}`, { responseType: 'blob' }),
+
+    // Keyword alerts
+    getAlerts: (wid) => api.get(`/analytics/${wid}/keywords/alerts/`),
+    createAlert: (wid, data) => api.post(`/analytics/${wid}/keywords/alerts/`, data),
+    updateAlert: (wid, aid, data) => api.patch(`/analytics/${wid}/keywords/alerts/${aid}/`, data),
+    deleteAlert: (wid, aid) => api.delete(`/analytics/${wid}/keywords/alerts/${aid}/`),
+    getAlertEvents: (wid) => api.get(`/analytics/${wid}/keywords/alerts/events/`),
+
+    // Competitors
+    getCompetitors: (wid) => api.get(`/analytics/${wid}/competitors/`),
+    addCompetitor: (wid, data) => api.post(`/analytics/${wid}/competitors/`, data),
+    deleteCompetitor: (wid, cid) => api.delete(`/analytics/${wid}/competitors/${cid}/`),
+    getCompetitorDetail: (wid, cid) => api.get(`/analytics/${wid}/competitors/${cid}/`),
+    refreshCompetitor: (wid, cid) => api.post(`/analytics/${wid}/competitors/${cid}/refresh/`),
+    getCompetitorOverlap: (wid) => api.get(`/analytics/${wid}/competitors/overlap/`),
 }

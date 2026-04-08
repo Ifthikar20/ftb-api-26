@@ -44,11 +44,13 @@
               <div class="fc-stat"><span class="fc-stat-val">{{ scanData.page_meta?.word_count?.toLocaleString() || 0 }}</span><span class="fc-stat-lbl">Total Words</span></div>
             </div>
             <div class="fc-breakdown" v-if="scanData.score_breakdown">
-              <div v-for="(comp, key) in scanData.score_breakdown" :key="key" v-if="comp && comp.label" class="fc-br-row">
-                <span class="fc-br-name">{{ comp.label }}</span>
-                <div class="fc-br-bar"><div class="fc-br-fill" :style="{ width: comp.score + '%' }" :class="comp.score >= 70 ? 'b-good' : comp.score >= 40 ? 'b-mid' : 'b-bad'"></div></div>
-                <span class="fc-br-num">{{ comp.score }}</span>
-              </div>
+              <template v-for="(comp, key) in scanData.score_breakdown" :key="key">
+                <div v-if="comp && comp.label" class="fc-br-row">
+                  <span class="fc-br-name">{{ comp.label }}</span>
+                  <div class="fc-br-bar"><div class="fc-br-fill" :style="{ width: comp.score + '%' }" :class="comp.score >= 70 ? 'b-good' : comp.score >= 40 ? 'b-mid' : 'b-bad'"></div></div>
+                  <span class="fc-br-num">{{ comp.score }}</span>
+                </div>
+              </template>
             </div>
           </div>
           <div v-else class="fc-empty">Click <strong>Scan Website</strong> to audit your site for 140+ SEO issues and get your health score.</div>
@@ -334,6 +336,8 @@
                 </select>
                 <button class="btn btn-secondary btn-sm" @click="showAddPostModal = true">+ Add Post</button>
                 <button class="btn btn-secondary btn-sm" @click="loadComparison" :disabled="comparisonLoading">{{ comparisonLoading ? 'Loading...' : 'Compare' }}</button>
+                <button v-if="comparison" class="btn btn-secondary btn-sm" @click="exportComparison('csv')">CSV</button>
+                <button v-if="comparison" class="btn btn-secondary btn-sm" @click="exportComparison('html')">Report</button>
               </div>
             </div>
 
@@ -408,6 +412,368 @@
           </div>
         </div>
 
+        <!-- Keyword Alerts -->
+        <div v-if="cardId === 'keyword_alerts'" class="card feature-card kw-alert-card">
+          <div class="fc-head">
+            <div class="fc-icon alert-bell-icon">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2a5 5 0 015 5v2l1 2H2l1-2V7a5 5 0 015-5z"/><path d="M6.5 13.5a1.5 1.5 0 003 0"/></svg>
+              <span v-if="alertEvents.length" class="bell-dot"></span>
+            </div>
+            <div class="fc-title-wrap">
+              <h3 class="fc-title">Keyword Alerts</h3>
+              <p class="fc-sub">Get notified when rankings move significantly</p>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px">
+              <button class="al-add-btn" @click="showInlineAlertForm = !showInlineAlertForm" :class="{ 'al-add-active': showInlineAlertForm }">
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg>
+                New rule
+              </button>
+              <button class="fc-remove" @click="removeCard(cardId)" title="Remove">×</button>
+            </div>
+          </div>
+
+          <!-- Inline Create Form (slide-in) -->
+          <transition name="alert-form-slide">
+            <div v-if="showInlineAlertForm" class="al-inline-form">
+              <div class="al-form-title">Create alert rule</div>
+              <div class="al-form-grid">
+                <div class="al-field">
+                  <label class="al-label">Keyword</label>
+                  <select v-model="newAlert.tracked_keyword_id" class="al-select">
+                    <option value="">All tracked keywords</option>
+                    <option v-for="kw in keywords" :key="kw.id" :value="kw.id">{{ kw.keyword }}</option>
+                  </select>
+                </div>
+                <div class="al-field al-field-sm">
+                  <label class="al-label">Threshold</label>
+                  <div class="al-threshold-row">
+                    <button class="al-step-btn" @click="newAlert.threshold = Math.max(1, newAlert.threshold - 1)">−</button>
+                    <span class="al-threshold-val">{{ newAlert.threshold }}</span>
+                    <button class="al-step-btn" @click="newAlert.threshold = Math.min(50, newAlert.threshold + 1)">+</button>
+                    <span class="al-threshold-unit">positions</span>
+                  </div>
+                </div>
+              </div>
+              <div class="al-form-row2">
+                <div class="al-pill-group">
+                  <span class="al-pill-label">Direction</span>
+                  <button v-for="opt in [{ v: 'any', l: 'Any' }, { v: 'improved', l: 'Improved' }, { v: 'declined', l: 'Declined' }]"
+                    :key="opt.v"
+                    class="al-pill" :class="{ 'al-pill-active': newAlert.direction === opt.v }"
+                    @click="newAlert.direction = opt.v">{{ opt.l }}</button>
+                </div>
+                <div class="al-pill-group">
+                  <span class="al-pill-label">Notify via</span>
+                  <button v-for="opt in [{ v: 'email', l: 'Email' }, { v: 'in_app', l: 'In-app' }]"
+                    :key="opt.v"
+                    class="al-pill" :class="{ 'al-pill-active': newAlert.notification_method === opt.v }"
+                    @click="newAlert.notification_method = opt.v">{{ opt.l }}</button>
+                </div>
+              </div>
+              <div v-if="addAlertError" class="al-form-error">{{ addAlertError }}</div>
+              <div class="al-form-actions">
+                <button class="al-cancel-btn" @click="showInlineAlertForm = false; addAlertError = ''">Cancel</button>
+                <button class="al-save-btn" @click="addAlert" :disabled="addingAlert">
+                  <svg v-if="addingAlert" class="al-spinner" width="12" height="12" viewBox="0 0 12 12"><circle cx="6" cy="6" r="4" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="16" stroke-dashoffset="6" opacity="0.4"/></svg>
+                  {{ addingAlert ? 'Saving…' : 'Create rule' }}
+                </button>
+              </div>
+            </div>
+          </transition>
+
+          <div class="fc-body">
+
+            <!-- Active Rules -->
+            <div v-if="alerts.length" class="al-rules-section">
+              <div class="al-section-label">
+                <span>Active rules</span>
+                <span class="al-count-badge">{{ alerts.filter(a => a.is_active).length }}</span>
+              </div>
+              <div class="al-rules-list">
+                <div v-for="al in alerts" :key="al.id" class="al-rule-item" :class="{ 'al-rule-muted': !al.is_active }">
+                  <div class="al-rule-left">
+                    <div class="al-rule-kw">
+                      <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 1a3.5 3.5 0 013.5 3.5v1L10 7H0l1.5-2.5V4.5A3.5 3.5 0 015 1z"/><path d="M3.5 8.5a1.5 1.5 0 003 0"/></svg>
+                      {{ al.keyword }}
+                    </div>
+                    <div class="al-rule-meta">
+                      <span class="al-badge al-badge-threshold">{{ '>' }}{{ al.threshold }} pos</span>
+                      <span class="al-badge" :class="{
+                        'al-badge-any': al.direction === 'any',
+                        'al-badge-up': al.direction === 'improved',
+                        'al-badge-down': al.direction === 'declined'
+                      }">{{ al.direction }}</span>
+                      <span class="al-badge al-badge-method">
+                        <svg v-if="al.notification_method === 'email'" width="9" height="9" viewBox="0 0 9 9" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="0.5" y="1.5" width="8" height="6" rx="1"/><path d="M0.5 2.5l4 3 4-3"/></svg>
+                        <svg v-else width="9" height="9" viewBox="0 0 9 9" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4.5 1a3 3 0 013 3v1L9 7H0l1.5-2V4a3 3 0 013-3z"/></svg>
+                        {{ al.notification_method === 'email' ? 'Email' : 'In-app' }}
+                      </span>
+                    </div>
+                  </div>
+                  <div class="al-rule-right">
+                    <button class="al-toggle" :class="{ 'al-toggle-on': al.is_active }" @click="toggleAlert(al)" :title="al.is_active ? 'Disable' : 'Enable'">
+                      <span class="al-toggle-knob"></span>
+                    </button>
+                    <button class="al-delete-btn" @click="deleteAlert(al.id)" title="Delete rule">
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="2" y1="2" x2="10" y2="10"/><line x1="10" y1="2" x2="2" y2="10"/></svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Recent Trigger Events -->
+            <div v-if="alertEvents.length" class="al-events-section">
+              <div class="al-section-label" style="margin-top:14px">
+                <span>Recent triggers</span>
+                <span class="al-count-badge al-count-orange">{{ alertEvents.length }}</span>
+              </div>
+              <div class="al-events-list">
+                <div v-for="ev in alertEvents.slice(0, 6)" :key="ev.id" class="al-event-item">
+                  <div class="al-event-icon" :class="ev.direction === 'improved' ? 'al-ei-up' : 'al-ei-down'">
+                    <svg v-if="ev.direction === 'improved'" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2"><polyline points="2,7 5,3 8,7"/></svg>
+                    <svg v-else width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2"><polyline points="2,3 5,7 8,3"/></svg>
+                  </div>
+                  <div class="al-event-body">
+                    <span class="al-event-kw">{{ ev.keyword }}</span>
+                    <span class="al-event-detail">
+                      {{ ev.direction === 'improved' ? 'climbed' : 'dropped' }}
+                      <strong>{{ Math.abs(ev.change) }} positions</strong>
+                      <span class="al-rank-change">
+                        #{{ ev.old_rank }} → #{{ ev.new_rank }}
+                      </span>
+                    </span>
+                  </div>
+                  <span class="al-event-time">{{ formatDate(ev.triggered_at) }}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Empty state -->
+            <div v-if="!alerts.length && !alertEvents.length" class="al-empty-state">
+              <div class="al-empty-icon">
+                <svg width="28" height="28" viewBox="0 0 28 28" fill="none" stroke="var(--text-muted)" stroke-width="1.2"><path d="M14 4a8 8 0 018 8v3l2 3H4l2-3v-3a8 8 0 018-8z"/><path d="M11 22a3 3 0 006 0"/></svg>
+              </div>
+              <p class="al-empty-text">No alert rules yet.</p>
+              <p class="al-empty-sub">Click <strong>New rule</strong> above to get notified when keywords move.</p>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- Competitor Tracking -->
+        <div v-if="cardId === 'competitor_tracking'" class="card feature-card ct-card">
+          <div class="fc-head">
+            <div class="fc-icon">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="5" cy="5.5" r="2.5"/><circle cx="11" cy="5.5" r="2.5"/><path d="M5 8v5M11 8v5M8 9v4"/></svg>
+            </div>
+            <div class="fc-title-wrap">
+              <h3 class="fc-title">Competitor Tracking</h3>
+              <p class="fc-sub">Rank comparison against competitor domains</p>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px">
+              <button class="al-add-btn" @click="showAddCompetitorModal = true">
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg>
+                Add
+              </button>
+              <button class="fc-remove" @click="removeCard(cardId)" title="Remove">×</button>
+            </div>
+          </div>
+          <div class="fc-body">
+
+            <!-- Competitors list -->
+            <div v-if="competitors.length" class="ct-list">
+              <div v-for="c in competitors" :key="c.id" class="ct-row">
+                <div class="ct-favicon">
+                  <img :src="`https://www.google.com/s2/favicons?domain=${c.domain}&sz=20`" width="16" height="16" :alt="c.domain" @error="$event.target.style.display='none'" />
+                </div>
+                <div class="ct-info">
+                  <span class="ct-name">{{ c.name || c.domain }}</span>
+                  <span class="ct-domain">{{ c.domain }}</span>
+                </div>
+                <div class="ct-status" v-if="c.last_checked_at">
+                  <span class="ct-last-check">Checked {{ formatDate(c.last_checked_at) }}</span>
+                </div>
+                <div class="ct-actions">
+                  <button class="ct-refresh-btn" @click="refreshCompetitor(c.id)" :disabled="competitorLoading === c.id" :class="{ 'ct-refreshing': competitorLoading === c.id }">
+                    <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" stroke-width="1.8" :class="{ 'ct-spin': competitorLoading === c.id }"><path d="M10 5.5a4.5 4.5 0 11-3.1-4.28"/><path d="M10 1v3H7"/></svg>
+                    {{ competitorLoading === c.id ? 'Checking' : 'Refresh' }}
+                  </button>
+                  <button class="al-delete-btn" @click="deleteCompetitor(c.id)">
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="2" y1="2" x2="10" y2="10"/><line x1="10" y1="2" x2="2" y2="10"/></svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="!competitors.length" class="al-empty-state">
+              <div class="al-empty-icon">
+                <svg width="28" height="28" viewBox="0 0 28 28" fill="none" stroke="var(--text-muted)" stroke-width="1.2"><circle cx="10" cy="10" r="5"/><circle cx="20" cy="10" r="5"/><path d="M10 15v8M20 15v8M15 17v6"/></svg>
+              </div>
+              <p class="al-empty-text">No competitors tracked yet.</p>
+              <p class="al-empty-sub">Click <strong>Add</strong> to compare your rankings side-by-side.</p>
+            </div>
+
+            <!-- Overlap comparison table -->
+            <div v-if="competitors.length" class="ct-compare-row">
+              <button class="ct-compare-btn" @click="loadCompetitorOverlap" :disabled="!competitors.length">
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="1" width="4" height="10" rx="1"/><rect x="7" y="1" width="4" height="10" rx="1"/></svg>
+                Compare rankings
+              </button>
+            </div>
+
+            <div v-if="competitorOverlap" class="ct-overlap-table">
+              <div class="al-section-label" style="margin-top:14px">
+                <span>Side-by-side ranking comparison</span>
+              </div>
+              <div class="table-responsive">
+                <table class="data-table data-table-sm">
+                  <thead>
+                    <tr>
+                      <th>Keyword</th>
+                      <th class="text-center ct-us-col">
+                        <span class="ct-us-label">Us</span>
+                      </th>
+                      <th v-for="c in competitorOverlap.competitors" :key="c.id" class="text-center">{{ c.name }}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="row in competitorOverlap.keywords" :key="row.keyword">
+                      <td class="ct-kw-cell">{{ row.keyword }}</td>
+                      <td class="text-center">
+                        <span class="rank-badge" :class="rankClass(row.our_rank)">{{ row.our_rank || '--' }}</span>
+                      </td>
+                      <td v-for="c in row.competitors" :key="c.id" class="text-center">
+                        <span class="rank-badge" :class="rankClass(c.rank)">{{ c.rank || '--' }}</span>
+                        <span v-if="row.our_rank && c.rank" class="ct-rank-delta" :class="c.rank > row.our_rank ? 'ct-delta-win' : c.rank < row.our_rank ? 'ct-delta-lose' : ''">
+                          {{ c.rank > row.our_rank ? 'ahead' : c.rank < row.our_rank ? 'behind' : 'tied' }}
+                        </span>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- Historical Trend Charts -->
+        <div v-if="cardId === 'history_charts'" class="card feature-card hc-card" style="grid-column: span 2">
+          <div class="fc-head">
+            <div class="fc-icon">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="2,12 5,7 9,9 13,4"/><circle cx="5" cy="7" r="1.5" fill="currentColor"/><circle cx="9" cy="9" r="1.5" fill="currentColor"/><circle cx="13" cy="4" r="1.5" fill="currentColor"/></svg>
+            </div>
+            <div class="fc-title-wrap">
+              <h3 class="fc-title">Historical Rank Charts</h3>
+              <p class="fc-sub">Track position changes over the last 30 days</p>
+            </div>
+            <button class="fc-remove" @click="removeCard(cardId)" title="Remove">×</button>
+          </div>
+          <div class="fc-body">
+            <div v-if="!keywords.length" class="al-empty-state">
+              <div class="al-empty-icon">
+                <svg width="30" height="30" viewBox="0 0 30 30" fill="none" stroke="var(--text-muted)" stroke-width="1.2"><polyline points="3,22 8,13 14,16 20,8 27,4"/></svg>
+              </div>
+              <p class="al-empty-text">No tracked keywords.</p>
+              <p class="al-empty-sub">Add keywords in Position Tracking, then scan to populate rank history.</p>
+            </div>
+            <template v-else>
+              <!-- Keyword selector -->
+              <div class="hc-controls">
+                <span class="al-section-label" style="margin-bottom:0">Select up to 5 keywords</span>
+                <div class="hc-kw-row">
+                  <button
+                    v-for="kw in keywords.slice(0, 12)"
+                    :key="kw.id"
+                    class="hc-kw-chip"
+                    :class="{ 'hc-chip-active': selectedChartKws.includes(kw.id), 'hc-chip-disabled': !selectedChartKws.includes(kw.id) && selectedChartKws.length >= 5 }"
+                    :style="selectedChartKws.includes(kw.id) ? { borderColor: chartColors[selectedChartKws.indexOf(kw.id) % chartColors.length], color: chartColors[selectedChartKws.indexOf(kw.id) % chartColors.length], background: chartColors[selectedChartKws.indexOf(kw.id) % chartColors.length] + '18' } : {}"
+                    @click="toggleChartKw(kw.id)"
+                  >
+                    <span class="hc-chip-dot" v-if="selectedChartKws.includes(kw.id)" :style="{ background: chartColors[selectedChartKws.indexOf(kw.id) % chartColors.length] }"></span>
+                    {{ kw.keyword }}
+                    <span v-if="kw.current_rank" class="hc-chip-rank">#{{ kw.current_rank }}</span>
+                  </button>
+                </div>
+              </div>
+
+              <div v-if="chartLoading" class="hc-loading">
+                <div class="hc-loading-bar"></div>
+                <span>Loading history…</span>
+              </div>
+
+              <div v-else-if="chartDatasets.length" class="hc-chart-area">
+                <div class="hc-note">Lower position number = better ranking. Y-axis: rank #1 (top) to #50 (bottom).</div>
+                <svg class="rank-chart" :viewBox="`0 0 ${chartW} ${chartH}`" preserveAspectRatio="xMidYMid meet">
+                  <!-- Y axis grid lines + labels -->
+                  <g v-for="gridY in chartGridY" :key="gridY.rank">
+                    <line :x1="chartPadL" :y1="gridY.y" :x2="chartW - chartPadR" :y2="gridY.y"
+                      :stroke="gridY.rank === 1 ? 'var(--brand-accent)' : 'var(--border-color)'"
+                      :stroke-width="gridY.rank === 1 ? 1 : 0.5"
+                      stroke-dasharray="3,3"
+                    />
+                    <text :x="chartPadL - 5" :y="gridY.y + 4" text-anchor="end" font-size="9" fill="var(--text-muted)">#{{ gridY.rank }}</text>
+                  </g>
+                  <!-- X axis labels -->
+                  <g v-for="(label, i) in chartXLabels" :key="i">
+                    <text :x="label.x" :y="chartH - 4" text-anchor="middle" font-size="8" fill="var(--text-muted)">{{ label.text }}</text>
+                  </g>
+                  <!-- Area fills (subtle) -->
+                  <g v-for="(ds, di) in chartDatasets" :key="'area-' + ds.id">
+                    <polygon
+                      v-if="ds.areaPoints"
+                      :points="ds.areaPoints"
+                      :fill="chartColors[di % chartColors.length]"
+                      fill-opacity="0.06"
+                    />
+                  </g>
+                  <!-- Lines -->
+                  <g v-for="(ds, di) in chartDatasets" :key="'line-' + ds.id">
+                    <polyline
+                      :points="ds.points"
+                      fill="none"
+                      :stroke="chartColors[di % chartColors.length]"
+                      stroke-width="2"
+                      stroke-linejoin="round"
+                      stroke-linecap="round"
+                    />
+                  </g>
+                  <!-- Dots with hover tooltip -->
+                  <g v-for="(ds, di) in chartDatasets" :key="'dots-' + ds.id">
+                    <g v-for="(pt, pi) in ds.dots" :key="pi" class="chart-dot-group" @mouseenter="showChartTip(pt, ds, di)" @mouseleave="hideChartTip">
+                      <circle :cx="pt.x" :cy="pt.y" r="5" :fill="chartColors[di % chartColors.length]" fill-opacity="0" />
+                      <circle :cx="pt.x" :cy="pt.y" r="3" :fill="chartColors[di % chartColors.length]" />
+                    </g>
+                  </g>
+                  <!-- Tooltip -->
+                  <g v-if="chartTip" :transform="`translate(${Math.min(chartTip.x, chartW - 90)}, ${Math.max(chartTip.y - 36, chartPadT)})`">
+                    <rect x="0" y="0" width="82" height="28" rx="4" fill="var(--bg-card)" stroke="var(--border-color)" stroke-width="1"/>
+                    <text x="6" y="11" font-size="9" fill="var(--text-muted)">{{ chartTip.date }}</text>
+                    <text x="6" y="23" font-size="11" font-weight="700" :fill="chartTip.color">#{{ chartTip.rank }} · {{ chartTip.keyword }}</text>
+                  </g>
+                </svg>
+                <!-- Legend -->
+                <div class="hc-legend">
+                  <div v-for="(ds, di) in chartDatasets" :key="ds.id" class="hc-legend-item">
+                    <span class="hc-legend-line" :style="{ background: chartColors[di % chartColors.length] }"></span>
+                    <span class="hc-legend-kw">{{ ds.keyword }}</span>
+                    <span v-if="ds.currentRank" class="hc-legend-rank" :style="{ color: chartColors[di % chartColors.length] }">#{{ ds.currentRank }}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div v-else-if="!chartLoading && selectedChartKws.length" class="al-empty-state">
+                <p class="al-empty-text">No rank history yet for selected keywords.</p>
+                <p class="al-empty-sub">Run a site scan to populate data.</p>
+              </div>
+              <div v-else-if="!selectedChartKws.length" class="al-empty-state" style="padding:16px">
+                <p class="al-empty-sub">Select one or more keywords above to see rank history.</p>
+              </div>
+            </template>
+          </div>
+        </div>
+
       </template>
     </div>
 
@@ -429,6 +795,26 @@
             </div>
           </div>
           <div class="modal-actions"><button class="btn btn-primary" @click="showCardPicker = false">Done</button></div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- Add Competitor Modal -->
+    <Teleport to="body">
+      <div v-if="showAddCompetitorModal" class="modal-overlay" @click.self="showAddCompetitorModal = false">
+        <div class="modal-card">
+          <h3 class="modal-title">Add Competitor</h3>
+          <div class="modal-body">
+            <label class="form-label">Domain</label>
+            <input v-model="newCompetitor.domain" class="form-input" placeholder="e.g. competitor.com" autofocus />
+            <label class="form-label" style="margin-top:12px">Label (optional)</label>
+            <input v-model="newCompetitor.name" class="form-input" placeholder="e.g. Main rival" />
+            <p v-if="addCompetitorError" class="text-danger text-sm" style="margin-top:8px">{{ addCompetitorError }}</p>
+          </div>
+          <div class="modal-actions">
+            <button class="btn btn-secondary" @click="showAddCompetitorModal = false">Cancel</button>
+            <button class="btn btn-primary" @click="addCompetitor" :disabled="addingCompetitor">{{ addingCompetitor ? 'Adding...' : 'Add' }}</button>
+          </div>
         </div>
       </div>
     </Teleport>
@@ -527,6 +913,59 @@ const filteredPosts = computed(() => {
   return platformPosts.value.filter(p => p.platform === pcFilter.value)
 })
 
+// Alerts
+const alerts = ref([])
+const alertEvents = ref([])
+const showInlineAlertForm = ref(false)
+const addingAlert = ref(false)
+const addAlertError = ref('')
+const newAlert = ref({ tracked_keyword_id: '', threshold: 3, direction: 'any', notification_method: 'email' })
+
+// Competitors
+const competitors = ref([])
+const competitorOverlap = ref(null)
+const competitorLoading = ref(null)
+const showAddCompetitorModal = ref(false)
+const addingCompetitor = ref(false)
+const addCompetitorError = ref('')
+const newCompetitor = ref({ domain: '', name: '' })
+
+// History chart
+const selectedChartKws = ref([])
+const chartLoading = ref(false)
+const chartDatasets = ref([])
+const chartTip = ref(null)
+const chartW = 560
+const chartH = 220
+const chartPadL = 36
+const chartPadR = 10
+const chartPadB = 20
+const chartPadT = 12
+const chartColors = ['#6366f1', '#22c55e', '#f59e0b', '#ef4444', '#06b6d4', '#a855f7', '#ec4899', '#14b8a6']
+
+// Computed chart grid / axes
+const chartGridY = computed(() => {
+  const ranks = [1, 5, 10, 20, 50]
+  const maxRank = 50
+  return ranks.map(r => ({
+    rank: r,
+    y: chartPadT + ((r - 1) / (maxRank - 1)) * (chartH - chartPadT - chartPadB),
+  }))
+})
+const chartXLabels = computed(() => {
+  if (!chartDatasets.value.length) return []
+  const dates = chartDatasets.value[0]?.dates || []
+  if (!dates.length) return []
+  const step = Math.max(1, Math.floor(dates.length / 5))
+  return dates.reduce((acc, d, i) => {
+    if (i % step === 0 || i === dates.length - 1) {
+      const x = chartPadL + (i / (dates.length - 1 || 1)) * (chartW - chartPadL - chartPadR)
+      acc.push({ x, text: d.slice(5) }) // MM-DD
+    }
+    return acc
+  }, [])
+})
+
 // Card system
 const STORAGE_KEY = 'ftb_kw_cards'
 const availableCards = [
@@ -542,6 +981,9 @@ const availableCards = [
   { id: 'pages_scanned', name: 'Pages Scanned', desc: 'Per-page keyword breakdown', icon: 'PS' },
   { id: 'scan_schedule', name: 'DOM Scan Schedule', desc: 'Configure automatic keyword re-scanning intervals', icon: 'SC' },
   { id: 'platform_comparison', name: 'Platform Comparison', desc: 'Compare site keywords vs LinkedIn, X, and other posts', icon: 'PC' },
+  { id: 'keyword_alerts', name: 'Keyword Alerts', desc: 'Get notified when keywords move more than N positions', icon: 'AL' },
+  { id: 'competitor_tracking', name: 'Competitor Tracking', desc: 'Track how competitors rank for your keywords', icon: 'CT' },
+  { id: 'history_charts', name: 'Historical Charts', desc: 'Visualize keyword rank trends over time', icon: 'HC' },
 ]
 
 const defaultCards = ['site_audit', 'keyword_research', 'position_tracking', 'ai_analysis']
@@ -571,10 +1013,8 @@ const avgPosition = computed(() => {
 const improved = computed(() => keywords.value.filter(k => k.rank_change > 0).length)
 const declined = computed(() => keywords.value.filter(k => k.rank_change < 0).length)
 
-function cleanUrl(url) { if (!url) return ''; try { return new URL(url).pathname } catch { return url } }
 function cleanPagePath(url) { if (!url) return url; try { const u = new URL(url); return u.pathname === '/' ? '/ (Homepage)' : u.pathname } catch { return url } }
 function rankClass(rank) { if (!rank) return ''; if (rank <= 3) return 'rank-top3'; if (rank <= 10) return 'rank-top10'; if (rank <= 20) return 'rank-top20'; return 'rank-low' }
-function diffClass(d) { if (d < 30) return 'diff-easy'; if (d < 60) return 'diff-medium'; return 'diff-hard' }
 function formatFeature(f) {
   const map = { organic: 'Organic', paid: 'Ads', featured_snippet: 'Featured', people_also_ask: 'PAA', local_pack: 'Local', images: 'Images', video: 'Video', knowledge_graph: 'KG', carousel: 'Carousel', shopping: 'Shopping' }
   return map[f] || f.replace(/_/g, ' ')
@@ -616,6 +1056,127 @@ async function addKeyword() {
   catch (e) { addError.value = e?.response?.data?.error || 'Failed to add keyword' }
   finally { adding.value = false }
 }
+
+// Alert functions
+async function loadAlerts() {
+  try {
+    const [ra, re] = await Promise.all([
+      analyticsApi.getAlerts(props.websiteId),
+      analyticsApi.getAlertEvents(props.websiteId),
+    ])
+    alerts.value = ra.data || []
+    alertEvents.value = re.data || []
+  } catch (e) {}
+}
+async function addAlert() {
+  addingAlert.value = true; addAlertError.value = ''
+  try {
+    const payload = { ...newAlert.value }
+    if (!payload.tracked_keyword_id) delete payload.tracked_keyword_id
+    await analyticsApi.createAlert(props.websiteId, payload)
+    await loadAlerts()
+    showInlineAlertForm.value = false
+    newAlert.value = { tracked_keyword_id: '', threshold: 3, direction: 'any', notification_method: 'email' }
+  } catch (e) { addAlertError.value = e?.response?.data?.error || 'Failed to create alert' }
+  finally { addingAlert.value = false }
+}
+async function toggleAlert(al) {
+  try { await analyticsApi.updateAlert(props.websiteId, al.id, { is_active: !al.is_active }); await loadAlerts() } catch (e) {}
+}
+async function deleteAlert(aid) {
+  try { await analyticsApi.deleteAlert(props.websiteId, aid); await loadAlerts() } catch (e) {}
+}
+
+// Competitor functions
+async function loadCompetitors() {
+  try { const res = await analyticsApi.getCompetitors(props.websiteId); competitors.value = res.data || [] } catch (e) {}
+}
+async function addCompetitor() {
+  addingCompetitor.value = true; addCompetitorError.value = ''
+  try {
+    await analyticsApi.addCompetitor(props.websiteId, newCompetitor.value)
+    await loadCompetitors()
+    showAddCompetitorModal.value = false
+    newCompetitor.value = { domain: '', name: '' }
+  } catch (e) { addCompetitorError.value = e?.response?.data?.error || 'Failed to add competitor' }
+  finally { addingCompetitor.value = false }
+}
+async function deleteCompetitor(cid) {
+  try { await analyticsApi.deleteCompetitor(props.websiteId, cid); await loadCompetitors(); competitorOverlap.value = null } catch (e) {}
+}
+async function refreshCompetitor(cid) {
+  competitorLoading.value = cid
+  try { await analyticsApi.refreshCompetitor(props.websiteId, cid) } catch (e) {}
+  finally { competitorLoading.value = null }
+}
+async function loadCompetitorOverlap() {
+  try { const res = await analyticsApi.getCompetitorOverlap(props.websiteId); competitorOverlap.value = res.data } catch (e) {}
+}
+
+// Export comparison
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a'); a.href = url; a.download = filename; a.click()
+  setTimeout(() => URL.revokeObjectURL(url), 5000)
+}
+async function exportComparison(fmt) {
+  try {
+    const res = await analyticsApi.exportComparison(props.websiteId, fmt)
+    downloadBlob(res.data, `keyword-gap-report.${fmt}`)
+  } catch (e) {}
+}
+
+// History chart functions
+async function toggleChartKw(kwId) {
+  const idx = selectedChartKws.value.indexOf(kwId)
+  if (idx >= 0) selectedChartKws.value.splice(idx, 1)
+  else if (selectedChartKws.value.length < 5) selectedChartKws.value.push(kwId)
+  await buildChartDatasets()
+}
+async function buildChartDatasets() {
+  if (!selectedChartKws.value.length) { chartDatasets.value = []; return }
+  chartLoading.value = true
+  try {
+    const results = await Promise.all(
+      selectedChartKws.value.map(id => analyticsApi.keywordHistory(props.websiteId, id))
+    )
+    const maxRank = 50
+    chartDatasets.value = results.map((res, i) => {
+      const kwId = selectedChartKws.value[i]
+      const kw = keywords.value.find(k => k.id === kwId)
+      const history = (res.data?.history || []).slice(-30)
+      const dates = history.map(h => h.date)
+      const n = dates.length
+      const bottom = chartPadT + chartH - chartPadB
+      const dots = history.map((h, j) => {
+        const rank = Math.min(h.rank || maxRank, maxRank)
+        const x = chartPadL + (n > 1 ? (j / (n - 1)) : 0.5) * (chartW - chartPadL - chartPadR)
+        const y = chartPadT + ((rank - 1) / (maxRank - 1)) * (chartH - chartPadT - chartPadB)
+        return { x, y, rank: h.rank, date: h.date }
+      })
+      const points = dots.map(d => `${d.x},${d.y}`).join(' ')
+      // Area: line points + bottom-right + bottom-left to close
+      const areaPoints = dots.length
+        ? `${points} ${dots[dots.length - 1].x},${bottom} ${dots[0].x},${bottom}`
+        : ''
+      return {
+        id: kwId,
+        keyword: kw?.keyword || kwId,
+        currentRank: kw?.current_rank,
+        dates,
+        dots,
+        points,
+        areaPoints,
+      }
+    })
+  } catch (e) { chartDatasets.value = [] }
+  finally { chartLoading.value = false }
+}
+
+function showChartTip(pt, ds, di) {
+  chartTip.value = { x: pt.x, y: pt.y, rank: pt.rank, date: pt.date, keyword: ds.keyword, color: chartColors[di % chartColors.length] }
+}
+function hideChartTip() { chartTip.value = null }
 
 // Scan config functions
 async function loadScanConfig() {
@@ -667,7 +1228,7 @@ onMounted(async () => {
   try { const res = await analyticsApi.keywordScan(props.websiteId); const d = res.data?.data || res.data || {}; if (d.score != null) scanData.value = d } catch (e) {}
   // Fetch embed code
   try { const res = await analyticsApi.seoEmbed(props.websiteId); embedCode.value = res.data?.data?.embed_code || '' } catch (e) {}
-  await Promise.all([loadScanConfig(), loadPlatformPosts()])
+  await Promise.all([loadScanConfig(), loadPlatformPosts(), loadAlerts(), loadCompetitors()])
   loading.value = false
 })
 
@@ -897,7 +1458,278 @@ function copyEmbed() {
 .cr-gaps { background: rgba(245,158,11,0.1); color: #d97706; }
 .cr-opp { background: rgba(34,197,94,0.1); color: #16a34a; }
 
+/* ── Keyword Alert Card ───────────────────────────────────────────────── */
+.kw-alert-card { position: relative; overflow: visible; }
+
+/* Bell icon with notification dot */
+.alert-bell-icon { position: relative; display: flex; align-items: center; justify-content: center; }
+.bell-dot { position: absolute; top: -2px; right: -2px; width: 7px; height: 7px; border-radius: 50%; background: #ef4444; border: 1.5px solid var(--bg-card); animation: bell-pulse 2s infinite; }
+@keyframes bell-pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.3); opacity: 0.7; } }
+
+/* New rule button */
+.al-add-btn {
+  display: flex; align-items: center; gap: 5px;
+  padding: 4px 10px; border-radius: var(--radius-full);
+  border: 1px solid var(--border-color);
+  background: var(--bg-surface); color: var(--text-secondary);
+  font-size: 11px; font-weight: 600; cursor: pointer;
+  transition: all 0.15s;
+}
+.al-add-btn:hover { border-color: var(--brand-accent); color: var(--brand-accent); background: rgba(99,102,241,0.06); }
+.al-add-active { border-color: var(--brand-accent); color: var(--brand-accent); background: rgba(99,102,241,0.08); }
+
+/* Inline slide-in form */
+.alert-form-slide-enter-active,
+.alert-form-slide-leave-active { transition: max-height 0.22s ease, opacity 0.2s ease; overflow: hidden; }
+.alert-form-slide-enter-from,
+.alert-form-slide-leave-to { max-height: 0; opacity: 0; }
+.alert-form-slide-enter-to,
+.alert-form-slide-leave-from { max-height: 300px; opacity: 1; }
+
+.al-inline-form {
+  margin: 0 -1px;
+  padding: 14px 16px;
+  background: var(--bg-surface);
+  border-top: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border-color);
+}
+.al-form-title { font-size: 11px; font-weight: 700; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 12px; }
+.al-form-grid { display: grid; grid-template-columns: 1fr auto; gap: 10px; margin-bottom: 10px; }
+.al-field { display: flex; flex-direction: column; gap: 4px; }
+.al-label { font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.al-select {
+  height: 32px; padding: 0 8px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-card); color: var(--text-primary);
+  font-size: 12px; outline: none;
+  transition: border-color 0.15s;
+}
+.al-select:focus { border-color: var(--brand-accent); }
+.al-threshold-row { display: flex; align-items: center; gap: 4px; }
+.al-step-btn {
+  width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--border-color);
+  background: var(--bg-card); color: var(--text-primary); font-size: 16px; font-weight: 400;
+  cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.12s;
+  line-height: 1;
+}
+.al-step-btn:hover { border-color: var(--brand-accent); color: var(--brand-accent); }
+.al-threshold-val { font-size: 18px; font-weight: 800; color: var(--brand-accent); min-width: 26px; text-align: center; }
+.al-threshold-unit { font-size: 10px; color: var(--text-muted); white-space: nowrap; }
+.al-form-row2 { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 12px; }
+.al-pill-group { display: flex; align-items: center; gap: 4px; }
+.al-pill-label { font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; margin-right: 2px; }
+.al-pill {
+  padding: 3px 10px; border-radius: var(--radius-full);
+  border: 1px solid var(--border-color);
+  background: var(--bg-card); color: var(--text-muted);
+  font-size: 11px; font-weight: 600; cursor: pointer; transition: all 0.12s;
+}
+.al-pill:hover { border-color: var(--brand-accent); color: var(--brand-accent); }
+.al-pill-active { background: var(--brand-accent); border-color: var(--brand-accent); color: white; }
+.al-form-error { font-size: 11px; color: #ef4444; margin-bottom: 8px; }
+.al-form-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.al-cancel-btn {
+  padding: 6px 14px; border-radius: var(--radius-md);
+  border: 1px solid var(--border-color); background: transparent;
+  color: var(--text-muted); font-size: 12px; font-weight: 600; cursor: pointer;
+  transition: all 0.12s;
+}
+.al-cancel-btn:hover { color: var(--text-primary); border-color: var(--text-muted); }
+.al-save-btn {
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 16px; border-radius: var(--radius-md);
+  border: none; background: var(--brand-accent); color: white;
+  font-size: 12px; font-weight: 700; cursor: pointer; transition: all 0.12s;
+}
+.al-save-btn:hover:not(:disabled) { background: var(--brand-hover, #4f46e5); }
+.al-save-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.al-spinner { animation: spin 0.8s linear infinite; }
+
+/* Section labels */
+.al-section-label {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 10px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.05em; color: var(--text-muted);
+  margin-bottom: 8px;
+}
+.al-count-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 18px; height: 16px; padding: 0 5px;
+  border-radius: var(--radius-full); background: rgba(99,102,241,0.12);
+  color: var(--brand-accent); font-size: 9px; font-weight: 800;
+}
+.al-count-orange { background: rgba(245,158,11,0.12); color: #d97706; }
+
+/* Rule items */
+.al-rules-list { display: flex; flex-direction: column; gap: 5px; }
+.al-rule-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 9px 11px; border: 1px solid var(--border-color);
+  border-radius: var(--radius-md); background: var(--bg-surface);
+  transition: border-color 0.15s;
+}
+.al-rule-item:hover { border-color: rgba(99,102,241,0.3); }
+.al-rule-muted { opacity: 0.55; }
+.al-rule-left { display: flex; flex-direction: column; gap: 5px; flex: 1; min-width: 0; }
+.al-rule-kw {
+  display: flex; align-items: center; gap: 5px;
+  font-size: 12px; font-weight: 700; color: var(--text-primary);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.al-rule-kw svg { color: var(--text-muted); flex-shrink: 0; }
+.al-rule-meta { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.al-badge {
+  display: inline-flex; align-items: center; gap: 3px;
+  padding: 1px 6px; border-radius: var(--radius-full);
+  font-size: 9px; font-weight: 700; letter-spacing: 0.02em;
+  border: 1px solid transparent;
+}
+.al-badge-threshold { background: rgba(99,102,241,0.08); color: var(--brand-accent); border-color: rgba(99,102,241,0.2); }
+.al-badge-any { background: var(--bg-card); color: var(--text-muted); border-color: var(--border-color); }
+.al-badge-up { background: rgba(34,197,94,0.1); color: #16a34a; border-color: rgba(34,197,94,0.25); }
+.al-badge-down { background: rgba(239,68,68,0.08); color: #dc2626; border-color: rgba(239,68,68,0.2); }
+.al-badge-method { background: var(--bg-card); color: var(--text-secondary); border-color: var(--border-color); }
+.al-rule-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+
+/* Custom toggle switch */
+.al-toggle {
+  width: 30px; height: 16px; border-radius: 8px;
+  border: none; cursor: pointer; padding: 0;
+  background: var(--border-color); position: relative;
+  transition: background 0.2s;
+}
+.al-toggle-on { background: var(--brand-accent); }
+.al-toggle-knob {
+  position: absolute; top: 2px; left: 2px;
+  width: 12px; height: 12px; border-radius: 50%;
+  background: white; transition: left 0.2s;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+.al-toggle-on .al-toggle-knob { left: 16px; }
+.al-delete-btn {
+  width: 22px; height: 22px; border-radius: 4px;
+  border: none; background: transparent; color: var(--text-muted);
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  transition: all 0.12s;
+}
+.al-delete-btn:hover { background: rgba(239,68,68,0.1); color: #dc2626; }
+
+/* Event list */
+.al-events-section { }
+.al-events-list { display: flex; flex-direction: column; gap: 4px; }
+.al-event-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 10px; border-radius: var(--radius-md);
+  background: var(--bg-surface); border: 1px solid var(--border-color);
+}
+.al-event-icon {
+  width: 20px; height: 20px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.al-ei-up { background: rgba(34,197,94,0.12); color: #16a34a; }
+.al-ei-down { background: rgba(239,68,68,0.1); color: #dc2626; }
+.al-event-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.al-event-kw { font-size: 12px; font-weight: 700; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.al-event-detail { font-size: 10px; color: var(--text-muted); }
+.al-event-detail strong { color: var(--text-secondary); }
+.al-rank-change { font-size: 10px; color: var(--text-muted); margin-left: 4px; font-variant-numeric: tabular-nums; }
+.al-event-time { font-size: 9px; color: var(--text-muted); flex-shrink: 0; white-space: nowrap; }
+
+/* Empty state */
+.al-empty-state { display: flex; flex-direction: column; align-items: center; padding: 24px 12px; text-align: center; }
+.al-empty-icon { opacity: 0.35; margin-bottom: 10px; }
+.al-empty-text { font-size: 13px; font-weight: 700; color: var(--text-primary); margin: 0 0 4px; }
+.al-empty-sub { font-size: 11px; color: var(--text-muted); margin: 0; line-height: 1.5; }
+.al-empty-sub strong { color: var(--text-secondary); }
+
+/* ── Competitor Tracking Card ─────────────────────────────────────────── */
+.ct-card { }
+.ct-list { display: flex; flex-direction: column; gap: 5px; margin-bottom: 10px; }
+.ct-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 11px; border: 1px solid var(--border-color);
+  border-radius: var(--radius-md); background: var(--bg-surface);
+  transition: border-color 0.15s;
+}
+.ct-row:hover { border-color: rgba(99,102,241,0.3); }
+.ct-favicon { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.ct-info { flex: 1; min-width: 0; }
+.ct-name { display: block; font-size: 12px; font-weight: 700; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ct-domain { font-size: 10px; color: var(--text-muted); }
+.ct-status { font-size: 9px; color: var(--text-muted); flex-shrink: 0; display: none; }
+@media (min-width: 500px) { .ct-status { display: block; } }
+.ct-last-check { }
+.ct-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.ct-refresh-btn {
+  display: flex; align-items: center; gap: 4px;
+  padding: 4px 10px; border-radius: var(--radius-full);
+  border: 1px solid var(--border-color);
+  background: var(--bg-card); color: var(--text-secondary);
+  font-size: 10px; font-weight: 600; cursor: pointer; transition: all 0.15s;
+}
+.ct-refresh-btn:hover:not(:disabled) { border-color: var(--brand-accent); color: var(--brand-accent); }
+.ct-refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.ct-refreshing { opacity: 0.7; pointer-events: none; }
+.ct-spin { animation: spin 0.8s linear infinite; }
+.ct-compare-row { margin: 6px 0; }
+.ct-compare-btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 5px 14px; border-radius: var(--radius-full);
+  border: 1px solid var(--border-color); background: var(--bg-surface);
+  color: var(--text-secondary); font-size: 11px; font-weight: 600;
+  cursor: pointer; transition: all 0.15s;
+}
+.ct-compare-btn:hover:not(:disabled) { border-color: var(--brand-accent); color: var(--brand-accent); background: rgba(99,102,241,0.04); }
+.ct-compare-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.ct-overlap-table { margin-top: 8px; }
+.ct-kw-cell { font-size: 11px; font-weight: 600; color: var(--text-primary); max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ct-us-col { }
+.ct-us-label { font-size: 10px; font-weight: 800; color: var(--brand-accent); }
+.ct-rank-delta { display: block; font-size: 8px; font-weight: 700; margin-top: 1px; text-transform: uppercase; letter-spacing: 0.03em; }
+.ct-delta-win { color: #16a34a; }
+.ct-delta-lose { color: #dc2626; }
+
+/* ── Historical Rank Charts Card ──────────────────────────────────────── */
+.hc-card { }
+.hc-controls { margin-bottom: 14px; }
+.hc-kw-row { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+.hc-kw-chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 4px 10px; border-radius: var(--radius-full);
+  border: 1px solid var(--border-color);
+  background: var(--bg-surface); color: var(--text-muted);
+  font-size: 11px; font-weight: 600; cursor: pointer; transition: all 0.15s;
+}
+.hc-kw-chip:hover:not(.hc-chip-disabled) { border-color: currentColor; }
+.hc-chip-active { font-weight: 700; }
+.hc-chip-disabled { opacity: 0.35; cursor: not-allowed; }
+.hc-chip-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.hc-chip-rank { font-size: 9px; opacity: 0.7; }
+.hc-loading { display: flex; flex-direction: column; gap: 8px; align-items: center; padding: 20px; color: var(--text-muted); font-size: 12px; }
+.hc-loading-bar { width: 80px; height: 3px; background: var(--border-color); border-radius: 2px; overflow: hidden; position: relative; }
+.hc-loading-bar::after { content: ''; position: absolute; left: -40px; width: 40px; height: 100%; background: var(--brand-accent); border-radius: 2px; animation: hc-slide 1s ease-in-out infinite; }
+@keyframes hc-slide { to { left: 100%; } }
+.hc-chart-area { display: flex; flex-direction: column; gap: 10px; }
+.hc-note { font-size: 10px; color: var(--text-muted); }
+.rank-chart { width: 100%; height: 220px; display: block; overflow: visible; cursor: crosshair; }
+.chart-dot-group { cursor: pointer; }
+.hc-legend { display: flex; flex-wrap: wrap; gap: 12px; padding-top: 4px; border-top: 1px solid var(--border-color); }
+.hc-legend-item { display: flex; align-items: center; gap: 6px; }
+.hc-legend-line { width: 18px; height: 2px; border-radius: 1px; flex-shrink: 0; }
+.hc-legend-kw { font-size: 11px; font-weight: 600; color: var(--text-primary); }
+.hc-legend-rank { font-size: 10px; font-weight: 700; }
+
 /* Responsive */
-@media (max-width: 900px) { .cards-grid { grid-template-columns: 1fr; } .split-screen { grid-template-columns: 1fr; } .ai-engine-grid { grid-template-columns: 1fr; } .alt-grid { grid-template-columns: 1fr; } .comp-grid { grid-template-columns: 1fr; } }
+@media (max-width: 900px) {
+  .cards-grid { grid-template-columns: 1fr; }
+  .split-screen { grid-template-columns: 1fr; }
+  .ai-engine-grid { grid-template-columns: 1fr; }
+  .alt-grid { grid-template-columns: 1fr; }
+  .comp-grid { grid-template-columns: 1fr; }
+  [style*="grid-column: span 2"] { grid-column: span 1 !important; }
+}
 @media (max-width: 600px) { .page-header { flex-direction: column; align-items: flex-start; gap: 10px; } .fc-stat-row { flex-direction: column; } }
 </style>
