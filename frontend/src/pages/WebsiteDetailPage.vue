@@ -6,7 +6,6 @@
         <p class="page-subtitle text-muted">{{ website?.url }}</p>
       </div>
       <div class="flex gap-8">
-        <button class="btn btn-secondary" @click="$router.push(`/audits/${id}`)">Run Audit</button>
         <button class="btn btn-primary" @click="$router.push(`/analytics/${id}`)">View Analytics</button>
       </div>
     </div>
@@ -46,10 +45,6 @@
           <div class="nav-tile" @click="$router.push(`/competitors/${id}`)">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="6" width="7" height="14" rx="1.5"/><rect x="14" y="3" width="7" height="17" rx="1.5"/></svg>
             <span class="font-semibold">Competitors</span>
-          </div>
-          <div class="nav-tile" @click="$router.push(`/strategy/${id}`)">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2l3 6h6l-5 4 2 6-6-3-6 3 2-6-5-4h6z" stroke-linejoin="round"/></svg>
-            <span class="font-semibold">Strategy</span>
           </div>
         </div>
       </div>

@@ -233,25 +233,11 @@ const features = [
     icon: '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>'
   },
   {
-    title: 'Site Audits',
-    desc: 'Scan SEO, performance, mobile, and security with scored results and action items.',
-    replaces: 'Replaces Ahrefs',
-    tint: 'tint-pink',
-    icon: '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>'
-  },
-  {
     title: 'Lead ID',
     desc: 'Identify companies visiting your site with behavioral scoring and company intel.',
     replaces: 'Replaces Clearbit',
     tint: 'tint-peach',
     icon: '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="12" cy="7" r="4"/><path d="M5.5 21c0-3.5 3-6 6.5-6s6.5 2.5 6.5 6"/></svg>'
-  },
-  {
-    title: 'AI Strategy',
-    desc: 'AI-generated growth plans, content calendars, and prioritized action items.',
-    replaces: 'Replaces Consultants',
-    tint: 'tint-blue',
-    icon: '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M12 2l2.4 4.8H20l-4 3.6 1.2 5.6L12 13l-5.2 3L8 10.4 4 6.8h5.6z" stroke-linejoin="round"/></svg>'
   },
 ]
 
@@ -262,9 +248,9 @@ const steps = [
 ]
 
 const plans = [
-  { name: 'Starter', price: 'Free', per: '', desc: 'For side projects.', features: ['1 website', '1,000 pageviews/mo', 'Site audits', 'Keyword tracking (10)'], cta: 'Start Free', featured: false },
+  { name: 'Starter', price: 'Free', per: '', desc: 'For side projects.', features: ['1 website', '1,000 pageviews/mo', 'Keyword tracking (10)'], cta: 'Start Free', featured: false },
   { name: 'Growth', price: '$29', per: 'mo', desc: 'For growing businesses.', features: ['5 websites', '50,000 pageviews/mo', 'Full analytics + AI', 'Heatmaps & funnels', 'Lead identification'], cta: 'Start Free Trial', featured: true },
-  { name: 'Scale', price: '$99', per: 'mo', desc: 'For agencies.', features: ['50 websites', '500,000 pageviews/mo', 'Everything in Growth', 'AI growth strategy', 'API access'], cta: 'Contact Sales', featured: false },
+  { name: 'Scale', price: '$99', per: 'mo', desc: 'For agencies.', features: ['50 websites', '500,000 pageviews/mo', 'Everything in Growth', 'API access'], cta: 'Contact Sales', featured: false },
 ]
 </script>
 

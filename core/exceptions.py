@@ -70,11 +70,6 @@ class LeadNotFound(ResourceNotFound):
         super().__init__("Lead not found.")
 
 
-class StrategyNotFound(ResourceNotFound):
-    def __init__(self):
-        super().__init__("Strategy not found.")
-
-
 class DomainOwnershipRequired(GrowthPilotException):
     def __init__(self):
         super().__init__(

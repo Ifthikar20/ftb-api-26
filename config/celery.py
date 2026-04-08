@@ -15,7 +15,7 @@ app.autodiscover_tasks()
 #   default      — analytics, leads, pixel, accounts (fast, in-process work)
 #   integrations — HubSpot, Semrush, Google Ads, OAuth token refresh
 #   webhooks     — outbound webhook delivery (user-controlled URLs, slow, isolated)
-#   ai           — strategy generation, LLM ranking, voice agent
+#   ai           — LLM ranking, voice agent
 app.conf.task_default_queue = "default"
 app.conf.task_routes = {
     # webhooks

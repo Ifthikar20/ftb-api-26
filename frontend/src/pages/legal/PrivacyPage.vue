@@ -223,7 +223,7 @@
       <!-- ── 9. AI & Machine Learning ── -->
       <section id="ai-data">
         <h2>9. AI & Machine Learning</h2>
-        <p>FetchBot uses AI to provide marketing intelligence, strategy recommendations, and trend analysis. Regarding your data and AI:</p>
+        <p>FetchBot uses AI to provide marketing intelligence and trend analysis. Regarding your data and AI:</p>
         <ul>
           <li>Your account data is used to generate personalized insights <strong>only within your account</strong>.</li>
           <li>We do NOT use your individual data to train AI models for other users.</li>

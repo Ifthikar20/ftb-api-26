@@ -41,12 +41,10 @@ apps/<app_name>/
 | `accounts` | User auth, JWT, OAuth |
 | `analytics` | Pageviews, visitors, funnels, daily stats |
 | `agents` | AI agent workflows |
-| `audits` | SEO/performance/security site audits |
 | `billing` | Stripe subscriptions |
 | `competitors` | Competitor tracking |
 | `leads` | Lead scoring, segments, AI finder, email outreach |
 | `notifications` | Push/email notifications |
-| `strategy` | AI growth strategy |
 | `websites` | Website/project management |
 
 ## Views

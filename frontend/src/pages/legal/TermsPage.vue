@@ -59,7 +59,7 @@
           <li><strong>"Enterprise Plan"</strong> means a custom-priced subscription for teams, agencies, and organizations, including additional features such as SSO, API access, and dedicated support.</li>
           <li><strong>"Content"</strong> refers to all data, text, analytics, reports, and materials generated through the Service.</li>
           <li><strong>"Your Data"</strong> means data you provide to us or that we collect on your behalf, including website analytics, lead information, and campaign data.</li>
-          <li><strong>"AI Credits"</strong> refers to the consumable units used to access AI-powered features such as strategy suggestions, keyword analysis, and competitive intelligence.</li>
+          <li><strong>"AI Credits"</strong> refers to the consumable units used to access AI-powered features such as keyword analysis and competitive intelligence.</li>
           <li><strong>"Workspace"</strong> means a project environment within FetchBot tied to a specific website or domain.</li>
         </ul>
       </section>
@@ -87,10 +87,8 @@
         <ul>
           <li><strong>Website Analytics</strong> — Real-time visitor tracking, session recording, and behavioral analysis.</li>
           <li><strong>Lead Scoring & Management</strong> — Automated identification, scoring, and pipeline management of potential customers.</li>
-          <li><strong>SEO Auditing</strong> — Comprehensive website audits covering technical SEO, content quality, and performance.</li>
           <li><strong>Heatmaps</strong> — Visual representation of user interaction patterns on your pages.</li>
           <li><strong>Keyword Research</strong> — Search engine keyword analysis and tracking with competitive positioning data.</li>
-          <li><strong>AI Strategy</strong> — AI-powered marketing strategy recommendations, including trend analysis and growth forecasting.</li>
           <li><strong>Campaign Management</strong> — Tools to plan, execute, and track multi-channel marketing campaigns.</li>
           <li><strong>LLM Ranking</strong> — Monitor how your brand appears in AI search results across ChatGPT, Claude, Gemini, and others.</li>
           <li><strong>Competitive Intelligence</strong> — Track competitor websites, keywords, and market positioning.</li>
@@ -169,7 +167,7 @@
       <section id="ai">
         <h2>8. AI-Generated Content</h2>
         <h3>8.1 Nature of AI Output</h3>
-        <p>FetchBot uses artificial intelligence to provide strategy recommendations, trend analysis, keyword suggestions, and other marketing insights. AI-generated content is provided as informational guidance and should not be treated as professional advice.</p>
+        <p>FetchBot uses artificial intelligence to provide trend analysis, keyword suggestions, and other marketing insights. AI-generated content is provided as informational guidance and should not be treated as professional advice.</p>
 
         <h3>8.2 Accuracy</h3>
         <p>While we strive for accuracy, AI-generated content may contain errors, outdated information, or biases. You are responsible for independently verifying any AI-generated content before making business decisions based on it.</p>

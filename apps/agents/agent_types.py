@@ -60,7 +60,6 @@ AGENT_CONFIGS = {
             "get_trending_keywords",
             "get_keyword_gaps",
             "generate_content_brief",
-            "add_calendar_entry",
         ],
         "max_steps": 10,
         "default_trigger": "manual",

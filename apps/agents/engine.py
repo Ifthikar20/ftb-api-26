@@ -264,7 +264,7 @@ Rules:
 - Do NOT call a tool you already called with the same params (check previous_steps)
 - website_id is auto-injected, do NOT include it in params
 - If you have gathered enough data, output DONE with findings
-- Only request approval for data-modifying actions (add_calendar_entry, generate_content_brief)
+- Only request approval for data-modifying actions (generate_content_brief)
 
 Return ONLY valid JSON, no markdown."""
 

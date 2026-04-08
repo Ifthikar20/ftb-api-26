@@ -14,12 +14,12 @@ The frontend is a Vue 3 SPA in `frontend/` talking to the FTB Django API.
 - **Layout**: `frontend/src/{api, components, composables, layouts, pages,
   router, stores}`.
 - **Backend it talks to**: multi-tenant DRF API. Domains include leads,
-  competitors, audits, billing, voice agent, LLM ranking, analytics dashboards,
-  notifications, gamification.
+  competitors, billing, voice agent, LLM ranking, analytics dashboards,
+  notifications.
 
 The app is data-heavy (charts, tables, pipelines) and tenant-scoped, so test
 strategy must cover: auth + tenant context, table/chart rendering with real-ish
-data, long-running async flows (audits, voice agent), and form validation tied
+data, long-running async flows (voice agent), and form validation tied
 to DRF serializer errors.
 
 ## Test strategy for this codebase
@@ -35,7 +35,6 @@ to DRF serializer errors.
    - Login + tenant context loads (`apps/accounts`).
    - Lead pipeline view: list, filter, detail, status change.
    - Competitor tracking + history chart card.
-   - Audit run: kick off, poll status, view report.
    - Billing: view plan, upgrade flow, webhook-driven state change visible in UI.
    - Voice agent: start session, transcript renders, end session.
    - LLM ranking dashboard renders without N+1 errors from API.
@@ -51,7 +50,7 @@ to DRF serializer errors.
    - Seed data via API calls in `beforeEach`, not by clicking through the UI.
    - Each test creates and tears down its own tenant where feasible, to avoid
      cross-test bleed.
-   - Mock `Date.now` and timers for charts and gamification streaks.
+   - Mock `Date.now` and timers for charts and time-based UI.
 
 5. **Charts and Vue Flow**
    - Chart.js renders to `<canvas>`. Assert via the underlying data passed to

@@ -39,8 +39,6 @@
               <li><span class="feat-check">✓</span> Full analytics dashboard</li>
               <li><span class="feat-check">✓</span> Lead scoring & hot alerts</li>
               <li><span class="feat-check">✓</span> 5 competitor tracking</li>
-              <li><span class="feat-check">✓</span> SEO audits on-demand</li>
-              <li><span class="feat-check">✓</span> AI strategy & morning briefs</li>
               <li><span class="feat-check">✓</span> Pipeline builder</li>
               <li><span class="feat-check">✓</span> 2 integrations (Slack/Discord/Telegram)</li>
               <li><span class="feat-check">✓</span> Trend intelligence</li>
@@ -214,7 +212,7 @@ const annual = ref(false)
 const checkingOut = ref(null)
 const portalLoading = ref(false)
 
-const limits = { pageviews: 50000, audits: 50, ai_credits: 100, leads: 200 }
+const limits = { pageviews: 50000, ai_credits: 100, leads: 200 }
 
 const currentSegment = computed(() => subscription.value?.segment || subscription.value?.plan || 'individual')
 
@@ -234,13 +232,9 @@ const featureRows = [
   { name: 'Slack / Discord / Telegram', individual: '2 connections', enterprise: 'Unlimited' },
   { name: 'Daily growth reports', individual: true, enterprise: true },
   { name: 'Real-time alerts', individual: true, enterprise: true },
-  { name: 'SEO & Audits', section: true },
+  { name: 'SEO', section: true },
   { name: 'Automated SEO audit', individual: true, enterprise: true },
-  { name: 'On-demand audits', individual: true, enterprise: true },
   { name: 'White-label PDF reports', individual: false, enterprise: true },
-  { name: 'AI Strategy', section: true },
-  { name: 'AI morning brief', individual: true, enterprise: true },
-  { name: 'Growth plan generation', individual: true, enterprise: true },
   { name: 'Trend intelligence', individual: true, enterprise: true },
   { name: 'Niche analysis', individual: false, enterprise: true },
   { name: 'Platform', section: true },

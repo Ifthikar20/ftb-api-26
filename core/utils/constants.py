@@ -28,8 +28,6 @@ PLAN_LIMITS = {
         "ai_credits_monthly": 100,
         "integrations": 2,
         "competitors": 5,
-        "audits_on_demand": True,
-        "ai_strategy_chat": True,
         "pipeline_builder": True,
         "trend_intelligence": True,
         "sso": False,
@@ -39,7 +37,7 @@ PLAN_LIMITS = {
         # Visible tabs
         "tabs": [
             "dashboard", "projects", "analytics", "leads",
-            "audits", "heatmaps", "keywords", "strategy",
+            "heatmaps", "keywords",
             "campaigns", "integrations", "billing", "settings",
         ],
     },
@@ -53,8 +51,6 @@ PLAN_LIMITS = {
         "ai_credits_monthly": -1,  # unlimited
         "integrations": -1,
         "competitors": -1,
-        "audits_on_demand": True,
-        "ai_strategy_chat": True,
         "pipeline_builder": True,
         "trend_intelligence": True,
         "sso": True,
@@ -64,7 +60,7 @@ PLAN_LIMITS = {
         # All tabs visible
         "tabs": [
             "dashboard", "projects", "analytics", "leads",
-            "audits", "heatmaps", "keywords", "strategy",
+            "heatmaps", "keywords",
             "agents", "campaigns", "llm_ranking",
             "integrations", "billing", "settings",
         ],

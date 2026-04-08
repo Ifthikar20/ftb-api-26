@@ -88,8 +88,6 @@ const pageHelp = [
   { page: 'leads', icon: '', label: 'Leads', help: 'Captured visitor and form submission data. Leads are created when visitors interact with forms on your tracked site.' },
 
 
-  { page: 'audits', icon: '', label: 'Audits', help: 'Run a full SEO, performance, mobile, security, and content audit on your website. Click "Run Audit" to scan your site right now.' },
-  { page: 'strategy', icon: '', label: 'Strategy', help: 'AI-generated marketing strategy based on your audit results and analytics data.' },
   { page: 'billing', icon: '', label: 'Billing', help: 'Manage your subscription, view usage, and compare plan features.' },
 ]
 

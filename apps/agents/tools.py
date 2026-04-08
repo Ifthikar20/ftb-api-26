@@ -76,17 +76,6 @@ def _get_lead_summary(*, website_id: str) -> dict:
     return {"total": total, "hot": hot, "warm": warm, "cold": total - hot - warm}
 
 
-def _add_calendar_entry(*, website_id: str, title: str, topic: str = "",
-                        content_type: str = "blog", scheduled_date: str = "") -> dict:
-    """Add an entry to the content calendar."""
-    from apps.strategy.services.calendar_service import CalendarService
-    entry = CalendarService.add_entry(
-        website_id=website_id, title=title, topic=topic,
-        content_type=content_type, scheduled_date=scheduled_date,
-    )
-    return {"id": str(entry.id), "title": entry.title, "date": str(entry.scheduled_date)}
-
-
 def _generate_content_brief(*, website_id: str, keyword: str, target_audience: str = "") -> dict:
     """Generate a content brief for a specific keyword."""
     import anthropic
@@ -171,17 +160,6 @@ TOOL_REGISTRY = {
         "fn": _get_lead_summary,
         "description": "Get a summary of lead counts and scoring (hot/warm/cold)",
         "params": {"website_id": {"type": "string", "required": True}},
-    },
-    "add_calendar_entry": {
-        "fn": _add_calendar_entry,
-        "description": "Add a content entry to the website's content calendar",
-        "params": {
-            "website_id": {"type": "string", "required": True},
-            "title": {"type": "string", "required": True},
-            "topic": {"type": "string", "required": False},
-            "content_type": {"type": "string", "required": False, "description": "blog, video, social, email"},
-            "scheduled_date": {"type": "string", "required": False, "description": "ISO date YYYY-MM-DD"},
-        },
     },
     "generate_content_brief": {
         "fn": _generate_content_brief,

@@ -11,9 +11,9 @@ FTB API is a multi-tenant Django + DRF backend serving a Vue 3 SPA.
 
 - **Layout**: `config/` (settings split, urls, asgi/wsgi, `celery.py`),
   `apps/` (~16 domain apps), `core/` (shared), `conftest.py` for pytest.
-- **Domain apps**: `accounts`, `agents`, `analytics`, `audits`, `billing`,
-  `competitors`, `compliance`, `gamification`, `leads`, `llm_ranking`,
-  `notifications`, `social_leads`, `strategy`, `voice_agent`, `websites`.
+- **Domain apps**: `accounts`, `agents`, `analytics`, `billing`,
+  `competitors`, `compliance`, `leads`, `llm_ranking`,
+  `notifications`, `social_leads`, `voice_agent`, `websites`.
 - **Async**: Celery via `config/celery.py`.
 - **Frontend**: `frontend/` (Vite + Vue 3 + Pinia + axios) - shapes the API contract.
 
@@ -57,7 +57,7 @@ FTB API is a multi-tenant Django + DRF backend serving a Vue 3 SPA.
 
 7. **Celery boundaries**
    - Tasks are idempotent and accept primitive args (IDs, not model instances).
-   - Long-running work in `apps/audits`, `apps/websites`, `apps/voice_agent`,
+   - Long-running work in `apps/websites`, `apps/voice_agent`,
      `apps/llm_ranking` belongs in tasks with retry/backoff and per-tenant rate limits.
    - Use `bind=True` and `autoretry_for=(...)` with capped `retry_backoff`.
 

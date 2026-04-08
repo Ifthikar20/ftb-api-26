@@ -10,7 +10,7 @@ All API keys are stored as environment variables in `.env` and loaded in `config
 
 | Service | Env Variable | Purpose |
 |---------|-------------|---------|
-| Anthropic (Claude) | `ANTHROPIC_API_KEY` | AI prompts, lead parsing, strategy generation |
+| Anthropic (Claude) | `ANTHROPIC_API_KEY` | AI prompts and lead parsing |
 | Google Custom Search | `GOOGLE_SEARCH_API_KEY`, `GOOGLE_SEARCH_ENGINE_ID` | LinkedIn/Twitter profile discovery for leads |
 | Stripe | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | Billing, subscriptions |
 | SendGrid | `SENDGRID_API_KEY` | Transactional email delivery |

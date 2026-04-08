@@ -11,9 +11,9 @@ FTB API is a multi-tenant marketing/lead-intelligence platform.
 
 - **Backend**: Django + DRF in `config/` with domain apps in `apps/`:
   `accounts` (auth, tenants, users), `billing` (payments, subscriptions),
-  `leads` + `social_leads` (PII-heavy lead data), `competitors`, `audits`,
+  `leads` + `social_leads` (PII-heavy lead data), `competitors`,
   `llm_ranking`, `voice_agent` (telephony/LLM), `notifications`, `websites`,
-  `compliance`, `analytics`, `gamification`, `strategy`, `agents`.
+  `compliance`, `analytics`, `agents`.
 - **Async**: Celery (`config/celery.py`).
 - **Frontend**: Vue 3 SPA in `frontend/` calling the API via `axios`.
 
@@ -23,7 +23,7 @@ High-value targets in this codebase:
 3. `apps/leads` and `apps/social_leads` - IDOR across tenants, PII exposure, mass-assignment in serializers.
 4. `apps/voice_agent` - prompt injection from caller transcripts, SSRF via tool calls, webhook auth.
 5. `apps/llm_ranking` - prompt injection, untrusted output rendered to users.
-6. `apps/websites` and `apps/audits` - SSRF when crawling/auditing external URLs (must block RFC1918, link-local, metadata IPs).
+6. `apps/websites` and `apps/competitors` - SSRF when crawling external URLs (must block RFC1918, link-local, metadata IPs).
 7. `config/settings` - `DEBUG`, `ALLOWED_HOSTS`, `SECRET_KEY` handling, CORS, CSRF trusted origins.
 
 ## Review playbook
@@ -36,7 +36,7 @@ For any in-scope target:
 4. **Serializers**: never `fields = "__all__"` on models with sensitive fields (`is_staff`, `tenant_id`, `password`, billing tokens). Check `read_only_fields`.
 5. **Billing**: verify webhook signature checks, replay protection, idempotency keys, and that price/amount come from server-side product records, not client input.
 6. **Voice/LLM apps**: treat all transcripts and model outputs as untrusted. Check tool-call allowlists and outbound HTTP egress.
-7. **External fetchers** (`audits`, `websites`, `competitors`): SSRF guard - resolve hostname, reject private ranges, disable redirects to private IPs, set timeouts.
+7. **External fetchers** (`websites`, `competitors`): SSRF guard - resolve hostname, reject private ranges, disable redirects to private IPs, set timeouts.
 8. **Celery tasks**: arguments are trust-boundary inputs if enqueued from user actions; validate before re-querying.
 9. **Frontend**: check `frontend/src/api` for token storage (avoid `localStorage` for long-lived auth), and any `v-html` usage for XSS.
 

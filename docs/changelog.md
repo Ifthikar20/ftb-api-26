@@ -4,6 +4,31 @@ All significant changes made across this development session.
 
 ---
 
+## 2026-04-07 — Removal cleanup
+
+The original removal of `apps/strategy`, `apps/gamification`, and `apps/audits`
+(see Feature Removals below) was incomplete. It left hard imports referencing
+the deleted packages, dead configuration entries, dead frontend routes and API
+modules, husk directories under `apps/`, and undropped database tables from the
+final migration state.
+
+This batch of work finishes the cleanup across seven parallel work units:
+
+- Unit 1 — Drop-table migration to remove the orphaned `strategy`,
+  `gamification`, and `audits` tables from the database.
+- Unit 2 — Backend code scrub: remove stale imports, URL includes, settings
+  references, Celery task registrations, and signal handlers.
+- Unit 3 — Frontend code scrub: remove dead router entries, API modules,
+  components, and navigation links.
+- Unit 4 — Husk directory removal under `apps/` and `frontend/src/`.
+- Unit 5 — Test suite cleanup: drop fixtures and tests targeting the removed
+  apps and fix collateral test imports.
+- Unit 6 — Configuration and tooling sweep: settings, environment samples,
+  documentation references, and CI config.
+- Unit 7 — Skill file and changelog updates (this entry).
+
+---
+
 ## Feature Removals
 
 ### Strategies App

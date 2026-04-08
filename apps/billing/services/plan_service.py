@@ -19,8 +19,6 @@ PLANS = [
             "100 AI credits/month",
             "Lead scoring & hot alerts",
             "5 competitor tracking",
-            "SEO audits on-demand",
-            "AI strategy & morning briefs",
             "Pipeline builder",
             "Trend intelligence",
             "2 integrations (Slack/Discord/Telegram)",

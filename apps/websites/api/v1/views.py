@@ -127,10 +127,8 @@ class DashboardView(APIView):
 
     def get(self, request):
         from apps.analytics.models import PageEvent, Visitor
-        from apps.audits.models import Audit
         from apps.leads.models import Lead
         from apps.notifications.models import Notification
-        from apps.strategy.models import MorningBrief, Strategy
 
         websites = Website.objects.filter(user=request.user)
         website = websites.first()
@@ -141,7 +139,6 @@ class DashboardView(APIView):
         # Stats
         total_visitors = 0
         hot_leads_count = 0
-        growth_score = 0
         conversion_rate = 0
         visitors_prev = 0
 
@@ -149,8 +146,6 @@ class DashboardView(APIView):
             total_visitors = Visitor.objects.filter(website=website, first_seen__gte=thirty_days_ago).count()
             visitors_prev = Visitor.objects.filter(website=website, first_seen__gte=thirty_days_ago - timedelta(days=30), first_seen__lt=thirty_days_ago).count()
             hot_leads_count = Lead.objects.filter(website=website, score__gte=70).count()
-            latest_audit = Audit.objects.filter(website=website, status='completed').first()
-            growth_score = latest_audit.overall_score if latest_audit else 0
             total_events = PageEvent.objects.filter(website=website, timestamp__gte=thirty_days_ago).count()
             form_events = PageEvent.objects.filter(website=website, event_type='form_submit', timestamp__gte=thirty_days_ago).count()
             conversion_rate = round((form_events / max(total_events, 1)) * 100, 1)
@@ -162,23 +157,8 @@ class DashboardView(APIView):
         stats = [
             {'label': 'Total Visitors', 'value': f'{total_visitors:,}', 'change': f'{abs(visitor_change)}% vs last month', 'direction': 'up' if visitor_change >= 0 else 'down'},
             {'label': 'Hot Leads', 'value': str(hot_leads_count), 'change': f'{hot_leads_count} above threshold', 'direction': 'up'},
-            {'label': 'Growth Score', 'value': str(growth_score), 'change': 'from latest audit', 'direction': 'up' if growth_score >= 70 else 'down'},
             {'label': 'Conversion Rate', 'value': f'{conversion_rate}%', 'change': 'form submissions / events', 'direction': 'up' if conversion_rate >= 2 else 'down'},
         ]
-
-        # Morning brief
-        brief_text = ''
-        if website:
-            brief = MorningBrief.objects.filter(website=website).first()
-            brief_text = brief.content if brief else 'No morning brief available yet. Run your first audit and let AI analyze your data.'
-
-        # Actions
-        actions = []
-        if website:
-            strategy = Strategy.objects.filter(website=website, status='active').first()
-            if strategy:
-                for a in strategy.actions.all()[:7]:
-                    actions.append({'id': str(a.id), 'text': a.title, 'done': a.status == 'done', 'priority': a.estimated_impact.title() if a.estimated_impact else 'Medium'})
 
         # Recent activity (from notifications)
         activity = []
@@ -223,8 +203,6 @@ class DashboardView(APIView):
 
         return Response({
             'stats': stats,
-            'brief': brief_text,
-            'actions': actions,
             'activity': activity,
             'quick_actions': quick_actions,
             'integrations': integrations,

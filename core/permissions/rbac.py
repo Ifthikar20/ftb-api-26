@@ -10,14 +10,14 @@ ROLE_HIERARCHY = {
 # Base platform features per tier (non-integration features)
 _BASE_PLAN_FEATURES = {
     "starter": [
-        "audit", "basic_analytics", "basic_leads", "competitors_3",
+        "basic_analytics", "basic_leads", "competitors_3",
     ],
     "growth": [
-        "audit", "full_analytics", "ai_strategy", "ai_chat", "content_calendar",
+        "full_analytics",
         "advanced_leads", "competitors_10", "team_5",
     ],
     "scale": [
-        "audit", "full_analytics", "ai_strategy", "ai_chat", "content_calendar",
+        "full_analytics",
         "advanced_leads", "competitors_50", "team_unlimited", "api_access",
         "white_label", "dedicated_support",
     ],
