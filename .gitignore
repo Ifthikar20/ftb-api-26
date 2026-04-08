@@ -57,3 +57,4 @@ htmlcov/
 # Node (for pixel JS build)
 node_modules/
 package-lock.json
+.claude/worktrees/
