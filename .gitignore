@@ -29,7 +29,11 @@ media/
 # Environment
 .env
 .env.*
-# .env.example is no longer tracked
+.env.production
+.env.prod
+.env.prod.example
+.env.example
+.env.*.example
 *.pem
 ssl/
 
