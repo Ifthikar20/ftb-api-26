@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+#
+# pre-commit hook: block .env, .env.production, .env.example, and similar
+# environment files from being committed.
+#
+
+BLOCKED_PATTERNS=(
+    '\.env$'
+    '\.env\.'
+    '\.env\.prod'
+    '\.env\.production'
+    '\.env\.example'
+    '\.env\..*\.example'
+    '\.env\.local'
+    '\.env\.staging'
+)
+
+STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACR)
+
+BLOCKED_FILES=()
+
+for file in $STAGED_FILES; do
+    for pattern in "${BLOCKED_PATTERNS[@]}"; do
+        if echo "$file" | grep -qE "(^|/)$pattern"; then
+            BLOCKED_FILES+=("$file")
+            break
+        fi
+    done
+done
+
+if [ ${#BLOCKED_FILES[@]} -gt 0 ]; then
+    echo "ERROR: Commit blocked by pre-commit hook."
+    echo ""
+    echo "The following environment files must not be committed:"
+    echo ""
+    for f in "${BLOCKED_FILES[@]}"; do
+        echo "  - $f"
+    done
+    echo ""
+    echo "These files may contain secrets or sensitive configuration."
+    echo "Remove them from staging with: git reset HEAD <file>"
+    exit 1
+fi
+
+exit 0
