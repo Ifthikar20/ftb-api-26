@@ -199,7 +199,7 @@
               ref="searchInputRef"
               v-model="searchQuery"
               class="cmd-input"
-              placeholder="Search pages, features, and settings..."
+              placeholder='Search — type words, "exact phrase", or /regex/'
               @keydown.down.prevent="moveHighlight(1)"
               @keydown.up.prevent="moveHighlight(-1)"
               @keydown.enter.prevent="selectHighlighted"
@@ -228,6 +228,13 @@
               </template>
             </template>
             <div v-else class="cmd-empty">No results for "{{ searchQuery }}"</div>
+          </div>
+          <div class="cmd-hint">
+            <span><kbd>↑↓</kbd> navigate</span>
+            <span><kbd>↵</kbd> open</span>
+            <span><kbd>esc</kbd> close</span>
+            <span class="cmd-hint-spacer"></span>
+            <span class="cmd-hint-syntax">tip: <code>/regex/</code> · <code>"exact"</code> · <code>multi term</code></span>
           </div>
         </div>
       </div>
@@ -282,14 +289,61 @@ const searchPages = [
   { name: 'settings', label: 'Settings', description: 'Account settings and preferences', category: 'Account', route: '/settings', icon: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="2.5"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.3 3.3l1.4 1.4M11.3 11.3l1.4 1.4M12.7 3.3l-1.4 1.4M4.7 11.3l-1.4 1.4"/></svg>' },
 ]
 
+// ── Specific search ──
+// The command palette supports three matching modes so power users can
+// drill in instead of fishing through fuzzy hits:
+//
+//   /pattern/flags   → real JavaScript regex (e.g. /^lead/i, /agen.+page/)
+//   "exact phrase"   → quoted substring, matched verbatim (case-insensitive)
+//   foo bar baz      → AND-of-terms; every whitespace-separated token must
+//                      hit somewhere in label/description/category/name.
+//
+// Invalid regex falls back to plain substring matching so a half-typed
+// pattern like /lea never blanks the result list.
+function _parseSearchQuery(raw) {
+  const trimmed = (raw || '').trim()
+  if (!trimmed) return null
+
+  // /regex/flags
+  const regexMatch = trimmed.match(/^\/(.+)\/([gimsuy]*)$/)
+  if (regexMatch) {
+    try {
+      const flags = regexMatch[2].includes('i') ? regexMatch[2] : regexMatch[2] + 'i'
+      return { kind: 'regex', re: new RegExp(regexMatch[1], flags) }
+    } catch {
+      // fall through to substring
+    }
+  }
+
+  // Tokenize: keep "quoted phrases" as single tokens, split the rest.
+  const tokens = []
+  const re = /"([^"]+)"|'([^']+)'|(\S+)/g
+  let m
+  while ((m = re.exec(trimmed)) !== null) {
+    tokens.push((m[1] || m[2] || m[3]).toLowerCase())
+  }
+  return { kind: 'tokens', tokens }
+}
+
+function _matchPage(page, parsed) {
+  const haystack = [
+    page.label,
+    page.description,
+    page.category,
+    page.name || '',
+  ].join(' ').toLowerCase()
+
+  if (parsed.kind === 'regex') {
+    return parsed.re.test(haystack)
+  }
+  // Every token must appear somewhere — AND, not OR.
+  return parsed.tokens.every(t => haystack.includes(t))
+}
+
 const filteredSearchPages = computed(() => {
-  const q = searchQuery.value.toLowerCase().trim()
-  if (!q) return searchPages
-  return searchPages.filter(p =>
-    p.label.toLowerCase().includes(q) ||
-    p.description.toLowerCase().includes(q) ||
-    p.category.toLowerCase().includes(q)
-  )
+  const parsed = _parseSearchQuery(searchQuery.value)
+  if (!parsed) return searchPages
+  return searchPages.filter(p => _matchPage(p, parsed))
 })
 
 const groupedResults = computed(() => {
@@ -903,5 +957,35 @@ onUnmounted(() => {
   text-align: center;
   color: var(--text-muted, #888);
   font-size: 14px;
+}
+.cmd-hint {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-surface);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.cmd-hint kbd {
+  display: inline-block;
+  padding: 1px 6px;
+  margin-right: 4px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.cmd-hint-spacer { flex: 1; }
+.cmd-hint-syntax code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: 11px;
 }
 </style>

@@ -568,6 +568,7 @@
     <!-- Book Appointment Modal -->
     <div v-if="showBookModal" class="modal-overlay" @click.self="showBookModal = false">
       <div class="modal-card" style="max-width: 500px">
+        <button class="modal-close" @click="showBookModal = false" aria-label="Close">×</button>
         <h3 class="card-title" style="margin-bottom: 6px">Book Appointment</h3>
         <p class="text-sm text-muted" style="margin-bottom:14px">
           Appointments are created on your connected <strong>Google Calendar</strong>. The attendee receives a Google Calendar invite with a Meet link.
@@ -609,6 +610,7 @@
     <!-- Add / Edit Phone Number Modal -->
     <div v-if="showPhoneModal" class="modal-overlay" @click.self="closePhoneModal">
       <div class="modal-card" style="max-width: 480px">
+        <button class="modal-close" @click="closePhoneModal" aria-label="Close">×</button>
         <h3 class="card-title" style="margin-bottom: 8px">{{ editingPhone ? 'Edit Phone Number' : 'Add Phone Number' }}</h3>
         <div class="info-banner" style="background: var(--bg-surface); border-radius:6px; padding:10px 12px; margin-bottom:14px; font-size:13px; color: var(--text-secondary)">
           <strong>What happens next?</strong> We provision this number through our telephony vendor (Telnyx by default, Twilio supported). The vendor terminates the SIP/PSTN call and bridges it to our LiveKit-based AI agent. You keep your existing carrier — just point call forwarding at the SIP endpoint shown in Settings, and the vendor handles the rest.
@@ -688,6 +690,7 @@
     <!-- Add / Edit Context Document Modal -->
     <div v-if="showDocModal" class="modal-overlay" @click.self="closeDocModal">
       <div class="modal-card" style="max-width: 640px">
+        <button class="modal-close" @click="closeDocModal" aria-label="Close">×</button>
         <h3 class="card-title" style="margin-bottom: 16px">{{ editingDoc ? 'Edit Document' : 'Add Knowledge Document' }}</h3>
         <div class="form-group">
           <label class="form-label">Title</label>
@@ -719,6 +722,7 @@
     <!-- Add Reminder Modal -->
     <div v-if="showReminderModal" class="modal-overlay" @click.self="showReminderModal = false">
       <div class="modal-card" style="max-width: 500px">
+        <button class="modal-close" @click="showReminderModal = false" aria-label="Close">×</button>
         <h3 class="card-title" style="margin-bottom: 16px">Add Callback Reminder</h3>
         <div class="form-group">
           <label class="form-label">Contact Name</label>

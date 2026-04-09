@@ -14,7 +14,7 @@
   --bg-card: #ffffff;
   --bg-card-hover: #fafbfc;
   --bg-input: #ffffff;
-  --bg-overlay: rgba(15, 23, 42, 0.45);
+  --bg-overlay: rgba(15, 23, 42, 0.72);
   --bg-base: #f5f6f8;
 
   /* Brand — dark primary + blue accent */
@@ -100,7 +100,7 @@
   --bg-card: #1e2132;
   --bg-card-hover: #252840;
   --bg-input: #1a1d2b;
-  --bg-overlay: rgba(0, 0, 0, 0.7);
+  --bg-overlay: rgba(0, 0, 0, 0.85);
 
   --brand-primary: #e2e8f0;
   --brand-primary-hover: #f1f5f9;

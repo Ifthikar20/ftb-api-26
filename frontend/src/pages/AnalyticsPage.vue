@@ -2200,8 +2200,7 @@ onBeforeUnmount(() => {
 .empty-inline { text-align: center; padding: 40px 20px; color: var(--text-muted); font-size: var(--font-sm); }
 
 /* ── Modal ── */
-.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; z-index: 200; }
-.modal-card { background: var(--bg-card); padding: 28px; border-radius: var(--radius-md); width: 100%; box-shadow: var(--shadow-lg); }
+/* Inherit shared .modal-overlay / .modal-card from components.css */
 
 /* ── Browser List ── */
 .browser-list { display: flex; flex-direction: column; gap: 12px; }

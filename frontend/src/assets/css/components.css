@@ -450,7 +450,11 @@ select.form-input {
   border-bottom-color: var(--text-primary);
 }
 
-/* ── Modal ── */
+/* ── Modal ──
+   Shared overlay + card surface used by every page that needs a dialog.
+   Pages that previously inlined their own translucent overlay (rgba 0.4)
+   should target these classes so the backdrop opacity stays consistent
+   and the modal stops looking like a floating card on a see-through page. */
 .modal-overlay {
   position: fixed;
   inset: 0;
@@ -459,21 +463,27 @@ select.form-input {
   align-items: center;
   justify-content: center;
   z-index: 1000;
+  padding: 24px;
   animation: fadeIn var(--transition-fast) ease;
-  backdrop-filter: blur(4px);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
-.modal-content {
+.modal-content,
+.modal-card {
+  position: relative;
   background: var(--bg-card);
-  border: none;
+  border: 1px solid var(--border);
   border-radius: var(--radius-xl);
-  padding: 32px;
-  width: 90%;
+  padding: 28px 32px;
+  width: 100%;
   max-width: 520px;
-  max-height: 90vh;
+  max-height: calc(100vh - 48px);
   overflow-y: auto;
   animation: slideUp var(--transition-base) ease;
-  box-shadow: var(--shadow-lg);
+  box-shadow:
+    0 20px 60px rgba(0, 0, 0, 0.35),
+    0 0 0 1px rgba(255, 255, 255, 0.04);
 }
 
 .modal-header {
@@ -487,6 +497,38 @@ select.form-input {
   font-family: var(--font-display);
   font-size: var(--font-xl);
   font-weight: 400;
+}
+
+/* Standard close (X) button — drop into the top-right of any modal-card.
+   <button class="modal-close" @click="show = false" aria-label="Close">×</button> */
+.modal-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background var(--transition-fast),
+              color var(--transition-fast),
+              border-color var(--transition-fast);
+}
+.modal-close:hover {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  border-color: var(--border);
+}
+.modal-close:focus-visible {
+  outline: 2px solid var(--brand-primary);
+  outline-offset: 2px;
 }
 
 /* ── Page Layout ── */

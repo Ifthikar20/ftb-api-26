@@ -1375,8 +1375,7 @@ function copyEmbed() {
 .step-text code { font-size: 10px; background: var(--bg-surface); border: 1px solid var(--border-color); padding: 0 4px; border-radius: 2px; color: var(--brand-accent); }
 
 /* Card Picker */
-.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 20px; }
-.modal-card { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 20px; width: 100%; max-width: 400px; }
+/* .modal-overlay + .modal-card inherited from components.css */
 .modal-picker { max-width: 500px; max-height: 80vh; overflow-y: auto; }
 .modal-title { font-size: var(--font-lg); font-weight: 700; color: var(--text-primary); margin: 0 0 14px; }
 .modal-body { display: flex; flex-direction: column; gap: 4px; }
