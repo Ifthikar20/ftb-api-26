@@ -38,6 +38,8 @@ export default {
     addPhoneNumber: (wid, data) => api.post(`/voice-agent/${wid}/phone-numbers/`, data),
     updatePhoneNumber: (wid, nid, data) => api.put(`/voice-agent/${wid}/phone-numbers/${nid}/`, data),
     deletePhoneNumber: (wid, nid) => api.delete(`/voice-agent/${wid}/phone-numbers/${nid}/`),
+    startPhoneVerification: (wid, data) => api.post(`/voice-agent/${wid}/phone-numbers/verify/start/`, data),
+    confirmPhoneVerification: (wid, data) => api.post(`/voice-agent/${wid}/phone-numbers/verify/confirm/`, data),
 
     // Agent context documents (knowledge base)
     getContextDocs: (wid) => api.get(`/voice-agent/${wid}/context-docs/`),

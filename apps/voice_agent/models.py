@@ -48,6 +48,11 @@ class PhoneNumber(TimestampMixin):
         max_length=200, blank=True,
         help_text="LiveKit-side outbound SIP trunk ID returned from CreateSIPOutboundTrunk.",
     )
+    is_verified = models.BooleanField(
+        default=False,
+        help_text="True once the user has completed SMS/call MFA proving ownership of this number.",
+    )
+    verified_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = "voice_agent_phonenumber"
@@ -89,7 +94,10 @@ class AgentConfig(TimestampMixin):
     website = models.OneToOneField(
         "websites.Website", on_delete=models.CASCADE, related_name="voice_agent_config"
     )
-    is_active = models.BooleanField(default=False)
+    is_active = models.BooleanField(
+        default=True,
+        help_text="Always-on. Retained for backward compatibility; agent is enabled by default.",
+    )
     retell_agent_id = models.CharField(max_length=200, blank=True)
     phone_number = models.CharField(max_length=30, blank=True)
     greeting_message = models.TextField(
@@ -125,6 +133,58 @@ class AgentConfig(TimestampMixin):
 
     def __str__(self):
         return f"VoiceAgent({self.website.name}, active={self.is_active})"
+
+
+class PhoneVerification(TimestampMixin):
+    """Short-lived MFA challenge issued when a user adds a phone number.
+
+    The user enters a number, we send a 6-digit code via SMS or place an
+    automated call (through our telephony vendor) that reads the code aloud.
+    The user posts the code back; on success the number is marked verified
+    and may be saved as a PhoneNumber.
+    """
+
+    CHANNEL_SMS = "sms"
+    CHANNEL_CALL = "call"
+    CHANNEL_CHOICES = [(CHANNEL_SMS, "SMS"), (CHANNEL_CALL, "Voice call")]
+
+    STATUS_PENDING = "pending"
+    STATUS_VERIFIED = "verified"
+    STATUS_EXPIRED = "expired"
+    STATUS_FAILED = "failed"
+    STATUS_CHOICES = [
+        (STATUS_PENDING, "Pending"),
+        (STATUS_VERIFIED, "Verified"),
+        (STATUS_EXPIRED, "Expired"),
+        (STATUS_FAILED, "Failed"),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    website = models.ForeignKey(
+        "websites.Website", on_delete=models.CASCADE, related_name="phone_verifications"
+    )
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True
+    )
+    number = models.CharField(max_length=30, help_text="E.164 number being verified")
+    channel = models.CharField(max_length=10, choices=CHANNEL_CHOICES, default=CHANNEL_SMS)
+    code_hash = models.CharField(max_length=128, help_text="HMAC-SHA256 of the OTP")
+    expires_at = models.DateTimeField()
+    attempts = models.PositiveIntegerField(default=0)
+    max_attempts = models.PositiveIntegerField(default=5)
+    status = models.CharField(max_length=12, choices=STATUS_CHOICES, default=STATUS_PENDING)
+    vendor_request_id = models.CharField(
+        max_length=200, blank=True,
+        help_text="Vendor (Telnyx/Twilio) message or call SID for tracing.",
+    )
+
+    class Meta:
+        db_table = "voice_agent_phoneverification"
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["website", "number", "status"])]
+
+    def __str__(self):
+        return f"PhoneVerification({self.number}, {self.status})"
 
 
 class CallLog(TimestampMixin):

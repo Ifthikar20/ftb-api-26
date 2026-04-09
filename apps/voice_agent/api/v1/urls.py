@@ -32,6 +32,8 @@ urlpatterns = [
 
     # Phone numbers
     path("<uuid:website_id>/phone-numbers/", views.PhoneNumberListView.as_view(), name="voice-phone-list"),
+    path("<uuid:website_id>/phone-numbers/verify/start/", views.PhoneNumberVerifyStartView.as_view(), name="voice-phone-verify-start"),
+    path("<uuid:website_id>/phone-numbers/verify/confirm/", views.PhoneNumberVerifyConfirmView.as_view(), name="voice-phone-verify-confirm"),
     path("<uuid:website_id>/phone-numbers/<uuid:number_id>/", views.PhoneNumberDetailView.as_view(), name="voice-phone-detail"),
 
     # Agent context documents (knowledge base)

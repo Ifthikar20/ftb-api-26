@@ -87,6 +87,51 @@ class TelnyxService:
         return resp.json().get("data", {})
 
     @classmethod
+    def send_sms(cls, *, to: str, text: str) -> dict[str, Any]:
+        """Send a transactional SMS (used for phone-number MFA codes)."""
+        from_number = getattr(settings, "TELNYX_SMS_FROM", "")
+        if not from_number:
+            raise TelnyxConfigError("TELNYX_SMS_FROM is not set")
+        resp = requests.post(
+            f"{TELNYX_API_BASE}/messages",
+            headers=cls._headers(),
+            json={"from": from_number, "to": to, "text": text},
+            timeout=15,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    @classmethod
+    def place_verification_call(cls, *, to: str, code: str) -> dict[str, Any]:
+        """Place an outbound call that reads a verification code aloud.
+
+        Uses Telnyx Call Control with a TeXML/answer URL configured at the
+        application layer; for environments without that wired up the call
+        will fail and the caller should fall back to SMS.
+        """
+        connection_id = getattr(settings, "TELNYX_VERIFY_CALL_CONNECTION_ID", "") or getattr(
+            settings, "TELNYX_OUTBOUND_CONNECTION_ID", ""
+        )
+        from_number = getattr(settings, "TELNYX_SMS_FROM", "")
+        if not (connection_id and from_number):
+            raise TelnyxConfigError(
+                "TELNYX_VERIFY_CALL_CONNECTION_ID / TELNYX_SMS_FROM not set"
+            )
+        resp = requests.post(
+            f"{TELNYX_API_BASE}/calls",
+            headers=cls._headers(),
+            json={
+                "connection_id": connection_id,
+                "to": to,
+                "from": from_number,
+                "client_state": f"verify:{code}",
+            },
+            timeout=15,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    @classmethod
     def sip_address(cls) -> str:
         """SIP URI LiveKit dials when placing an outbound call via Telnyx."""
         return getattr(settings, "TELNYX_SIP_ADDRESS", "sip.telnyx.com")

@@ -6,31 +6,9 @@
         <p class="page-subtitle">AI-powered phone agent that handles calls, books appointments, and captures leads.</p>
       </div>
       <div class="header-actions">
-        <button v-if="config.is_active" class="btn btn-secondary btn-sm" @click="startWebCall" :disabled="webCallLoading">
+        <button class="btn btn-secondary btn-sm" @click="startWebCall" :disabled="webCallLoading">
           {{ webCallLoading ? 'Connecting...' : 'Test Call' }}
         </button>
-        <button class="btn btn-sm" :class="config.is_active ? 'btn-danger' : 'btn-primary'" @click="toggleAgent" :disabled="activating">
-          {{ activating ? 'Processing...' : (config.is_active ? 'Deactivate Agent' : 'Activate Agent') }}
-        </button>
-      </div>
-    </div>
-
-    <!-- Status Banner -->
-    <div v-if="config.is_active" class="agent-status-banner status-enabled">
-      <div class="status-icon">⚡</div>
-      <div class="status-content">
-        <strong>Agent Enabled</strong>
-        <p>Your voice agent configuration is saved. To start receiving live calls, connect your voice providers (Groq + LiveKit) in the server environment.</p>
-      </div>
-      <div class="status-actions">
-        <button class="btn btn-sm btn-secondary" @click="activeTab = 'settings'">Configure Settings</button>
-      </div>
-    </div>
-    <div v-else class="agent-status-banner status-inactive">
-      <div class="status-icon">🔇</div>
-      <div class="status-content">
-        <strong>Agent Inactive</strong>
-        <p>Click "Activate Agent" to enable the voice agent. Then configure your settings and connect voice providers.</p>
       </div>
     </div>
     <div class="stats-grid" style="margin-bottom: 24px">
@@ -79,6 +57,43 @@
           Need a starting point? Click <strong>Apply</strong> on a template below — we'll fill in your knowledge base for you. You can edit the markdown after.
         </p>
       </div>
+      <!-- Recent Calls preview -->
+      <div class="card" style="margin: 20px 0">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px">
+          <h3 class="card-title" style="margin:0">Recent Calls</h3>
+          <button class="btn btn-secondary btn-xs" @click="activeTab = 'calls'">View all</button>
+        </div>
+        <p class="text-sm text-muted" style="margin-bottom:12px">
+          Latest inbound and outbound calls handled by your AI agent. If a caller looks like a possible lead, we capture their details here automatically. They are not pushed to your Leads table yet — review them first and promote the ones you want.
+        </p>
+        <div v-if="loading.calls" class="loading-state">Loading calls...</div>
+        <div v-else-if="!calls.length" class="empty-state" style="padding:16px">
+          <p>No calls yet. Once you add a forwarded phone number, calls will appear here.</p>
+        </div>
+        <div v-else class="data-table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Caller</th>
+                <th>Phone</th>
+                <th>Duration</th>
+                <th>Status</th>
+                <th>Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="call in calls.slice(0, 5)" :key="call.id" class="clickable-row" @click="selectedCall = call">
+                <td class="font-medium">{{ call.caller_name || 'Unknown' }}</td>
+                <td>{{ call.caller_phone }}</td>
+                <td>{{ call.duration_display }}</td>
+                <td><span class="status-pill" :class="'status-' + call.status">{{ call.status }}</span></td>
+                <td class="text-muted">{{ formatDate(call.created_at) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       <VoiceOnboarding
         :website-id="wid"
         @navigate="handleOnboardingNavigate"
@@ -531,52 +546,6 @@
         </div>
       </div>
 
-      <!-- Cost Estimator -->
-      <div class="card" style="max-width: 700px; margin-top: 24px">
-        <h3 class="card-title" style="margin-bottom: 12px">Cost Comparison</h3>
-        <p class="text-sm text-muted" style="margin-bottom: 16px">Two deployment options. Self-hosted saves 88-94%.</p>
-
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px">
-          <!-- Retell AI (Managed) -->
-          <div class="cost-option">
-            <div class="cost-option-header" style="color: var(--text-muted)">
-              <h4 style="margin:0">Retell AI (Managed)</h4>
-              <span class="text-xs">Easy setup, higher cost</span>
-            </div>
-            <div class="cost-grid">
-              <div class="cost-row"><span>Platform fee</span><span>$0.07-0.10</span></div>
-              <div class="cost-row"><span>LLM</span><span>$0.03-0.08</span></div>
-              <div class="cost-row"><span>STT</span><span>$0.01-0.02</span></div>
-              <div class="cost-row"><span>TTS</span><span>$0.02-0.05</span></div>
-              <div class="cost-row"><span>Telephony</span><span>$0.01-0.02</span></div>
-              <div class="cost-row cost-total"><span>Per minute</span><span>$0.14-0.27</span></div>
-              <div class="cost-row cost-retell"><span>20-min call</span><span>$2.80-5.40</span></div>
-            </div>
-          </div>
-
-          <!-- Self-Hosted (LiveKit) -->
-          <div class="cost-option cost-option-recommended">
-            <div class="cost-option-header">
-              <h4 style="margin:0">Self-Hosted (LiveKit)</h4>
-              <span class="cost-badge-recommended">Recommended</span>
-            </div>
-            <div class="cost-grid">
-              <div class="cost-row"><span>Telnyx SIP</span><span>$0.005</span></div>
-              <div class="cost-row"><span>Deepgram STT</span><span>$0.004</span></div>
-              <div class="cost-row"><span>GPT-4o-mini</span><span>$0.0002</span></div>
-              <div class="cost-row"><span>TTS (self-hosted)</span><span>$0.003</span></div>
-              <div class="cost-row"><span>GPU infra</span><span>$0.006</span></div>
-              <div class="cost-row cost-total"><span>Per minute</span><span>~$0.017</span></div>
-              <div class="cost-row cost-highlight"><span>20-min call</span><span>~$0.34</span></div>
-            </div>
-          </div>
-        </div>
-
-        <div class="savings-banner" style="margin-top: 20px">
-          <span class="savings-amount">Save 88-94%</span>
-          <span class="text-sm">Self-hosted: ~$170/mo for 10K minutes vs Retell: ~$2,000/mo</span>
-        </div>
-      </div>
     </div>
 
     <!-- Call Detail Modal -->
@@ -623,7 +592,10 @@
     <!-- Book Appointment Modal -->
     <div v-if="showBookModal" class="modal-overlay" @click.self="showBookModal = false">
       <div class="modal-card" style="max-width: 500px">
-        <h3 class="card-title" style="margin-bottom: 16px">Book Appointment</h3>
+        <h3 class="card-title" style="margin-bottom: 6px">Book Appointment</h3>
+        <p class="text-sm text-muted" style="margin-bottom:14px">
+          Appointments are created on your connected <strong>Google Calendar</strong>. The attendee receives a Google Calendar invite with a Meet link.
+        </p>
         <div class="form-group">
           <label class="form-label">Attendee Name</label>
           <input v-model="newEvent.attendee_name" class="form-input" placeholder="John Doe" />
@@ -661,11 +633,50 @@
     <!-- Add / Edit Phone Number Modal -->
     <div v-if="showPhoneModal" class="modal-overlay" @click.self="closePhoneModal">
       <div class="modal-card" style="max-width: 480px">
-        <h3 class="card-title" style="margin-bottom: 16px">{{ editingPhone ? 'Edit Phone Number' : 'Add Phone Number' }}</h3>
+        <h3 class="card-title" style="margin-bottom: 8px">{{ editingPhone ? 'Edit Phone Number' : 'Add Phone Number' }}</h3>
+        <div class="info-banner" style="background: var(--bg-surface); border-radius:6px; padding:10px 12px; margin-bottom:14px; font-size:13px; color: var(--text-secondary)">
+          <strong>What happens next?</strong> We provision this number through our telephony vendor (Telnyx by default, Twilio supported). The vendor terminates the SIP/PSTN call and bridges it to our LiveKit-based AI agent. You keep your existing carrier — just point call forwarding at the SIP endpoint shown in Settings, and the vendor handles the rest.
+        </div>
         <div class="form-group">
           <label class="form-label">Number (E.164 format)</label>
-          <input v-model="phoneForm.number" class="form-input" placeholder="+12025551234" :disabled="!!editingPhone" />
+          <input
+            v-model="phoneForm.number"
+            class="form-input"
+            placeholder="+12025551234"
+            :disabled="!!editingPhone || mfa.verified"
+          />
         </div>
+
+        <!-- MFA: Step 1 — choose channel & send code -->
+        <div v-if="!editingPhone && !mfa.sent && !mfa.verified" class="form-group" style="background: var(--bg-surface); padding:12px; border-radius:6px">
+          <p class="text-sm" style="margin:0 0 8px"><strong>Verify ownership.</strong> We need to confirm you control this number before we attach it. Choose how you want to receive a 6-digit code:</p>
+          <div style="display:flex; gap:8px">
+            <button type="button" class="btn btn-secondary btn-sm" @click="sendMfaCode('sms')" :disabled="mfa.sending">{{ mfa.sending && mfa.channel === 'sms' ? 'Sending...' : 'Text me a code' }}</button>
+            <button type="button" class="btn btn-secondary btn-sm" @click="sendMfaCode('call')" :disabled="mfa.sending">{{ mfa.sending && mfa.channel === 'call' ? 'Calling...' : 'Call me with the code' }}</button>
+          </div>
+          <p v-if="mfa.error" class="text-sm" style="color:var(--color-danger);margin-top:8px">{{ mfa.error }}</p>
+        </div>
+
+        <!-- MFA: Step 2 — enter the code -->
+        <div v-if="!editingPhone && mfa.sent && !mfa.verified" class="form-group" style="background: var(--bg-surface); padding:12px; border-radius:6px">
+          <label class="form-label">Verification code</label>
+          <p class="text-sm text-muted" style="margin:0 0 6px">
+            We {{ mfa.channel === 'sms' ? 'texted' : 'called' }} {{ phoneForm.number }} with a 6-digit code. Enter it below.
+          </p>
+          <input v-model="mfa.code" class="form-input" placeholder="123456" maxlength="6" inputmode="numeric" />
+          <div style="display:flex; gap:8px; margin-top:8px">
+            <button type="button" class="btn btn-secondary btn-sm" @click="mfaBack">← Back</button>
+            <button type="button" class="btn btn-primary btn-sm" @click="confirmMfaCode" :disabled="mfa.confirming || !mfa.code">{{ mfa.confirming ? 'Verifying...' : 'Verify' }}</button>
+            <button type="button" class="btn btn-ghost btn-sm" @click="sendMfaCode(mfa.channel)" :disabled="mfa.sending">{{ mfa.sending ? 'Resending...' : 'Resend' }}</button>
+          </div>
+          <p v-if="mfa.error" class="text-sm" style="color:var(--color-danger);margin-top:8px">{{ mfa.error }}</p>
+        </div>
+
+        <div v-if="mfa.verified" class="form-group" style="background: var(--bg-surface); padding:10px 12px; border-radius:6px; display:flex; justify-content:space-between; align-items:center; gap:8px">
+          <p class="text-sm" style="margin:0; color: var(--color-success)"><strong>Verified.</strong> Fill in the details below and save.</p>
+          <button type="button" class="btn btn-ghost btn-xs" @click="resetMfa">← Change number</button>
+        </div>
+
         <div class="form-group">
           <label class="form-label">Label</label>
           <input v-model="phoneForm.label" class="form-input" placeholder="Main Line, Sales, Support..." />
@@ -693,7 +704,7 @@
         </div>
         <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px">
           <button class="btn btn-secondary" @click="closePhoneModal">Cancel</button>
-          <button class="btn btn-primary" @click="savePhone" :disabled="savingPhone">{{ savingPhone ? 'Saving...' : 'Save' }}</button>
+          <button class="btn btn-primary" @click="savePhone" :disabled="savingPhone || (!editingPhone && !mfa.verified)">{{ savingPhone ? 'Saving...' : 'Save' }}</button>
         </div>
       </div>
     </div>
@@ -854,6 +865,68 @@ const showPhoneModal = ref(false)
 const editingPhone = ref(null)
 const savingPhone = ref(false)
 const phoneForm = reactive({ number: '', label: '', provider: 'telnyx', is_active: true, forwarded_to_agent: true })
+const mfa = reactive({
+  sending: false,
+  sent: false,
+  channel: '',
+  verificationId: '',
+  code: '',
+  confirming: false,
+  verified: false,
+  error: '',
+})
+function resetMfa() {
+  mfa.sending = false
+  mfa.sent = false
+  mfa.channel = ''
+  mfa.verificationId = ''
+  mfa.code = ''
+  mfa.confirming = false
+  mfa.verified = false
+  mfa.error = ''
+}
+function mfaBack() {
+  // Step 2 → Step 1: keep the number the user typed, but drop the sent code
+  // and channel choice so they can pick again or edit the number.
+  mfa.sent = false
+  mfa.code = ''
+  mfa.channel = ''
+  mfa.verificationId = ''
+  mfa.error = ''
+}
+async function sendMfaCode(channel) {
+  mfa.error = ''
+  if (!phoneForm.number || !phoneForm.number.startsWith('+')) {
+    mfa.error = 'Enter the number in E.164 format (e.g. +12025551234) first.'
+    return
+  }
+  mfa.sending = true
+  mfa.channel = channel
+  try {
+    const { data } = await voiceAgentApi.startPhoneVerification(wid.value, { number: phoneForm.number, channel })
+    mfa.verificationId = data.verification_id
+    mfa.sent = true
+  } catch (e) {
+    mfa.error = e?.response?.data?.error || 'Could not send verification code.'
+  } finally {
+    mfa.sending = false
+  }
+}
+async function confirmMfaCode() {
+  mfa.error = ''
+  mfa.confirming = true
+  try {
+    await voiceAgentApi.confirmPhoneVerification(wid.value, {
+      verification_id: mfa.verificationId,
+      code: mfa.code,
+    })
+    mfa.verified = true
+  } catch (e) {
+    mfa.error = e?.response?.data?.error || 'Incorrect or expired code.'
+  } finally {
+    mfa.confirming = false
+  }
+}
 
 // Context documents
 const contextDocs = ref([])
@@ -1138,6 +1211,7 @@ function closePhoneModal() {
   showPhoneModal.value = false
   editingPhone.value = null
   Object.assign(phoneForm, { number: '', label: '', provider: 'telnyx', is_active: true, forwarded_to_agent: true })
+  resetMfa()
 }
 
 async function savePhone() {
@@ -1147,7 +1221,7 @@ async function savePhone() {
       await voiceAgentApi.updatePhoneNumber(wid.value, editingPhone.value.id, phoneForm)
       toast.success('Phone number updated.')
     } else {
-      await voiceAgentApi.addPhoneNumber(wid.value, phoneForm)
+      await voiceAgentApi.addPhoneNumber(wid.value, { ...phoneForm, verification_id: mfa.verificationId })
       toast.success('Phone number added.')
     }
     closePhoneModal()

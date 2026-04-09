@@ -33,6 +33,7 @@ from apps.voice_agent.services.call_service import CallService
 from apps.voice_agent.services.prompt_builder import build_retell_system_prompt
 from apps.websites.services.website_service import WebsiteService
 from core.interceptors.pagination import StandardPagination
+from core.views import TenantScopedAPIView
 
 logger = logging.getLogger("apps")
 
@@ -123,7 +124,12 @@ def _get_backend():
 
 
 class AgentActivateView(APIView):
-    """Activate or deactivate the voice agent. Supports both Retell AI and self-hosted LiveKit."""
+    """Deprecated: the voice agent is always-on per website.
+
+    Retained so older clients calling ``/activate/`` keep working — it now
+    simply ensures an AgentConfig row exists with ``is_active=True`` and
+    returns it. Deactivation is no longer supported from the UI.
+    """
 
     permission_classes = [IsAuthenticated]
 
@@ -132,62 +138,10 @@ class AgentActivateView(APIView):
         config, _ = AgentConfig.objects.get_or_create(
             website=website, defaults={"business_hours": {}}
         )
-        action = request.data.get("action", "activate")
-
-        if action == "activate":
-            backend = _get_backend()
-
-            if backend in ("livekit", "selfhosted"):
-                # LiveKit / Self-hosted: no external agent creation needed — the
-                # agent worker picks up calls via SIP trunk or direct connection.
-                config.is_active = True
-                config.save(update_fields=["is_active", "updated_at"])
-                cost = "~$0.017" if backend == "livekit" else "~$0.003-0.005"
-                return Response(
-                    {
-                        **AgentConfigSerializer(config).data,
-                        "backend": backend,
-                        "cost_per_min": cost,
-                        "message": (
-                            f"Voice agent activated ({backend}). "
-                            "Ensure the agent worker is running and "
-                            "SIP trunk is configured."
-                        ),
-                    },
-                    status=status.HTTP_201_CREATED,
-                )
-
-            # Retell AI backend
-            if config.retell_agent_id:
-                config.is_active = True
-                config.save(update_fields=["is_active", "updated_at"])
-                return Response(AgentConfigSerializer(config).data)
-
-            try:
-                from apps.voice_agent.services.retell_service import RetellService
-
-                result = RetellService.create_agent(
-                    agent_name=config.business_name or website.name,
-                    system_prompt=build_retell_system_prompt(config),
-                    greeting_message=config.greeting_message,
-                )
-                config.retell_agent_id = result.get("agent_id", "")
-                config.is_active = True
-                config.save(update_fields=["retell_agent_id", "is_active", "updated_at"])
-            except Exception as e:
-                return Response(
-                    {"error": f"Failed to create voice agent: {str(e)}"},
-                    status=status.HTTP_502_BAD_GATEWAY,
-                )
-
-            return Response(AgentConfigSerializer(config).data, status=status.HTTP_201_CREATED)
-
-        elif action == "deactivate":
-            config.is_active = False
+        if not config.is_active:
+            config.is_active = True
             config.save(update_fields=["is_active", "updated_at"])
-            return Response(AgentConfigSerializer(config).data)
-
-        return Response({"error": "Invalid action."}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(AgentConfigSerializer(config).data)
 
 
 class WebCallView(APIView):
@@ -610,42 +564,113 @@ class RetellWebhookView(APIView):
 # ── Phone Numbers ─────────────────────────────────────────────────────────────
 
 
-class PhoneNumberListView(APIView):
+class PhoneNumberListView(TenantScopedAPIView):
     """List and add work phone numbers for a website."""
 
-    permission_classes = [IsAuthenticated]
-
     def get(self, request, website_id):
-        website = WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        website = self.get_website(website_id)
         numbers = PhoneNumber.objects.filter(website=website)
         return Response(PhoneNumberSerializer(numbers, many=True).data)
 
     def post(self, request, website_id):
-        website = WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        website = self.get_website(website_id)
         serializer = PhoneNumberSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        serializer.save(website=website)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+        # MFA gate: callers must have completed an SMS/call verification for
+        # this exact number before we'll attach it to the website. The
+        # frontend posts ``verification_id`` from the confirm step.
+        from apps.voice_agent.services import phone_verification_service as pvs
+
+        verification_id = request.data.get("verification_id")
+        verification = pvs.consume(
+            website=website,
+            verification_id=verification_id,
+            number=serializer.validated_data.get("number", ""),
+        )
+        if not verification:
+            return Response(
+                {
+                    "error": (
+                        "Phone number must be verified via SMS or call before "
+                        "it can be added. Start a verification first."
+                    ),
+                    "code": "verification_required",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        from django.utils import timezone as _tz
+        instance = serializer.save(
+            website=website, is_verified=True, verified_at=_tz.now()
+        )
+        return Response(PhoneNumberSerializer(instance).data, status=status.HTTP_201_CREATED)
 
 
-class PhoneNumberDetailView(APIView):
+class PhoneNumberVerifyStartView(TenantScopedAPIView):
+    """Step 1 of phone-number MFA: send a code via SMS or voice call."""
+
+    def post(self, request, website_id):
+        website = self.get_website(website_id)
+        from apps.voice_agent.services import phone_verification_service as pvs
+        try:
+            verification = pvs.start(
+                website=website,
+                number=(request.data.get("number") or "").strip(),
+                channel=request.data.get("channel") or "sms",
+                requested_by=request.user,
+            )
+        except pvs.PhoneVerificationError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {
+                "verification_id": str(verification.id),
+                "channel": verification.channel,
+                "expires_at": verification.expires_at.isoformat(),
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class PhoneNumberVerifyConfirmView(TenantScopedAPIView):
+    """Step 2 of phone-number MFA: confirm the code the user received."""
+
+    def post(self, request, website_id):
+        website = self.get_website(website_id)
+        from apps.voice_agent.services import phone_verification_service as pvs
+        try:
+            verification = pvs.confirm(
+                website=website,
+                verification_id=request.data.get("verification_id") or "",
+                code=(request.data.get("code") or "").strip(),
+            )
+        except pvs.PhoneVerificationError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {
+                "verification_id": str(verification.id),
+                "number": verification.number,
+                "verified": True,
+            }
+        )
+
+
+class PhoneNumberDetailView(TenantScopedAPIView):
     """Update or delete a phone number."""
 
-    permission_classes = [IsAuthenticated]
-
-    def _get_number(self, request, website_id, number_id):
-        website = WebsiteService.get_for_user(user=request.user, website_id=website_id)
-        return PhoneNumber.objects.get(id=number_id, website=website)
+    def _get_number(self, website_id, number_id):
+        website = self.get_website(website_id)
+        return self.get_tenant_object(PhoneNumber.objects.all(), id=number_id, website=website)
 
     def put(self, request, website_id, number_id):
-        number = self._get_number(request, website_id, number_id)
+        number = self._get_number(website_id, number_id)
         serializer = PhoneNumberSerializer(number, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)
 
     def delete(self, request, website_id, number_id):
-        number = self._get_number(request, website_id, number_id)
+        number = self._get_number(website_id, number_id)
         number.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 

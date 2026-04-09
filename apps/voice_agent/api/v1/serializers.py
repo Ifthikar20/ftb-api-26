@@ -124,10 +124,13 @@ class PhoneNumberSerializer(serializers.ModelSerializer):
         fields = [
             "id", "number", "label", "provider", "is_active",
             "forwarded_to_agent", "telnyx_trunk_id", "livekit_outbound_trunk_id",
+            "is_verified", "verified_at",
             "created_at", "updated_at",
         ]
         read_only_fields = [
-            "id", "livekit_outbound_trunk_id", "created_at", "updated_at",
+            "id", "livekit_outbound_trunk_id",
+            "is_verified", "verified_at",
+            "created_at", "updated_at",
         ]
 
 
