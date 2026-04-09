@@ -11,6 +11,14 @@
         </button>
       </div>
     </div>
+
+    <UsageCard
+      :current="usage.current_period || {}"
+      :history="usage.history || []"
+      :loading="loading.usage"
+      @refresh="loadUsage"
+    />
+
     <div class="stats-grid" style="margin-bottom: 24px">
       <div class="stat-card">
         <div class="stat-label">Total Calls</div>
@@ -755,6 +763,7 @@ import { useAppStore } from '@/stores/app'
 import { useToast } from '@/composables/useToast'
 import voiceAgentApi from '@/api/voiceAgent'
 import VoiceOnboarding from '@/components/voice/VoiceOnboarding.vue'
+import UsageCard from '@/components/voice/UsageCard.vue'
 
 const props = defineProps({ websiteId: String })
 const appStore = useAppStore()
@@ -877,8 +886,11 @@ const docForm = reactive({ title: '', content: '', is_active: true, sort_order: 
 const possibleLeads = ref([])
 const leadActionId = ref(null)
 
+// Usage
+const usage = ref({ current_period: {}, history: [] })
+
 // Loading states
-const loading = reactive({ calls: false, events: false, reminders: false, todos: false, phones: false, docs: false, leads: false })
+const loading = reactive({ calls: false, events: false, reminders: false, todos: false, phones: false, docs: false, leads: false, usage: false })
 const saving = ref(false)
 const webCallLoading = ref(false)
 const bookingEvent = ref(false)
@@ -902,6 +914,7 @@ onMounted(() => {
   loadConfig()
   loadStats()
   loadCalls()  // default tab
+  loadUsage()
 })
 
 // Lazy-load tab data on first visit
@@ -1230,6 +1243,20 @@ async function onDocFileSelected(e) {
     toast.error(msg)
   } finally {
     uploadingDoc.value = false
+  }
+}
+
+// ── Usage ──────────────────────────────────────────────────────────────────────
+
+async function loadUsage() {
+  loading.usage = true
+  try {
+    const res = await voiceAgentApi.getUsage(wid.value, { months: 6 })
+    usage.value = res.data || res
+  } catch {
+    // Non-fatal — the card just shows zeros if the endpoint is unreachable.
+  } finally {
+    loading.usage = false
   }
 }
 

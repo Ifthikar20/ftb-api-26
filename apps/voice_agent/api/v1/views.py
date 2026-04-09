@@ -1192,6 +1192,14 @@ class InternalCallFinishView(APIView):
         duration = int(request.data.get("duration", 0) or 0)
         ended_reason = (request.data.get("ended_reason") or "").lower()
 
+        # Usage meters from the LiveKit worker. All optional — older worker
+        # builds simply send 0 and the cost estimate falls back to the
+        # duration-only floor.
+        call_log.tts_characters = int(request.data.get("tts_characters", 0) or 0)
+        call_log.llm_input_tokens = int(request.data.get("llm_input_tokens", 0) or 0)
+        call_log.llm_output_tokens = int(request.data.get("llm_output_tokens", 0) or 0)
+        call_log.stt_seconds = int(request.data.get("stt_seconds", duration) or duration)
+
         call_log.transcript = transcript
         call_log.duration_seconds = duration
         call_log.ended_at = tz.now()
@@ -1209,7 +1217,9 @@ class InternalCallFinishView(APIView):
             target_status = CallTarget.STATUS_COMPLETED
         call_log.save(
             update_fields=[
-                "transcript", "duration_seconds", "ended_at", "status", "updated_at",
+                "transcript", "duration_seconds", "ended_at", "status",
+                "tts_characters", "llm_input_tokens", "llm_output_tokens",
+                "stt_seconds", "updated_at",
             ]
         )
 
@@ -1217,6 +1227,19 @@ class InternalCallFinishView(APIView):
             target = call_log.target
             target.status = target_status
             target.save(update_fields=["status", "updated_at"])
+
+        # Roll into the per-month aggregate so the dashboard updates the
+        # moment the call ends. Failures are logged but never block the
+        # worker — the nightly reconciler can rebuild from CallLog.
+        try:
+            from apps.voice_agent.services.usage_service import record_call
+
+            record_call(call_log)
+        except Exception:  # noqa: BLE001
+            logger.exception(
+                "voice_usage_record_failed",
+                extra={"call_log_id": str(call_log.id)},
+            )
 
         try:
             extract_call_data.delay(str(call_log.id))
@@ -1227,6 +1250,49 @@ class InternalCallFinishView(APIView):
             )
 
         return Response({"status": "ok"})
+
+
+# ── Usage / Billing ──────────────────────────────────────────────────────────
+
+
+class VoiceUsageView(TenantScopedAPIView):
+    """Current-month voice agent usage + trailing history.
+
+    Query params:
+      ``?months=N`` — include the trailing N months of history (default 6).
+    """
+
+    def get(self, request, website_id):
+        from apps.voice_agent.services import usage_service
+
+        self.get_website(website_id)
+        try:
+            months = max(1, min(24, int(request.query_params.get("months", 6))))
+        except (TypeError, ValueError):
+            months = 6
+
+        plan_limit = self._plan_limit_for(website_id)
+        return Response({
+            "current_period": usage_service.get_current_period(
+                website_id, plan_limit_minutes=plan_limit
+            ),
+            "history": usage_service.get_history(website_id, months=months),
+        })
+
+    @staticmethod
+    def _plan_limit_for(website_id):
+        """Pull the per-plan voice minutes cap, if billing is wired up.
+
+        Returns ``None`` if no limit is configured — the UI then hides the
+        progress bar instead of showing a misleading "0%". When you wire
+        Stripe / billing, replace this with your real per-plan lookup.
+        """
+        try:
+            from apps.billing.services.plan_service import get_plan_limit  # type: ignore
+
+            return get_plan_limit(website_id=website_id, feature="voice_minutes")
+        except Exception:  # noqa: BLE001 — billing module may not exist yet
+            return getattr(__import__("django.conf").conf.settings, "VOICE_DEFAULT_PLAN_MINUTES", None)
 
 
 # ── Lead Detection (transcript-based) ────────────────────────────────────────

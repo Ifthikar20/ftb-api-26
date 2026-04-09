@@ -41,6 +41,9 @@ export default {
     startPhoneVerification: (wid, data) => api.post(`/voice-agent/${wid}/phone-numbers/verify/start/`, data),
     confirmPhoneVerification: (wid, data) => api.post(`/voice-agent/${wid}/phone-numbers/verify/confirm/`, data),
 
+    // Usage / billing
+    getUsage: (wid, params) => api.get(`/voice-agent/${wid}/usage/`, { params }),
+
     // Lead detection (transcript-based)
     getPossibleLeads: (wid, params) => api.get(`/voice-agent/${wid}/lead-detection/`, { params }),
     promotePossibleLead: (wid, callId) => api.post(`/voice-agent/${wid}/lead-detection/${callId}/`, { action: 'promote' }),

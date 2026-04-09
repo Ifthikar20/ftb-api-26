@@ -253,6 +253,18 @@ class CallLog(TimestampMixin):
     # post-call extraction). ``is_possible_lead`` flips True when ``lead_score``
     # crosses the configured threshold; rows then surface in the Lead Detection
     # tab for the user to manually promote into the Lead table.
+    # Usage / billing meters. Populated from the LiveKit worker payload at
+    # call-finish time and rolled into VoiceUsageMonthly by UsageService.
+    billable_seconds = models.PositiveIntegerField(default=0)
+    stt_seconds = models.PositiveIntegerField(default=0)
+    tts_characters = models.PositiveIntegerField(default=0)
+    llm_input_tokens = models.PositiveIntegerField(default=0)
+    llm_output_tokens = models.PositiveIntegerField(default=0)
+    estimated_cost_usd = models.DecimalField(
+        max_digits=8, decimal_places=4, default=0,
+        help_text="Per-call cost estimate computed from per-meter unit prices.",
+    )
+
     is_possible_lead = models.BooleanField(default=False, db_index=True)
     lead_score = models.PositiveSmallIntegerField(default=0)
     lead_signals = models.JSONField(
@@ -293,6 +305,48 @@ class CallLog(TimestampMixin):
     def duration_display(self):
         mins, secs = divmod(self.duration_seconds, 60)
         return f"{mins}m {secs}s"
+
+
+class VoiceUsageMonthly(TimestampMixin):
+    """Pre-aggregated voice agent usage per (website, calendar month).
+
+    Updated incrementally by ``UsageService.record_call`` whenever a call
+    finishes. The UI reads from this table directly so the dashboard never
+    has to scan ``CallLog``. A nightly reconciler can rebuild rows from
+    ``CallLog`` to recover from any worker that crashed mid-update.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    website = models.ForeignKey(
+        "websites.Website", on_delete=models.CASCADE, related_name="voice_usage_months"
+    )
+    year_month = models.CharField(
+        max_length=7, help_text="ISO month, e.g. '2026-04'."
+    )
+
+    total_calls = models.PositiveIntegerField(default=0)
+    inbound_calls = models.PositiveIntegerField(default=0)
+    outbound_calls = models.PositiveIntegerField(default=0)
+
+    total_seconds = models.PositiveIntegerField(default=0)
+    billable_minutes = models.PositiveIntegerField(default=0)
+
+    llm_input_tokens = models.PositiveBigIntegerField(default=0)
+    llm_output_tokens = models.PositiveBigIntegerField(default=0)
+    tts_characters = models.PositiveBigIntegerField(default=0)
+
+    estimated_cost_usd = models.DecimalField(
+        max_digits=10, decimal_places=4, default=0
+    )
+
+    class Meta:
+        db_table = "voice_agent_usage_monthly"
+        unique_together = [("website", "year_month")]
+        ordering = ["-year_month"]
+        indexes = [models.Index(fields=["website", "year_month"])]
+
+    def __str__(self):
+        return f"VoiceUsage({self.website_id}, {self.year_month}, {self.billable_minutes}m)"
 
 
 class CalendarEvent(TimestampMixin):
