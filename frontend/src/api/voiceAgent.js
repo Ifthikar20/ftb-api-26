@@ -52,4 +52,33 @@ export default {
     },
     updateContextDoc: (wid, did, data) => api.put(`/voice-agent/${wid}/context-docs/${did}/`, data),
     deleteContextDoc: (wid, did) => api.delete(`/voice-agent/${wid}/context-docs/${did}/`),
+
+    // Onboarding: starter templates + setup checklist
+    listTemplates: (segment) => api.get('/voice-agent/onboarding/templates/', { params: segment ? { segment } : {} }),
+    previewTemplate: (wid, slug) => api.get(`/voice-agent/${wid}/onboarding/templates/${slug}/preview/`),
+    applyTemplate: (wid, slug) => api.post(`/voice-agent/${wid}/onboarding/templates/${slug}/apply/`),
+    getSetupStatus: (wid) => api.get(`/voice-agent/${wid}/onboarding/setup-status/`),
+
+    // Outbound campaigns
+    listCampaigns: (wid, params) => api.get(`/voice-agent/${wid}/campaigns/`, { params }),
+    createCampaign: (wid, data) => api.post(`/voice-agent/${wid}/campaigns/`, data),
+    getCampaign: (wid, cid) => api.get(`/voice-agent/${wid}/campaigns/${cid}/`),
+    updateCampaign: (wid, cid, data) => api.put(`/voice-agent/${wid}/campaigns/${cid}/`, data),
+    deleteCampaign: (wid, cid) => api.delete(`/voice-agent/${wid}/campaigns/${cid}/`),
+    startCampaign: (wid, cid) => api.post(`/voice-agent/${wid}/campaigns/${cid}/start/`),
+    pauseCampaign: (wid, cid) => api.post(`/voice-agent/${wid}/campaigns/${cid}/pause/`),
+
+    // Campaign targets
+    listTargets: (wid, cid, params) => api.get(`/voice-agent/${wid}/campaigns/${cid}/targets/`, { params }),
+    addTarget: (wid, cid, data) => api.post(`/voice-agent/${wid}/campaigns/${cid}/targets/`, data),
+    uploadTargets: (wid, cid, file) => {
+        const fd = new FormData()
+        fd.append('file', file)
+        return api.post(`/voice-agent/${wid}/campaigns/${cid}/targets/upload/`, fd, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+        })
+    },
+
+    // Ad-hoc single outbound call
+    callNow: (wid, data) => api.post(`/voice-agent/${wid}/call-now/`, data),
 }
