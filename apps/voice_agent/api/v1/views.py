@@ -21,6 +21,7 @@ from apps.voice_agent.api.v1.serializers import (
 from apps.voice_agent.models import AgentConfig, AgentContextDocument, CalendarEvent, PhoneNumber
 from apps.voice_agent.services.calendar_service import CalendarService
 from apps.voice_agent.services.call_service import CallService
+from apps.voice_agent.services.prompt_builder import build_retell_system_prompt
 from apps.websites.services.website_service import WebsiteService
 from core.interceptors.pagination import StandardPagination
 
@@ -28,6 +29,30 @@ logger = logging.getLogger("apps")
 
 
 # ── Agent Configuration ──────────────────────────────────────────────────────
+
+
+def _sync_prompt_to_retell(config: AgentConfig) -> str:
+    """Push the merged system prompt to Retell. Returns 'ok', 'skipped', or 'failed'.
+
+    Never raises — callers can surface the status to the UI but DB writes
+    must succeed even if Retell is unreachable.
+    """
+    if not (config.retell_agent_id and config.is_active):
+        return "skipped"
+    try:
+        from apps.voice_agent.services.retell_service import RetellService
+
+        RetellService.update_agent(
+            config.retell_agent_id,
+            general_prompt=build_retell_system_prompt(config),
+        )
+        return "ok"
+    except Exception as e:
+        logger.warning(
+            "retell_prompt_sync_failed",
+            extra={"agent_id": config.retell_agent_id, "error": str(e)},
+        )
+        return "failed"
 
 
 class AgentConfigView(APIView):
@@ -61,14 +86,14 @@ class AgentConfigView(APIView):
         serializer.is_valid(raise_exception=True)
         serializer.save()
 
-        # If agent exists in Retell, update it
+        # If agent exists in Retell, update it with the merged KB prompt
         if config.retell_agent_id and config.is_active:
             try:
                 from apps.voice_agent.services.retell_service import RetellService
 
                 RetellService.update_agent(
                     config.retell_agent_id,
-                    general_prompt=config.system_prompt,
+                    general_prompt=build_retell_system_prompt(config),
                     begin_message=config.greeting_message,
                     agent_name=config.business_name or website.name,
                 )
@@ -134,7 +159,7 @@ class AgentActivateView(APIView):
 
                 result = RetellService.create_agent(
                     agent_name=config.business_name or website.name,
-                    system_prompt=config.system_prompt,
+                    system_prompt=build_retell_system_prompt(config),
                     greeting_message=config.greeting_message,
                 )
                 config.retell_agent_id = result.get("agent_id", "")
@@ -720,8 +745,17 @@ class PhoneNumberDetailView(APIView):
 # ── Agent Context Documents ───────────────────────────────────────────────────
 
 
+UPLOAD_MAX_BYTES = 100 * 1024  # 100 KB
+UPLOAD_ALLOWED_EXTS = (".md", ".markdown", ".txt")
+
+
+def _config_for_website(website):
+    """Return the AgentConfig for a website if one exists, else None."""
+    return AgentConfig.objects.filter(website=website).first()
+
+
 class AgentContextDocumentListView(APIView):
-    """List and create agent knowledge-base documents."""
+    """List, create, and upload agent knowledge-base documents."""
 
     permission_classes = [IsAuthenticated]
 
@@ -735,7 +769,74 @@ class AgentContextDocumentListView(APIView):
         serializer = AgentContextDocumentSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save(website=website)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+        retell_sync = "skipped"
+        config = _config_for_website(website)
+        if config:
+            retell_sync = _sync_prompt_to_retell(config)
+        return Response(
+            {**serializer.data, "retell_sync": retell_sync},
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class AgentContextDocumentUploadView(APIView):
+    """Upload a markdown file as a new knowledge-base document."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, website_id):
+        website = WebsiteService.get_for_user(user=request.user, website_id=website_id)
+
+        upload = request.FILES.get("file")
+        if upload is None:
+            return Response(
+                {"error": "Missing 'file' in multipart upload."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        name = (upload.name or "").lower()
+        if not name.endswith(UPLOAD_ALLOWED_EXTS):
+            return Response(
+                {"error": "Only .md, .markdown, or .txt files are allowed."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if upload.size > UPLOAD_MAX_BYTES:
+            return Response(
+                {"error": f"File too large. Max {UPLOAD_MAX_BYTES // 1024} KB."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            content = upload.read().decode("utf-8")
+        except UnicodeDecodeError:
+            return Response(
+                {"error": "File must be UTF-8 encoded text."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        title = (request.data.get("title") or "").strip()
+        if not title:
+            # Strip extension from filename to use as title
+            base = upload.name.rsplit(".", 1)[0]
+            title = base.replace("_", " ").replace("-", " ").strip() or "Untitled"
+
+        doc = AgentContextDocument.objects.create(
+            website=website,
+            title=title[:200],
+            content=content,
+            is_active=True,
+        )
+
+        retell_sync = "skipped"
+        config = _config_for_website(website)
+        if config:
+            retell_sync = _sync_prompt_to_retell(config)
+
+        return Response(
+            {**AgentContextDocumentSerializer(doc).data, "retell_sync": retell_sync},
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class AgentContextDocumentDetailView(APIView):
@@ -752,9 +853,17 @@ class AgentContextDocumentDetailView(APIView):
         serializer = AgentContextDocumentSerializer(doc, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
-        return Response(serializer.data)
+        retell_sync = "skipped"
+        config = _config_for_website(doc.website)
+        if config:
+            retell_sync = _sync_prompt_to_retell(config)
+        return Response({**serializer.data, "retell_sync": retell_sync})
 
     def delete(self, request, website_id, doc_id):
         doc = self._get_doc(request, website_id, doc_id)
+        website = doc.website
         doc.delete()
+        config = _config_for_website(website)
+        if config:
+            _sync_prompt_to_retell(config)
         return Response(status=status.HTTP_204_NO_CONTENT)

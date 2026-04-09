@@ -36,6 +36,7 @@ urlpatterns = [
 
     # Agent context documents (knowledge base)
     path("<uuid:website_id>/context-docs/", views.AgentContextDocumentListView.as_view(), name="voice-context-list"),
+    path("<uuid:website_id>/context-docs/upload/", views.AgentContextDocumentUploadView.as_view(), name="voice-context-upload"),
     path("<uuid:website_id>/context-docs/<uuid:doc_id>/", views.AgentContextDocumentDetailView.as_view(), name="voice-context-detail"),
 
     # Retell AI webhook (no website_id — determined from agent_id in payload)

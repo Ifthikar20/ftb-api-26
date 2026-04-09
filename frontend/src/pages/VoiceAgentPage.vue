@@ -470,7 +470,19 @@
             <h3 class="card-title">Knowledge Base</h3>
             <p class="text-sm text-muted" style="margin-top: 4px">Markdown documents injected into the agent prompt. The AI reads these to answer caller questions.</p>
           </div>
-          <button class="btn btn-primary btn-sm" @click="showDocModal = true">+ Add Document</button>
+          <div style="display: flex; gap: 8px">
+            <input
+              ref="docFileInput"
+              type="file"
+              accept=".md,.markdown,.txt"
+              style="display: none"
+              @change="onDocFileSelected"
+            />
+            <button class="btn btn-secondary btn-sm" @click="$refs.docFileInput.click()" :disabled="uploadingDoc">
+              {{ uploadingDoc ? 'Uploading...' : 'Upload .md' }}
+            </button>
+            <button class="btn btn-primary btn-sm" @click="showDocModal = true">+ Add Document</button>
+          </div>
         </div>
 
         <div v-if="loading.docs" class="loading-state" style="padding: 20px 0">Loading...</div>
@@ -1158,6 +1170,34 @@ async function deleteDoc(id) {
     toast.success('Document deleted.')
     loadContextDocs()
   } catch { toast.error('Failed to delete document.') }
+}
+
+const uploadingDoc = ref(false)
+
+async function onDocFileSelected(e) {
+  const file = e.target.files && e.target.files[0]
+  e.target.value = ''
+  if (!file) return
+  if (file.size > 100 * 1024) {
+    toast.error('File too large. Max 100 KB.')
+    return
+  }
+  uploadingDoc.value = true
+  try {
+    const res = await voiceAgentApi.uploadContextDoc(wid.value, file)
+    const data = res.data || res
+    if (data.retell_sync === 'failed') {
+      toast.error('Uploaded, but failed to sync to voice agent. Edit and save to retry.')
+    } else {
+      toast.success('Document uploaded. Live on next call.')
+    }
+    loadContextDocs()
+  } catch (err) {
+    const msg = err?.response?.data?.error || 'Upload failed.'
+    toast.error(msg)
+  } finally {
+    uploadingDoc.value = false
+  }
 }
 
 // ── Social Leads ───────────────────────────────────────────────────────────────

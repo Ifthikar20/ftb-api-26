@@ -42,6 +42,14 @@ export default {
     // Agent context documents (knowledge base)
     getContextDocs: (wid) => api.get(`/voice-agent/${wid}/context-docs/`),
     createContextDoc: (wid, data) => api.post(`/voice-agent/${wid}/context-docs/`, data),
+    uploadContextDoc: (wid, file, title) => {
+        const fd = new FormData()
+        fd.append('file', file)
+        if (title) fd.append('title', title)
+        return api.post(`/voice-agent/${wid}/context-docs/upload/`, fd, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+        })
+    },
     updateContextDoc: (wid, did, data) => api.put(`/voice-agent/${wid}/context-docs/${did}/`, data),
     deleteContextDoc: (wid, did) => api.delete(`/voice-agent/${wid}/context-docs/${did}/`),
 }
