@@ -41,6 +41,11 @@ export default {
     startPhoneVerification: (wid, data) => api.post(`/voice-agent/${wid}/phone-numbers/verify/start/`, data),
     confirmPhoneVerification: (wid, data) => api.post(`/voice-agent/${wid}/phone-numbers/verify/confirm/`, data),
 
+    // Lead detection (transcript-based)
+    getPossibleLeads: (wid, params) => api.get(`/voice-agent/${wid}/lead-detection/`, { params }),
+    promotePossibleLead: (wid, callId) => api.post(`/voice-agent/${wid}/lead-detection/${callId}/`, { action: 'promote' }),
+    dismissPossibleLead: (wid, callId) => api.post(`/voice-agent/${wid}/lead-detection/${callId}/`, { action: 'dismiss' }),
+
     // Agent context documents (knowledge base)
     getContextDocs: (wid) => api.get(`/voice-agent/${wid}/context-docs/`),
     createContextDoc: (wid, data) => api.post(`/voice-agent/${wid}/context-docs/`, data),

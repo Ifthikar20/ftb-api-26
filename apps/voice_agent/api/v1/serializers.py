@@ -40,12 +40,16 @@ class CallLogSerializer(serializers.ModelSerializer):
             "caller_email", "caller_company", "duration_seconds", "duration_display",
             "started_at", "ended_at", "transcript", "summary", "sentiment",
             "extracted_data", "call_intent", "lead_name", "lead_id",
+            "is_possible_lead", "lead_score", "lead_signals",
+            "lead_promoted_at", "lead_dismissed_at",
             "created_at", "updated_at",
         ]
         read_only_fields = [
             "id", "direction", "status", "duration_seconds", "duration_display",
             "started_at", "ended_at", "transcript", "summary", "sentiment",
             "extracted_data", "call_intent", "lead_name", "lead_id",
+            "is_possible_lead", "lead_score", "lead_signals",
+            "lead_promoted_at", "lead_dismissed_at",
             "created_at", "updated_at",
         ]
 

@@ -249,6 +249,20 @@ class CallLog(TimestampMixin):
         "leads.Lead", null=True, blank=True, on_delete=models.SET_NULL, related_name="calls"
     )
 
+    # Transcript-based lead detection (populated by lead_scoring_service after
+    # post-call extraction). ``is_possible_lead`` flips True when ``lead_score``
+    # crosses the configured threshold; rows then surface in the Lead Detection
+    # tab for the user to manually promote into the Lead table.
+    is_possible_lead = models.BooleanField(default=False, db_index=True)
+    lead_score = models.PositiveSmallIntegerField(default=0)
+    lead_signals = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Per-signal contributions used to compute lead_score (for explainability).",
+    )
+    lead_promoted_at = models.DateTimeField(null=True, blank=True)
+    lead_dismissed_at = models.DateTimeField(null=True, blank=True)
+
     # Outbound campaign linkage
     campaign = models.ForeignKey(
         "voice_agent.CallCampaign",

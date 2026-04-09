@@ -4,7 +4,7 @@ from datetime import datetime
 from django.conf import settings
 from django.utils.dateparse import parse_date, parse_datetime
 from rest_framework import status
-from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -31,9 +31,8 @@ from apps.voice_agent.models import (
 from apps.voice_agent.services.calendar_service import CalendarService
 from apps.voice_agent.services.call_service import CallService
 from apps.voice_agent.services.prompt_builder import build_retell_system_prompt
-from apps.websites.services.website_service import WebsiteService
-from core.interceptors.pagination import StandardPagination
-from core.views import TenantScopedAPIView
+from core.exceptions import ResourceNotFound
+from core.views import TenantScopedAPIView, TenantScopedListAPIView
 
 logger = logging.getLogger("apps")
 
@@ -65,13 +64,11 @@ def _sync_prompt_to_retell(config: AgentConfig) -> str:
         return "failed"
 
 
-class AgentConfigView(APIView):
+class AgentConfigView(TenantScopedAPIView):
     """Get or update voice agent configuration for a website."""
 
-    permission_classes = [IsAuthenticated]
-
     def get(self, request, website_id):
-        website = WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        website = self.get_website(website_id)
         config, _ = AgentConfig.objects.get_or_create(
             website=website,
             defaults={
@@ -87,7 +84,7 @@ class AgentConfigView(APIView):
         return Response(AgentConfigSerializer(config).data)
 
     def put(self, request, website_id):
-        website = WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        website = self.get_website(website_id)
         config, _ = AgentConfig.objects.get_or_create(
             website=website,
             defaults={"business_hours": {}},
@@ -123,7 +120,7 @@ def _get_backend():
     return backend
 
 
-class AgentActivateView(APIView):
+class AgentActivateView(TenantScopedAPIView):
     """Deprecated: the voice agent is always-on per website.
 
     Retained so older clients calling ``/activate/`` keep working — it now
@@ -131,10 +128,8 @@ class AgentActivateView(APIView):
     returns it. Deactivation is no longer supported from the UI.
     """
 
-    permission_classes = [IsAuthenticated]
-
     def post(self, request, website_id):
-        website = WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        website = self.get_website(website_id)
         config, _ = AgentConfig.objects.get_or_create(
             website=website, defaults={"business_hours": {}}
         )
@@ -144,13 +139,11 @@ class AgentActivateView(APIView):
         return Response(AgentConfigSerializer(config).data)
 
 
-class WebCallView(APIView):
+class WebCallView(TenantScopedAPIView):
     """Create a browser-based voice call session. Supports all three backends."""
 
-    permission_classes = [IsAuthenticated]
-
     def post(self, request, website_id):
-        website = WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        website = self.get_website(website_id)
         try:
             config = AgentConfig.objects.get(website=website, is_active=True)
         except AgentConfig.DoesNotExist:
@@ -206,42 +199,34 @@ class WebCallView(APIView):
 # ── Call Logs ────────────────────────────────────────────────────────────────
 
 
-class CallLogListView(APIView):
+class CallLogListView(TenantScopedListAPIView):
     """List call logs for a website."""
 
-    permission_classes = [IsAuthenticated]
-
     def get(self, request, website_id):
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        self.get_website(website_id)
         call_status = request.query_params.get("status")
         direction = request.query_params.get("direction")
         phone = request.query_params.get("phone")
         calls = CallService.get_calls(
             website_id, status=call_status, direction=direction, phone=phone
         )
-        paginator = StandardPagination()
-        page = paginator.paginate_queryset(calls, request)
-        return paginator.get_paginated_response(CallLogSerializer(page, many=True).data)
+        return self.paginated_response(calls, CallLogSerializer)
 
 
-class CallLogDetailView(APIView):
+class CallLogDetailView(TenantScopedAPIView):
     """Get a single call log with full transcript."""
 
-    permission_classes = [IsAuthenticated]
-
     def get(self, request, website_id, call_id):
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        self.get_website(website_id)
         call = CallService.get_call(website_id, call_id)
         return Response(CallLogSerializer(call).data)
 
 
-class CallStatsView(APIView):
+class CallStatsView(TenantScopedAPIView):
     """Get aggregate call statistics."""
 
-    permission_classes = [IsAuthenticated]
-
     def get(self, request, website_id):
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        self.get_website(website_id)
         stats = CallService.get_call_stats(website_id)
         return Response(stats)
 
@@ -249,24 +234,20 @@ class CallStatsView(APIView):
 # ── Calendar / Appointments ──────────────────────────────────────────────────
 
 
-class CalendarEventListView(APIView):
+class CalendarEventListView(TenantScopedListAPIView):
     """List and create calendar events."""
 
-    permission_classes = [IsAuthenticated]
-
     def get(self, request, website_id):
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        self.get_website(website_id)
         event_status = request.query_params.get("status")
         days = int(request.query_params.get("days", 30))
         events = CalendarService.get_upcoming(website_id, days=days)
         if event_status:
             events = events.filter(status=event_status)
-        paginator = StandardPagination()
-        page = paginator.paginate_queryset(events, request)
-        return paginator.get_paginated_response(CalendarEventSerializer(page, many=True).data)
+        return self.paginated_response(events, CalendarEventSerializer)
 
     def post(self, request, website_id):
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        self.get_website(website_id)
         serializer = CalendarEventSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         d = serializer.validated_data
@@ -290,21 +271,18 @@ class CalendarEventListView(APIView):
         return Response(CalendarEventSerializer(event).data, status=status.HTTP_201_CREATED)
 
 
-class CalendarEventDetailView(APIView):
+class CalendarEventDetailView(TenantScopedAPIView):
     """Get, update, or cancel a calendar event."""
 
-    permission_classes = [IsAuthenticated]
-
     def get(self, request, website_id, event_id):
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
-        try:
-            event = CalendarEvent.objects.get(id=event_id, website_id=website_id)
-        except CalendarEvent.DoesNotExist:
-            return Response({"error": "Event not found."}, status=status.HTTP_404_NOT_FOUND)
+        self.get_website(website_id)
+        event = self.get_tenant_object(
+            CalendarEvent.objects.all(), id=event_id, website_id=website_id
+        )
         return Response(CalendarEventSerializer(event).data)
 
     def put(self, request, website_id, event_id):
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        self.get_website(website_id)
         new_status = request.data.get("status")
         if not new_status:
             return Response(
@@ -319,7 +297,7 @@ class CalendarEventDetailView(APIView):
         return Response(CalendarEventSerializer(event).data)
 
     def delete(self, request, website_id, event_id):
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        self.get_website(website_id)
         try:
             CalendarService.cancel_appointment(event_id, website_id)
         except ValueError as e:
@@ -327,13 +305,11 @@ class CalendarEventDetailView(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-class AvailabilityView(APIView):
+class AvailabilityView(TenantScopedAPIView):
     """Check available appointment slots for a given date."""
 
-    permission_classes = [IsAuthenticated]
-
     def get(self, request, website_id):
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        self.get_website(website_id)
         date_str = request.query_params.get("date")
         if not date_str:
             return Response(
@@ -354,22 +330,16 @@ class AvailabilityView(APIView):
 # ── Callback Reminders ───────────────────────────────────────────────────────
 
 
-class CallbackReminderListView(APIView):
+class CallbackReminderListView(TenantScopedListAPIView):
     """List and create callback reminders."""
 
-    permission_classes = [IsAuthenticated]
-
     def get(self, request, website_id):
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        self.get_website(website_id)
         reminders = CallService.get_pending_reminders(website_id)
-        paginator = StandardPagination()
-        page = paginator.paginate_queryset(reminders, request)
-        return paginator.get_paginated_response(
-            CallbackReminderSerializer(page, many=True).data
-        )
+        return self.paginated_response(reminders, CallbackReminderSerializer)
 
     def post(self, request, website_id):
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        self.get_website(website_id)
         serializer = CallbackReminderSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         d = serializer.validated_data
@@ -387,13 +357,11 @@ class CallbackReminderListView(APIView):
         )
 
 
-class CallbackReminderDetailView(APIView):
+class CallbackReminderDetailView(TenantScopedAPIView):
     """Update or dismiss a callback reminder."""
 
-    permission_classes = [IsAuthenticated]
-
     def put(self, request, website_id, reminder_id):
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        self.get_website(website_id)
         action = request.data.get("action", "complete")
         notes = request.data.get("notes", "")
 
@@ -408,30 +376,24 @@ class CallbackReminderDetailView(APIView):
 # ── Todos / Action Items ─────────────────────────────────────────────────────
 
 
-class TodoListView(APIView):
+class TodoListView(TenantScopedListAPIView):
     """List todos extracted from calls, and get todo stats."""
 
-    permission_classes = [IsAuthenticated]
-
     def get(self, request, website_id):
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        self.get_website(website_id)
         from apps.voice_agent.services.extraction_service import ExtractionService
 
         todo_status = request.query_params.get("status")
         priority = request.query_params.get("priority")
         todos = ExtractionService.get_todos(website_id, status=todo_status, priority=priority)
-        paginator = StandardPagination()
-        page = paginator.paginate_queryset(todos, request)
-        return paginator.get_paginated_response(CallTodoSerializer(page, many=True).data)
+        return self.paginated_response(todos, CallTodoSerializer)
 
 
-class TodoDetailView(APIView):
+class TodoDetailView(TenantScopedAPIView):
     """Update a todo (status, priority, assignment)."""
 
-    permission_classes = [IsAuthenticated]
-
     def put(self, request, website_id, todo_id):
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        self.get_website(website_id)
         from apps.voice_agent.services.extraction_service import ExtractionService
 
         todo = ExtractionService.update_todo(
@@ -445,35 +407,28 @@ class TodoDetailView(APIView):
         return Response(CallTodoSerializer(todo).data)
 
 
-class TodoStatsView(APIView):
+class TodoStatsView(TenantScopedAPIView):
     """Get aggregate todo statistics."""
 
-    permission_classes = [IsAuthenticated]
-
     def get(self, request, website_id):
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        self.get_website(website_id)
         from apps.voice_agent.services.extraction_service import ExtractionService
 
         stats = ExtractionService.get_todo_stats(website_id)
         return Response(stats)
 
 
-class CallExtractionView(APIView):
+class CallExtractionView(TenantScopedAPIView):
     """Get the AI extraction results for a specific call."""
 
-    permission_classes = [IsAuthenticated]
-
     def get(self, request, website_id, call_id):
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        self.get_website(website_id)
         from apps.voice_agent.models import CallExtraction
 
         try:
             extraction = CallExtraction.objects.get(call_log_id=call_id)
         except CallExtraction.DoesNotExist:
-            return Response(
-                {"error": "Extraction not yet available for this call."},
-                status=status.HTTP_404_NOT_FOUND,
-            )
+            raise ResourceNotFound("Extraction not yet available for this call.") from None
         return Response(CallExtractionSerializer(extraction).data)
 
 
@@ -687,18 +642,16 @@ def _config_for_website(website):
     return AgentConfig.objects.filter(website=website).first()
 
 
-class AgentContextDocumentListView(APIView):
+class AgentContextDocumentListView(TenantScopedAPIView):
     """List, create, and upload agent knowledge-base documents."""
 
-    permission_classes = [IsAuthenticated]
-
     def get(self, request, website_id):
-        website = WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        website = self.get_website(website_id)
         docs = AgentContextDocument.objects.filter(website=website)
         return Response(AgentContextDocumentSerializer(docs, many=True).data)
 
     def post(self, request, website_id):
-        website = WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        website = self.get_website(website_id)
         serializer = AgentContextDocumentSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save(website=website)
@@ -712,13 +665,11 @@ class AgentContextDocumentListView(APIView):
         )
 
 
-class AgentContextDocumentUploadView(APIView):
+class AgentContextDocumentUploadView(TenantScopedAPIView):
     """Upload a markdown file as a new knowledge-base document."""
 
-    permission_classes = [IsAuthenticated]
-
     def post(self, request, website_id):
-        website = WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        website = self.get_website(website_id)
 
         upload = request.FILES.get("file")
         if upload is None:
@@ -772,17 +723,17 @@ class AgentContextDocumentUploadView(APIView):
         )
 
 
-class AgentContextDocumentDetailView(APIView):
+class AgentContextDocumentDetailView(TenantScopedAPIView):
     """Update or delete a context document."""
 
-    permission_classes = [IsAuthenticated]
-
-    def _get_doc(self, request, website_id, doc_id):
-        website = WebsiteService.get_for_user(user=request.user, website_id=website_id)
-        return AgentContextDocument.objects.get(id=doc_id, website=website)
+    def _get_doc(self, website_id, doc_id):
+        website = self.get_website(website_id)
+        return self.get_tenant_object(
+            AgentContextDocument.objects.all(), id=doc_id, website=website
+        )
 
     def put(self, request, website_id, doc_id):
-        doc = self._get_doc(request, website_id, doc_id)
+        doc = self._get_doc(website_id, doc_id)
         serializer = AgentContextDocumentSerializer(doc, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
@@ -793,7 +744,7 @@ class AgentContextDocumentDetailView(APIView):
         return Response({**serializer.data, "retell_sync": retell_sync})
 
     def delete(self, request, website_id, doc_id):
-        doc = self._get_doc(request, website_id, doc_id)
+        doc = self._get_doc(website_id, doc_id)
         website = doc.website
         doc.delete()
         config = _config_for_website(website)
@@ -805,27 +756,16 @@ class AgentContextDocumentDetailView(APIView):
 # ── Outbound Calling: Campaigns + Call Now ────────────────────────────────────
 
 
-def _ensure_website(request, website_id):
-    return WebsiteService.get_for_user(user=request.user, website_id=website_id)
-
-
-class CallCampaignListView(APIView):
+class CallCampaignListView(TenantScopedListAPIView):
     """List or create outbound call campaigns for a website."""
 
-    permission_classes = [IsAuthenticated]
-    pagination_class = StandardPagination
-
     def get(self, request, website_id):
-        website = _ensure_website(request, website_id)
+        website = self.get_website(website_id)
         qs = CallCampaign.objects.filter(website=website).order_by("-created_at")
-        paginator = self.pagination_class()
-        page = paginator.paginate_queryset(qs, request, view=self)
-        return paginator.get_paginated_response(
-            CallCampaignSerializer(page, many=True).data
-        )
+        return self.paginated_response(qs, CallCampaignSerializer)
 
     def post(self, request, website_id):
-        website = _ensure_website(request, website_id)
+        website = self.get_website(website_id)
         serializer = CallCampaignSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         from_number = serializer.validated_data["from_number"]
@@ -840,25 +780,19 @@ class CallCampaignListView(APIView):
         )
 
 
-class CallCampaignDetailView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def _get(self, request, website_id, campaign_id):
-        website = _ensure_website(request, website_id)
-        return CallCampaign.objects.get(id=campaign_id, website=website)
+class CallCampaignDetailView(TenantScopedAPIView):
+    def _get(self, website_id, campaign_id):
+        website = self.get_website(website_id)
+        return self.get_tenant_object(
+            CallCampaign.objects.all(), id=campaign_id, website=website
+        )
 
     def get(self, request, website_id, campaign_id):
-        try:
-            campaign = self._get(request, website_id, campaign_id)
-        except CallCampaign.DoesNotExist:
-            return Response(status=status.HTTP_404_NOT_FOUND)
+        campaign = self._get(website_id, campaign_id)
         return Response(CallCampaignSerializer(campaign).data)
 
     def put(self, request, website_id, campaign_id):
-        try:
-            campaign = self._get(request, website_id, campaign_id)
-        except CallCampaign.DoesNotExist:
-            return Response(status=status.HTTP_404_NOT_FOUND)
+        campaign = self._get(website_id, campaign_id)
         if campaign.status == CallCampaign.STATUS_RUNNING:
             return Response(
                 {"detail": "pause the campaign before editing"},
@@ -876,44 +810,30 @@ class CallCampaignDetailView(APIView):
         return Response(CallCampaignSerializer(campaign).data)
 
     def delete(self, request, website_id, campaign_id):
-        try:
-            campaign = self._get(request, website_id, campaign_id)
-        except CallCampaign.DoesNotExist:
-            return Response(status=status.HTTP_404_NOT_FOUND)
+        campaign = self._get(website_id, campaign_id)
         campaign.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-class CallTargetListView(APIView):
+class CallTargetListView(TenantScopedListAPIView):
     """List or add targets to a campaign."""
 
-    permission_classes = [IsAuthenticated]
-    pagination_class = StandardPagination
-
-    def _campaign(self, request, website_id, campaign_id):
-        website = _ensure_website(request, website_id)
-        return CallCampaign.objects.get(id=campaign_id, website=website)
+    def _campaign(self, website_id, campaign_id):
+        website = self.get_website(website_id)
+        return self.get_tenant_object(
+            CallCampaign.objects.all(), id=campaign_id, website=website
+        )
 
     def get(self, request, website_id, campaign_id):
-        try:
-            campaign = self._campaign(request, website_id, campaign_id)
-        except CallCampaign.DoesNotExist:
-            return Response(status=status.HTTP_404_NOT_FOUND)
+        campaign = self._campaign(website_id, campaign_id)
         qs = campaign.targets.all().order_by("created_at")
         status_filter = request.query_params.get("status")
         if status_filter:
             qs = qs.filter(status=status_filter)
-        paginator = self.pagination_class()
-        page = paginator.paginate_queryset(qs, request, view=self)
-        return paginator.get_paginated_response(
-            CallTargetSerializer(page, many=True).data
-        )
+        return self.paginated_response(qs, CallTargetSerializer)
 
     def post(self, request, website_id, campaign_id):
-        try:
-            campaign = self._campaign(request, website_id, campaign_id)
-        except CallCampaign.DoesNotExist:
-            return Response(status=status.HTTP_404_NOT_FOUND)
+        campaign = self._campaign(website_id, campaign_id)
         serializer = CallTargetSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         target, _ = CallTarget.objects.get_or_create(
@@ -930,11 +850,9 @@ class CallTargetListView(APIView):
         )
 
 
-class CallTargetCSVUploadView(APIView):
+class CallTargetCSVUploadView(TenantScopedAPIView):
     """Bulk-upload targets via CSV. First row must contain a ``phone`` column;
     optional ``name`` column. Any other columns become per-target ``metadata``."""
-
-    permission_classes = [IsAuthenticated]
 
     MAX_BYTES = 5 * 1024 * 1024  # 5 MB
 
@@ -942,11 +860,10 @@ class CallTargetCSVUploadView(APIView):
         import csv
         import io
 
-        website = _ensure_website(request, website_id)
-        try:
-            campaign = CallCampaign.objects.get(id=campaign_id, website=website)
-        except CallCampaign.DoesNotExist:
-            return Response(status=status.HTTP_404_NOT_FOUND)
+        website = self.get_website(website_id)
+        campaign = self.get_tenant_object(
+            CallCampaign.objects.all(), id=campaign_id, website=website
+        )
 
         upload = request.FILES.get("file")
         if not upload:
@@ -1001,18 +918,16 @@ class CallTargetCSVUploadView(APIView):
         )
 
 
-class CampaignStartView(APIView):
-    permission_classes = [IsAuthenticated]
+class CampaignStartView(TenantScopedAPIView):
     throttle_scope = "voice_outbound"
 
     def post(self, request, website_id, campaign_id):
         from apps.voice_agent.tasks import dispatch_campaign
 
-        website = _ensure_website(request, website_id)
-        try:
-            campaign = CallCampaign.objects.get(id=campaign_id, website=website)
-        except CallCampaign.DoesNotExist:
-            return Response(status=status.HTTP_404_NOT_FOUND)
+        website = self.get_website(website_id)
+        campaign = self.get_tenant_object(
+            CallCampaign.objects.all(), id=campaign_id, website=website
+        )
 
         if not campaign.from_number.livekit_outbound_trunk_id:
             return Response(
@@ -1032,31 +947,27 @@ class CampaignStartView(APIView):
         return Response(CallCampaignSerializer(campaign).data)
 
 
-class CampaignPauseView(APIView):
-    permission_classes = [IsAuthenticated]
-
+class CampaignPauseView(TenantScopedAPIView):
     def post(self, request, website_id, campaign_id):
-        website = _ensure_website(request, website_id)
-        try:
-            campaign = CallCampaign.objects.get(id=campaign_id, website=website)
-        except CallCampaign.DoesNotExist:
-            return Response(status=status.HTTP_404_NOT_FOUND)
+        website = self.get_website(website_id)
+        campaign = self.get_tenant_object(
+            CallCampaign.objects.all(), id=campaign_id, website=website
+        )
         campaign.status = CallCampaign.STATUS_PAUSED
         campaign.save(update_fields=["status", "updated_at"])
         return Response(CallCampaignSerializer(campaign).data)
 
 
-class CallNowView(APIView):
+class CallNowView(TenantScopedAPIView):
     """Place a single ad-hoc outbound call. Creates a one-target campaign and
     immediately dispatches the dialer."""
 
-    permission_classes = [IsAuthenticated]
     throttle_scope = "voice_outbound"
 
     def post(self, request, website_id):
         from apps.voice_agent.tasks import place_outbound_call
 
-        website = _ensure_website(request, website_id)
+        website = self.get_website(website_id)
         phone = (request.data.get("phone") or "").strip()
         if not phone:
             return Response(
@@ -1117,13 +1028,13 @@ class CallNowView(APIView):
 # ── Onboarding: templates + setup status ─────────────────────────────────────
 
 
-class OnboardingTemplateListView(APIView):
+class OnboardingTemplateListView(TenantScopedAPIView):
     """List the starter knowledge-base templates the UI offers as one-click adds.
 
-    Optional query param: ``?segment=inbound|outbound`` to filter.
+    Optional query param: ``?segment=inbound|outbound`` to filter. This endpoint
+    is not website-scoped (the templates are global), but it still requires an
+    authenticated session — handled by the base class.
     """
-
-    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         from apps.voice_agent.services import onboarding
@@ -1148,15 +1059,13 @@ class OnboardingTemplateListView(APIView):
         )
 
 
-class OnboardingTemplatePreviewView(APIView):
+class OnboardingTemplatePreviewView(TenantScopedAPIView):
     """Return the rendered markdown for a template (with business_name substituted)."""
-
-    permission_classes = [IsAuthenticated]
 
     def get(self, request, website_id, slug):
         from apps.voice_agent.services import onboarding
 
-        website = _ensure_website(request, website_id)
+        website = self.get_website(website_id)
         try:
             template = onboarding.get_template(slug)
         except KeyError:
@@ -1173,15 +1082,13 @@ class OnboardingTemplatePreviewView(APIView):
         )
 
 
-class OnboardingTemplateApplyView(APIView):
+class OnboardingTemplateApplyView(TenantScopedAPIView):
     """Create (or update) an AgentContextDocument from a starter template."""
-
-    permission_classes = [IsAuthenticated]
 
     def post(self, request, website_id, slug):
         from apps.voice_agent.services import onboarding
 
-        website = _ensure_website(request, website_id)
+        website = self.get_website(website_id)
         try:
             doc = onboarding.apply_template(website=website, slug=slug)
         except KeyError:
@@ -1198,19 +1105,17 @@ class OnboardingTemplateApplyView(APIView):
         )
 
 
-class OnboardingSetupStatusView(APIView):
+class OnboardingSetupStatusView(TenantScopedAPIView):
     """Per-website checklist for the inbound + outbound onboarding flows.
 
     Used by the UI to render two progress cards ("AI Receptionist" and
     "AI Sales Caller") with step-by-step CTAs.
     """
 
-    permission_classes = [IsAuthenticated]
-
     def get(self, request, website_id):
         from apps.voice_agent.services import onboarding
 
-        website = _ensure_website(request, website_id)
+        website = self.get_website(website_id)
         return Response(onboarding.setup_status(website))
 
 
@@ -1322,3 +1227,140 @@ class InternalCallFinishView(APIView):
             )
 
         return Response({"status": "ok"})
+
+
+# ── Lead Detection (transcript-based) ────────────────────────────────────────
+
+
+class PossibleLeadListView(TenantScopedListAPIView):
+    """List calls flagged as possible leads by the transcript scorer.
+
+    Filter:
+      ``?include=all``      → also include dismissed/promoted rows.
+      ``?min_score=N``      → restrict to score >= N (default: any flagged row).
+    """
+
+    def get(self, request, website_id):
+        from apps.voice_agent.models import CallLog
+
+        self.get_website(website_id)
+        qs = CallLog.objects.filter(website_id=website_id).order_by("-lead_score", "-created_at")
+        if request.query_params.get("include") != "all":
+            qs = qs.filter(
+                is_possible_lead=True,
+                lead_promoted_at__isnull=True,
+                lead_dismissed_at__isnull=True,
+            )
+        try:
+            min_score = int(request.query_params.get("min_score", "0"))
+        except ValueError:
+            min_score = 0
+        if min_score:
+            qs = qs.filter(lead_score__gte=min_score)
+        return self.paginated_response(qs, CallLogSerializer)
+
+
+class PossibleLeadActionView(TenantScopedAPIView):
+    """Promote a flagged call into a real Lead, or dismiss the flag.
+
+    POST body:
+      ``{"action": "promote"}`` — creates a Lead linked to this call. Idempotent.
+      ``{"action": "dismiss"}`` — clears ``is_possible_lead`` and timestamps it.
+    """
+
+    def post(self, request, website_id, call_id):
+        from django.utils import timezone as _tz
+
+        from apps.voice_agent.models import CallLog
+
+        website = self.get_website(website_id)
+        call = self.get_tenant_object(
+            CallLog.objects.all(), id=call_id, website=website
+        )
+        action = (request.data.get("action") or "").lower()
+
+        if action == "dismiss":
+            call.is_possible_lead = False
+            call.lead_dismissed_at = _tz.now()
+            call.save(update_fields=[
+                "is_possible_lead", "lead_dismissed_at", "updated_at",
+            ])
+            return Response(CallLogSerializer(call).data)
+
+        if action == "promote":
+            if call.lead_id:
+                return Response(CallLogSerializer(call).data)
+            try:
+                lead = _create_lead_from_call(website, call)
+            except Exception as e:  # noqa: BLE001 — surface vendor errors as 502
+                logger.exception(
+                    "promote_call_to_lead_failed",
+                    extra={"call_id": str(call.id)},
+                )
+                return Response(
+                    {"error": f"Failed to create lead: {e}"},
+                    status=status.HTTP_502_BAD_GATEWAY,
+                )
+            call.lead = lead
+            call.lead_promoted_at = _tz.now()
+            call.is_possible_lead = False
+            call.save(update_fields=[
+                "lead", "lead_promoted_at", "is_possible_lead", "updated_at",
+            ])
+            return Response(CallLogSerializer(call).data, status=status.HTTP_201_CREATED)
+
+        return Response(
+            {"error": "action must be 'promote' or 'dismiss'."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+
+def _create_lead_from_call(website, call):
+    """Create (or reuse) a Lead row for a voice-agent caller.
+
+    The Lead model in this codebase is anchored on a ``Visitor`` (the web
+    pixel's notion of identity), so we synthesize a deterministic visitor
+    keyed on the caller's phone number. Repeat calls from the same number
+    therefore reuse the same visitor + lead.
+    """
+    import hashlib
+
+    from apps.analytics.models import Visitor
+    from apps.leads.models import Lead
+
+    phone_key = (call.caller_phone or "").strip() or f"unknown:{call.id}"
+    fingerprint = hashlib.sha256(f"voice:{phone_key}".encode()).hexdigest()
+
+    visitor, _ = Visitor.objects.get_or_create(
+        website=website,
+        fingerprint_hash=fingerprint,
+        defaults={"company_name": call.caller_company or ""},
+    )
+    lead, created = Lead.objects.get_or_create(
+        visitor=visitor,
+        defaults={
+            "website": website,
+            "score": call.lead_score,
+            "source": "voice_agent",
+            "email": call.caller_email or "",
+            "name": call.caller_name or "",
+            "company": call.caller_company or "",
+        },
+    )
+    if not created:
+        # Refresh the captured info in case the latest call has more details.
+        update_fields = []
+        for attr, value in (
+            ("email", call.caller_email),
+            ("name", call.caller_name),
+            ("company", call.caller_company),
+        ):
+            if value and not getattr(lead, attr):
+                setattr(lead, attr, value)
+                update_fields.append(attr)
+        if call.lead_score and call.lead_score > (lead.score or 0):
+            lead.score = call.lead_score
+            update_fields.append("score")
+        if update_fields:
+            lead.save(update_fields=update_fields + ["updated_at"])
+    return lead

@@ -30,6 +30,10 @@ urlpatterns = [
     # Call extraction (AI analysis results)
     path("<uuid:website_id>/calls/<uuid:call_id>/extraction/", views.CallExtractionView.as_view(), name="voice-call-extraction"),
 
+    # Lead detection: calls flagged as possible leads from their transcript
+    path("<uuid:website_id>/lead-detection/", views.PossibleLeadListView.as_view(), name="voice-lead-detection-list"),
+    path("<uuid:website_id>/lead-detection/<uuid:call_id>/", views.PossibleLeadActionView.as_view(), name="voice-lead-detection-action"),
+
     # Phone numbers
     path("<uuid:website_id>/phone-numbers/", views.PhoneNumberListView.as_view(), name="voice-phone-list"),
     path("<uuid:website_id>/phone-numbers/verify/start/", views.PhoneNumberVerifyStartView.as_view(), name="voice-phone-verify-start"),

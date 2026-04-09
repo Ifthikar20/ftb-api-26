@@ -158,16 +158,60 @@
       </div>
     </div>
 
-    <!-- Tab: Lead Detection (placeholder) -->
+    <!-- Tab: Lead Detection -->
     <div v-if="activeTab === 'leadDetection'" class="tab-content">
-      <div class="card" style="max-width: 720px">
-        <h3 class="card-title" style="margin-bottom: 8px">Lead Detection from Calls</h3>
-        <p class="text-sm text-muted" style="margin-bottom: 12px">
-          We will analyze the transcript of every call your AI agent handles and decide whether the caller is a possible lead — based on intent, sentiment, contact info shared, and explicit buying signals. Possible leads will appear here for you to review and promote into your CRM.
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px">
+        <p class="text-sm text-muted" style="max-width: 640px">
+          We score every completed call from its transcript — intent, sentiment, contact info shared, appointment talk, and buying-signal keywords. High-scoring callers show up here for you to review. Promoting one creates a real Lead in your CRM. Nothing is auto-pushed.
         </p>
-        <div class="empty-state" style="padding: 20px">
-          <p><strong>Coming soon.</strong> Transcript-based lead scoring is on the roadmap. For now, every call is logged on the <a href="#" @click.prevent="activeTab = 'calls'">Calls</a> tab with its summary, intent, and sentiment so you can triage manually.</p>
-        </div>
+        <button class="btn btn-secondary btn-sm" @click="loadPossibleLeads">Refresh</button>
+      </div>
+
+      <div v-if="loading.leads" class="loading-state">Loading possible leads...</div>
+      <div v-else-if="!possibleLeads.length" class="empty-state">
+        <p>No flagged callers right now. As completed calls are scored, possible leads will appear here.</p>
+      </div>
+      <div v-else class="data-table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Caller</th>
+              <th>Phone</th>
+              <th>Intent</th>
+              <th>Score</th>
+              <th>Signals</th>
+              <th>Date</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="call in possibleLeads" :key="call.id">
+              <td class="font-medium">{{ call.caller_name || 'Unknown' }}</td>
+              <td>{{ call.caller_phone }}</td>
+              <td>{{ call.call_intent || '-' }}</td>
+              <td>
+                <span class="status-pill" :class="call.lead_score >= 70 ? 'status-confirmed' : 'status-completed'">
+                  {{ call.lead_score }}
+                </span>
+              </td>
+              <td>
+                <span v-for="(pts, label) in call.lead_signals" :key="label" class="provider-badge" style="margin-right:4px" :title="`+${pts}`">
+                  {{ label }}
+                </span>
+              </td>
+              <td class="text-muted">{{ formatDate(call.created_at) }}</td>
+              <td style="display:flex; gap:6px">
+                <button class="btn btn-secondary btn-xs" @click="selectedCall = call">View</button>
+                <button class="btn btn-primary btn-xs" @click="promoteLead(call)" :disabled="leadActionId === call.id">
+                  {{ leadActionId === call.id ? '...' : 'Promote' }}
+                </button>
+                <button class="btn btn-danger btn-xs" @click="dismissLead(call)" :disabled="leadActionId === call.id">
+                  Dismiss
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </div>
 
@@ -825,8 +869,12 @@ const editingDoc = ref(null)
 const savingDoc = ref(false)
 const docForm = reactive({ title: '', content: '', is_active: true, sort_order: 0 })
 
+// Lead detection
+const possibleLeads = ref([])
+const leadActionId = ref(null)
+
 // Loading states
-const loading = reactive({ calls: false, events: false, reminders: false, todos: false, phones: false, docs: false })
+const loading = reactive({ calls: false, events: false, reminders: false, todos: false, phones: false, docs: false, leads: false })
 const saving = ref(false)
 const webCallLoading = ref(false)
 const bookingEvent = ref(false)
@@ -844,7 +892,7 @@ const weekdays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'satur
 const callFilter = reactive({ status: '', direction: '' })
 
 // Track which tabs have been loaded
-const _loaded = reactive({ calls: false, calendar: false, reminders: false, todos: false, settings: false, phones: false })
+const _loaded = reactive({ calls: false, calendar: false, reminders: false, todos: false, settings: false, phones: false, leads: false })
 
 onMounted(() => {
   loadConfig()
@@ -858,6 +906,7 @@ watch(activeTab, (tab) => {
   if (tab === 'calendar' && !_loaded.calendar)   { loadEvents(); _loaded.calendar = true }
   if (tab === 'reminders' && !_loaded.reminders) { loadReminders(); _loaded.reminders = true }
   if (tab === 'phones' && !_loaded.phones)       { loadPhoneNumbers(); _loaded.phones = true }
+  if (tab === 'leadDetection' && !_loaded.leads) { loadPossibleLeads(); _loaded.leads = true }
   if (tab === 'settings' && !_loaded.settings)   { loadContextDocs(); _loaded.settings = true }
 })
 
@@ -1177,6 +1226,45 @@ async function onDocFileSelected(e) {
     toast.error(msg)
   } finally {
     uploadingDoc.value = false
+  }
+}
+
+// ── Lead Detection ─────────────────────────────────────────────────────────────
+
+async function loadPossibleLeads() {
+  loading.leads = true
+  try {
+    const res = await voiceAgentApi.getPossibleLeads(wid.value)
+    possibleLeads.value = res.results || res.data || []
+  } catch {
+    toast.error('Failed to load possible leads.')
+  } finally {
+    loading.leads = false
+  }
+}
+
+async function promoteLead(call) {
+  leadActionId.value = call.id
+  try {
+    await voiceAgentApi.promotePossibleLead(wid.value, call.id)
+    toast.success('Lead created from this call.')
+    possibleLeads.value = possibleLeads.value.filter(c => c.id !== call.id)
+  } catch (e) {
+    toast.error(e?.response?.data?.error || 'Failed to promote lead.')
+  } finally {
+    leadActionId.value = null
+  }
+}
+
+async function dismissLead(call) {
+  leadActionId.value = call.id
+  try {
+    await voiceAgentApi.dismissPossibleLead(wid.value, call.id)
+    possibleLeads.value = possibleLeads.value.filter(c => c.id !== call.id)
+  } catch {
+    toast.error('Failed to dismiss.')
+  } finally {
+    leadActionId.value = null
   }
 }
 

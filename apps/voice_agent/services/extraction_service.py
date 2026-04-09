@@ -248,6 +248,26 @@ class ExtractionService:
             },
         )
 
+        # Lead detection: turn the freshly-extracted data into a lead score.
+        # Done synchronously here so the call log is consistent the moment
+        # extraction returns. Failures are logged but don't break extraction.
+        try:
+            from apps.voice_agent.services.lead_scoring_service import score_call
+
+            score_call(call_log, extraction_data={
+                "caller_info": extracted.get("caller_info", {}),
+                "call_summary": extracted.get("call_summary", ""),
+                "call_category": extracted.get("call_category", ""),
+                "sentiment": extracted.get("sentiment", ""),
+                "follow_ups": extracted.get("follow_ups", []),
+                "appointments_detected": extracted.get("appointments", []),
+            })
+        except Exception:  # noqa: BLE001
+            logger.exception(
+                "lead_scoring_failed",
+                extra={"call_id": str(call_log.id)},
+            )
+
         return extraction
 
     @staticmethod
