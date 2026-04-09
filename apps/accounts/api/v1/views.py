@@ -32,6 +32,25 @@ class RegisterView(APIView):
     throttle_classes = [AuthRateThrottle]
 
     def post(self, request):
+        # Beta gate: when SIGNUPS_ENABLED is False, refuse new accounts at the
+        # API layer too so the closed signup can't be bypassed by anyone hitting
+        # the endpoint directly.
+        from django.conf import settings as dj_settings
+
+        if not getattr(dj_settings, "SIGNUPS_ENABLED", True):
+            return Response(
+                {
+                    "error": {
+                        "code": "signups_closed",
+                        "message": (
+                            "FetchBot is in private beta. New sign-ups are paused — "
+                            "please contact us for access."
+                        ),
+                    }
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         serializer = RegisterSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 

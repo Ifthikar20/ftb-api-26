@@ -44,11 +44,11 @@ const routes = [
         component: () => import('@/pages/auth/LoginPage.vue'),
         meta: { layout: 'auth', guest: true }
     },
+    // Sign-up disabled during beta — route redirects to login.
     {
         path: '/register',
         name: 'register',
-        component: () => import('@/pages/auth/RegisterPage.vue'),
-        meta: { layout: 'auth', guest: true }
+        redirect: { name: 'login', query: { signupClosed: '1' } },
     },
     {
         path: '/forgot-password',

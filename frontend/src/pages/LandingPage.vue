@@ -6,6 +6,7 @@
         <router-link to="/" class="brand">
           <svg width="32" height="32" viewBox="0 0 28 28" fill="none"><circle cx="14" cy="14" r="14" fill="#131718"/><path d="M9 10h4v8H9z M15 7h4v11h-4z" fill="#fff"/></svg>
           <span class="brand-name">FetchBot</span>
+          <span class="brand-beta">BETA</span>
         </router-link>
         <div class="nav-links">
           <a href="#features">Features</a>
@@ -14,7 +15,7 @@
         </div>
         <div class="nav-right">
           <router-link to="/login" class="nav-link-text">Log In</router-link>
-          <router-link to="/register" class="nav-cta">Get Started</router-link>
+          <router-link to="/login" class="nav-cta">Sign In</router-link>
         </div>
       </div>
     </nav>
@@ -29,8 +30,12 @@
           Track visitors, score leads, audit your site, and grow<br class="hide-m"/>
           with AI — all in one platform.
         </p>
+        <p class="hero-beta-note anim" data-anim="fade-up" data-delay="90">
+          <span class="brand-beta">BETA</span>
+          We're in private beta. New sign-ups are paused — existing users can sign in.
+        </p>
         <div class="hero-ctas anim" data-anim="fade-up" data-delay="120">
-          <router-link to="/register" class="btn-primary">Start Free</router-link>
+          <router-link to="/login" class="btn-primary">Sign In</router-link>
           <a href="#features" class="btn-ghost">Learn More</a>
         </div>
       </div>
@@ -127,7 +132,7 @@
             <ul>
               <li v-for="f in plan.features" :key="f">{{ f }}</li>
             </ul>
-            <router-link to="/register" class="price-btn" :class="{ dark: plan.featured }">{{ plan.cta }}</router-link>
+            <router-link to="/login" class="price-btn" :class="{ dark: plan.featured }">{{ plan.cta }}</router-link>
           </div>
         </div>
       </div>
@@ -137,8 +142,8 @@
     <section class="final-cta anim" data-anim="fade-up">
       <div class="wrap cta-inner">
         <h2>Ready to grow <em>smarter?</em></h2>
-        <p>Join thousands of businesses using FetchBot.</p>
-        <router-link to="/register" class="btn-primary">Start Free — No Credit Card</router-link>
+        <p>FetchBot is in private beta. Existing users — sign in below.</p>
+        <router-link to="/login" class="btn-primary">Sign In</router-link>
       </div>
     </section>
 
@@ -295,6 +300,30 @@ em { color: #5B8DEF; font-style: italic; }
 .nav-row { display: flex; align-items: center; justify-content: space-between; }
 .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; }
 .brand-name { font-family: 'DM Serif Display', Georgia, serif; font-size: 20px; color: #131718; letter-spacing: -0.02em; }
+.brand-beta {
+  display: inline-block;
+  background: #131718;
+  color: #fcd34d;
+  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+  font-weight: 800;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  padding: 3px 8px;
+  border-radius: 999px;
+  vertical-align: middle;
+}
+.hero-beta-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  color: #475569;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  padding: 8px 14px;
+  border-radius: 999px;
+  margin: 18px 0 8px;
+}
 .nav-links { display: flex; gap: 32px; }
 .nav-links a { font-size: 13px; font-weight: 500; color: #6e6a65; text-decoration: none; transition: color 0.2s; }
 .nav-links a:hover { color: #131718; }

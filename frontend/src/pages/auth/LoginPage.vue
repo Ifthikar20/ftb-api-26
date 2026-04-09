@@ -1,6 +1,13 @@
 <template>
   <AuthLayout title="Welcome back" subtitle="Sign in to your FetchBot account.">
     <form @submit.prevent="handleLogin" class="auth-form">
+      <div class="beta-banner">
+        <span class="beta-badge">BETA</span>
+        FetchBot is in private beta. New sign-ups are paused — existing users can sign in below.
+      </div>
+      <div v-if="signupClosed" class="form-alert form-alert-info">
+        Sign-ups are temporarily closed during the beta. If you'd like access, please contact us.
+      </div>
       <div v-if="error" class="form-alert form-alert-danger">{{ error }}</div>
 
       <div class="form-group">
@@ -32,7 +39,7 @@
       </button>
 
       <p class="auth-switch">
-        Don't have an account? <router-link to="/register">Create one</router-link>
+        New sign-ups are paused while we're in beta.
       </p>
       <p class="auth-switch" style="margin-top: -8px">
         <router-link to="/" style="font-weight: 500;">← Back to Home</router-link>
@@ -56,9 +63,11 @@ const password = ref('')
 const remember = ref(false)
 const loading = ref(false)
 const error = ref('')
+const signupClosed = ref(false)
 
 // Auto-login from run_dev.sh token
 onMounted(async () => {
+  signupClosed.value = route.query.signupClosed === '1'
   const autoToken = route.query.auto_token
   if (autoToken) {
     authStore.accessToken = autoToken
@@ -90,6 +99,40 @@ function handleGoogleLogin() {
 </script>
 
 <style scoped>
+.beta-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: #1e293b;
+  background: linear-gradient(135deg, #fef9c3, #fde68a);
+  border: 1px solid #fcd34d;
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin-bottom: 16px;
+  line-height: 1.4;
+}
+.beta-badge {
+  display: inline-block;
+  background: #1e293b;
+  color: #fde68a;
+  font-weight: 800;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  padding: 3px 8px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+.form-alert-info {
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1e3a8a;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+
 .auth-form {
   display: flex;
   flex-direction: column;

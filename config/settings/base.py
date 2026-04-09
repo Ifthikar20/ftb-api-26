@@ -353,6 +353,9 @@ LIVEKIT_AGENT_API_TOKEN = env("LIVEKIT_AGENT_API_TOKEN", default="")
 LIVEKIT_AGENT_NAME = env("LIVEKIT_AGENT_NAME", default="ftb-voice-agent")
 DIALER_DEFAULT_RATE_PER_MIN = env.int("DIALER_DEFAULT_RATE_PER_MIN", default=10)
 
+# Beta gate — set SIGNUPS_ENABLED=true in env to re-enable public registration.
+SIGNUPS_ENABLED = env.bool("SIGNUPS_ENABLED", default=False)
+
 DEFAULT_FROM_EMAIL = env("SERVER_EMAIL", default="noreply@growthpilot.io")
 
 # ── LOGGING ──
