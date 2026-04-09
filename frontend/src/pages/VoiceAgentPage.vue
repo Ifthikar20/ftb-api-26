@@ -64,6 +64,28 @@
       </button>
     </div>
 
+    <!-- Tab: Get Started (onboarding) -->
+    <div v-if="activeTab === 'getStarted'" class="tab-content">
+      <div class="getstarted-intro">
+        <h2>Welcome to your AI Voice Agent</h2>
+        <p>
+          Two ways to use it. Pick the one you want to set up first — you can do both later.
+        </p>
+        <ul class="getstarted-bullets">
+          <li><strong>AI Receptionist (Inbound):</strong> when someone calls your business, the AI answers, helps the caller, and books appointments or creates a todo for you.</li>
+          <li><strong>AI Sales Caller (Outbound):</strong> upload a list of leads and the AI calls them, plays a welcome message, and pitches your product using a script you write in a markdown file.</li>
+        </ul>
+        <p class="getstarted-hint">
+          Need a starting point? Click <strong>Apply</strong> on a template below — we'll fill in your knowledge base for you. You can edit the markdown after.
+        </p>
+      </div>
+      <VoiceOnboarding
+        :website-id="wid"
+        @navigate="handleOnboardingNavigate"
+        @applied="handleTemplateApplied"
+      />
+    </div>
+
     <!-- Tab: Phone Numbers -->
     <div v-if="activeTab === 'phones'" class="tab-content">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px">
@@ -783,6 +805,7 @@ import { useAppStore } from '@/stores/app'
 import { useToast } from '@/composables/useToast'
 import voiceAgentApi from '@/api/voiceAgent'
 import socialLeadsApi from '@/api/socialLeads'
+import VoiceOnboarding from '@/components/voice/VoiceOnboarding.vue'
 
 const props = defineProps({ websiteId: String })
 const appStore = useAppStore()
@@ -790,8 +813,9 @@ const toast = useToast()
 
 const wid = computed(() => props.websiteId || appStore.activeWebsite?.id)
 
-const activeTab = ref('calls')
+const activeTab = ref('getStarted')
 const tabs = computed(() => [
+  { id: 'getStarted', label: 'Get Started' },
   { id: 'calls', label: 'Call Log' },
   { id: 'todos', label: 'Todos', badge: todoStats.value.open || null },
   { id: 'calendar', label: 'Calendar', badge: events.value.length || null },
@@ -885,6 +909,23 @@ watch(activeTab, (tab) => {
   if (tab === 'social' && !_loaded.social)       { loadSocialSources(); loadSocialLeads(); _loaded.social = true }
   if (tab === 'settings' && !_loaded.settings)   { loadContextDocs(); _loaded.settings = true }
 })
+
+// Onboarding tab event handlers
+function handleOnboardingNavigate(url) {
+  // Map the backend's CTA hints to the matching tab on this page so the user
+  // doesn't get bounced into a route that doesn't exist yet.
+  if (!url) return
+  if (url.includes('/config')) activeTab.value = 'settings'
+  else if (url.includes('/knowledge-base')) activeTab.value = 'settings'
+  else if (url.includes('/phone-numbers')) activeTab.value = 'phones'
+  else if (url.includes('/campaigns')) activeTab.value = 'social'
+}
+
+function handleTemplateApplied() {
+  // Refresh anything that depends on the KB so the rest of the page reflects it.
+  loadConfig()
+  toast.success('Template applied to your knowledge base.')
+}
 
 async function loadConfig() {
   try {
@@ -1629,5 +1670,41 @@ function formatTime(iso) {
   font-size: var(--font-base);
   font-weight: 600;
   color: var(--text-primary);
+}
+
+.getstarted-intro {
+  background: linear-gradient(135deg, #eef2ff, #ecfeff);
+  border: 1px solid #c7d2fe;
+  border-radius: 12px;
+  padding: 24px 28px;
+  margin-bottom: 24px;
+}
+.getstarted-intro h2 {
+  margin: 0 0 6px;
+  font-size: 20px;
+}
+.getstarted-intro > p {
+  margin: 0 0 12px;
+  color: #475569;
+  font-size: 14px;
+}
+.getstarted-bullets {
+  margin: 0 0 12px;
+  padding-left: 20px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #1e293b;
+}
+.getstarted-bullets li {
+  margin-bottom: 6px;
+}
+.getstarted-hint {
+  margin: 0;
+  padding: 10px 14px;
+  background: #fef3c7;
+  border-left: 3px solid #f59e0b;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #78350f;
 }
 </style>
