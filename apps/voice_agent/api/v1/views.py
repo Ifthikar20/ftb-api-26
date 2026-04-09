@@ -1089,6 +1089,106 @@ class CallNowView(APIView):
         )
 
 
+# ── Onboarding: templates + setup status ─────────────────────────────────────
+
+
+class OnboardingTemplateListView(APIView):
+    """List the starter knowledge-base templates the UI offers as one-click adds.
+
+    Optional query param: ``?segment=inbound|outbound`` to filter.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from apps.voice_agent.services import onboarding
+
+        segment = request.query_params.get("segment")
+        try:
+            templates = onboarding.list_templates(segment)
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            [
+                {
+                    "slug": t.slug,
+                    "title": t.title,
+                    "description": t.description,
+                    "segment": t.segment,
+                    "sort_order": t.sort_order,
+                    "recommended": t.recommended,
+                }
+                for t in templates
+            ]
+        )
+
+
+class OnboardingTemplatePreviewView(APIView):
+    """Return the rendered markdown for a template (with business_name substituted)."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, website_id, slug):
+        from apps.voice_agent.services import onboarding
+
+        website = _ensure_website(request, website_id)
+        try:
+            template = onboarding.get_template(slug)
+        except KeyError:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        config = AgentConfig.objects.filter(website=website).first()
+        business_name = (config.business_name if config else "") or ""
+        return Response(
+            {
+                "slug": template.slug,
+                "title": template.title,
+                "segment": template.segment,
+                "content": onboarding.render_template(slug, business_name=business_name),
+            }
+        )
+
+
+class OnboardingTemplateApplyView(APIView):
+    """Create (or update) an AgentContextDocument from a starter template."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, website_id, slug):
+        from apps.voice_agent.services import onboarding
+
+        website = _ensure_website(request, website_id)
+        try:
+            doc = onboarding.apply_template(website=website, slug=slug)
+        except KeyError:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+
+        # Trigger Retell prompt sync if the agent is already live.
+        config = AgentConfig.objects.filter(website=website).first()
+        if config:
+            _sync_prompt_to_retell(config)
+
+        return Response(
+            AgentContextDocumentSerializer(doc).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class OnboardingSetupStatusView(APIView):
+    """Per-website checklist for the inbound + outbound onboarding flows.
+
+    Used by the UI to render two progress cards ("AI Receptionist" and
+    "AI Sales Caller") with step-by-step CTAs.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, website_id):
+        from apps.voice_agent.services import onboarding
+
+        website = _ensure_website(request, website_id)
+        return Response(onboarding.setup_status(website))
+
+
 # ── Internal endpoints used by the LiveKit agent worker ──────────────────────
 
 

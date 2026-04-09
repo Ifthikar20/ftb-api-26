@@ -54,4 +54,10 @@ urlpatterns = [
     # Internal endpoints used by the LiveKit agent worker (bearer-token auth)
     path("internal/agent-bootstrap/", views.InternalAgentBootstrapView.as_view(), name="voice-internal-bootstrap"),
     path("internal/calls/finish/", views.InternalCallFinishView.as_view(), name="voice-internal-call-finish"),
+
+    # Onboarding: starter templates + setup checklist
+    path("onboarding/templates/", views.OnboardingTemplateListView.as_view(), name="voice-onboarding-templates"),
+    path("<uuid:website_id>/onboarding/setup-status/", views.OnboardingSetupStatusView.as_view(), name="voice-onboarding-status"),
+    path("<uuid:website_id>/onboarding/templates/<slug:slug>/preview/", views.OnboardingTemplatePreviewView.as_view(), name="voice-onboarding-template-preview"),
+    path("<uuid:website_id>/onboarding/templates/<slug:slug>/apply/", views.OnboardingTemplateApplyView.as_view(), name="voice-onboarding-template-apply"),
 ]
