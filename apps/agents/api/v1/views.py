@@ -1,34 +1,30 @@
 from rest_framework import status
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from rest_framework.views import APIView
 
 from apps.agents.agent_types import get_agent_config, get_available_agent_types
 from apps.agents.api.v1.serializers import AgentRunListSerializer, AgentRunSerializer
 from apps.agents.models import AgentRun
-from apps.websites.services.website_service import WebsiteService
 from core.interceptors.throttling import AIGenerationThrottle
+from core.views import TenantScopedAPIView
 
 
-class AgentTypesView(APIView):
-    """List all available agent types."""
-    permission_classes = [IsAuthenticated]
+class AgentTypesView(TenantScopedAPIView):
+    """List all available agent types. Not website-scoped, but still authed."""
 
     def get(self, request):
         return Response(get_available_agent_types())
 
 
-class AgentRunsView(APIView):
+class AgentRunsView(TenantScopedAPIView):
     """List agent runs for a website, or trigger a new one."""
-    permission_classes = [IsAuthenticated]
 
     def get(self, request, website_id):
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        self.get_website(website_id)
         runs = AgentRun.objects.filter(website_id=website_id).select_related("website")[:50]
         return Response(AgentRunListSerializer(runs, many=True).data)
 
     def post(self, request, website_id):
-        website = WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        website = self.get_website(website_id)
         agent_type = request.data.get("agent_type")
 
         if not agent_type:
@@ -74,32 +70,29 @@ class AgentRunsView(APIView):
         )
 
 
-class AgentRunDetailView(APIView):
+class AgentRunDetailView(TenantScopedAPIView):
     """Get detail for a specific agent run."""
-    permission_classes = [IsAuthenticated]
 
     def get(self, request, website_id, run_id):
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
-        try:
-            run = AgentRun.objects.prefetch_related("steps").get(
-                id=run_id, website_id=website_id,
-            )
-        except AgentRun.DoesNotExist:
-            return Response({"error": "Agent run not found"}, status=status.HTTP_404_NOT_FOUND)
+        self.get_website(website_id)
+        run = self.get_tenant_object(
+            AgentRun.objects.prefetch_related("steps"),
+            id=run_id,
+            website_id=website_id,
+        )
         return Response(AgentRunSerializer(run).data)
 
 
-class AgentRunApproveView(APIView):
+class AgentRunApproveView(TenantScopedAPIView):
     """Approve a paused agent run."""
-    permission_classes = [IsAuthenticated]
+
     throttle_classes = [AIGenerationThrottle]
 
     def post(self, request, website_id, run_id):
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
-        try:
-            run = AgentRun.objects.get(id=run_id, website_id=website_id)
-        except AgentRun.DoesNotExist:
-            return Response({"error": "Agent run not found"}, status=status.HTTP_404_NOT_FOUND)
+        self.get_website(website_id)
+        run = self.get_tenant_object(
+            AgentRun.objects.all(), id=run_id, website_id=website_id
+        )
 
         if run.status != "paused":
             return Response(
@@ -116,16 +109,14 @@ class AgentRunApproveView(APIView):
         return Response({"message": "Agent approved and resuming."}, status=status.HTTP_202_ACCEPTED)
 
 
-class AgentRunCancelView(APIView):
+class AgentRunCancelView(TenantScopedAPIView):
     """Cancel a running or paused agent run."""
-    permission_classes = [IsAuthenticated]
 
     def post(self, request, website_id, run_id):
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
-        try:
-            run = AgentRun.objects.get(id=run_id, website_id=website_id)
-        except AgentRun.DoesNotExist:
-            return Response({"error": "Agent run not found"}, status=status.HTTP_404_NOT_FOUND)
+        self.get_website(website_id)
+        run = self.get_tenant_object(
+            AgentRun.objects.all(), id=run_id, website_id=website_id
+        )
 
         if run.status not in ("pending", "running", "paused"):
             return Response(
@@ -138,9 +129,8 @@ class AgentRunCancelView(APIView):
         return Response({"message": "Agent cancelled."})
 
 
-class AgentActivityView(APIView):
-    """Cross-website agent activity feed for the current user."""
-    permission_classes = [IsAuthenticated]
+class AgentActivityView(TenantScopedAPIView):
+    """Cross-website agent activity feed for the current user. Not website-scoped."""
 
     def get(self, request):
         runs = (

@@ -1,9 +1,7 @@
 import logging
 
 from rest_framework import status
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from rest_framework.views import APIView
 
 from apps.llm_ranking.api.v1.serializers import (
     LLMRankingAuditListSerializer,
@@ -11,31 +9,24 @@ from apps.llm_ranking.api.v1.serializers import (
     RunAuditSerializer,
 )
 from apps.llm_ranking.models import LLMRankingAudit
-from apps.websites.services.website_service import WebsiteService
-from core.exceptions import ResourceNotFound
-from core.interceptors.pagination import StandardPagination
+from core.views import TenantScopedAPIView, TenantScopedListAPIView
 
 logger = logging.getLogger("apps")
 
 
-class LLMRankingAuditListView(APIView):
+class LLMRankingAuditListView(TenantScopedListAPIView):
     """
     GET  — list all LLM ranking audits for a website (newest first).
     POST — create and queue a new audit.
     """
-    permission_classes = [IsAuthenticated]
 
     def get(self, request, website_id):
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        self.get_website(website_id)
         audits = LLMRankingAudit.objects.filter(website_id=website_id).order_by("-created_at")
-        paginator = StandardPagination()
-        page = paginator.paginate_queryset(audits, request)
-        return paginator.get_paginated_response(
-            LLMRankingAuditListSerializer(page, many=True).data
-        )
+        return self.paginated_response(audits, LLMRankingAuditListSerializer)
 
     def post(self, request, website_id):
-        website = WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        website = self.get_website(website_id)
         serializer = RunAuditSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
@@ -80,44 +71,40 @@ class LLMRankingAuditListView(APIView):
         )
 
 
-class LLMRankingAuditDetailView(APIView):
+class LLMRankingAuditDetailView(TenantScopedAPIView):
     """
     GET    — retrieve audit with full per-LLM results.
     DELETE — delete audit record.
     """
-    permission_classes = [IsAuthenticated]
 
-    def _get_audit(self, user, website_id, audit_id):
-        WebsiteService.get_for_user(user=user, website_id=website_id)
-        try:
-            return LLMRankingAudit.objects.prefetch_related("results").get(
-                id=audit_id, website_id=website_id
-            )
-        except LLMRankingAudit.DoesNotExist:
-            raise ResourceNotFound("Audit not found.") from None
+    def _get_audit(self, website_id, audit_id):
+        self.get_website(website_id)
+        return self.get_tenant_object(
+            LLMRankingAudit.objects.prefetch_related("results"),
+            id=audit_id,
+            website_id=website_id,
+        )
 
     def get(self, request, website_id, audit_id):
-        audit = self._get_audit(request.user, website_id, audit_id)
+        audit = self._get_audit(website_id, audit_id)
         return Response(LLMRankingAuditSerializer(audit).data)
 
     def delete(self, request, website_id, audit_id):
-        audit = self._get_audit(request.user, website_id, audit_id)
+        audit = self._get_audit(website_id, audit_id)
         audit.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-class LLMRankingRecommendationsView(APIView):
+class LLMRankingRecommendationsView(TenantScopedAPIView):
     """GET — return actionable recommendations for improving LLM visibility."""
-    permission_classes = [IsAuthenticated]
 
     def get(self, request, website_id, audit_id):
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
-        try:
-            audit = LLMRankingAudit.objects.prefetch_related("results").get(
-                id=audit_id, website_id=website_id
-            )
-        except LLMRankingAudit.DoesNotExist:
-            raise ResourceNotFound("Audit not found.") from None
+        self.get_website(website_id)
+        audit = self.get_tenant_object(
+            LLMRankingAudit.objects.prefetch_related("results"),
+            id=audit_id,
+            website_id=website_id,
+        )
 
         if audit.status != LLMRankingAudit.STATUS_COMPLETED:
             return Response(
@@ -130,14 +117,13 @@ class LLMRankingRecommendationsView(APIView):
         return Response({"recommendations": recs, "overall_score": audit.overall_score})
 
 
-class LLMRankingHistoryView(APIView):
+class LLMRankingHistoryView(TenantScopedAPIView):
     """
     GET — return historical overall_score over time for trend charts.
     """
-    permission_classes = [IsAuthenticated]
 
     def get(self, request, website_id):
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        self.get_website(website_id)
         audits = (
             LLMRankingAudit.objects
             .filter(website_id=website_id, status=LLMRankingAudit.STATUS_COMPLETED)
@@ -148,21 +134,19 @@ class LLMRankingHistoryView(APIView):
         return Response(list(audits))
 
 
-class LLMRankingProviderBreakdownView(APIView):
+class LLMRankingProviderBreakdownView(TenantScopedAPIView):
     """
     GET — per-provider mention stats for a completed audit.
     Useful for the tab's breakdown table.
     """
-    permission_classes = [IsAuthenticated]
 
     def get(self, request, website_id, audit_id):
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
-        try:
-            audit = LLMRankingAudit.objects.prefetch_related("results").get(
-                id=audit_id, website_id=website_id
-            )
-        except LLMRankingAudit.DoesNotExist:
-            raise ResourceNotFound("Audit not found.") from None
+        self.get_website(website_id)
+        audit = self.get_tenant_object(
+            LLMRankingAudit.objects.prefetch_related("results"),
+            id=audit_id,
+            website_id=website_id,
+        )
 
         breakdown = {}
         for result in audit.results.all():
