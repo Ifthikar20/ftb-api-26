@@ -4,13 +4,242 @@ Celery tasks for voice agent async operations.
 - Callback reminder notifications
 - Calendar event sync to Google Calendar / Outlook
 - Periodic reminder checks
+- Outbound dialer (campaign fan-out + per-call placement)
 """
 
+import json
 import logging
 
 from celery import shared_task
+from django.conf import settings
+from django.db import transaction
+from django.utils import timezone
 
 logger = logging.getLogger("apps")
+
+
+# ── Outbound dialer ────────────────────────────────────────────────────────────
+
+
+def _within_business_hours(config) -> bool:
+    """Return True when current time is inside the website's business hours.
+
+    ``config.business_hours`` is a JSON dict like
+    ``{"monday": {"start": "09:00", "end": "17:00"}}``. Missing days = closed.
+    """
+    if not config or not config.business_hours:
+        return True  # no restriction configured
+
+    try:
+        import zoneinfo
+
+        tzinfo = zoneinfo.ZoneInfo(config.timezone or "UTC")
+    except Exception:  # noqa: BLE001
+        tzinfo = timezone.utc
+
+    now_local = timezone.now().astimezone(tzinfo)
+    day_key = now_local.strftime("%A").lower()
+    window = config.business_hours.get(day_key)
+    if not window:
+        return False
+    start = window.get("start", "00:00")
+    end = window.get("end", "23:59")
+    current = now_local.strftime("%H:%M")
+    return start <= current <= end
+
+
+@shared_task(name="apps.voice_agent.tasks.dispatch_campaign")
+def dispatch_campaign(campaign_id: str) -> dict:
+    """Fan a running campaign out into individual ``place_outbound_call`` jobs.
+
+    Throttled by ``campaign.calls_per_minute``. Self-reschedules every 60s while
+    pending targets remain. Stops if the campaign is paused, completed, or
+    outside business hours (when ``respect_business_hours`` is set).
+    """
+    from apps.voice_agent.models import AgentConfig, CallCampaign, CallTarget
+
+    try:
+        campaign = CallCampaign.objects.select_related("website").get(id=campaign_id)
+    except CallCampaign.DoesNotExist:
+        logger.warning("dispatch_campaign_missing", extra={"campaign_id": campaign_id})
+        return {"status": "missing"}
+
+    if campaign.status != CallCampaign.STATUS_RUNNING:
+        logger.info(
+            "dispatch_campaign_not_running",
+            extra={"campaign_id": campaign_id, "status": campaign.status},
+        )
+        return {"status": campaign.status}
+
+    if campaign.respect_business_hours:
+        config = AgentConfig.objects.filter(website=campaign.website).first()
+        if not _within_business_hours(config):
+            logger.info(
+                "dispatch_campaign_outside_hours", extra={"campaign_id": campaign_id}
+            )
+            dispatch_campaign.apply_async(args=[campaign_id], countdown=600)
+            return {"status": "outside_hours"}
+
+    rate = max(1, int(campaign.calls_per_minute or 10))
+    spacing = 60.0 / rate
+
+    with transaction.atomic():
+        targets = list(
+            CallTarget.objects.select_for_update(skip_locked=True)
+            .filter(campaign=campaign, status=CallTarget.STATUS_PENDING)
+            .order_by("created_at")[:rate]
+        )
+        for t in targets:
+            t.status = CallTarget.STATUS_QUEUED
+            t.save(update_fields=["status", "updated_at"])
+
+    for index, target in enumerate(targets):
+        place_outbound_call.apply_async(
+            args=[str(target.id)],
+            countdown=int(index * spacing),
+        )
+
+    remaining = CallTarget.objects.filter(
+        campaign=campaign, status=CallTarget.STATUS_PENDING
+    ).exists()
+
+    if remaining:
+        dispatch_campaign.apply_async(args=[campaign_id], countdown=60)
+    else:
+        in_flight = CallTarget.objects.filter(
+            campaign=campaign,
+            status__in=[
+                CallTarget.STATUS_QUEUED,
+                CallTarget.STATUS_DIALING,
+                CallTarget.STATUS_IN_PROGRESS,
+            ],
+        ).exists()
+        if not in_flight:
+            campaign.status = CallCampaign.STATUS_COMPLETED
+            campaign.save(update_fields=["status", "updated_at"])
+
+    return {"status": "ok", "queued": len(targets)}
+
+
+@shared_task(
+    name="apps.voice_agent.tasks.place_outbound_call",
+    bind=True,
+    max_retries=3,
+    default_retry_delay=30,
+)
+def place_outbound_call(self, target_id: str) -> dict:
+    """Place a single outbound call: create CallLog, dispatch agent, ask LiveKit
+    to dial the recipient via the Telnyx outbound trunk."""
+    from apps.voice_agent.models import (
+        CallLog,
+        CallTarget,
+        DoNotCallEntry,
+    )
+    from apps.voice_agent.services.livekit_service import LiveKitService
+
+    try:
+        target = CallTarget.objects.select_related(
+            "campaign", "campaign__from_number", "campaign__website"
+        ).get(id=target_id)
+    except CallTarget.DoesNotExist:
+        logger.warning("place_outbound_call_missing_target", extra={"target_id": target_id})
+        return {"status": "missing"}
+
+    campaign = target.campaign
+
+    # DNC enforcement
+    if DoNotCallEntry.objects.filter(phone=target.phone).exists():
+        target.status = CallTarget.STATUS_DO_NOT_CALL
+        target.last_error = "phone on do-not-call list"
+        target.save(update_fields=["status", "last_error", "updated_at"])
+        logger.info("place_outbound_call_dnc", extra={"target_id": target_id})
+        return {"status": "dnc"}
+
+    if campaign.status != campaign.STATUS_RUNNING:
+        target.status = CallTarget.STATUS_PENDING
+        target.save(update_fields=["status", "updated_at"])
+        return {"status": "campaign_not_running"}
+
+    from_number = campaign.from_number
+    if not from_number.livekit_outbound_trunk_id:
+        msg = "from_number missing livekit_outbound_trunk_id; run setup_livekit_outbound_trunk"
+        logger.error(
+            "place_outbound_call_missing_trunk",
+            extra={"target_id": target_id, "from_number_id": str(from_number.id)},
+        )
+        target.status = CallTarget.STATUS_FAILED
+        target.last_error = msg
+        target.save(update_fields=["status", "last_error", "updated_at"])
+        return {"status": "no_trunk"}
+
+    target.status = CallTarget.STATUS_DIALING
+    target.attempt_count = (target.attempt_count or 0) + 1
+    target.last_attempt_at = timezone.now()
+    target.save(
+        update_fields=["status", "attempt_count", "last_attempt_at", "updated_at"]
+    )
+
+    call_log = CallLog.objects.create(
+        website=campaign.website,
+        direction=CallLog.DIRECTION_OUTBOUND,
+        status=CallLog.STATUS_RINGING,
+        caller_phone=target.phone,
+        caller_name=target.name,
+        campaign=campaign,
+        target=target,
+    )
+
+    metadata = json.dumps(
+        {
+            "website_id": str(campaign.website_id),
+            "campaign_id": str(campaign.id),
+            "target_id": str(target.id),
+            "call_log_id": str(call_log.id),
+            "welcome": campaign.welcome_message,
+            "recipient_name": target.name,
+        }
+    )
+    room_name = f"voice-agent-out-{call_log.id}"
+    call_log.external_call_id = room_name
+    call_log.save(update_fields=["external_call_id", "updated_at"])
+
+    try:
+        LiveKitService.create_room(name=room_name, metadata=metadata)
+        LiveKitService.dispatch_agent(
+            room_name=room_name,
+            agent_name=getattr(settings, "LIVEKIT_AGENT_NAME", "ftb-voice-agent"),
+            metadata=metadata,
+        )
+        LiveKitService.create_sip_participant(
+            room_name=room_name,
+            trunk_id=from_number.livekit_outbound_trunk_id,
+            to_phone=target.phone,
+            from_phone=from_number.number,
+            participant_identity=f"sip-{target.id}",
+            participant_name=target.name or target.phone,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.exception(
+            "place_outbound_call_failed",
+            extra={"target_id": target_id, "call_log_id": str(call_log.id)},
+        )
+        call_log.status = CallLog.STATUS_FAILED
+        call_log.save(update_fields=["status", "updated_at"])
+        target.last_error = str(exc)[:500]
+        if target.attempt_count < target.max_attempts:
+            target.status = CallTarget.STATUS_PENDING
+            target.save(update_fields=["status", "last_error", "updated_at"])
+            try:
+                self.retry(exc=exc, countdown=60 * target.attempt_count)
+            except self.MaxRetriesExceededError:
+                target.status = CallTarget.STATUS_FAILED
+                target.save(update_fields=["status", "updated_at"])
+        else:
+            target.status = CallTarget.STATUS_FAILED
+            target.save(update_fields=["status", "last_error", "updated_at"])
+        return {"status": "error", "error": str(exc)}
+
+    return {"status": "dialing", "call_log_id": str(call_log.id)}
 
 
 @shared_task(name="apps.voice_agent.tasks.send_callback_notification")

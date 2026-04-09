@@ -13,12 +13,21 @@ from apps.voice_agent.api.v1.serializers import (
     AgentContextDocumentSerializer,
     CalendarEventSerializer,
     CallbackReminderSerializer,
+    CallCampaignSerializer,
     CallExtractionSerializer,
     CallLogSerializer,
+    CallTargetSerializer,
     CallTodoSerializer,
     PhoneNumberSerializer,
 )
-from apps.voice_agent.models import AgentConfig, AgentContextDocument, CalendarEvent, PhoneNumber
+from apps.voice_agent.models import (
+    AgentConfig,
+    AgentContextDocument,
+    CalendarEvent,
+    CallCampaign,
+    CallTarget,
+    PhoneNumber,
+)
 from apps.voice_agent.services.calendar_service import CalendarService
 from apps.voice_agent.services.call_service import CallService
 from apps.voice_agent.services.prompt_builder import build_retell_system_prompt
@@ -574,130 +583,29 @@ class RetellWebhookView(APIView):
         return Response({"status": "ok"})
 
     def _handle_tool_call(self, website_id, data, config):
-        """Handle mid-call tool invocations (schedule, callback, availability)."""
+        """Handle mid-call tool invocations (schedule, callback, availability).
+
+        Delegates to ``services.tool_handlers`` so the LiveKit worker can reuse
+        the same logic.
+        """
+        from apps.voice_agent.services import tool_handlers
+
         tool_name = data.get("tool_name", "")
         args = data.get("arguments", {})
+        external_call_id = data.get("call_id", "") or args.get("call_id", "")
 
         if tool_name == "schedule_appointment":
-            return self._tool_schedule(website_id, args, config)
+            return Response(
+                tool_handlers.schedule_appointment(website_id, args, external_call_id)
+            )
         elif tool_name == "request_callback":
-            return self._tool_callback(website_id, args, data)
+            return Response(
+                tool_handlers.request_callback(website_id, args, external_call_id)
+            )
         elif tool_name == "check_availability":
-            return self._tool_availability(website_id, args)
+            return Response(tool_handlers.check_availability(website_id, args))
 
         return Response({"result": "Tool not recognized."})
-
-    def _tool_schedule(self, website_id, args, config):
-        """Handle the schedule_appointment tool call from the AI agent."""
-        from django.utils.dateparse import parse_date as _parse_date
-
-        date = _parse_date(args.get("preferred_date", ""))
-        time_str = args.get("preferred_time", "")
-
-        if not date or not time_str:
-            return Response({"result": "I need both a date and time to schedule. Could you provide those?"})
-
-        hour, minute = map(int, time_str.split(":"))
-        from django.utils import timezone as tz
-
-        start_time = tz.make_aware(
-            datetime.combine(date, datetime.min.time().replace(hour=hour, minute=minute))
-        )
-
-        # Look up the call log for linking
-        call_log = None
-        external_call_id = args.get("call_id", "")
-        if external_call_id:
-            from apps.voice_agent.models import CallLog
-
-            call_log = CallLog.objects.filter(external_call_id=external_call_id).first()
-
-        try:
-            event = CalendarService.book_appointment(
-                website_id=website_id,
-                attendee_name=args.get("attendee_name", ""),
-                attendee_phone=args.get("attendee_phone", ""),
-                attendee_email=args.get("attendee_email", ""),
-                start_time=start_time,
-                title=f"Appointment: {args.get('reason', '')}".strip(": "),
-                description=args.get("reason", ""),
-                call_log=call_log,
-            )
-            # Trigger async calendar sync
-            from apps.voice_agent.tasks import sync_calendar_event
-
-            sync_calendar_event.delay(str(event.id))
-
-            return Response({
-                "result": (
-                    f"Appointment booked for {args.get('attendee_name', '')} "
-                    f"on {date.strftime('%B %d, %Y')} at {time_str}. "
-                    f"Duration: {config.appointment_duration_minutes} minutes."
-                )
-            })
-        except ValueError as e:
-            return Response({"result": str(e)})
-
-    def _tool_callback(self, website_id, args, data):
-        """Handle the request_callback tool call."""
-        from datetime import timedelta
-
-        from django.utils import timezone as tz
-
-        # Default to 1 hour from now if no time specified
-        remind_at = tz.now() + timedelta(hours=1)
-        preferred = args.get("preferred_time", "")
-        if preferred:
-            parsed = parse_datetime(preferred)
-            if parsed:
-                remind_at = parsed
-
-        call_log = None
-        external_call_id = data.get("call_id", "")
-        if external_call_id:
-            from apps.voice_agent.models import CallLog
-
-            call_log = CallLog.objects.filter(external_call_id=external_call_id).first()
-
-        reminder = CallService.create_callback_reminder(
-            website_id=website_id,
-            contact_name=args.get("contact_name", ""),
-            contact_phone=args.get("contact_phone", ""),
-            remind_at=remind_at,
-            reason=args.get("reason", ""),
-            call_log=call_log,
-        )
-
-        # Trigger notification
-        from apps.voice_agent.tasks import send_callback_notification
-
-        send_callback_notification.delay(str(reminder.id))
-
-        return Response({
-            "result": (
-                f"Callback reminder set for {args.get('contact_name', '')}. "
-                f"Someone will call you back."
-            )
-        })
-
-    def _tool_availability(self, website_id, args):
-        """Handle the check_availability tool call."""
-        date = parse_date(args.get("date", ""))
-        if not date:
-            return Response({"result": "I need a valid date to check availability."})
-
-        slots = CalendarService.get_available_slots(website_id=website_id, date=date)
-        if not slots:
-            return Response({
-                "result": f"No available slots on {date.strftime('%B %d, %Y')}. Would you like to try another date?"
-            })
-
-        slot_list = ", ".join(f"{s['start']}-{s['end']}" for s in slots[:6])
-        more = f" and {len(slots) - 6} more" if len(slots) > 6 else ""
-        return Response({
-            "result": f"Available slots on {date.strftime('%B %d, %Y')}: {slot_list}{more}"
-        })
-
 
 # ── Phone Numbers ─────────────────────────────────────────────────────────────
 
@@ -867,3 +775,425 @@ class AgentContextDocumentDetailView(APIView):
         if config:
             _sync_prompt_to_retell(config)
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+# ── Outbound Calling: Campaigns + Call Now ────────────────────────────────────
+
+
+def _ensure_website(request, website_id):
+    return WebsiteService.get_for_user(user=request.user, website_id=website_id)
+
+
+class CallCampaignListView(APIView):
+    """List or create outbound call campaigns for a website."""
+
+    permission_classes = [IsAuthenticated]
+    pagination_class = StandardPagination
+
+    def get(self, request, website_id):
+        website = _ensure_website(request, website_id)
+        qs = CallCampaign.objects.filter(website=website).order_by("-created_at")
+        paginator = self.pagination_class()
+        page = paginator.paginate_queryset(qs, request, view=self)
+        return paginator.get_paginated_response(
+            CallCampaignSerializer(page, many=True).data
+        )
+
+    def post(self, request, website_id):
+        website = _ensure_website(request, website_id)
+        serializer = CallCampaignSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        from_number = serializer.validated_data["from_number"]
+        if from_number.website_id != website.id:
+            return Response(
+                {"detail": "from_number does not belong to this website"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        campaign = serializer.save(website=website, created_by=request.user)
+        return Response(
+            CallCampaignSerializer(campaign).data, status=status.HTTP_201_CREATED
+        )
+
+
+class CallCampaignDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def _get(self, request, website_id, campaign_id):
+        website = _ensure_website(request, website_id)
+        return CallCampaign.objects.get(id=campaign_id, website=website)
+
+    def get(self, request, website_id, campaign_id):
+        try:
+            campaign = self._get(request, website_id, campaign_id)
+        except CallCampaign.DoesNotExist:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        return Response(CallCampaignSerializer(campaign).data)
+
+    def put(self, request, website_id, campaign_id):
+        try:
+            campaign = self._get(request, website_id, campaign_id)
+        except CallCampaign.DoesNotExist:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        if campaign.status == CallCampaign.STATUS_RUNNING:
+            return Response(
+                {"detail": "pause the campaign before editing"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        serializer = CallCampaignSerializer(campaign, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        from_number = serializer.validated_data.get("from_number", campaign.from_number)
+        if from_number.website_id != campaign.website_id:
+            return Response(
+                {"detail": "from_number does not belong to this website"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        serializer.save()
+        return Response(CallCampaignSerializer(campaign).data)
+
+    def delete(self, request, website_id, campaign_id):
+        try:
+            campaign = self._get(request, website_id, campaign_id)
+        except CallCampaign.DoesNotExist:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        campaign.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class CallTargetListView(APIView):
+    """List or add targets to a campaign."""
+
+    permission_classes = [IsAuthenticated]
+    pagination_class = StandardPagination
+
+    def _campaign(self, request, website_id, campaign_id):
+        website = _ensure_website(request, website_id)
+        return CallCampaign.objects.get(id=campaign_id, website=website)
+
+    def get(self, request, website_id, campaign_id):
+        try:
+            campaign = self._campaign(request, website_id, campaign_id)
+        except CallCampaign.DoesNotExist:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        qs = campaign.targets.all().order_by("created_at")
+        status_filter = request.query_params.get("status")
+        if status_filter:
+            qs = qs.filter(status=status_filter)
+        paginator = self.pagination_class()
+        page = paginator.paginate_queryset(qs, request, view=self)
+        return paginator.get_paginated_response(
+            CallTargetSerializer(page, many=True).data
+        )
+
+    def post(self, request, website_id, campaign_id):
+        try:
+            campaign = self._campaign(request, website_id, campaign_id)
+        except CallCampaign.DoesNotExist:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        serializer = CallTargetSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        target, _ = CallTarget.objects.get_or_create(
+            campaign=campaign,
+            phone=serializer.validated_data["phone"],
+            defaults={
+                "name": serializer.validated_data.get("name", ""),
+                "metadata": serializer.validated_data.get("metadata", {}),
+                "max_attempts": serializer.validated_data.get("max_attempts", 2),
+            },
+        )
+        return Response(
+            CallTargetSerializer(target).data, status=status.HTTP_201_CREATED
+        )
+
+
+class CallTargetCSVUploadView(APIView):
+    """Bulk-upload targets via CSV. First row must contain a ``phone`` column;
+    optional ``name`` column. Any other columns become per-target ``metadata``."""
+
+    permission_classes = [IsAuthenticated]
+
+    MAX_BYTES = 5 * 1024 * 1024  # 5 MB
+
+    def post(self, request, website_id, campaign_id):
+        import csv
+        import io
+
+        website = _ensure_website(request, website_id)
+        try:
+            campaign = CallCampaign.objects.get(id=campaign_id, website=website)
+        except CallCampaign.DoesNotExist:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+
+        upload = request.FILES.get("file")
+        if not upload:
+            return Response(
+                {"detail": "file is required"}, status=status.HTTP_400_BAD_REQUEST
+            )
+        if upload.size > self.MAX_BYTES:
+            return Response(
+                {"detail": "file too large (max 5MB)"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            text = upload.read().decode("utf-8")
+        except UnicodeDecodeError:
+            return Response(
+                {"detail": "file must be UTF-8 encoded"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        reader = csv.DictReader(io.StringIO(text))
+        if not reader.fieldnames or "phone" not in reader.fieldnames:
+            return Response(
+                {"detail": "CSV must have a 'phone' column"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        created = 0
+        skipped = 0
+        for row in reader:
+            phone = (row.get("phone") or "").strip()
+            if not phone:
+                skipped += 1
+                continue
+            name = (row.get("name") or "").strip()
+            metadata = {
+                k: v for k, v in row.items() if k not in ("phone", "name") and v
+            }
+            _, was_created = CallTarget.objects.get_or_create(
+                campaign=campaign,
+                phone=phone,
+                defaults={"name": name, "metadata": metadata},
+            )
+            if was_created:
+                created += 1
+            else:
+                skipped += 1
+
+        return Response(
+            {"created": created, "skipped": skipped},
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class CampaignStartView(APIView):
+    permission_classes = [IsAuthenticated]
+    throttle_scope = "voice_outbound"
+
+    def post(self, request, website_id, campaign_id):
+        from apps.voice_agent.tasks import dispatch_campaign
+
+        website = _ensure_website(request, website_id)
+        try:
+            campaign = CallCampaign.objects.get(id=campaign_id, website=website)
+        except CallCampaign.DoesNotExist:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+
+        if not campaign.from_number.livekit_outbound_trunk_id:
+            return Response(
+                {"detail": "from_number not provisioned with LiveKit outbound trunk"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not campaign.targets.filter(status=CallTarget.STATUS_PENDING).exists():
+            return Response(
+                {"detail": "no pending targets to dial"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        campaign.status = CallCampaign.STATUS_RUNNING
+        campaign.save(update_fields=["status", "updated_at"])
+        dispatch_campaign.delay(str(campaign.id))
+        return Response(CallCampaignSerializer(campaign).data)
+
+
+class CampaignPauseView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, website_id, campaign_id):
+        website = _ensure_website(request, website_id)
+        try:
+            campaign = CallCampaign.objects.get(id=campaign_id, website=website)
+        except CallCampaign.DoesNotExist:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        campaign.status = CallCampaign.STATUS_PAUSED
+        campaign.save(update_fields=["status", "updated_at"])
+        return Response(CallCampaignSerializer(campaign).data)
+
+
+class CallNowView(APIView):
+    """Place a single ad-hoc outbound call. Creates a one-target campaign and
+    immediately dispatches the dialer."""
+
+    permission_classes = [IsAuthenticated]
+    throttle_scope = "voice_outbound"
+
+    def post(self, request, website_id):
+        from apps.voice_agent.tasks import place_outbound_call
+
+        website = _ensure_website(request, website_id)
+        phone = (request.data.get("phone") or "").strip()
+        if not phone:
+            return Response(
+                {"detail": "phone is required"}, status=status.HTTP_400_BAD_REQUEST
+            )
+        from_number_id = request.data.get("from_number_id")
+        if not from_number_id:
+            return Response(
+                {"detail": "from_number_id is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            from_number = PhoneNumber.objects.get(id=from_number_id, website=website)
+        except PhoneNumber.DoesNotExist:
+            return Response(
+                {"detail": "from_number not found for this website"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not from_number.livekit_outbound_trunk_id:
+            return Response(
+                {"detail": "from_number not provisioned with LiveKit outbound trunk"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        welcome = request.data.get("welcome_override") or ""
+        if not welcome:
+            config = AgentConfig.objects.filter(website=website).first()
+            welcome = (config.greeting_message if config else "") or "Hello!"
+
+        campaign = CallCampaign.objects.create(
+            website=website,
+            name=f"Ad-hoc call to {phone}",
+            welcome_message=welcome,
+            from_number=from_number,
+            status=CallCampaign.STATUS_RUNNING,
+            max_concurrent_calls=1,
+            calls_per_minute=1,
+            respect_business_hours=False,
+            created_by=request.user,
+        )
+        target = CallTarget.objects.create(
+            campaign=campaign,
+            phone=phone,
+            name=request.data.get("name", ""),
+            max_attempts=1,
+        )
+        place_outbound_call.delay(str(target.id))
+        return Response(
+            {
+                "campaign_id": str(campaign.id),
+                "target_id": str(target.id),
+                "status": "dialing",
+            },
+            status=status.HTTP_202_ACCEPTED,
+        )
+
+
+# ── Internal endpoints used by the LiveKit agent worker ──────────────────────
+
+
+def _check_internal_token(request) -> bool:
+    expected = getattr(settings, "LIVEKIT_AGENT_API_TOKEN", "")
+    if not expected:
+        return False
+    auth = request.headers.get("Authorization", "")
+    return auth == f"Bearer {expected}"
+
+
+class InternalAgentBootstrapView(APIView):
+    """Called by the LiveKit worker when it joins a room. Returns the merged
+    KB-aware system prompt + agent settings for a website."""
+
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        if not _check_internal_token(request):
+            return Response(status=status.HTTP_401_UNAUTHORIZED)
+        website_id = request.query_params.get("website_id")
+        if not website_id:
+            return Response(
+                {"detail": "website_id required"}, status=status.HTTP_400_BAD_REQUEST
+            )
+        try:
+            config = AgentConfig.objects.select_related("website").get(
+                website_id=website_id
+            )
+        except AgentConfig.DoesNotExist:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        return Response(
+            {
+                "website_id": str(config.website_id),
+                "system_prompt": build_retell_system_prompt(config),
+                "greeting": config.greeting_message,
+                "business_name": config.business_name,
+                "timezone": config.timezone,
+                "tools": ["schedule_appointment", "request_callback", "check_availability"],
+            }
+        )
+
+
+class InternalCallFinishView(APIView):
+    """Called by the LiveKit worker when an outbound call ends. Stores the
+    transcript on the CallLog and queues post-call extraction."""
+
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        from django.utils import timezone as tz
+
+        from apps.voice_agent.models import CallLog
+        from apps.voice_agent.tasks import extract_call_data
+
+        if not _check_internal_token(request):
+            return Response(status=status.HTTP_401_UNAUTHORIZED)
+
+        call_log_id = request.data.get("call_log_id")
+        if not call_log_id:
+            return Response(
+                {"detail": "call_log_id required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            call_log = CallLog.objects.select_related("target").get(id=call_log_id)
+        except CallLog.DoesNotExist:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+
+        transcript = request.data.get("transcript", "") or ""
+        duration = int(request.data.get("duration", 0) or 0)
+        ended_reason = (request.data.get("ended_reason") or "").lower()
+
+        call_log.transcript = transcript
+        call_log.duration_seconds = duration
+        call_log.ended_at = tz.now()
+        if ended_reason in ("no_answer", "noanswer"):
+            call_log.status = CallLog.STATUS_MISSED
+            target_status = CallTarget.STATUS_NO_ANSWER
+        elif ended_reason in ("busy",):
+            call_log.status = CallLog.STATUS_FAILED
+            target_status = CallTarget.STATUS_BUSY
+        elif ended_reason in ("failed", "error"):
+            call_log.status = CallLog.STATUS_FAILED
+            target_status = CallTarget.STATUS_FAILED
+        else:
+            call_log.status = CallLog.STATUS_COMPLETED
+            target_status = CallTarget.STATUS_COMPLETED
+        call_log.save(
+            update_fields=[
+                "transcript", "duration_seconds", "ended_at", "status", "updated_at",
+            ]
+        )
+
+        if call_log.target_id:
+            target = call_log.target
+            target.status = target_status
+            target.save(update_fields=["status", "updated_at"])
+
+        try:
+            extract_call_data.delay(str(call_log.id))
+        except Exception:  # noqa: BLE001
+            logger.exception(
+                "extract_call_data_dispatch_failed",
+                extra={"call_log_id": str(call_log.id)},
+            )
+
+        return Response({"status": "ok"})

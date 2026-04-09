@@ -5,9 +5,12 @@ from apps.voice_agent.models import (
     AgentContextDocument,
     CalendarEvent,
     CallbackReminder,
+    CallCampaign,
     CallExtraction,
     CallLog,
+    CallTarget,
     CallTodo,
+    DoNotCallEntry,
     PhoneNumber,
 )
 
@@ -120,9 +123,76 @@ class PhoneNumberSerializer(serializers.ModelSerializer):
         model = PhoneNumber
         fields = [
             "id", "number", "label", "provider", "is_active",
-            "forwarded_to_agent", "created_at", "updated_at",
+            "forwarded_to_agent", "telnyx_trunk_id", "livekit_outbound_trunk_id",
+            "created_at", "updated_at",
         ]
-        read_only_fields = ["id", "created_at", "updated_at"]
+        read_only_fields = [
+            "id", "livekit_outbound_trunk_id", "created_at", "updated_at",
+        ]
+
+
+class CallTargetSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CallTarget
+        fields = [
+            "id", "phone", "name", "metadata", "status",
+            "attempt_count", "max_attempts", "last_attempt_at", "last_error",
+            "created_at", "updated_at",
+        ]
+        read_only_fields = [
+            "id", "status", "attempt_count", "last_attempt_at", "last_error",
+            "created_at", "updated_at",
+        ]
+
+
+class CallCampaignSerializer(serializers.ModelSerializer):
+    target_count = serializers.SerializerMethodField()
+    pending_count = serializers.SerializerMethodField()
+    completed_count = serializers.SerializerMethodField()
+    failed_count = serializers.SerializerMethodField()
+    from_number_display = serializers.CharField(
+        source="from_number.number", read_only=True
+    )
+
+    class Meta:
+        model = CallCampaign
+        fields = [
+            "id", "name", "welcome_message", "from_number", "from_number_display",
+            "status", "max_concurrent_calls", "calls_per_minute",
+            "respect_business_hours", "created_by",
+            "target_count", "pending_count", "completed_count", "failed_count",
+            "created_at", "updated_at",
+        ]
+        read_only_fields = [
+            "id", "status", "created_by", "from_number_display",
+            "target_count", "pending_count", "completed_count", "failed_count",
+            "created_at", "updated_at",
+        ]
+
+    def _count(self, obj, status=None):
+        qs = obj.targets.all()
+        if status:
+            qs = qs.filter(status=status)
+        return qs.count()
+
+    def get_target_count(self, obj):
+        return self._count(obj)
+
+    def get_pending_count(self, obj):
+        return self._count(obj, CallTarget.STATUS_PENDING)
+
+    def get_completed_count(self, obj):
+        return self._count(obj, CallTarget.STATUS_COMPLETED)
+
+    def get_failed_count(self, obj):
+        return self._count(obj, CallTarget.STATUS_FAILED)
+
+
+class DoNotCallEntrySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = DoNotCallEntry
+        fields = ["id", "phone", "reason", "added_by", "created_at"]
+        read_only_fields = ["id", "added_by", "created_at"]
 
 
 class AgentContextDocumentSerializer(serializers.ModelSerializer):

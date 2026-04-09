@@ -118,15 +118,27 @@ def _get_django_api_base():
     return os.environ.get("DJANGO_API_BASE", "http://localhost:8000/api/v1")
 
 
-def _get_website_id_from_metadata(metadata):
-    """Extract website_id from room metadata."""
+def _parse_room_metadata(metadata):
+    """Parse the JSON metadata LiveKit attaches to a room.
+
+    Outbound calls dispatched by ``tasks.place_outbound_call`` include:
+      ``website_id``, ``campaign_id``, ``target_id``, ``call_log_id``,
+      ``welcome``, ``recipient_name``.
+    Inbound calls only carry ``website_id``.
+    """
     import json
 
     try:
-        data = json.loads(metadata) if isinstance(metadata, str) else metadata
-        return data.get("website_id", "")
+        if isinstance(metadata, str):
+            return json.loads(metadata) if metadata else {}
+        return metadata or {}
     except (json.JSONDecodeError, TypeError):
-        return ""
+        return {}
+
+
+def _get_website_id_from_metadata(metadata):
+    """Extract website_id from room metadata (back-compat helper)."""
+    return _parse_room_metadata(metadata).get("website_id", "")
 
 
 async def _handle_tool_call(tool_name, arguments, website_id):
@@ -388,37 +400,105 @@ def run_agent_worker():
         return
 
     async def entrypoint(ctx: JobContext):
-        await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
+        import time
 
-        website_id = _get_website_id_from_metadata(ctx.room.metadata)
-
-        # Fetch config from Django API
         import httpx
 
-        config_data = {}
+        await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
+
+        meta = _parse_room_metadata(ctx.room.metadata)
+        website_id = meta.get("website_id", "")
+        call_log_id = meta.get("call_log_id", "")
+        welcome_override = meta.get("welcome") or ""
+
+        base = _get_django_api_base()
+        token = os.environ.get("LIVEKIT_AGENT_API_TOKEN", "")
+        headers = {"Authorization": f"Bearer {token}"}
+
+        system_prompt = "You are a helpful voice assistant."
+        greeting = "Hello!"
         try:
-            base = _get_django_api_base()
             async with httpx.AsyncClient(timeout=10) as client:
                 resp = await client.get(
-                    f"{base}/voice-agent/{website_id}/config/",
-                    headers={
-                        "Authorization": f"Bearer {os.environ.get('LIVEKIT_AGENT_API_TOKEN', '')}",
-                    },
+                    f"{base}/voice-agent/internal/agent-bootstrap/",
+                    params={"website_id": website_id},
+                    headers=headers,
                 )
                 if resp.status_code == 200:
-                    config_data = resp.json().get("data", resp.json())
-        except Exception as e:
-            logger.warning("Failed to fetch agent config: %s", e)
+                    payload = resp.json()
+                    system_prompt = payload.get("system_prompt") or system_prompt
+                    greeting = payload.get("greeting") or greeting
+                else:
+                    logger.warning(
+                        "agent_bootstrap_failed status=%s body=%s",
+                        resp.status_code, resp.text[:200],
+                    )
+        except Exception as e:  # noqa: BLE001
+            logger.warning("agent_bootstrap_error: %s", e)
 
-        system_prompt = build_system_prompt(config_data)
-        greeting = config_data.get(
-            "greeting_message",
-            "Hello! Thank you for calling. How can I help you today?",
+        # Outbound campaigns provide a per-campaign welcome line that overrides
+        # the website's default greeting.
+        opening_line = welcome_override or greeting
+
+        stt, llm_instance, tts = _get_voice_providers()
+        agent = VoiceSession(
+            vad=silero.VAD.load(),
+            stt=stt,
+            llm=llm_instance,
+            tts=tts,
         )
 
-        # Reuse the shared agent factory
-        _start_session = _create_voice_session(system_prompt, website_id)
-        await _start_session(ctx, greeting)
+        transcript_lines: list[str] = []
+
+        @agent.on("user_speech_committed")
+        def _on_user(msg):  # type: ignore[no-redef]
+            try:
+                transcript_lines.append(f"User: {getattr(msg, 'text', str(msg))}")
+            except Exception:  # noqa: BLE001
+                pass
+
+        @agent.on("agent_speech_committed")
+        def _on_agent(msg):  # type: ignore[no-redef]
+            try:
+                transcript_lines.append(f"Agent: {getattr(msg, 'text', str(msg))}")
+            except Exception:  # noqa: BLE001
+                pass
+
+        @agent.on("function_call")
+        async def on_function_call(call):  # type: ignore[no-redef]
+            result = await _handle_tool_call(call.name, call.arguments, website_id)
+            await call.resolve(result)
+
+        agent.start(ctx.room)
+        started_at = time.monotonic()
+        await agent.say(opening_line)
+
+        # Wait for the call to end (participant disconnect closes the room).
+        try:
+            await ctx.wait_for_disconnect()
+        except AttributeError:
+            # Older SDKs: poll on participant count.
+            import asyncio
+
+            while ctx.room.remote_participants:
+                await asyncio.sleep(1)
+
+        duration = int(time.monotonic() - started_at)
+        if call_log_id:
+            try:
+                async with httpx.AsyncClient(timeout=10) as client:
+                    await client.post(
+                        f"{base}/voice-agent/internal/calls/finish/",
+                        json={
+                            "call_log_id": call_log_id,
+                            "transcript": "\n".join(transcript_lines),
+                            "duration": duration,
+                            "ended_reason": "completed",
+                        },
+                        headers=headers,
+                    )
+            except Exception as e:  # noqa: BLE001
+                logger.warning("call_finish_post_failed: %s", e)
 
     cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint))
 

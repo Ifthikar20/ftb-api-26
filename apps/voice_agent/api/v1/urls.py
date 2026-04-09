@@ -41,4 +41,17 @@ urlpatterns = [
 
     # Retell AI webhook (no website_id — determined from agent_id in payload)
     path("webhook/retell/", views.RetellWebhookView.as_view(), name="voice-retell-webhook"),
+
+    # Outbound calling: campaigns + targets + call-now
+    path("<uuid:website_id>/campaigns/", views.CallCampaignListView.as_view(), name="voice-campaign-list"),
+    path("<uuid:website_id>/campaigns/<uuid:campaign_id>/", views.CallCampaignDetailView.as_view(), name="voice-campaign-detail"),
+    path("<uuid:website_id>/campaigns/<uuid:campaign_id>/targets/", views.CallTargetListView.as_view(), name="voice-campaign-targets"),
+    path("<uuid:website_id>/campaigns/<uuid:campaign_id>/targets/upload/", views.CallTargetCSVUploadView.as_view(), name="voice-campaign-targets-upload"),
+    path("<uuid:website_id>/campaigns/<uuid:campaign_id>/start/", views.CampaignStartView.as_view(), name="voice-campaign-start"),
+    path("<uuid:website_id>/campaigns/<uuid:campaign_id>/pause/", views.CampaignPauseView.as_view(), name="voice-campaign-pause"),
+    path("<uuid:website_id>/call-now/", views.CallNowView.as_view(), name="voice-call-now"),
+
+    # Internal endpoints used by the LiveKit agent worker (bearer-token auth)
+    path("internal/agent-bootstrap/", views.InternalAgentBootstrapView.as_view(), name="voice-internal-bootstrap"),
+    path("internal/calls/finish/", views.InternalCallFinishView.as_view(), name="voice-internal-call-finish"),
 ]

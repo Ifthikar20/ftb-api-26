@@ -40,6 +40,14 @@ class PhoneNumber(TimestampMixin):
         default=True,
         help_text="Route inbound calls from this number to the AI voice agent.",
     )
+    telnyx_trunk_id = models.CharField(
+        max_length=200, blank=True,
+        help_text="Telnyx SIP connection / trunk ID this caller-ID dials out from.",
+    )
+    livekit_outbound_trunk_id = models.CharField(
+        max_length=200, blank=True,
+        help_text="LiveKit-side outbound SIP trunk ID returned from CreateSIPOutboundTrunk.",
+    )
 
     class Meta:
         db_table = "voice_agent_phonenumber"
@@ -179,6 +187,20 @@ class CallLog(TimestampMixin):
     # Link to lead if identified
     lead = models.ForeignKey(
         "leads.Lead", null=True, blank=True, on_delete=models.SET_NULL, related_name="calls"
+    )
+
+    # Outbound campaign linkage
+    campaign = models.ForeignKey(
+        "voice_agent.CallCampaign",
+        null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name="call_logs",
+    )
+    target = models.ForeignKey(
+        "voice_agent.CallTarget",
+        null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name="call_logs",
     )
 
     class Meta:
@@ -407,3 +429,135 @@ class CallTodo(TimestampMixin):
 
     def __str__(self):
         return f"Todo({self.description[:50]}, {self.priority}, {self.status})"
+
+
+class CallCampaign(TimestampMixin):
+    """An outbound calling campaign. Targets are dialed by the AI voice agent
+    using the website's merged knowledge-base prompt and a per-campaign welcome line."""
+
+    STATUS_DRAFT = "draft"
+    STATUS_RUNNING = "running"
+    STATUS_PAUSED = "paused"
+    STATUS_COMPLETED = "completed"
+    STATUS_FAILED = "failed"
+    STATUS_CHOICES = [
+        (STATUS_DRAFT, "Draft"),
+        (STATUS_RUNNING, "Running"),
+        (STATUS_PAUSED, "Paused"),
+        (STATUS_COMPLETED, "Completed"),
+        (STATUS_FAILED, "Failed"),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    website = models.ForeignKey(
+        "websites.Website", on_delete=models.CASCADE, related_name="call_campaigns"
+    )
+    name = models.CharField(max_length=200)
+    welcome_message = models.TextField(
+        help_text="Opening line played to the recipient when they answer."
+    )
+    from_number = models.ForeignKey(
+        PhoneNumber,
+        on_delete=models.PROTECT,
+        related_name="campaigns",
+        help_text="Caller-ID this campaign dials out from. Must belong to the same website.",
+    )
+    status = models.CharField(
+        max_length=20, choices=STATUS_CHOICES, default=STATUS_DRAFT, db_index=True
+    )
+    max_concurrent_calls = models.PositiveSmallIntegerField(default=3)
+    calls_per_minute = models.PositiveSmallIntegerField(default=10)
+    respect_business_hours = models.BooleanField(default=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="call_campaigns",
+    )
+
+    class Meta:
+        db_table = "voice_agent_callcampaign"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["website", "status"]),
+        ]
+
+    def __str__(self):
+        return f"Campaign({self.name}, {self.status})"
+
+
+class CallTarget(TimestampMixin):
+    """A single recipient inside a CallCampaign."""
+
+    STATUS_PENDING = "pending"
+    STATUS_QUEUED = "queued"
+    STATUS_DIALING = "dialing"
+    STATUS_IN_PROGRESS = "in_progress"
+    STATUS_COMPLETED = "completed"
+    STATUS_FAILED = "failed"
+    STATUS_NO_ANSWER = "no_answer"
+    STATUS_BUSY = "busy"
+    STATUS_DO_NOT_CALL = "do_not_call"
+    STATUS_CHOICES = [
+        (STATUS_PENDING, "Pending"),
+        (STATUS_QUEUED, "Queued"),
+        (STATUS_DIALING, "Dialing"),
+        (STATUS_IN_PROGRESS, "In Progress"),
+        (STATUS_COMPLETED, "Completed"),
+        (STATUS_FAILED, "Failed"),
+        (STATUS_NO_ANSWER, "No Answer"),
+        (STATUS_BUSY, "Busy"),
+        (STATUS_DO_NOT_CALL, "Do Not Call"),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    campaign = models.ForeignKey(
+        CallCampaign, on_delete=models.CASCADE, related_name="targets"
+    )
+    phone = models.CharField(max_length=30, db_index=True, help_text="E.164 format")
+    name = models.CharField(max_length=200, blank=True)
+    metadata = models.JSONField(
+        default=dict, blank=True,
+        help_text="Custom fields imported from CSV (e.g. company, product interest).",
+    )
+    status = models.CharField(
+        max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING, db_index=True
+    )
+    attempt_count = models.PositiveSmallIntegerField(default=0)
+    max_attempts = models.PositiveSmallIntegerField(default=2)
+    last_attempt_at = models.DateTimeField(null=True, blank=True)
+    last_error = models.TextField(blank=True)
+
+    class Meta:
+        db_table = "voice_agent_calltarget"
+        ordering = ["created_at"]
+        indexes = [
+            models.Index(fields=["campaign", "status"]),
+        ]
+        unique_together = [("campaign", "phone")]
+
+    def __str__(self):
+        return f"Target({self.phone}, {self.status})"
+
+
+class DoNotCallEntry(TimestampMixin):
+    """Global do-not-call list. Outbound dialer skips any phone present here."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    phone = models.CharField(max_length=30, unique=True, db_index=True)
+    reason = models.CharField(max_length=200, blank=True)
+    added_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="dnc_entries",
+    )
+
+    class Meta:
+        db_table = "voice_agent_donotcallentry"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"DNC({self.phone})"

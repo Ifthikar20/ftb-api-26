@@ -4,9 +4,12 @@ from apps.voice_agent.models import (
     AgentConfig,
     CalendarEvent,
     CallbackReminder,
+    CallCampaign,
     CallExtraction,
     CallLog,
+    CallTarget,
     CallTodo,
+    DoNotCallEntry,
 )
 
 
@@ -68,3 +71,37 @@ class CallTodoAdmin(admin.ModelAdmin):
     search_fields = ("description",)
     readonly_fields = ("id", "created_at", "updated_at")
     ordering = ("-created_at",)
+
+
+class CallTargetInline(admin.TabularInline):
+    model = CallTarget
+    extra = 0
+    readonly_fields = ("status", "attempt_count", "last_attempt_at", "last_error", "created_at")
+    fields = ("phone", "name", "status", "attempt_count", "last_attempt_at", "last_error")
+
+
+@admin.register(CallCampaign)
+class CallCampaignAdmin(admin.ModelAdmin):
+    list_display = (
+        "id", "website", "name", "status", "from_number",
+        "calls_per_minute", "max_concurrent_calls", "created_by", "created_at",
+    )
+    list_filter = ("status",)
+    search_fields = ("name", "website__name")
+    readonly_fields = ("id", "created_at", "updated_at")
+    inlines = [CallTargetInline]
+
+
+@admin.register(CallTarget)
+class CallTargetAdmin(admin.ModelAdmin):
+    list_display = ("id", "campaign", "phone", "name", "status", "attempt_count", "last_attempt_at")
+    list_filter = ("status",)
+    search_fields = ("phone", "name", "campaign__name")
+    readonly_fields = ("id", "created_at", "updated_at", "last_attempt_at")
+
+
+@admin.register(DoNotCallEntry)
+class DoNotCallEntryAdmin(admin.ModelAdmin):
+    list_display = ("phone", "reason", "added_by", "created_at")
+    search_fields = ("phone",)
+    readonly_fields = ("id", "created_at", "updated_at")

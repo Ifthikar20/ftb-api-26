@@ -342,6 +342,17 @@ SELFHOSTED_LLM_URL = env("SELFHOSTED_LLM_URL", default="http://localhost:8000/v1
 SELFHOSTED_STT_URL = env("SELFHOSTED_STT_URL", default="http://localhost:8001/v1")
 SELFHOSTED_TTS_URL = env("SELFHOSTED_TTS_URL", default="http://localhost:8002")
 SELFHOSTED_LLM_MODEL = env("SELFHOSTED_LLM_MODEL", default="Qwen/Qwen2.5-7B-Instruct-AWQ")
+
+# Outbound dialer (Telnyx + LiveKit)
+TELNYX_API_KEY = env("TELNYX_API_KEY", default="")
+TELNYX_OUTBOUND_CONNECTION_ID = env("TELNYX_OUTBOUND_CONNECTION_ID", default="")
+TELNYX_SIP_USERNAME = env("TELNYX_SIP_USERNAME", default="")
+TELNYX_SIP_PASSWORD = env("TELNYX_SIP_PASSWORD", default="")
+TELNYX_SIP_ADDRESS = env("TELNYX_SIP_ADDRESS", default="sip.telnyx.com")
+LIVEKIT_AGENT_API_TOKEN = env("LIVEKIT_AGENT_API_TOKEN", default="")
+LIVEKIT_AGENT_NAME = env("LIVEKIT_AGENT_NAME", default="ftb-voice-agent")
+DIALER_DEFAULT_RATE_PER_MIN = env.int("DIALER_DEFAULT_RATE_PER_MIN", default=10)
+
 DEFAULT_FROM_EMAIL = env("SERVER_EMAIL", default="noreply@growthpilot.io")
 
 # ── LOGGING ──
