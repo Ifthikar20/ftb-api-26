@@ -158,84 +158,16 @@
       </div>
     </div>
 
-    <!-- Tab: Social Leads -->
-    <div v-if="activeTab === 'social'" class="tab-content">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px">
-        <p class="text-sm text-muted">Connect Facebook, LinkedIn, and other platforms to automatically import leads.</p>
-        <button class="btn btn-primary btn-sm" @click="showSourceModal = true">+ Connect Platform</button>
-      </div>
-
-      <!-- Connected Sources -->
-      <div v-if="socialSources.length" class="social-sources-grid" style="margin-bottom: 24px">
-        <div v-for="src in socialSources" :key="src.id" class="social-source-card">
-          <div class="social-source-header">
-            <div>
-              <div class="font-semibold">{{ src.platform_display }}</div>
-              <div class="text-sm text-muted">{{ src.label || src.form_id }}</div>
-            </div>
-            <span class="status-pill" :class="src.is_active ? 'status-confirmed' : 'status-dismissed'">
-              {{ src.is_active ? 'Active' : 'Inactive' }}
-            </span>
-          </div>
-          <div class="social-source-stats">
-            <span class="text-sm"><strong>{{ src.total_leads_imported }}</strong> leads imported</span>
-            <span v-if="src.last_synced_at" class="text-xs text-muted">Last sync: {{ formatDate(src.last_synced_at) }}</span>
-          </div>
-          <div style="display: flex; gap: 8px; margin-top: 12px">
-            <button v-if="src.platform === 'linkedin'" class="btn btn-secondary btn-xs" @click="syncLinkedIn(src.id)" :disabled="syncing === src.id">
-              {{ syncing === src.id ? 'Syncing...' : 'Sync Now' }}
-            </button>
-            <button class="btn btn-danger btn-xs" @click="deleteSource(src.id)">Remove</button>
-          </div>
-          <div v-if="src.platform === 'facebook'" class="webhook-hint text-xs text-muted" style="margin-top: 8px; background: var(--bg-surface); padding: 8px; border-radius: 6px;">
-            Webhook URL: <code>/api/v1/social-leads/webhook/facebook/</code><br>
-            Verify Token: <code>{{ src.webhook_verify_token }}</code>
-          </div>
+    <!-- Tab: Lead Detection (placeholder) -->
+    <div v-if="activeTab === 'leadDetection'" class="tab-content">
+      <div class="card" style="max-width: 720px">
+        <h3 class="card-title" style="margin-bottom: 8px">Lead Detection from Calls</h3>
+        <p class="text-sm text-muted" style="margin-bottom: 12px">
+          We will analyze the transcript of every call your AI agent handles and decide whether the caller is a possible lead — based on intent, sentiment, contact info shared, and explicit buying signals. Possible leads will appear here for you to review and promote into your CRM.
+        </p>
+        <div class="empty-state" style="padding: 20px">
+          <p><strong>Coming soon.</strong> Transcript-based lead scoring is on the roadmap. For now, every call is logged on the <a href="#" @click.prevent="activeTab = 'calls'">Calls</a> tab with its summary, intent, and sentiment so you can triage manually.</p>
         </div>
-      </div>
-      <div v-else-if="!loading.social" class="empty-state">
-        <p>No platforms connected. Click "Connect Platform" to start importing leads from Facebook, LinkedIn, or X.</p>
-      </div>
-
-      <!-- Recent Social Leads -->
-      <h3 class="section-title" style="margin-bottom: 12px">Recent Social Leads</h3>
-      <div v-if="loading.social" class="loading-state">Loading...</div>
-      <div v-else-if="!socialLeads.length" class="empty-state" style="padding: 20px">
-        <p>No social leads yet. Connect a platform above to start importing.</p>
-      </div>
-      <div v-else class="data-table-wrap">
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Email</th>
-              <th>Phone</th>
-              <th>Platform</th>
-              <th>Company</th>
-              <th>Date</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="lead in socialLeads" :key="lead.id">
-              <td class="font-medium">{{ lead.full_name }}</td>
-              <td>{{ lead.email || '-' }}</td>
-              <td>{{ lead.phone || '-' }}</td>
-              <td><span class="provider-badge">{{ lead.platform_display }}</span></td>
-              <td>{{ lead.company || '-' }}</td>
-              <td class="text-muted">{{ formatDate(lead.created_at) }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <!-- X CSV Import -->
-      <div class="card" style="margin-top: 24px; max-width: 680px">
-        <h3 class="card-title" style="margin-bottom: 8px">Import from X (Twitter)</h3>
-        <p class="text-sm text-muted" style="margin-bottom: 12px">X does not support real-time lead webhooks. Export leads from X Ads Manager as CSV and paste the JSON array below.</p>
-        <textarea v-model="xCsvJson" class="form-input" rows="4" placeholder='[{"name": "John", "email": "john@example.com", "phone": "+1234567890"}, ...]'></textarea>
-        <button class="btn btn-primary btn-sm" style="margin-top: 10px" @click="importXLeads" :disabled="importingX">
-          {{ importingX ? 'Importing...' : 'Import' }}
-        </button>
       </div>
     </div>
 
@@ -740,47 +672,6 @@
       </div>
     </div>
 
-    <!-- Connect Social Platform Modal -->
-    <div v-if="showSourceModal" class="modal-overlay" @click.self="showSourceModal = false">
-      <div class="modal-card" style="max-width: 520px">
-        <h3 class="card-title" style="margin-bottom: 16px">Connect Social Platform</h3>
-        <div class="form-group">
-          <label class="form-label">Platform</label>
-          <select v-model="sourceForm.platform" class="form-input">
-            <option value="facebook">Facebook Lead Ads</option>
-            <option value="instagram">Instagram (via Facebook)</option>
-            <option value="linkedin">LinkedIn Lead Gen Forms</option>
-            <option value="tiktok">TikTok Lead Generation</option>
-            <option value="google">Google Lead Form Extensions</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Label</label>
-          <input v-model="sourceForm.label" class="form-input" placeholder="e.g. Facebook - Summer Campaign" />
-        </div>
-        <div class="form-group">
-          <label class="form-label">Ad Account ID / Page ID</label>
-          <input v-model="sourceForm.account_id" class="form-input" placeholder="12345678" />
-        </div>
-        <div class="form-group">
-          <label class="form-label">Lead Form ID</label>
-          <input v-model="sourceForm.form_id" class="form-input" placeholder="Lead Gen Form ID from the platform" />
-        </div>
-        <div class="form-group">
-          <label class="form-label">Access Token</label>
-          <input v-model="sourceForm.access_token" class="form-input" placeholder="OAuth access token from the platform" type="password" />
-        </div>
-        <div class="form-group">
-          <label class="form-label">Campaign Name (optional)</label>
-          <input v-model="sourceForm.campaign_name" class="form-input" placeholder="Summer 2026 Campaign" />
-        </div>
-        <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px">
-          <button class="btn btn-secondary" @click="showSourceModal = false">Cancel</button>
-          <button class="btn btn-primary" @click="saveSource" :disabled="savingSource">{{ savingSource ? 'Connecting...' : 'Connect' }}</button>
-        </div>
-      </div>
-    </div>
-
     <!-- Add Reminder Modal -->
     <div v-if="showReminderModal" class="modal-overlay" @click.self="showReminderModal = false">
       <div class="modal-card" style="max-width: 500px">
@@ -815,7 +706,6 @@ import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useAppStore } from '@/stores/app'
 import { useToast } from '@/composables/useToast'
 import voiceAgentApi from '@/api/voiceAgent'
-import socialLeadsApi from '@/api/socialLeads'
 import VoiceOnboarding from '@/components/voice/VoiceOnboarding.vue'
 
 const props = defineProps({ websiteId: String })
@@ -832,7 +722,7 @@ const tabs = computed(() => [
   { id: 'calendar', label: 'Calendar', badge: events.value.length || null },
   { id: 'reminders', label: 'Reminders', badge: reminders.value.length || null },
   { id: 'phones', label: 'Phone Numbers' },
-  { id: 'social', label: 'Social Leads', badge: socialLeads.value.length || null },
+  { id: 'leadDetection', label: 'Lead Detection' },
   { id: 'settings', label: 'Settings' },
 ])
 
@@ -935,20 +825,9 @@ const editingDoc = ref(null)
 const savingDoc = ref(false)
 const docForm = reactive({ title: '', content: '', is_active: true, sort_order: 0 })
 
-// Social leads
-const socialSources = ref([])
-const socialLeads = ref([])
-const showSourceModal = ref(false)
-const savingSource = ref(false)
-const syncing = ref(null)
-const xCsvJson = ref('')
-const importingX = ref(false)
-const sourceForm = reactive({ platform: 'facebook', label: '', account_id: '', form_id: '', access_token: '', campaign_name: '' })
-
 // Loading states
-const loading = reactive({ calls: false, events: false, reminders: false, todos: false, phones: false, docs: false, social: false })
+const loading = reactive({ calls: false, events: false, reminders: false, todos: false, phones: false, docs: false })
 const saving = ref(false)
-const activating = ref(false)
 const webCallLoading = ref(false)
 const bookingEvent = ref(false)
 const addingReminder = ref(false)
@@ -965,7 +844,7 @@ const weekdays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'satur
 const callFilter = reactive({ status: '', direction: '' })
 
 // Track which tabs have been loaded
-const _loaded = reactive({ calls: false, calendar: false, reminders: false, todos: false, settings: false, phones: false, social: false })
+const _loaded = reactive({ calls: false, calendar: false, reminders: false, todos: false, settings: false, phones: false })
 
 onMounted(() => {
   loadConfig()
@@ -979,7 +858,6 @@ watch(activeTab, (tab) => {
   if (tab === 'calendar' && !_loaded.calendar)   { loadEvents(); _loaded.calendar = true }
   if (tab === 'reminders' && !_loaded.reminders) { loadReminders(); _loaded.reminders = true }
   if (tab === 'phones' && !_loaded.phones)       { loadPhoneNumbers(); _loaded.phones = true }
-  if (tab === 'social' && !_loaded.social)       { loadSocialSources(); loadSocialLeads(); _loaded.social = true }
   if (tab === 'settings' && !_loaded.settings)   { loadContextDocs(); _loaded.settings = true }
 })
 
@@ -991,7 +869,6 @@ function handleOnboardingNavigate(url) {
   if (url.includes('/config')) activeTab.value = 'settings'
   else if (url.includes('/knowledge-base')) activeTab.value = 'settings'
   else if (url.includes('/phone-numbers')) activeTab.value = 'phones'
-  else if (url.includes('/campaigns')) activeTab.value = 'social'
 }
 
 function handleTemplateApplied() {
@@ -1075,18 +952,6 @@ async function saveConfig() {
   } catch (e) {
     toast.error('Failed to save configuration.')
   } finally { saving.value = false }
-}
-
-async function toggleAgent() {
-  activating.value = true
-  const action = config.is_active ? 'deactivate' : 'activate'
-  try {
-    const data = await voiceAgentApi.activate(wid.value, action)
-    Object.assign(config, data)
-    toast.success(`Voice agent ${action}d.`)
-  } catch (e) {
-    toast.error(`Failed to ${action} agent.`)
-  } finally { activating.value = false }
 }
 
 async function startWebCall() {
@@ -1313,71 +1178,6 @@ async function onDocFileSelected(e) {
   } finally {
     uploadingDoc.value = false
   }
-}
-
-// ── Social Leads ───────────────────────────────────────────────────────────────
-
-async function loadSocialSources() {
-  try {
-    const res = await socialLeadsApi.getSources(wid.value)
-    socialSources.value = res.data || res
-  } catch {}
-}
-
-async function loadSocialLeads() {
-  loading.social = true
-  try {
-    const res = await socialLeadsApi.getLeads(wid.value, { page_size: 20 })
-    socialLeads.value = res.results || res.data || []
-  } catch {} finally { loading.social = false }
-}
-
-async function saveSource() {
-  savingSource.value = true
-  try {
-    await socialLeadsApi.createSource(wid.value, sourceForm)
-    toast.success('Platform connected.')
-    showSourceModal.value = false
-    Object.assign(sourceForm, { platform: 'facebook', label: '', account_id: '', form_id: '', access_token: '', campaign_name: '' })
-    loadSocialSources()
-  } catch { toast.error('Failed to connect platform.') } finally { savingSource.value = false }
-}
-
-async function deleteSource(id) {
-  try {
-    await socialLeadsApi.deleteSource(wid.value, id)
-    toast.success('Platform disconnected.')
-    loadSocialSources()
-  } catch { toast.error('Failed to disconnect platform.') }
-}
-
-async function syncLinkedIn(sourceId) {
-  syncing.value = sourceId
-  try {
-    const res = await socialLeadsApi.syncLinkedIn(wid.value, sourceId)
-    const count = res.data?.leads_imported ?? res.leads_imported ?? 0
-    toast.success(`LinkedIn sync complete. ${count} leads imported.`)
-    loadSocialSources()
-    loadSocialLeads()
-  } catch { toast.error('LinkedIn sync failed.') } finally { syncing.value = null }
-}
-
-async function importXLeads() {
-  let rows
-  try {
-    rows = JSON.parse(xCsvJson.value)
-  } catch {
-    toast.error('Invalid JSON. Paste a valid array of lead objects.')
-    return
-  }
-  importingX.value = true
-  try {
-    const res = await socialLeadsApi.importX(wid.value, rows)
-    const count = res.data?.leads_imported ?? res.leads_imported ?? 0
-    toast.success(`Imported ${count} leads from X.`)
-    xCsvJson.value = ''
-    loadSocialLeads()
-  } catch { toast.error('Import failed.') } finally { importingX.value = false }
 }
 
 function toggleDay(day, checked) {
@@ -1717,29 +1517,6 @@ function formatTime(iso) {
   margin: 0;
 }
 
-/* Social leads */
-.social-sources-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 16px;
-}
-.social-source-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
-  border-radius: 12px;
-  padding: 16px;
-}
-.social-source-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 10px;
-}
-.social-source-stats {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
 .section-title {
   font-size: var(--font-base);
   font-weight: 600;

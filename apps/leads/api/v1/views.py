@@ -1,8 +1,6 @@
 from django.http import HttpResponse
 from rest_framework import status
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from rest_framework.views import APIView
 
 from apps.leads.api.v1.serializers import (
     CampaignRecipientSerializer,
@@ -14,16 +12,12 @@ from apps.leads.api.v1.serializers import (
 )
 from apps.leads.models import EmailCampaign, LeadSegment, ScoringConfig
 from apps.leads.services.lead_service import LeadService
-from apps.websites.services.website_service import WebsiteService
-from core.exceptions import ResourceNotFound
-from core.interceptors.pagination import StandardPagination
+from core.views import TenantScopedAPIView, TenantScopedListAPIView
 
 
-class LeadListView(APIView):
-    permission_classes = [IsAuthenticated]
-
+class LeadListView(TenantScopedListAPIView):
     def get(self, request, website_id):
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        self.get_website(website_id)
         min_score = request.query_params.get("min_score")
         lead_status = request.query_params.get("status")
         leads = LeadService.get_leads(
@@ -31,34 +25,24 @@ class LeadListView(APIView):
             status=lead_status,
             min_score=int(min_score) if min_score else None,
         )
-        paginator = StandardPagination()
-        page = paginator.paginate_queryset(leads, request)
-        serializer = LeadSerializer(page, many=True)
-        return paginator.get_paginated_response(serializer.data)
+        return self.paginated_response(leads, LeadSerializer)
 
 
-class HotLeadsView(APIView):
-    permission_classes = [IsAuthenticated]
-
+class HotLeadsView(TenantScopedListAPIView):
     def get(self, request, website_id):
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        self.get_website(website_id)
         leads = LeadService.get_leads(website_id=website_id, min_score=70)
-        paginator = StandardPagination()
-        page = paginator.paginate_queryset(leads, request)
-        serializer = LeadSerializer(page, many=True)
-        return paginator.get_paginated_response(serializer.data)
+        return self.paginated_response(leads, LeadSerializer)
 
 
-class LeadDetailView(APIView):
-    permission_classes = [IsAuthenticated]
-
+class LeadDetailView(TenantScopedAPIView):
     def get(self, request, website_id, lead_id):
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        self.get_website(website_id)
         lead = LeadService.get_lead(website_id=website_id, lead_id=lead_id)
         return Response(LeadSerializer(lead).data)
 
     def put(self, request, website_id, lead_id):
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        self.get_website(website_id)
         lead = LeadService.get_lead(website_id=website_id, lead_id=lead_id)
         new_status = request.data.get("status")
         if new_status:
@@ -66,35 +50,30 @@ class LeadDetailView(APIView):
         return Response(LeadSerializer(lead).data)
 
 
-class LeadNoteView(APIView):
-    permission_classes = [IsAuthenticated]
-
+class LeadNoteView(TenantScopedAPIView):
     def post(self, request, website_id, lead_id):
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        self.get_website(website_id)
         lead = LeadService.get_lead(website_id=website_id, lead_id=lead_id)
         content = request.data.get("content", "")
         note = LeadService.add_note(lead=lead, content=content, user=request.user)
         return Response(LeadNoteSerializer(note).data, status=status.HTTP_201_CREATED)
 
 
-class LeadExportView(APIView):
-    permission_classes = [IsAuthenticated]
-
+class LeadExportView(TenantScopedAPIView):
     def post(self, request, website_id):
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        self.get_website(website_id)
         csv_data = LeadService.export_csv(website_id=website_id)
         response = HttpResponse(csv_data, content_type="text/csv")
         response["Content-Disposition"] = f"attachment; filename=leads-{website_id}.csv"
         return response
 
 
-class AILeadFinderView(APIView):
+class AILeadFinderView(TenantScopedAPIView):
     """AI-powered lead discovery — search LinkedIn & Twitter via natural language."""
-    permission_classes = [IsAuthenticated]
 
     def get(self, request, website_id):
         """Return current lead finder configuration status."""
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        self.get_website(website_id)
         from django.conf import settings
 
         from apps.leads.services.ai_lead_finder import google_search_configured
@@ -107,7 +86,7 @@ class AILeadFinderView(APIView):
         })
 
     def post(self, request, website_id):
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        self.get_website(website_id)
         prompt = request.data.get("prompt", "").strip()
         if not prompt:
             return Response(
@@ -120,19 +99,18 @@ class AILeadFinderView(APIView):
         return Response(result)
 
 
-class ScoringConfigView(APIView):
+class ScoringConfigView(TenantScopedAPIView):
     """Get or update per-website lead scoring configuration."""
-    permission_classes = [IsAuthenticated]
 
     def get(self, request, website_id):
-        website = WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        website = self.get_website(website_id)
         config, _ = ScoringConfig.objects.get_or_create(
             website=website, defaults={"threshold": 70, "weights": {}}
         )
         return Response(ScoringConfigSerializer(config).data)
 
     def put(self, request, website_id):
-        website = WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        website = self.get_website(website_id)
         config, _ = ScoringConfig.objects.get_or_create(
             website=website, defaults={"threshold": 70, "weights": {}}
         )
@@ -142,54 +120,50 @@ class ScoringConfigView(APIView):
         return Response(ScoringConfigSerializer(config).data)
 
 
-class LeadSegmentListView(APIView):
+class LeadSegmentListView(TenantScopedAPIView):
     """List and create lead segments for a website."""
-    permission_classes = [IsAuthenticated]
 
     def get(self, request, website_id):
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        self.get_website(website_id)
         segments = LeadSegment.objects.filter(website_id=website_id).order_by("-created_at")
         return Response(LeadSegmentSerializer(segments, many=True).data)
 
     def post(self, request, website_id):
-        website = WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        website = self.get_website(website_id)
         serializer = LeadSegmentSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save(website=website, created_by=request.user)
         return Response(LeadSegmentSerializer(serializer.instance).data, status=status.HTTP_201_CREATED)
 
 
-class LeadSegmentDetailView(APIView):
+class LeadSegmentDetailView(TenantScopedAPIView):
     """Update or delete a single lead segment."""
-    permission_classes = [IsAuthenticated]
 
-    def _get_segment(self, user, website_id, segment_id):
-        WebsiteService.get_for_user(user=user, website_id=website_id)
-        try:
-            return LeadSegment.objects.get(id=segment_id, website_id=website_id)
-        except LeadSegment.DoesNotExist:
-            raise ResourceNotFound("Segment not found.") from None
+    def _get_segment(self, website_id, segment_id):
+        self.get_website(website_id)
+        return self.get_tenant_object(
+            LeadSegment.objects.all(), id=segment_id, website_id=website_id
+        )
 
     def put(self, request, website_id, segment_id):
-        segment = self._get_segment(request.user, website_id, segment_id)
+        segment = self._get_segment(website_id, segment_id)
         serializer = LeadSegmentSerializer(segment, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(LeadSegmentSerializer(segment).data)
 
     def delete(self, request, website_id, segment_id):
-        segment = self._get_segment(request.user, website_id, segment_id)
+        segment = self._get_segment(website_id, segment_id)
         segment.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-class LeadEmailView(APIView):
+class LeadEmailView(TenantScopedAPIView):
     """Send emails to leads and view email history."""
-    permission_classes = [IsAuthenticated]
 
     def post(self, request, website_id, lead_id):
         """Send an email to a lead."""
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        self.get_website(website_id)
         subject = request.data.get("subject", "").strip()
         body = request.data.get("body", "").strip()
         if not subject or not body:
@@ -213,7 +187,7 @@ class LeadEmailView(APIView):
 
     def get(self, request, website_id, lead_id):
         """Get email history for a lead."""
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        self.get_website(website_id)
         from apps.leads.services.email_service import LeadEmailService
 
         emails = LeadEmailService.get_email_history(lead_id=lead_id)
@@ -222,21 +196,18 @@ class LeadEmailView(APIView):
 
 # ── Email Campaigns ──────────────────────────────────────────────────────────
 
-class CampaignListView(APIView):
+class CampaignListView(TenantScopedListAPIView):
     """List and create email campaigns for a website."""
-    permission_classes = [IsAuthenticated]
 
     def get(self, request, website_id):
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        self.get_website(website_id)
         from apps.leads.services.campaign_service import CampaignService
 
         campaigns = CampaignService.list(website_id=website_id)
-        paginator = StandardPagination()
-        page = paginator.paginate_queryset(campaigns, request)
-        return paginator.get_paginated_response(EmailCampaignSerializer(page, many=True).data)
+        return self.paginated_response(campaigns, EmailCampaignSerializer)
 
     def post(self, request, website_id):
-        website = WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        website = self.get_website(website_id)
         serializer = EmailCampaignSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         from apps.leads.services.campaign_service import CampaignService
@@ -252,21 +223,20 @@ class CampaignListView(APIView):
         return Response(EmailCampaignSerializer(campaign).data, status=status.HTTP_201_CREATED)
 
 
-class CampaignDetailView(APIView):
+class CampaignDetailView(TenantScopedAPIView):
     """Retrieve, update, or delete a campaign."""
-    permission_classes = [IsAuthenticated]
 
-    def _get_campaign(self, user, website_id, campaign_id):
-        WebsiteService.get_for_user(user=user, website_id=website_id)
+    def _get_campaign(self, website_id, campaign_id):
+        self.get_website(website_id)
         from apps.leads.services.campaign_service import CampaignService
         return CampaignService.get(website_id=website_id, campaign_id=campaign_id)
 
     def get(self, request, website_id, campaign_id):
-        campaign = self._get_campaign(request.user, website_id, campaign_id)
+        campaign = self._get_campaign(website_id, campaign_id)
         return Response(EmailCampaignSerializer(campaign).data)
 
     def put(self, request, website_id, campaign_id):
-        campaign = self._get_campaign(request.user, website_id, campaign_id)
+        campaign = self._get_campaign(website_id, campaign_id)
         if campaign.status not in (EmailCampaign.STATUS_DRAFT, EmailCampaign.STATUS_FAILED):
             return Response(
                 {"error": "Only draft or failed campaigns can be edited."},
@@ -278,7 +248,7 @@ class CampaignDetailView(APIView):
         return Response(EmailCampaignSerializer(campaign).data)
 
     def delete(self, request, website_id, campaign_id):
-        campaign = self._get_campaign(request.user, website_id, campaign_id)
+        campaign = self._get_campaign(website_id, campaign_id)
         if campaign.status == EmailCampaign.STATUS_SENDING:
             return Response(
                 {"error": "Cannot delete a campaign that is currently sending."},
@@ -288,12 +258,11 @@ class CampaignDetailView(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-class CampaignSendView(APIView):
+class CampaignSendView(TenantScopedAPIView):
     """Trigger sending a campaign."""
-    permission_classes = [IsAuthenticated]
 
     def post(self, request, website_id, campaign_id):
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        self.get_website(website_id)
         from apps.leads.services.campaign_service import CampaignService
 
         campaign = CampaignService.get(website_id=website_id, campaign_id=campaign_id)
@@ -304,12 +273,11 @@ class CampaignSendView(APIView):
         return Response(EmailCampaignSerializer(campaign).data)
 
 
-class CampaignStatsView(APIView):
+class CampaignStatsView(TenantScopedAPIView):
     """Get detailed stats for a sent campaign."""
-    permission_classes = [IsAuthenticated]
 
     def get(self, request, website_id, campaign_id):
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        self.get_website(website_id)
         from apps.leads.services.campaign_service import CampaignService
 
         campaign = CampaignService.get(website_id=website_id, campaign_id=campaign_id)
@@ -335,39 +303,37 @@ class CampaignStatsView(APIView):
         return Response(stats)
 
 
-class CampaignRecipientsView(APIView):
+class CampaignRecipientsView(TenantScopedListAPIView):
     """List recipients for a campaign."""
-    permission_classes = [IsAuthenticated]
 
     def get(self, request, website_id, campaign_id):
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        self.get_website(website_id)
         from apps.leads.models import CampaignRecipient
         from apps.leads.services.campaign_service import CampaignService
 
         campaign = CampaignService.get(website_id=website_id, campaign_id=campaign_id)
         recipients = CampaignRecipient.objects.filter(campaign=campaign).select_related("lead")
-        paginator = StandardPagination()
-        page = paginator.paginate_queryset(recipients, request)
-        return paginator.get_paginated_response(CampaignRecipientSerializer(page, many=True).data)
+        return self.paginated_response(recipients, CampaignRecipientSerializer)
 
 
 # ── Tracked Links ─────────────────────────────────────────────────────────────
 
-class TrackedLinkListView(APIView):
+class TrackedLinkListView(TenantScopedListAPIView):
     """Create and list tracked links for a website."""
-    permission_classes = [IsAuthenticated]
 
     def get(self, request, website_id):
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        self.get_website(website_id)
         from apps.analytics.models import TrackedLink
 
         links = TrackedLink.objects.filter(website_id=website_id).order_by("-created_at")
-        paginator = StandardPagination()
-        page = paginator.paginate_queryset(links, request)
+        # TrackedLink has no serializer class — paginate manually with the
+        # local dict serializer helper.
+        paginator = self.pagination_class()
+        page = paginator.paginate_queryset(links, request, view=self)
         return paginator.get_paginated_response(_serialize_tracked_links(page))
 
     def post(self, request, website_id):
-        website = WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        website = self.get_website(website_id)
         destination_url = request.data.get("destination_url", "").strip()
         if not destination_url:
             return Response({"error": "destination_url is required."}, status=status.HTTP_400_BAD_REQUEST)
@@ -392,46 +358,42 @@ class TrackedLinkListView(APIView):
         return Response(_serialize_tracked_link(link), status=status.HTTP_201_CREATED)
 
 
-class TrackedLinkDetailView(APIView):
+class TrackedLinkDetailView(TenantScopedAPIView):
     """Retrieve or delete a tracked link."""
-    permission_classes = [IsAuthenticated]
 
-    def _get_link(self, user, website_id, link_id):
-        WebsiteService.get_for_user(user=user, website_id=website_id)
+    def _get_link(self, website_id, link_id):
+        self.get_website(website_id)
         from apps.analytics.models import TrackedLink
-        try:
-            return TrackedLink.objects.get(id=link_id, website_id=website_id)
-        except TrackedLink.DoesNotExist:
-            raise ResourceNotFound("Tracked link not found.") from None
+        return self.get_tenant_object(
+            TrackedLink.objects.all(), id=link_id, website_id=website_id
+        )
 
     def get(self, request, website_id, link_id):
-        link = self._get_link(request.user, website_id, link_id)
+        link = self._get_link(website_id, link_id)
         from apps.analytics.services.tracking_service import TrackingService
         data = _serialize_tracked_link(link)
         data["stats"] = TrackingService.get_click_stats(tracked_link=link)
         return Response(data)
 
     def delete(self, request, website_id, link_id):
-        link = self._get_link(request.user, website_id, link_id)
+        link = self._get_link(website_id, link_id)
         link.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-class TrackedLinkClicksView(APIView):
+class TrackedLinkClicksView(TenantScopedListAPIView):
     """List clicks for a tracked link."""
-    permission_classes = [IsAuthenticated]
 
     def get(self, request, website_id, link_id):
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        self.get_website(website_id)
         from apps.analytics.models import LinkClick, TrackedLink
-        try:
-            link = TrackedLink.objects.get(id=link_id, website_id=website_id)
-        except TrackedLink.DoesNotExist:
-            raise ResourceNotFound("Tracked link not found.") from None
 
+        link = self.get_tenant_object(
+            TrackedLink.objects.all(), id=link_id, website_id=website_id
+        )
         clicks = LinkClick.objects.filter(tracked_link=link).order_by("-clicked_at")
-        paginator = StandardPagination()
-        page = paginator.paginate_queryset(clicks, request)
+        paginator = self.pagination_class()
+        page = paginator.paginate_queryset(clicks, request, view=self)
         return paginator.get_paginated_response([
             {
                 "id": c.id,
@@ -463,12 +425,11 @@ def _serialize_tracked_links(links) -> list:
 
 # ── Connectors ────────────────────────────────────────────────────────────────
 
-class LeadExportXlsxView(APIView):
+class LeadExportXlsxView(TenantScopedAPIView):
     """Export leads as an Excel (.xlsx) file."""
-    permission_classes = [IsAuthenticated]
 
     def post(self, request, website_id):
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        self.get_website(website_id)
         xlsx_data = LeadService.export_xlsx(website_id=website_id)
         response = HttpResponse(
             xlsx_data,
@@ -478,12 +439,11 @@ class LeadExportXlsxView(APIView):
         return response
 
 
-class LeadExportDriveView(APIView):
+class LeadExportDriveView(TenantScopedAPIView):
     """Export leads to a Google Sheet via Google Drive."""
-    permission_classes = [IsAuthenticated]
 
     def post(self, request, website_id):
-        website = WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        website = self.get_website(website_id)
         from apps.leads.services.drive_service import DriveService
         from apps.websites.models import Integration
 
