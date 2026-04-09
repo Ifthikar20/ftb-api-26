@@ -94,6 +94,17 @@ docker compose -f docker/docker-compose.prod.yml up -d --build
 echo -e "  Waiting for database..."
 sleep 10
 
+# ── Step 6b: Refresh frontend dist into the shared volume ──
+# The frontend service is a one-shot init container — `up -d` will not re-run
+# it once it has exited. We rebuild it without cache and run it explicitly so
+# the latest Vue build always lands in the frontend_dist volume that nginx
+# serves. Without this step, code in frontend/ never reaches users.
+echo -e "${YELLOW}  ▸ Rebuilding frontend bundle...${NC}"
+docker compose -f docker/docker-compose.prod.yml build --no-cache frontend
+docker compose -f docker/docker-compose.prod.yml run --rm frontend
+docker compose -f docker/docker-compose.prod.yml restart nginx
+echo -e "${GREEN}  ✓ Frontend bundle refreshed${NC}"
+
 # ── Step 7: Run migrations and collect static ──
 echo -e "${YELLOW}▸ [7/7] Running migrations...${NC}"
 docker compose -f docker/docker-compose.prod.yml exec -T web python manage.py migrate --noinput
