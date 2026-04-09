@@ -14,7 +14,12 @@ from apps.voice_agent.models import AgentConfig, AgentContextDocument
 
 logger = logging.getLogger("apps")
 
-MAX_PROMPT_CHARS = 20000
+# Cap on the merged system prompt fed to the live LLM. Prompt size is the
+# single biggest lever on time-to-first-token: 8k chars (~2k tokens) lands
+# under 800ms TTFT on most models, 20k chars often pushed it past 2s. If you
+# need to surface more knowledge to the agent, prefer adding more focused
+# AgentContextDocument rows over fattening a single doc.
+MAX_PROMPT_CHARS = 8000
 
 
 def build_retell_system_prompt(agent_config: AgentConfig) -> str:

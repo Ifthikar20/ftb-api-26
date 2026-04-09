@@ -49,8 +49,18 @@ try:
     except ImportError:
         deepgram = None
 
+    # ChatContext is the canonical way to seed the LLM with a system prompt
+    # in livekit-agents 0.x. Newer SDKs (1.x) accept ``instructions=`` on
+    # the Agent class instead — we try both at session-create time so this
+    # file works across SDK versions without a hard pin.
+    try:
+        from livekit.agents.llm import ChatContext  # type: ignore
+    except ImportError:
+        ChatContext = None  # type: ignore
+
     LIVEKIT_AVAILABLE = True
 except ImportError:
+    ChatContext = None  # type: ignore
     pass
 
 
@@ -258,7 +268,12 @@ def _get_voice_providers():
         # ── Groq: Free Tier ──────────────────────────────────────────────
         # LLM: Groq's Llama 3.1 (OpenAI-compatible API, free)
         groq_key = os.environ.get("GROQ_API_KEY", "")
-        groq_model = os.environ.get("GROQ_MODEL", "llama-3.1-70b-versatile")
+        # Default to the 8b "instant" model for live calls — it cuts
+        # time-to-first-token from ~1200ms (70b) to ~300ms on Groq, which
+        # is the difference between "feels alive" and "feels laggy" on a
+        # phone call. Override with GROQ_MODEL=llama-3.1-70b-versatile if
+        # you really need the bigger model for a specific deployment.
+        groq_model = os.environ.get("GROQ_MODEL", "llama-3.1-8b-instant")
 
         stt = openai.STT(
             model="whisper-large-v3",
@@ -325,22 +340,53 @@ def _get_voice_providers():
     return stt, llm_instance, tts
 
 
+def _build_voice_session(system_prompt, stt, llm_instance, tts):
+    """Construct a VoiceSession with the system prompt actually wired in.
+
+    Until this fix the worker built the merged KB-aware prompt and then
+    silently dropped it on the floor — VoiceSession was instantiated
+    without ``chat_ctx``, so the agent ran on the LLM's default behavior.
+    Symptom: the agent would ignore business-specific knowledge during
+    calls and the prompt_builder cap of 8k chars looked like it had no
+    effect because nothing was being sent in the first place.
+
+    livekit-agents 0.x expects ``chat_ctx``; 1.x expects ``instructions``.
+    Try both so this file survives an SDK bump without a deploy break.
+    """
+    kwargs = dict(vad=silero.VAD.load(), stt=stt, llm=llm_instance, tts=tts)
+
+    if ChatContext is not None and system_prompt:
+        try:
+            ctx = ChatContext()
+            # Older SDKs use append(role=, text=); newer ones use add_message.
+            if hasattr(ctx, "append"):
+                ctx.append(role="system", text=system_prompt)
+            elif hasattr(ctx, "add_message"):
+                ctx.add_message(role="system", content=system_prompt)
+            kwargs["chat_ctx"] = ctx
+        except Exception as e:  # noqa: BLE001
+            logger.warning("voice_session_chat_ctx_failed: %s", e)
+
+    try:
+        return VoiceSession(**kwargs)
+    except TypeError:
+        # 1.x SDKs that took ``instructions`` instead of ``chat_ctx``.
+        kwargs.pop("chat_ctx", None)
+        if system_prompt:
+            kwargs["instructions"] = system_prompt
+        return VoiceSession(**kwargs)
+
+
 def _create_voice_session(system_prompt, website_id):
     """
-    Shared factory: creates a VoiceSession with STT/LLM/TTS and tool handlers.
-    Returns an async callable(ctx, greeting) that starts the session.
-
-    Used by both create_voice_agent() and run_agent_worker() to avoid duplication.
+    Shared factory: creates a VoiceSession with STT/LLM/TTS, the system
+    prompt actually wired in, and tool handlers. Returns an async callable
+    ``start(ctx, greeting)`` used by both ``create_voice_agent`` and
+    ``run_agent_worker``.
     """
     async def start(ctx, greeting):
         stt, llm_instance, tts = _get_voice_providers()
-
-        agent = VoiceSession(
-            vad=silero.VAD.load(),
-            stt=stt,
-            llm=llm_instance,
-            tts=tts,
-        )
+        agent = _build_voice_session(system_prompt, stt, llm_instance, tts)
 
         @agent.on("function_call")
         async def on_function_call(call):
@@ -441,14 +487,17 @@ def run_agent_worker():
         opening_line = welcome_override or greeting
 
         stt, llm_instance, tts = _get_voice_providers()
-        agent = VoiceSession(
-            vad=silero.VAD.load(),
-            stt=stt,
-            llm=llm_instance,
-            tts=tts,
-        )
+        agent = _build_voice_session(system_prompt, stt, llm_instance, tts)
 
         transcript_lines: list[str] = []
+        # Per-call usage meters captured live and forwarded to the Django
+        # /calls/finish/ endpoint, where UsageService rolls them into the
+        # monthly usage card.
+        meters = {
+            "tts_characters": 0,
+            "llm_input_tokens": 0,
+            "llm_output_tokens": 0,
+        }
 
         @agent.on("user_speech_committed")
         def _on_user(msg):  # type: ignore[no-redef]
@@ -460,7 +509,29 @@ def run_agent_worker():
         @agent.on("agent_speech_committed")
         def _on_agent(msg):  # type: ignore[no-redef]
             try:
-                transcript_lines.append(f"Agent: {getattr(msg, 'text', str(msg))}")
+                text = getattr(msg, "text", str(msg))
+                transcript_lines.append(f"Agent: {text}")
+                # Best-effort TTS character count. The model may emit
+                # markdown / SSML; for billing purposes the spoken-text
+                # length is the right approximation.
+                meters["tts_characters"] += len(text or "")
+            except Exception:  # noqa: BLE001
+                pass
+
+        @agent.on("metrics_collected")
+        def _on_metrics(ev):  # type: ignore[no-redef]
+            """LiveKit emits per-segment LLM/TTS metrics. We add them to
+            the running totals so the call-finish payload reflects real
+            token usage rather than a duration-based estimate."""
+            try:
+                m = getattr(ev, "metrics", ev)
+                # livekit-agents 0.x exposes prompt_tokens / completion_tokens
+                pt = getattr(m, "prompt_tokens", None)
+                ct = getattr(m, "completion_tokens", None)
+                if pt is not None:
+                    meters["llm_input_tokens"] += int(pt)
+                if ct is not None:
+                    meters["llm_output_tokens"] += int(ct)
             except Exception:  # noqa: BLE001
                 pass
 
@@ -494,6 +565,10 @@ def run_agent_worker():
                             "transcript": "\n".join(transcript_lines),
                             "duration": duration,
                             "ended_reason": "completed",
+                            "tts_characters": meters["tts_characters"],
+                            "llm_input_tokens": meters["llm_input_tokens"],
+                            "llm_output_tokens": meters["llm_output_tokens"],
+                            "stt_seconds": duration,
                         },
                         headers=headers,
                     )
