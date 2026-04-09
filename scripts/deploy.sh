@@ -111,6 +111,19 @@ docker compose -f docker/docker-compose.prod.yml exec -T web python manage.py mi
 docker compose -f docker/docker-compose.prod.yml exec -T web python manage.py collectstatic --noinput 2>/dev/null || true
 echo -e "${GREEN}  ✓ Migrations applied${NC}"
 
+# ── Step 7b: Voice agent backfills ──
+# Both commands are idempotent — safe to run on every deploy. They keep the
+# Lead Detection tab and the Usage card consistent with whatever's in CallLog
+# in case the live recorders missed anything (worker crash, schema bump, etc.).
+echo -e "${YELLOW}  ▸ Backfilling voice agent rollups...${NC}"
+docker compose -f docker/docker-compose.prod.yml exec -T web \
+    python manage.py rescore_voice_calls 2>/dev/null || \
+    echo -e "${YELLOW}    (skip: rescore_voice_calls — command not present in this build)${NC}"
+docker compose -f docker/docker-compose.prod.yml exec -T web \
+    python manage.py rebuild_voice_usage 2>/dev/null || \
+    echo -e "${YELLOW}    (skip: rebuild_voice_usage — command not present in this build)${NC}"
+echo -e "${GREEN}  ✓ Voice agent backfills done${NC}"
+
 # ── Done! ──
 echo ""
 echo -e "${GREEN}${BOLD}  ══════════════════════════════════════════${NC}"

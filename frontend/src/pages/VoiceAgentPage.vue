@@ -1643,8 +1643,8 @@ function formatTime(iso) {
 }
 
 .getstarted-intro {
-  background: linear-gradient(135deg, #eef2ff, #ecfeff);
-  border: 1px solid #c7d2fe;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
   border-radius: 12px;
   padding: 24px 28px;
   margin-bottom: 24px;
@@ -1652,10 +1652,11 @@ function formatTime(iso) {
 .getstarted-intro h2 {
   margin: 0 0 6px;
   font-size: 20px;
+  color: var(--text-primary);
 }
 .getstarted-intro > p {
   margin: 0 0 12px;
-  color: #475569;
+  color: var(--text-secondary);
   font-size: 14px;
 }
 .getstarted-bullets {
@@ -1663,7 +1664,7 @@ function formatTime(iso) {
   padding-left: 20px;
   font-size: 14px;
   line-height: 1.6;
-  color: #1e293b;
+  color: var(--text-primary);
 }
 .getstarted-bullets li {
   margin-bottom: 6px;
@@ -1671,10 +1672,10 @@ function formatTime(iso) {
 .getstarted-hint {
   margin: 0;
   padding: 10px 14px;
-  background: #fef3c7;
-  border-left: 3px solid #f59e0b;
+  background: var(--color-warning-bg, rgba(245,158,11,0.1));
+  border-left: 3px solid var(--color-warning);
   border-radius: 6px;
   font-size: 13px;
-  color: #78350f;
+  color: var(--text-primary);
 }
 </style>

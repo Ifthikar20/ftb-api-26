@@ -194,7 +194,7 @@ export default {
 
 .voice-onboarding__loading {
   padding: 24px;
-  color: var(--text-muted, #666);
+  color: var(--text-muted);
 }
 
 .voice-onboarding__grid {
@@ -204,8 +204,8 @@ export default {
 }
 
 .voice-onboarding__card {
-  background: var(--surface, #fff);
-  border: 1px solid var(--border, #e5e7eb);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
   border-radius: 12px;
   padding: 20px;
   display: flex;
@@ -214,7 +214,7 @@ export default {
 }
 
 .voice-onboarding__card.is-complete {
-  border-color: #10b981;
+  border-color: var(--color-success);
 }
 
 .voice-onboarding__card-header {
@@ -227,11 +227,12 @@ export default {
 .voice-onboarding__card-header h3 {
   margin: 0 0 4px;
   font-size: 16px;
+  color: var(--text-primary);
 }
 
 .voice-onboarding__card-header p {
   margin: 0;
-  color: var(--text-muted, #6b7280);
+  color: var(--text-muted);
   font-size: 13px;
   max-width: 28em;
 }
@@ -244,19 +245,20 @@ export default {
   font-size: 12px;
   font-weight: 600;
   min-width: 90px;
+  color: var(--text-secondary);
 }
 
 .voice-onboarding__progress-bar {
   width: 90px;
   height: 6px;
-  background: #e5e7eb;
+  background: var(--bg-surface);
   border-radius: 999px;
   overflow: hidden;
 }
 
 .voice-onboarding__progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, #6366f1, #10b981);
+  background: linear-gradient(90deg, var(--brand-accent), var(--color-success));
   transition: width 0.3s ease;
 }
 
@@ -275,22 +277,23 @@ export default {
   align-items: flex-start;
   padding: 10px 12px;
   border-radius: 8px;
-  background: #f9fafb;
+  background: var(--bg-surface);
+  color: var(--text-primary);
 }
 
 .voice-onboarding__steps li.done {
-  background: #ecfdf5;
+  background: var(--color-success-bg, rgba(34, 197, 94, 0.1));
 }
 
 .voice-onboarding__step-icon {
   font-weight: 700;
   width: 18px;
   text-align: center;
-  color: #6b7280;
+  color: var(--text-muted);
 }
 
 .voice-onboarding__steps li.done .voice-onboarding__step-icon {
-  color: #10b981;
+  color: var(--color-success);
 }
 
 .voice-onboarding__step-body {
@@ -301,17 +304,18 @@ export default {
 .voice-onboarding__step-body strong {
   display: block;
   margin-bottom: 2px;
+  color: var(--text-primary);
 }
 
 .voice-onboarding__step-body p {
   margin: 0;
-  color: #6b7280;
+  color: var(--text-muted);
   font-size: 12px;
 }
 
 .voice-onboarding__templates {
-  background: var(--surface, #fff);
-  border: 1px solid var(--border, #e5e7eb);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
   border-radius: 12px;
   padding: 20px;
 }
@@ -319,11 +323,12 @@ export default {
 .voice-onboarding__templates-header h3 {
   margin: 0 0 4px;
   font-size: 16px;
+  color: var(--text-primary);
 }
 
 .voice-onboarding__templates-header p {
   margin: 0 0 16px;
-  color: #6b7280;
+  color: var(--text-muted);
   font-size: 13px;
 }
 
@@ -334,17 +339,18 @@ export default {
 }
 
 .voice-onboarding__template {
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--border);
   border-radius: 10px;
   padding: 14px;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  background: #fff;
+  background: var(--bg-card);
+  color: var(--text-primary);
 }
 
 .voice-onboarding__template.is-applied {
-  border-color: #10b981;
+  border-color: var(--color-success);
 }
 
 .voice-onboarding__template header {
@@ -357,12 +363,13 @@ export default {
 .voice-onboarding__template h4 {
   margin: 0;
   font-size: 14px;
+  color: var(--text-primary);
 }
 
 .voice-onboarding__template p {
   margin: 0;
   font-size: 12px;
-  color: #6b7280;
+  color: var(--text-muted);
   flex: 1;
 }
 
@@ -372,18 +379,18 @@ export default {
   font-weight: 700;
   padding: 3px 8px;
   border-radius: 999px;
-  background: #e0e7ff;
-  color: #3730a3;
+  background: var(--brand-accent-glow, rgba(91, 141, 239, 0.12));
+  color: var(--brand-accent);
 }
 
 .voice-onboarding__badge[data-segment='inbound'] {
-  background: #dbeafe;
-  color: #1e40af;
+  background: var(--color-info-bg, rgba(59, 130, 246, 0.12));
+  color: var(--color-info, #3b82f6);
 }
 
 .voice-onboarding__badge[data-segment='outbound'] {
-  background: #fef3c7;
-  color: #92400e;
+  background: var(--color-warning-bg, rgba(245, 158, 11, 0.12));
+  color: var(--color-warning);
 }
 
 .voice-onboarding__template-actions {
@@ -395,7 +402,9 @@ export default {
 .voice-onboarding__modal {
   position: fixed;
   inset: 0;
-  background: rgba(15, 23, 42, 0.6);
+  background: var(--bg-overlay);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -403,18 +412,21 @@ export default {
 }
 
 .voice-onboarding__modal-card {
-  background: #fff;
+  background: var(--bg-card);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
   border-radius: 12px;
   width: min(720px, 92vw);
   max-height: 80vh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
 }
 
 .voice-onboarding__modal-card header {
   padding: 16px 20px;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--border);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -423,6 +435,7 @@ export default {
 .voice-onboarding__modal-card h3 {
   margin: 0;
   font-size: 16px;
+  color: var(--text-primary);
 }
 
 .voice-onboarding__close {
@@ -431,8 +444,9 @@ export default {
   font-size: 24px;
   line-height: 1;
   cursor: pointer;
-  color: #6b7280;
+  color: var(--text-muted);
 }
+.voice-onboarding__close:hover { color: var(--text-primary); }
 
 .voice-onboarding__modal-card pre {
   margin: 0;
@@ -442,12 +456,13 @@ export default {
   white-space: pre-wrap;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 13px;
-  background: #f9fafb;
+  background: var(--bg-surface);
+  color: var(--text-primary);
 }
 
 .voice-onboarding__modal-card footer {
   padding: 12px 20px;
-  border-top: 1px solid #e5e7eb;
+  border-top: 1px solid var(--border);
   display: flex;
   gap: 8px;
   justify-content: flex-end;
