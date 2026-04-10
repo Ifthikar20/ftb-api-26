@@ -6,6 +6,10 @@ WORKDIR /app
 COPY frontend/package.json ./
 RUN npm install
 
+# Cache-bust: deploy.sh passes --build-arg CACHE_DATE=$(date) so Docker
+# never serves a stale COPY layer even when file mtimes haven't changed
+# in the build context (common after git pull on some filesystems).
+ARG CACHE_DATE=unknown
 COPY frontend/ .
 RUN npm run build
 

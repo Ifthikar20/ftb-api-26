@@ -100,7 +100,13 @@ sleep 10
 # the latest Vue build always lands in the frontend_dist volume that nginx
 # serves. Without this step, code in frontend/ never reaches users.
 echo -e "${YELLOW}  ▸ Rebuilding frontend bundle...${NC}"
-docker compose -f docker/docker-compose.prod.yml build --no-cache frontend
+# Pass CACHE_DATE so the Dockerfile COPY layer always invalidates, even when
+# git pull didn't update file mtimes (ext4/overlay2 can preserve them).
+docker compose -f docker/docker-compose.prod.yml build \
+    --no-cache --build-arg CACHE_DATE="$(date +%s)" frontend
+# Remove the old init container (if it exited from a prior deploy) so `run`
+# starts fresh instead of reusing the stale exited container.
+docker compose -f docker/docker-compose.prod.yml rm -f frontend 2>/dev/null || true
 docker compose -f docker/docker-compose.prod.yml run --rm frontend
 docker compose -f docker/docker-compose.prod.yml restart nginx
 echo -e "${GREEN}  ✓ Frontend bundle refreshed${NC}"
