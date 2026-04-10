@@ -136,18 +136,13 @@
     </div>
 
     <!-- ══════ Connect Modal ══════ -->
-    <Transition name="modal-fade">
-      <div v-if="showConnectModal" class="modal-overlay" @click.self="showConnectModal = false">
-        <div class="modal-content slide-up" style="max-width: 480px">
-          <div class="modal-header">
-            <h2 class="modal-title">
-              <span v-html="activeIntegration?.icon" style="display:inline-flex;vertical-align:-4px;margin-right:8px"></span>
-              Connect {{ activeIntegration?.name }}
-            </h2>
-            <button class="btn-icon btn-ghost" @click="showConnectModal = false">
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4l8 8M12 4l-8 8"/></svg>
-            </button>
-          </div>
+    <BaseModal v-model="showConnectModal" max-width="480px">
+      <template #header>
+        <h3 class="bm-title">
+          <span v-html="activeIntegration?.icon" style="display:inline-flex;vertical-align:-4px;margin-right:8px"></span>
+          Connect {{ activeIntegration?.name }}
+        </h3>
+      </template>
 
           <div class="connect-steps">
             <!-- Slack -->
@@ -238,16 +233,14 @@
             </label>
           </div>
 
-          <div class="modal-footer">
-            <button class="btn btn-secondary" @click="showConnectModal = false">Cancel</button>
-            <button class="btn btn-primary" :disabled="!webhookUrl.trim() || connecting" @click="confirmConnect">
-              <span v-if="connecting" class="btn-spinner"></span>
-              {{ connecting ? 'Connecting...' : 'Connect & Save' }}
-            </button>
-          </div>
-        </div>
-      </div>
-    </Transition>
+      <template #footer>
+        <button class="btn btn-secondary" @click="showConnectModal = false">Cancel</button>
+        <button class="btn btn-primary" :disabled="!webhookUrl.trim() || connecting" @click="confirmConnect">
+          <span v-if="connecting" class="btn-spinner"></span>
+          {{ connecting ? 'Connecting...' : 'Connect & Save' }}
+        </button>
+      </template>
+    </BaseModal>
 
     <!-- Success Toast Overlay -->
     <Transition name="toast">
@@ -261,6 +254,7 @@
 
 <script setup>
 import { ref, reactive, computed } from 'vue'
+import BaseModal from '@/components/ui/BaseModal.vue'
 
 const scheduleTime = ref('09:00')
 const showConnectModal = ref(false)

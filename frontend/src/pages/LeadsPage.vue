@@ -296,44 +296,40 @@
 
 
     <!-- ══════════ Email Compose Modal ══════════ -->
-    <div v-if="showEmailModal" class="modal-overlay" @click.self="showEmailModal = false">
-      <div class="modal-content slide-up" style="max-width: 540px">
-        <div class="modal-header">
-          <h2 class="modal-title"><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" style="vertical-align:-3px;margin-right:6px"><rect x="1" y="3" width="14" height="10" rx="1.5"/><path d="M1 4l7 5 7-5"/></svg>Send Email</h2>
-          <button class="btn-icon btn-ghost" @click="showEmailModal = false"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4l8 8M12 4l-8 8"/></svg></button>
+    <BaseModal v-model="showEmailModal" title="Send Email" max-width="540px">
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div class="form-group">
+          <label class="form-label">To</label>
+          <input class="form-input" :value="emailToAddress" disabled style="opacity:0.7" />
         </div>
-        <div style="display:flex;flex-direction:column;gap:14px">
-          <div class="form-group">
-            <label class="form-label">To</label>
-            <input class="form-input" :value="emailToAddress" disabled style="opacity:0.7" />
-          </div>
-          <div class="form-group">
-            <label class="form-label">Subject</label>
-            <input v-model="emailSubject" class="form-input" placeholder="Follow up on your visit" />
-          </div>
-          <div class="form-group">
-            <label class="form-label">Message</label>
-            <textarea v-model="emailBody" class="form-input" rows="6" placeholder="Hi there, I noticed you visited our pricing page..."></textarea>
-          </div>
-          <button class="btn btn-primary w-full" :disabled="emailSending || !emailSubject || !emailBody" @click="sendEmail">
-            {{ emailSending ? 'Sending...' : 'Send Email' }}
-          </button>
-          <div v-if="emailSent" class="email-sent-msg"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--color-success);margin-right:6px;vertical-align:1px"></span>Email sent successfully!</div>
-          <div v-if="emailError" class="email-error-msg"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--color-danger);margin-right:6px;vertical-align:1px"></span>{{ emailError }}</div>
+        <div class="form-group">
+          <label class="form-label">Subject</label>
+          <input v-model="emailSubject" class="form-input" placeholder="Follow up on your visit" />
         </div>
-        <!-- Email History -->
-        <div v-if="emailHistory.length" style="margin-top:20px;border-top:1px solid var(--border-color);padding-top:16px">
-          <h4 style="font-size:var(--font-xs);text-transform:uppercase;letter-spacing:0.1em;color:var(--text-muted);margin:0 0 10px">Previous Emails</h4>
-          <div v-for="em in emailHistory" :key="em.id" class="email-history-item">
-            <div style="display:flex;justify-content:space-between;align-items:center">
-              <span style="font-weight:600;font-size:var(--font-sm)">{{ em.subject }}</span>
-              <span class="badge" :class="em.status === 'sent' ? 'badge-success' : 'badge-danger'" style="font-size:9px">{{ em.status }}</span>
-            </div>
-            <div class="text-xs text-muted" style="margin-top:2px">{{ new Date(em.sent_at).toLocaleString() }}</div>
+        <div class="form-group">
+          <label class="form-label">Message</label>
+          <textarea v-model="emailBody" class="form-input" rows="6" placeholder="Hi there, I noticed you visited our pricing page..."></textarea>
+        </div>
+        <div v-if="emailSent" class="email-sent-msg"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--color-success);margin-right:6px;vertical-align:1px"></span>Email sent successfully!</div>
+        <div v-if="emailError" class="email-error-msg"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--color-danger);margin-right:6px;vertical-align:1px"></span>{{ emailError }}</div>
+      </div>
+      <!-- Email History -->
+      <div v-if="emailHistory.length" style="margin-top:20px;border-top:1px solid var(--border-color);padding-top:16px">
+        <h4 style="font-size:var(--font-xs);text-transform:uppercase;letter-spacing:0.1em;color:var(--text-muted);margin:0 0 10px">Previous Emails</h4>
+        <div v-for="em in emailHistory" :key="em.id" class="email-history-item">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <span style="font-weight:600;font-size:var(--font-sm)">{{ em.subject }}</span>
+            <span class="badge" :class="em.status === 'sent' ? 'badge-success' : 'badge-danger'" style="font-size:9px">{{ em.status }}</span>
           </div>
+          <div class="text-xs text-muted" style="margin-top:2px">{{ new Date(em.sent_at).toLocaleString() }}</div>
         </div>
       </div>
-    </div>
+      <template #footer>
+        <button class="btn btn-primary w-full" :disabled="emailSending || !emailSubject || !emailBody" @click="sendEmail">
+          {{ emailSending ? 'Sending...' : 'Send Email' }}
+        </button>
+      </template>
+    </BaseModal>
   </div>
 </template>
 
@@ -342,6 +338,7 @@
 <script setup>
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
+import BaseModal from '@/components/ui/BaseModal.vue'
 import { VueFlow } from '@vue-flow/core'
 import { useVueFlow } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'

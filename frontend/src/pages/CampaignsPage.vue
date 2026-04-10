@@ -95,71 +95,55 @@
     </template>
 
     <!-- Create / Edit Modal -->
-    <div v-if="showForm" class="modal-overlay" @click.self="showForm = false">
-      <div class="modal-content campaign-modal">
-        <div class="modal-header">
-          <div class="modal-title">{{ editing ? 'Edit Campaign' : 'New Campaign' }}</div>
-          <button class="btn btn-ghost btn-icon" @click="showForm = false">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><line x1="2" y1="2" x2="14" y2="14"/><line x1="14" y1="2" x2="2" y2="14"/></svg>
-          </button>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Campaign Name</label>
-          <input v-model="form.name" class="form-input" placeholder="e.g. March Outreach" />
-        </div>
-        <div class="form-group" style="margin-top:12px">
-          <label class="form-label">Email Subject</label>
-          <input v-model="form.subject" class="form-input" placeholder="e.g. We noticed you visited..." />
-        </div>
-        <div class="form-group" style="margin-top:12px">
-          <label class="form-label">Email Body (HTML or plain text)</label>
-          <textarea v-model="form.body_html" class="form-input" rows="6" placeholder="Hi {{name}}, ..."></textarea>
-        </div>
-        <div class="form-group" style="margin-top:12px">
-          <label class="form-label">Canva Design URL (optional)</label>
-          <input v-model="form.canva_design_url" class="form-input" placeholder="https://www.canva.com/design/..." />
-        </div>
-        <div class="form-group" style="margin-top:12px">
-          <label class="form-label">From Name</label>
-          <input v-model="form.from_name" class="form-input" placeholder="e.g. GrowthPilot Team" />
-        </div>
-        <p v-if="formError" class="form-error" style="margin-top:8px">{{ formError }}</p>
-        <div class="flex gap-8" style="justify-content:flex-end;margin-top:20px">
-          <button class="btn btn-secondary" @click="showForm = false">Cancel</button>
-          <button class="btn btn-primary" @click="saveCampaign" :disabled="saving">
-            {{ saving ? 'Saving...' : (editing ? 'Save Changes' : 'Create Campaign') }}
-          </button>
-        </div>
+    <BaseModal v-model="showForm" :title="editing ? 'Edit Campaign' : 'New Campaign'" max-width="560px">
+      <div class="form-group">
+        <label class="form-label">Campaign Name</label>
+        <input v-model="form.name" class="form-input" placeholder="e.g. March Outreach" />
       </div>
-    </div>
+      <div class="form-group" style="margin-top:12px">
+        <label class="form-label">Email Subject</label>
+        <input v-model="form.subject" class="form-input" placeholder="e.g. We noticed you visited..." />
+      </div>
+      <div class="form-group" style="margin-top:12px">
+        <label class="form-label">Email Body (HTML or plain text)</label>
+        <textarea v-model="form.body_html" class="form-input" rows="6" placeholder="Hi {{name}}, ..."></textarea>
+      </div>
+      <div class="form-group" style="margin-top:12px">
+        <label class="form-label">Canva Design URL (optional)</label>
+        <input v-model="form.canva_design_url" class="form-input" placeholder="https://www.canva.com/design/..." />
+      </div>
+      <div class="form-group" style="margin-top:12px">
+        <label class="form-label">From Name</label>
+        <input v-model="form.from_name" class="form-input" placeholder="e.g. GrowthPilot Team" />
+      </div>
+      <p v-if="formError" class="form-error" style="margin-top:8px">{{ formError }}</p>
+      <template #footer>
+        <button class="btn btn-secondary" @click="showForm = false">Cancel</button>
+        <button class="btn btn-primary" @click="saveCampaign" :disabled="saving">
+          {{ saving ? 'Saving...' : (editing ? 'Save Changes' : 'Create Campaign') }}
+        </button>
+      </template>
+    </BaseModal>
 
     <!-- Stats Modal -->
-    <div v-if="statsModal" class="modal-overlay" @click.self="statsModal = null">
-      <div class="modal-content">
-        <div class="modal-header">
-          <div class="modal-title">Stats — {{ statsModal.name }}</div>
-          <button class="btn btn-ghost btn-icon" @click="statsModal = null">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><line x1="2" y1="2" x2="14" y2="14"/><line x1="14" y1="2" x2="2" y2="14"/></svg>
-          </button>
+    <BaseModal :model-value="!!statsModal" @close="statsModal = null" :title="statsModal ? 'Stats -- ' + statsModal.name : ''">
+      <div v-if="loadingStats" class="loading-state">Loading...</div>
+      <template v-else-if="stats">
+        <div class="stats-grid" style="grid-template-columns:1fr 1fr;gap:12px">
+          <div class="stat-card"><div class="stat-label">Sent</div><div class="stat-value">{{ stats.sent_count || 0 }}</div></div>
+          <div class="stat-card"><div class="stat-label">Opens</div><div class="stat-value">{{ stats.open_count || 0 }}</div></div>
+          <div class="stat-card"><div class="stat-label">Clicks</div><div class="stat-value">{{ stats.click_count || 0 }}</div></div>
+          <div class="stat-card"><div class="stat-label">Bounces</div><div class="stat-value">{{ stats.bounce_count || 0 }}</div></div>
         </div>
-        <div v-if="loadingStats" class="loading-state">Loading...</div>
-        <template v-else-if="stats">
-          <div class="stats-grid" style="grid-template-columns:1fr 1fr;gap:12px">
-            <div class="stat-card"><div class="stat-label">Sent</div><div class="stat-value">{{ stats.sent_count || 0 }}</div></div>
-            <div class="stat-card"><div class="stat-label">Opens</div><div class="stat-value">{{ stats.open_count || 0 }}</div></div>
-            <div class="stat-card"><div class="stat-label">Clicks</div><div class="stat-value">{{ stats.click_count || 0 }}</div></div>
-            <div class="stat-card"><div class="stat-label">Bounces</div><div class="stat-value">{{ stats.bounce_count || 0 }}</div></div>
-          </div>
-          <div class="flex gap-8" style="margin-top:12px">
-            <div class="stat-card" style="flex:1"><div class="stat-label">Open Rate</div><div class="stat-value">{{ formatRate(stats.open_rate) }}%</div></div>
-            <div class="stat-card" style="flex:1"><div class="stat-label">Click Rate</div><div class="stat-value">{{ formatRate(stats.click_rate) }}%</div></div>
-          </div>
-        </template>
-        <div class="flex" style="justify-content:flex-end;margin-top:20px">
-          <button class="btn btn-secondary" @click="statsModal = null">Close</button>
+        <div class="flex gap-8" style="margin-top:12px">
+          <div class="stat-card" style="flex:1"><div class="stat-label">Open Rate</div><div class="stat-value">{{ formatRate(stats.open_rate) }}%</div></div>
+          <div class="stat-card" style="flex:1"><div class="stat-label">Click Rate</div><div class="stat-value">{{ formatRate(stats.click_rate) }}%</div></div>
         </div>
-      </div>
-    </div>
+      </template>
+      <template #footer>
+        <button class="btn btn-secondary" @click="statsModal = null">Close</button>
+      </template>
+    </BaseModal>
   </div>
 </template>
 
@@ -168,6 +152,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useToast } from '@/composables/useToast'
 import campaignsApi from '@/api/campaigns'
+import BaseModal from '@/components/ui/BaseModal.vue'
 
 const route = useRoute()
 const websiteId = route.params.websiteId

@@ -329,49 +329,41 @@
     </template>
 
     <!-- Run Audit Modal -->
-    <div v-if="showRunForm" class="modal-overlay" @click.self="showRunForm = false">
-      <div class="modal-content">
-        <div class="modal-header">
-          <div class="modal-title">Run LLM Ranking Audit</div>
-          <button class="btn btn-ghost btn-icon" @click="showRunForm = false">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><line x1="2" y1="2" x2="14" y2="14"/><line x1="14" y1="2" x2="2" y2="14"/></svg>
-          </button>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Business Name</label>
-          <input v-model="auditForm.business_name" class="form-input" placeholder="e.g. Acme Corp" />
-        </div>
-        <div class="form-group" style="margin-top:12px">
-          <label class="form-label">Industry / Category</label>
-          <input v-model="auditForm.industry" class="form-input" placeholder="e.g. SaaS, e-commerce, marketing agency" />
-        </div>
-        <div class="form-group" style="margin-top:12px">
-          <label class="form-label">Location (optional)</label>
-          <input v-model="auditForm.location" class="form-input" placeholder="e.g. New York, US" />
-        </div>
-        <div class="form-group" style="margin-top:12px">
-          <label class="form-label">Custom Prompts (optional, one per line)</label>
-          <textarea v-model="customPromptsText" class="form-input" rows="3" placeholder="Best SaaS tools for startups"></textarea>
-          <p class="text-xs text-muted" style="margin-top:4px">Leave blank to use auto-generated prompts.</p>
-        </div>
-        <div class="form-group" style="margin-top:12px">
-          <label class="form-label">Providers</label>
-          <div class="provider-checks">
-            <label v-for="p in availableProviders" :key="p.value" class="check-label">
-              <input type="checkbox" :value="p.value" v-model="auditForm.providers" />
-              {{ p.label }}
-            </label>
-          </div>
-        </div>
-        <p v-if="auditError" class="form-error" style="margin-top:8px">{{ auditError }}</p>
-        <div class="flex gap-8" style="justify-content:flex-end;margin-top:20px">
-          <button class="btn btn-secondary" @click="showRunForm = false">Cancel</button>
-          <button class="btn btn-primary" @click="submitAudit" :disabled="running">
-            {{ running ? 'Queuing...' : 'Start Audit' }}
-          </button>
+    <BaseModal v-model="showRunForm" title="Run LLM Ranking Audit">
+      <div class="form-group">
+        <label class="form-label">Business Name</label>
+        <input v-model="auditForm.business_name" class="form-input" placeholder="e.g. Acme Corp" />
+      </div>
+      <div class="form-group" style="margin-top:12px">
+        <label class="form-label">Industry / Category</label>
+        <input v-model="auditForm.industry" class="form-input" placeholder="e.g. SaaS, e-commerce, marketing agency" />
+      </div>
+      <div class="form-group" style="margin-top:12px">
+        <label class="form-label">Location (optional)</label>
+        <input v-model="auditForm.location" class="form-input" placeholder="e.g. New York, US" />
+      </div>
+      <div class="form-group" style="margin-top:12px">
+        <label class="form-label">Custom Prompts (optional, one per line)</label>
+        <textarea v-model="customPromptsText" class="form-input" rows="3" placeholder="Best SaaS tools for startups"></textarea>
+        <p class="text-xs text-muted" style="margin-top:4px">Leave blank to use auto-generated prompts.</p>
+      </div>
+      <div class="form-group" style="margin-top:12px">
+        <label class="form-label">Providers</label>
+        <div class="provider-checks">
+          <label v-for="p in availableProviders" :key="p.value" class="check-label">
+            <input type="checkbox" :value="p.value" v-model="auditForm.providers" />
+            {{ p.label }}
+          </label>
         </div>
       </div>
-    </div>
+      <p v-if="auditError" class="form-error" style="margin-top:8px">{{ auditError }}</p>
+      <template #footer>
+        <button class="btn btn-secondary" @click="showRunForm = false">Cancel</button>
+        <button class="btn btn-primary" @click="submitAudit" :disabled="running">
+          {{ running ? 'Queuing...' : 'Start Audit' }}
+        </button>
+      </template>
+    </BaseModal>
   </div>
 </template>
 
@@ -380,6 +372,7 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
 import { useToast } from '@/composables/useToast'
 import llmRankingApi from '@/api/llm_ranking'
+import BaseModal from '@/components/ui/BaseModal.vue'
 
 const route = useRoute()
 const websiteId = route.params.websiteId

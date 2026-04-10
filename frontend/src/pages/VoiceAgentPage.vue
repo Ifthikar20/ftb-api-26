@@ -533,13 +533,8 @@
     </div>
 
     <!-- Call Detail Modal -->
-    <div v-if="selectedCall" class="modal-overlay" @click.self="selectedCall = null">
-      <div class="modal-card" style="max-width: 650px">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px">
-          <h3 class="card-title">Call Details</h3>
-          <button class="btn-ghost btn-icon" @click="selectedCall = null">X</button>
-        </div>
-
+    <BaseModal :model-value="!!selectedCall" @close="selectedCall = null" title="Call Details" max-width="650px">
+      <template v-if="selectedCall">
         <div class="detail-grid">
           <div class="detail-item"><span class="detail-label">Caller</span><span>{{ selectedCall.caller_name || 'Unknown' }}</span></div>
           <div class="detail-item"><span class="detail-label">Phone</span><span>{{ selectedCall.caller_phone }}</span></div>
@@ -551,17 +546,14 @@
           <div class="detail-item"><span class="detail-label">Intent</span><span>{{ selectedCall.call_intent || '-' }}</span></div>
           <div class="detail-item"><span class="detail-label">Sentiment</span><span :class="selectedCall.sentiment ? 'sentiment-badge sentiment-' + selectedCall.sentiment : ''">{{ selectedCall.sentiment || '-' }}</span></div>
         </div>
-
         <div v-if="selectedCall.summary" style="margin-top: 16px">
           <div class="detail-label">Summary</div>
           <p class="text-sm" style="margin-top: 4px">{{ selectedCall.summary }}</p>
         </div>
-
         <div v-if="selectedCall.transcript" style="margin-top: 16px">
           <div class="detail-label">Transcript</div>
           <pre class="transcript-box">{{ selectedCall.transcript }}</pre>
         </div>
-
         <div v-if="Object.keys(selectedCall.extracted_data || {}).length" style="margin-top: 16px">
           <div class="detail-label">Extracted Data</div>
           <div class="extracted-data">
@@ -570,59 +562,49 @@
             </div>
           </div>
         </div>
-      </div>
-    </div>
+      </template>
+    </BaseModal>
 
     <!-- Book Appointment Modal -->
-    <div v-if="showBookModal" class="modal-overlay" @click.self="showBookModal = false">
-      <div class="modal-card" style="max-width: 500px">
-        <button class="modal-close" @click="showBookModal = false" aria-label="Close">×</button>
-        <h3 class="card-title" style="margin-bottom: 6px">Book Appointment</h3>
-        <p class="text-sm text-muted" style="margin-bottom:14px">
-          Appointments are created on your connected <strong>Google Calendar</strong>. The attendee receives a Google Calendar invite with a Meet link.
-        </p>
-        <div class="form-group">
-          <label class="form-label">Attendee Name</label>
-          <input v-model="newEvent.attendee_name" class="form-input" placeholder="John Doe" />
-        </div>
-        <div class="form-group">
-          <label class="form-label">Phone</label>
-          <input v-model="newEvent.attendee_phone" class="form-input" placeholder="+1234567890" />
-        </div>
-        <div class="form-group">
-          <label class="form-label">Email (optional)</label>
-          <input v-model="newEvent.attendee_email" class="form-input" placeholder="john@example.com" />
-        </div>
-        <div class="form-group">
-          <label class="form-label">Title</label>
-          <input v-model="newEvent.title" class="form-input" placeholder="Consultation call" />
-        </div>
-        <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px">
-          <div class="form-group">
-            <label class="form-label">Start Time</label>
-            <input v-model="newEvent.start_time" type="datetime-local" class="form-input" />
-          </div>
-          <div class="form-group">
-            <label class="form-label">End Time (optional)</label>
-            <input v-model="newEvent.end_time" type="datetime-local" class="form-input" />
-          </div>
-        </div>
-        <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px">
-          <button class="btn btn-secondary" @click="showBookModal = false">Cancel</button>
-          <button class="btn btn-primary" @click="bookAppointment" :disabled="bookingEvent">{{ bookingEvent ? 'Booking...' : 'Book' }}</button>
-        </div>
-        <p v-if="bookError" class="text-sm" style="color:var(--color-danger);margin-top:8px">{{ bookError }}</p>
+    <BaseModal v-model="showBookModal" title="Book Appointment" subtitle="Appointments are created on your connected Google Calendar. The attendee receives a Google Calendar invite with a Meet link." max-width="500px">
+      <div class="form-group">
+        <label class="form-label">Attendee Name</label>
+        <input v-model="newEvent.attendee_name" class="form-input" placeholder="John Doe" />
       </div>
-    </div>
+      <div class="form-group">
+        <label class="form-label">Phone</label>
+        <input v-model="newEvent.attendee_phone" class="form-input" placeholder="+1234567890" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Email (optional)</label>
+        <input v-model="newEvent.attendee_email" class="form-input" placeholder="john@example.com" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Title</label>
+        <input v-model="newEvent.title" class="form-input" placeholder="Consultation call" />
+      </div>
+      <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px">
+        <div class="form-group">
+          <label class="form-label">Start Time</label>
+          <input v-model="newEvent.start_time" type="datetime-local" class="form-input" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">End Time (optional)</label>
+          <input v-model="newEvent.end_time" type="datetime-local" class="form-input" />
+        </div>
+      </div>
+      <p v-if="bookError" class="text-sm" style="color:var(--color-danger);margin-top:8px">{{ bookError }}</p>
+      <template #footer>
+        <button class="btn btn-secondary" @click="showBookModal = false">Cancel</button>
+        <button class="btn btn-primary" @click="bookAppointment" :disabled="bookingEvent">{{ bookingEvent ? 'Booking...' : 'Book' }}</button>
+      </template>
+    </BaseModal>
 
     <!-- Add / Edit Phone Number Modal -->
-    <div v-if="showPhoneModal" class="modal-overlay" @click.self="closePhoneModal">
-      <div class="modal-card" style="max-width: 480px">
-        <button class="modal-close" @click="closePhoneModal" aria-label="Close">×</button>
-        <h3 class="card-title" style="margin-bottom: 8px">{{ editingPhone ? 'Edit Phone Number' : 'Add Phone Number' }}</h3>
-        <div class="info-banner" style="background: var(--bg-surface); border-radius:6px; padding:10px 12px; margin-bottom:14px; font-size:13px; color: var(--text-secondary)">
-          <strong>What happens next?</strong> We provision this number through our telephony vendor (Telnyx by default, Twilio supported). The vendor terminates the SIP/PSTN call and bridges it to our LiveKit-based AI agent. You keep your existing carrier — just point call forwarding at the SIP endpoint shown in Settings, and the vendor handles the rest.
-        </div>
+    <BaseModal v-model="showPhoneModal" @close="closePhoneModal" :title="editingPhone ? 'Edit Phone Number' : 'Add Phone Number'" max-width="480px">
+      <div class="info-banner" style="background: var(--bg-surface); border-radius:6px; padding:10px 12px; margin-bottom:14px; font-size:13px; color: var(--text-secondary)">
+        <strong>What happens next?</strong> We provision this number through our telephony vendor (Telnyx by default, Twilio supported). The vendor terminates the SIP/PSTN call and bridges it to our LiveKit-based AI agent. You keep your existing carrier — just point call forwarding at the SIP endpoint shown in Settings, and the vendor handles the rest.
+      </div>
         <div class="form-group">
           <label class="form-label">Number (E.164 format)</label>
           <input
@@ -688,18 +670,14 @@
             Active
           </label>
         </div>
-        <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px">
-          <button class="btn btn-secondary" @click="closePhoneModal">Cancel</button>
-          <button class="btn btn-primary" @click="savePhone" :disabled="savingPhone || (!editingPhone && !mfa.verified)">{{ savingPhone ? 'Saving...' : 'Save' }}</button>
-        </div>
-      </div>
-    </div>
+      <template #footer>
+        <button class="btn btn-secondary" @click="closePhoneModal">Cancel</button>
+        <button class="btn btn-primary" @click="savePhone" :disabled="savingPhone || (!editingPhone && !mfa.verified)">{{ savingPhone ? 'Saving...' : 'Save' }}</button>
+      </template>
+    </BaseModal>
 
     <!-- Add / Edit Context Document Modal -->
-    <div v-if="showDocModal" class="modal-overlay" @click.self="closeDocModal">
-      <div class="modal-card" style="max-width: 640px">
-        <button class="modal-close" @click="closeDocModal" aria-label="Close">×</button>
-        <h3 class="card-title" style="margin-bottom: 16px">{{ editingDoc ? 'Edit Document' : 'Add Knowledge Document' }}</h3>
+    <BaseModal v-model="showDocModal" @close="closeDocModal" :title="editingDoc ? 'Edit Document' : 'Add Knowledge Document'" max-width="640px">
         <div class="form-group">
           <label class="form-label">Title</label>
           <input v-model="docForm.title" class="form-input" placeholder="Services & Pricing, FAQs, Policies..." />
@@ -720,40 +698,35 @@
             Active (include in agent prompt)
           </label>
         </div>
-        <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px">
-          <button class="btn btn-secondary" @click="closeDocModal">Cancel</button>
-          <button class="btn btn-primary" @click="saveDoc" :disabled="savingDoc">{{ savingDoc ? 'Saving...' : 'Save' }}</button>
-        </div>
-      </div>
-    </div>
+      <template #footer>
+        <button class="btn btn-secondary" @click="closeDocModal">Cancel</button>
+        <button class="btn btn-primary" @click="saveDoc" :disabled="savingDoc">{{ savingDoc ? 'Saving...' : 'Save' }}</button>
+      </template>
+    </BaseModal>
 
     <!-- Add Reminder Modal -->
-    <div v-if="showReminderModal" class="modal-overlay" @click.self="showReminderModal = false">
-      <div class="modal-card" style="max-width: 500px">
-        <button class="modal-close" @click="showReminderModal = false" aria-label="Close">×</button>
-        <h3 class="card-title" style="margin-bottom: 16px">Add Callback Reminder</h3>
-        <div class="form-group">
-          <label class="form-label">Contact Name</label>
-          <input v-model="newReminder.contact_name" class="form-input" placeholder="John Doe" />
-        </div>
-        <div class="form-group">
-          <label class="form-label">Phone</label>
-          <input v-model="newReminder.contact_phone" class="form-input" placeholder="+1234567890" />
-        </div>
-        <div class="form-group">
-          <label class="form-label">Remind At</label>
-          <input v-model="newReminder.remind_at" type="datetime-local" class="form-input" />
-        </div>
-        <div class="form-group">
-          <label class="form-label">Reason</label>
-          <textarea v-model="newReminder.reason" class="form-input" rows="2" placeholder="Why should we call back?"></textarea>
-        </div>
-        <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px">
-          <button class="btn btn-secondary" @click="showReminderModal = false">Cancel</button>
-          <button class="btn btn-primary" @click="addReminder" :disabled="addingReminder">{{ addingReminder ? 'Adding...' : 'Add Reminder' }}</button>
-        </div>
+    <BaseModal v-model="showReminderModal" title="Add Callback Reminder" max-width="500px">
+      <div class="form-group">
+        <label class="form-label">Contact Name</label>
+        <input v-model="newReminder.contact_name" class="form-input" placeholder="John Doe" />
       </div>
-    </div>
+      <div class="form-group">
+        <label class="form-label">Phone</label>
+        <input v-model="newReminder.contact_phone" class="form-input" placeholder="+1234567890" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Remind At</label>
+        <input v-model="newReminder.remind_at" type="datetime-local" class="form-input" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Reason</label>
+        <textarea v-model="newReminder.reason" class="form-input" rows="2" placeholder="Why should we call back?"></textarea>
+      </div>
+      <template #footer>
+        <button class="btn btn-secondary" @click="showReminderModal = false">Cancel</button>
+        <button class="btn btn-primary" @click="addReminder" :disabled="addingReminder">{{ addingReminder ? 'Adding...' : 'Add Reminder' }}</button>
+      </template>
+    </BaseModal>
   </div>
 </template>
 
@@ -764,6 +737,7 @@ import { useToast } from '@/composables/useToast'
 import voiceAgentApi from '@/api/voiceAgent'
 import VoiceOnboarding from '@/components/voice/VoiceOnboarding.vue'
 import UsageCard from '@/components/voice/UsageCard.vue'
+import BaseModal from '@/components/ui/BaseModal.vue'
 
 const props = defineProps({ websiteId: String })
 const appStore = useAppStore()
