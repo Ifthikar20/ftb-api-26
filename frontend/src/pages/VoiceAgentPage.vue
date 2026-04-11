@@ -52,19 +52,59 @@
 
     <!-- Tab: Get Started (onboarding) -->
     <div v-if="activeTab === 'getStarted'" class="tab-content">
+
+      <!-- Celebration banner when inbound is fully set up -->
+      <div v-if="inboundComplete" class="celebration-banner">
+        <div class="celebration-icon">🎉</div>
+        <div class="celebration-body">
+          <strong>Your AI Receptionist is live!</strong>
+          <p>Inbound calls will be answered by the AI automatically. Callers get greeted, questions answered from your knowledge base, and appointments booked — 24/7.</p>
+        </div>
+        <button class="btn btn-primary btn-sm" @click="startWebCall" :disabled="webCallLoading">
+          {{ webCallLoading ? 'Connecting...' : '📞 Make a Test Call' }}
+        </button>
+      </div>
+
       <div class="getstarted-intro">
-        <h2>Welcome to your AI Voice Agent</h2>
+        <h2>Set Up Your AI Receptionist</h2>
         <p>
-          Two ways to use it. Pick the one you want to set up first — you can do both later.
-        </p>
-        <ul class="getstarted-bullets">
-          <li><strong>AI Receptionist (Inbound):</strong> when someone calls your business, the AI answers, helps the caller, and books appointments or creates a todo for you.</li>
-          <li><strong>AI Sales Caller (Outbound):</strong> upload a list of leads and the AI calls them, plays a welcome message, and pitches your product using a script you write in a markdown file.</li>
-        </ul>
-        <p class="getstarted-hint">
-          Need a starting point? Click <strong>Apply</strong> on a template below — we'll fill in your knowledge base for you. You can edit the markdown after.
+          Follow these steps to get your inbound AI phone agent live. Each step takes under a minute.
         </p>
       </div>
+
+      <!-- Inbound Setup Wizard -->
+      <div class="wizard-card">
+        <div class="wizard-header">
+          <div>
+            <h3>Inbound Setup</h3>
+            <p class="text-sm text-muted">{{ inboundProgress }}% complete</p>
+          </div>
+          <div class="wizard-progress">
+            <div class="wizard-progress-bar">
+              <div class="wizard-progress-fill" :style="{ width: inboundProgress + '%' }"></div>
+            </div>
+          </div>
+        </div>
+        <ol class="wizard-steps">
+          <li v-for="(step, idx) in inboundSteps" :key="step.key"
+              class="wizard-step"
+              :class="{ done: step.done, 'is-next': !step.done && idx === nextInboundStep }">
+            <div class="wizard-step-number" :class="{ 'step-done': step.done }">
+              <svg v-if="step.done" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="2,7 5.5,10.5 12,3.5"/></svg>
+              <span v-else>{{ idx + 1 }}</span>
+            </div>
+            <div class="wizard-step-body">
+              <strong>{{ step.label }}</strong>
+              <p>{{ step.description }}</p>
+            </div>
+            <button v-if="!step.done" class="btn btn-sm" :class="idx === nextInboundStep ? 'btn-primary wizard-pulse' : 'btn-secondary'" @click="handleOnboardingNavigate(step.cta_url)">
+              {{ idx === nextInboundStep ? 'Do this next →' : 'Set up' }}
+            </button>
+            <span v-else class="wizard-done-label">Done</span>
+          </li>
+        </ol>
+      </div>
+
       <!-- Recent Calls preview -->
       <div class="card" style="margin: 20px 0">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px">
@@ -72,11 +112,11 @@
           <button class="btn btn-secondary btn-xs" @click="activeTab = 'calls'">View all</button>
         </div>
         <p class="text-sm text-muted" style="margin-bottom:12px">
-          Latest inbound and outbound calls handled by your AI agent. If a caller looks like a possible lead, we capture their details here automatically. They are not pushed to your Leads table yet — review them first and promote the ones you want.
+          Latest calls handled by your AI agent. Callers flagged as leads appear in the <strong>Lead Detection</strong> tab — review and promote the ones you want.
         </p>
         <div v-if="loading.calls" class="loading-state">Loading calls...</div>
         <div v-else-if="!calls.length" class="empty-state" style="padding:16px">
-          <p>No calls yet. Once you add a forwarded phone number, calls will appear here.</p>
+          <p>No calls yet. Complete the setup above and make a test call to see it in action.</p>
         </div>
         <div v-else class="data-table-wrap">
           <table class="data-table">
@@ -86,6 +126,7 @@
                 <th>Phone</th>
                 <th>Duration</th>
                 <th>Status</th>
+                <th>Lead Score</th>
                 <th>Date</th>
               </tr>
             </thead>
@@ -95,6 +136,10 @@
                 <td>{{ call.caller_phone }}</td>
                 <td>{{ call.duration_display }}</td>
                 <td><span class="status-pill" :class="'status-' + call.status">{{ call.status }}</span></td>
+                <td>
+                  <span v-if="call.lead_score" class="status-pill" :class="call.lead_score >= 50 ? 'status-confirmed' : 'status-pending'">{{ call.lead_score }}</span>
+                  <span v-else class="text-muted">-</span>
+                </td>
                 <td class="text-muted">{{ formatDate(call.created_at) }}</td>
               </tr>
             </tbody>
@@ -102,11 +147,20 @@
         </div>
       </div>
 
-      <VoiceOnboarding
-        :website-id="wid"
-        @navigate="handleOnboardingNavigate"
-        @applied="handleTemplateApplied"
-      />
+      <!-- Outbound — collapsed by default -->
+      <details class="outbound-accordion">
+        <summary class="outbound-accordion-trigger">
+          <span>AI Sales Caller (Outbound) — set up later</span>
+          <span class="text-sm text-muted">Upload leads and let the AI call them.</span>
+        </summary>
+        <div class="outbound-accordion-body">
+          <VoiceOnboarding
+            :website-id="wid"
+            @navigate="handleOnboardingNavigate"
+            @applied="handleTemplateApplied"
+          />
+        </div>
+      </details>
     </div>
 
     <!-- Tab: Phone Numbers -->
@@ -174,6 +228,76 @@
         </p>
         <button class="btn btn-secondary btn-sm" @click="loadPossibleLeads">Refresh</button>
       </div>
+
+      <!-- How Scoring Works -->
+      <details class="scoring-explainer">
+        <summary class="scoring-explainer-trigger">
+          <span class="scoring-explainer-title">How Lead Scoring Works</span>
+          <span class="text-xs text-muted">Click to expand</span>
+        </summary>
+        <div class="scoring-explainer-body">
+          <p class="text-sm" style="margin-bottom:12px; color: var(--text-secondary)">Every completed call (20+ seconds) is scored using 8 transparent signals. A call needs ≥50 points and a real conversation to be flagged.</p>
+          <div class="scoring-signals-grid">
+            <div class="scoring-signal" style="border-left-color: #ef4444">
+              <div class="scoring-signal-pts">+25</div>
+              <div>
+                <strong>Hot Intent</strong>
+                <p>Call intent is sales, appointment, or inquiry</p>
+              </div>
+            </div>
+            <div class="scoring-signal" style="border-left-color: #f59e0b">
+              <div class="scoring-signal-pts">+20</div>
+              <div>
+                <strong>Shared Email</strong>
+                <p>Caller provided their email address</p>
+              </div>
+            </div>
+            <div class="scoring-signal" style="border-left-color: #f59e0b">
+              <div class="scoring-signal-pts">+20</div>
+              <div>
+                <strong>Appointment Discussed</strong>
+                <p>Appointment or scheduling came up in conversation</p>
+              </div>
+            </div>
+            <div class="scoring-signal" style="border-left-color: #3b82f6">
+              <div class="scoring-signal-pts">+15</div>
+              <div>
+                <strong>Shared Company</strong>
+                <p>Caller mentioned their company name</p>
+              </div>
+            </div>
+            <div class="scoring-signal" style="border-left-color: #3b82f6">
+              <div class="scoring-signal-pts">+15</div>
+              <div>
+                <strong>Buying Keywords</strong>
+                <p>Transcript contains pricing, quote, purchase, demo, etc.</p>
+              </div>
+            </div>
+            <div class="scoring-signal" style="border-left-color: #22c55e">
+              <div class="scoring-signal-pts">+10</div>
+              <div>
+                <strong>Positive Sentiment</strong>
+                <p>Caller had a positive tone throughout</p>
+              </div>
+            </div>
+            <div class="scoring-signal" style="border-left-color: #22c55e">
+              <div class="scoring-signal-pts">+10</div>
+              <div>
+                <strong>Urgent Follow-up</strong>
+                <p>Follow-up marked immediate or within 24h</p>
+              </div>
+            </div>
+            <div class="scoring-signal" style="border-left-color: #6b7280">
+              <div class="scoring-signal-pts">+5</div>
+              <div>
+                <strong>Real Conversation</strong>
+                <p>Call lasted at least 20 seconds (baseline requirement)</p>
+              </div>
+            </div>
+          </div>
+          <p class="text-xs text-muted" style="margin-top:8px">Score is capped at 100. Threshold: 50 points. Calls that are dismissed or already promoted won't reappear.</p>
+        </div>
+      </details>
 
       <div v-if="loading.leads" class="loading-state">Loading possible leads...</div>
       <div v-else-if="!possibleLeads.length" class="empty-state">
@@ -546,10 +670,43 @@
           <div class="detail-item"><span class="detail-label">Intent</span><span>{{ selectedCall.call_intent || '-' }}</span></div>
           <div class="detail-item"><span class="detail-label">Sentiment</span><span :class="selectedCall.sentiment ? 'sentiment-badge sentiment-' + selectedCall.sentiment : ''">{{ selectedCall.sentiment || '-' }}</span></div>
         </div>
+
+        <!-- Lead Score section -->
+        <div v-if="selectedCall.lead_score" class="call-detail-section" style="margin-top: 16px">
+          <div class="detail-label">Lead Score</div>
+          <div style="display: flex; align-items: center; gap: 12px; margin-top: 6px">
+            <div class="lead-score-circle" :class="selectedCall.lead_score >= 50 ? 'score-hot' : 'score-warm'">
+              {{ selectedCall.lead_score }}
+            </div>
+            <div v-if="selectedCall.lead_signals" style="display: flex; flex-wrap: wrap; gap: 4px">
+              <span v-for="(pts, label) in selectedCall.lead_signals" :key="label" class="signal-chip" :title="`+${pts} points`">
+                {{ label.replace(/_/g, ' ') }} <span class="signal-pts">+{{ pts }}</span>
+              </span>
+            </div>
+            <span v-if="selectedCall.is_possible_lead" class="status-pill status-confirmed" style="margin-left:auto">Possible Lead</span>
+          </div>
+        </div>
+
         <div v-if="selectedCall.summary" style="margin-top: 16px">
           <div class="detail-label">Summary</div>
           <p class="text-sm" style="margin-top: 4px">{{ selectedCall.summary }}</p>
         </div>
+
+        <!-- Extracted intent / sentiment / category -->
+        <div v-if="selectedCall.call_intent || selectedCall.sentiment" class="call-detail-section" style="margin-top: 16px">
+          <div class="detail-label">AI Analysis</div>
+          <div style="display: flex; gap: 16px; margin-top: 6px; flex-wrap: wrap">
+            <div v-if="selectedCall.call_intent" class="analysis-chip">
+              <span class="text-muted text-xs">Intent</span>
+              <span class="font-medium">{{ selectedCall.call_intent }}</span>
+            </div>
+            <div v-if="selectedCall.sentiment" class="analysis-chip">
+              <span class="text-muted text-xs">Sentiment</span>
+              <span class="font-medium sentiment-badge" :class="'sentiment-' + selectedCall.sentiment">{{ selectedCall.sentiment }}</span>
+            </div>
+          </div>
+        </div>
+
         <div v-if="selectedCall.transcript" style="margin-top: 16px">
           <div class="detail-label">Transcript</div>
           <pre class="transcript-box">{{ selectedCall.transcript }}</pre>
@@ -860,6 +1017,15 @@ const docForm = reactive({ title: '', content: '', is_active: true, sort_order: 
 const possibleLeads = ref([])
 const leadActionId = ref(null)
 
+// Onboarding wizard state
+const inboundSteps = ref([])
+const inboundProgress = ref(0)
+const inboundComplete = ref(false)
+const nextInboundStep = computed(() => {
+  const idx = inboundSteps.value.findIndex(s => !s.done)
+  return idx >= 0 ? idx : -1
+})
+
 // Usage
 const usage = ref({ current_period: {}, history: [] })
 
@@ -889,6 +1055,7 @@ onMounted(() => {
   loadStats()
   loadCalls()  // default tab
   loadUsage()
+  loadInboundChecklist()
 })
 
 // Lazy-load tab data on first visit
@@ -906,15 +1073,44 @@ function handleOnboardingNavigate(url) {
   // Map the backend's CTA hints to the matching tab on this page so the user
   // doesn't get bounced into a route that doesn't exist yet.
   if (!url) return
-  if (url.includes('/config')) activeTab.value = 'settings'
-  else if (url.includes('/knowledge-base')) activeTab.value = 'settings'
-  else if (url.includes('/phone-numbers')) activeTab.value = 'phones'
+  if (url.includes('/config')) {
+    activeTab.value = 'settings'
+  } else if (url.includes('/knowledge-base')) {
+    activeTab.value = 'settings'
+    // If template hint, scroll to KB after a tick
+    if (url.includes('template=')) {
+      setTimeout(() => {
+        loadContextDocs()
+      }, 200)
+    }
+  } else if (url.includes('/phone-numbers')) {
+    activeTab.value = 'phones'
+    loadPhoneNumbers()
+    // Auto-open the "Add Number" modal if no numbers exist yet
+    setTimeout(() => {
+      if (!phoneNumbers.value.length) {
+        showPhoneModal.value = true
+      }
+    }, 400)
+  }
 }
 
 function handleTemplateApplied() {
   // Refresh anything that depends on the KB so the rest of the page reflects it.
   loadConfig()
+  loadInboundChecklist()  // re-check progress
   toast.success('Template applied to your knowledge base.')
+}
+
+async function loadInboundChecklist() {
+  try {
+    const res = await voiceAgentApi.getSetupStatus(wid.value)
+    const data = res.data?.data || res.data || res
+    const inbound = data.inbound || {}
+    inboundSteps.value = inbound.steps || []
+    inboundProgress.value = inbound.progress || 0
+    inboundComplete.value = inbound.complete || false
+  } catch { /* first visit — no status yet */ }
 }
 
 async function loadConfig() {
@@ -1652,4 +1848,289 @@ function formatTime(iso) {
   font-size: 13px;
   color: var(--text-primary);
 }
-</style>
+
+/* ── Celebration Banner ───────────────────────────────────────── */
+.celebration-banner {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px 24px;
+  background: linear-gradient(135deg, rgba(34,197,94,0.08) 0%, rgba(59,130,246,0.06) 100%);
+  border: 1px solid rgba(34,197,94,0.25);
+  border-radius: 12px;
+  margin-bottom: 20px;
+  animation: celebrationSlide 0.5s ease;
+}
+.celebration-icon { font-size: 32px; flex-shrink: 0; }
+.celebration-body { flex: 1; }
+.celebration-body strong {
+  display: block;
+  font-size: 16px;
+  color: #22c55e;
+  margin-bottom: 4px;
+}
+.celebration-body p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+@keyframes celebrationSlide {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Wizard Card ──────────────────────────────────────────────── */
+.wizard-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 20px;
+}
+.wizard-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+.wizard-header h3 {
+  margin: 0 0 2px;
+  font-size: 16px;
+  color: var(--text-primary);
+}
+.wizard-progress { width: 140px; }
+.wizard-progress-bar {
+  width: 100%;
+  height: 6px;
+  background: var(--bg-surface);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.wizard-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--brand-accent), var(--color-success));
+  transition: width 0.4s ease;
+  border-radius: 999px;
+}
+.wizard-steps {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  counter-reset: wizard;
+}
+.wizard-step {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--bg-surface);
+  transition: all 0.2s ease;
+}
+.wizard-step.is-next {
+  background: var(--brand-accent-glow, rgba(91,141,239,0.08));
+  border: 1px solid var(--brand-accent, #6B9EFF);
+}
+.wizard-step.done {
+  background: var(--color-success-bg, rgba(34,197,94,0.08));
+}
+.wizard-step-number {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  background: var(--bg-card);
+  border: 1.5px solid var(--border);
+  color: var(--text-muted);
+}
+.wizard-step-number.step-done {
+  background: #22c55e;
+  border-color: #22c55e;
+  color: white;
+}
+.wizard-step-body {
+  flex: 1;
+  font-size: 13px;
+}
+.wizard-step-body strong {
+  display: block;
+  margin-bottom: 1px;
+  color: var(--text-primary);
+}
+.wizard-step-body p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.wizard-done-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #22c55e;
+  padding: 4px 10px;
+}
+
+/* Pulse animation on the "Do this next" button */
+.wizard-pulse {
+  animation: wizardPulse 2s ease-in-out infinite;
+}
+@keyframes wizardPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(107,158,255,0.4); }
+  50% { box-shadow: 0 0 0 6px rgba(107,158,255,0); }
+}
+
+/* ── Outbound Accordion ───────────────────────────────────────── */
+.outbound-accordion {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.outbound-accordion-trigger {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  list-style: none;
+}
+.outbound-accordion-trigger::-webkit-details-marker { display: none; }
+.outbound-accordion-trigger::before {
+  content: '▸';
+  font-size: 12px;
+  transition: transform 0.2s;
+  color: var(--text-muted);
+}
+details[open] > .outbound-accordion-trigger::before {
+  transform: rotate(90deg);
+}
+.outbound-accordion-body {
+  padding: 0 20px 20px;
+}
+
+/* ── Lead Scoring Explainer ───────────────────────────────────── */
+.scoring-explainer {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  margin-bottom: 20px;
+  overflow: hidden;
+}
+.scoring-explainer-trigger {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 18px;
+  cursor: pointer;
+  list-style: none;
+}
+.scoring-explainer-trigger::-webkit-details-marker { display: none; }
+.scoring-explainer-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.scoring-explainer-body {
+  padding: 0 18px 18px;
+}
+.scoring-signals-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 8px;
+}
+.scoring-signal {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--bg-surface);
+  border-radius: 8px;
+  border-left: 3px solid var(--border);
+}
+.scoring-signal-pts {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+  min-width: 30px;
+}
+.scoring-signal strong {
+  display: block;
+  font-size: 13px;
+  color: var(--text-primary);
+  margin-bottom: 1px;
+}
+.scoring-signal p {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* ── Call Detail — Lead Score Circle ──────────────────────────── */
+.lead-score-circle {
+  width: 42px;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  font-size: 16px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.score-hot {
+  background: rgba(34,197,94,0.15);
+  color: #22c55e;
+  border: 1.5px solid rgba(34,197,94,0.3);
+}
+.score-warm {
+  background: rgba(245,158,11,0.12);
+  color: #d97706;
+  border: 1.5px solid rgba(245,158,11,0.2);
+}
+
+/* Signal chips in call detail */
+.signal-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  text-transform: capitalize;
+}
+.signal-pts {
+  font-weight: 700;
+  color: var(--brand-accent, #6B9EFF);
+  font-size: 10px;
+}
+
+/* Analysis chips in call detail */
+.analysis-chip {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px;
+  background: var(--bg-surface);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+.call-detail-section {
+  /* separator */
+}</style>
+
