@@ -299,6 +299,7 @@ GOOGLE_OAUTH_CLIENT_SECRET = env("GOOGLE_OAUTH_CLIENT_SECRET", default="")
 SENTRY_DSN = env("SENTRY_DSN", default="")
 DATAFORSEO_LOGIN = env("DATAFORSEO_LOGIN", default="")
 DATAFORSEO_PASSWORD = env("DATAFORSEO_PASSWORD", default="")
+X_BEARER_TOKEN = env("X_BEARER_TOKEN", default="")  # X (Twitter) API for trending topics
 
 # ── OpenClaw AI Agent ──
 OPENCLAW_GATEWAY_URL = env("OPENCLAW_GATEWAY_URL", default="")

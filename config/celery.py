@@ -26,6 +26,9 @@ app.conf.task_routes = {
     # AI / LLM
     "apps.llm_ranking.tasks.*": {"queue": "ai"},
     "apps.voice_agent.tasks.*": {"queue": "ai"},
+    # Analytics scan + trend tasks (hit external APIs, can be slow)
+    "apps.analytics.tasks.execute_keyword_scan": {"queue": "ai"},
+    "apps.analytics.tasks.fetch_platform_trends": {"queue": "ai"},
 }
 
 app.conf.beat_schedule = {
@@ -78,5 +81,18 @@ app.conf.beat_schedule = {
     "voice-reconcile-monthly-usage": {
         "task": "apps.voice_agent.tasks.reconcile_monthly_usage",
         "schedule": crontab(minute=30, hour=3),  # 3:30 AM daily
+    },
+    # ── Keyword Intelligence ──
+    "keyword-auto-scan-dispatcher": {
+        "task": "apps.analytics.tasks.run_auto_keyword_scans",
+        "schedule": crontab(minute="*/15"),  # Every 15 min — checks next_scan_at
+    },
+    "keyword-alert-check": {
+        "task": "apps.analytics.tasks.check_keyword_alerts",
+        "schedule": crontab(minute=0),  # Every hour
+    },
+    "platform-trend-fetch": {
+        "task": "apps.analytics.tasks.fetch_platform_trends",
+        "schedule": crontab(minute=0, hour="*/6"),  # Every 6 hours
     },
 }
