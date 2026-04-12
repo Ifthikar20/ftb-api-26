@@ -28,6 +28,7 @@ PLAN_LIMITS = {
         "ai_credits_monthly": 100,
         "integrations": 2,
         "competitors": 5,
+        "voice_minutes_monthly": 100,
         "pipeline_builder": True,
         "trend_intelligence": True,
         "sso": False,
@@ -51,6 +52,7 @@ PLAN_LIMITS = {
         "ai_credits_monthly": -1,  # unlimited
         "integrations": -1,
         "competitors": -1,
+        "voice_minutes_monthly": -1,  # unlimited
         "pipeline_builder": True,
         "trend_intelligence": True,
         "sso": True,

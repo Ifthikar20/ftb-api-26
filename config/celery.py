@@ -66,4 +66,17 @@ app.conf.beat_schedule = {
         "task": "core.tasks.check_encryption_key_rotation",
         "schedule": crontab(minute=0, hour=0, day_of_month=1),
     },
+    # ── Voice Agent ──
+    "voice-check-due-reminders": {
+        "task": "apps.voice_agent.tasks.check_due_reminders",
+        "schedule": crontab(minute="*/5"),
+    },
+    "voice-queue-health-check": {
+        "task": "apps.voice_agent.tasks.queue_health_check",
+        "schedule": crontab(minute="*/2"),
+    },
+    "voice-reconcile-monthly-usage": {
+        "task": "apps.voice_agent.tasks.reconcile_monthly_usage",
+        "schedule": crontab(minute=30, hour=3),  # 3:30 AM daily
+    },
 }

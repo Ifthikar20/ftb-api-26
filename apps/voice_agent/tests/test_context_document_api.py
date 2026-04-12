@@ -27,13 +27,7 @@ def other_user(db, django_user_model):
 
 @pytest.fixture
 def website(db, user):
-    site = Website.objects.create(name="Acme", domain="acme.test")
-    # The codebase resolves website ownership through WebsiteService.get_for_user.
-    # If the project model has a different ownership relation, this fixture may
-    # need to be adapted to whatever the test suite uses elsewhere.
-    if hasattr(site, "owner_id"):
-        site.owner = user
-        site.save()
+    site = Website.objects.create(name="Acme", url="https://acme.test", user=user)
     return site
 
 

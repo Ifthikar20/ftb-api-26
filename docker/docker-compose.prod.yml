@@ -117,7 +117,7 @@ services:
         celery -A config.celery worker
           --loglevel=info
           --concurrency=2
-          --queues=default,high,low &
+          --queues=default,high,low,ai,integrations,webhooks &
         celery -A config.celery beat
           --loglevel=info
           --scheduler=django_celery_beat.schedulers:DatabaseScheduler &

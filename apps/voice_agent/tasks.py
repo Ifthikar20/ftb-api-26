@@ -155,6 +155,20 @@ def place_outbound_call(self, target_id: str) -> dict:
         logger.info("place_outbound_call_dnc", extra={"target_id": target_id})
         return {"status": "dnc"}
 
+    # Usage limit enforcement — stop before placing if the plan cap is hit.
+    try:
+        from apps.voice_agent.services.usage_service import enforce_usage_limit
+        enforce_usage_limit(campaign.website_id)
+    except Exception as exc:  # noqa: BLE001
+        target.status = CallTarget.STATUS_FAILED
+        target.last_error = str(exc)[:500]
+        target.save(update_fields=["status", "last_error", "updated_at"])
+        logger.warning(
+            "place_outbound_call_usage_limit",
+            extra={"target_id": target_id, "error": str(exc)},
+        )
+        return {"status": "usage_limit_exceeded"}
+
     if campaign.status != campaign.STATUS_RUNNING:
         target.status = CallTarget.STATUS_PENDING
         target.save(update_fields=["status", "updated_at"])
@@ -438,3 +452,102 @@ def check_due_reminders():
 
     if due.exists():
         logger.info("due_reminders_dispatched", extra={"count": due.count()})
+
+
+@shared_task(name="apps.voice_agent.tasks.queue_health_check")
+def queue_health_check() -> dict:
+    """Monitor the ``ai`` Celery queue depth and report metrics.
+
+    Returns a dict with queue depth and a list of any stalled tasks.
+    Wire the return value into your monitoring stack (Sentry, Datadog, etc.)
+    or have a periodic check fire an alert when ``depth > threshold``.
+    """
+    from django.core.cache import cache
+
+    result = {"status": "ok", "queue": "ai", "depth": 0, "stalled_tasks": []}
+
+    try:
+        from config.celery import app as celery_app
+
+        # Inspect active + reserved tasks on the `ai` queue
+        inspector = celery_app.control.inspect()
+        active = inspector.active() or {}
+        reserved = inspector.reserved() or {}
+
+        total_active = sum(len(tasks) for tasks in active.values())
+        total_reserved = sum(len(tasks) for tasks in reserved.values())
+        depth = total_active + total_reserved
+        result["depth"] = depth
+
+        # Check for stalled extraction tasks (running > 5 minutes)
+        import time
+
+        for worker, tasks in active.items():
+            for task in tasks:
+                # livekit-agents tasks may run for entire call duration — skip
+                if "place_outbound_call" in task.get("name", ""):
+                    continue
+                started = task.get("time_start", 0)
+                if started and (time.time() - started) > 300:
+                    result["stalled_tasks"].append({
+                        "id": task.get("id", ""),
+                        "name": task.get("name", ""),
+                        "worker": worker,
+                        "running_seconds": int(time.time() - started),
+                    })
+
+        # Cache the result for dashboard polling
+        cache.set("voice_agent:queue_health", result, timeout=120)
+
+        if depth > 50:
+            logger.warning(
+                "voice_queue_depth_high",
+                extra={"depth": depth, "stalled": len(result["stalled_tasks"])},
+            )
+        if result["stalled_tasks"]:
+            result["status"] = "degraded"
+            logger.warning(
+                "voice_queue_stalled_tasks",
+                extra={"stalled": result["stalled_tasks"]},
+            )
+
+    except Exception as e:  # noqa: BLE001
+        logger.warning("queue_health_check_failed", extra={"error": str(e)})
+        result["status"] = "error"
+        result["error"] = str(e)
+
+    return result
+
+
+@shared_task(name="apps.voice_agent.tasks.reconcile_monthly_usage")
+def reconcile_monthly_usage() -> dict:
+    """Nightly reconciler: rebuild VoiceUsageMonthly from CallLog.
+
+    If a ``record_call`` increment was lost (worker crash, Redis outage),
+    this task recovers the correct totals. Idempotent — safe to run repeatedly.
+    """
+    from apps.voice_agent.services import usage_service
+    from apps.websites.models import Website
+
+    ym = timezone.now().strftime("%Y-%m")
+    websites = (
+        Website.objects
+        .filter(call_logs__created_at__year=int(ym[:4]), call_logs__created_at__month=int(ym[5:]))
+        .distinct()
+        .values_list("id", flat=True)
+    )
+
+    count = 0
+    for wid in websites:
+        try:
+            usage_service.rebuild_month(wid, ym)
+            count += 1
+        except Exception as e:  # noqa: BLE001
+            logger.warning(
+                "reconcile_monthly_usage_failed",
+                extra={"website_id": str(wid), "error": str(e)},
+            )
+
+    logger.info("reconcile_monthly_usage_done", extra={"month": ym, "websites": count})
+    return {"month": ym, "websites_reconciled": count}
+

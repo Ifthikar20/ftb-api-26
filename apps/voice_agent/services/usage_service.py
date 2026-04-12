@@ -277,3 +277,79 @@ def models_q_inbound():
 def models_q_outbound():
     from django.db.models import Q
     return Q(direction=CallLog.DIRECTION_OUTBOUND)
+
+
+# ── Plan-based usage limit enforcement ────────────────────────────────────────
+
+
+class UsageLimitExceeded(Exception):
+    """Raised when a website has exhausted its plan's voice minute allowance."""
+
+    def __init__(self, used: int, limit: int):
+        self.used = used
+        self.limit = limit
+        super().__init__(
+            f"Voice minute limit reached: {used}/{limit} minutes used this period."
+        )
+
+
+def get_plan_voice_limit(website_id) -> int | None:
+    """Return the voice-minute cap for the website's current plan.
+
+    Returns ``None`` when the plan has unlimited minutes (``-1``), or when
+    no subscription can be found (no gate in that case).
+    """
+    try:
+        from apps.billing.models import Subscription
+        from core.utils.constants import PLAN_LIMITS
+
+        sub = Subscription.objects.select_related("user").filter(
+            user__websites__id=website_id,
+            status__in=["active", "trialing"],
+        ).first()
+        if not sub:
+            return None
+        limits = PLAN_LIMITS.get(sub.plan, {})
+        cap = limits.get("voice_minutes_monthly", None)
+        if cap is None or cap == -1:
+            return None
+        return int(cap)
+    except Exception:  # noqa: BLE001
+        logger.warning("get_plan_voice_limit_error", extra={"website_id": str(website_id)})
+        return None
+
+
+def check_usage_limit(website_id) -> dict:
+    """Check whether the website is within its voice-minute allowance.
+
+    Returns a dict with ``allowed``, ``used``, ``limit``, and ``pct``.
+    Always returns ``allowed=True`` when no limit applies.
+    """
+    limit = get_plan_voice_limit(website_id)
+    if limit is None:
+        return {"allowed": True, "used": 0, "limit": None, "pct": 0.0}
+
+    ym = _year_month(timezone.now())
+    row = VoiceUsageMonthly.objects.filter(
+        website_id=website_id, year_month=ym
+    ).first()
+    used = row.billable_minutes if row else 0
+    pct = round(min(100.0, (used / limit) * 100), 1) if limit else 0.0
+    return {
+        "allowed": used < limit,
+        "used": used,
+        "limit": limit,
+        "pct": pct,
+    }
+
+
+def enforce_usage_limit(website_id):
+    """Raise ``UsageLimitExceeded`` if the website has exhausted its allowance.
+
+    Call this before placing an outbound call (in ``place_outbound_call``) or
+    before creating a web call session.
+    """
+    result = check_usage_limit(website_id)
+    if not result["allowed"]:
+        raise UsageLimitExceeded(used=result["used"], limit=result["limit"])
+

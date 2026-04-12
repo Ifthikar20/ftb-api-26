@@ -182,6 +182,7 @@ class TestCalendar:
         res = client.post(
             _url(website.id, "calendar/"),
             {
+                "title": "Meeting with Bob",
                 "attendee_name": "Bob",
                 "attendee_phone": "+15559876543",
                 "start_time": start.isoformat(),
@@ -431,3 +432,92 @@ class TestOnboarding:
         assert res.status_code == 200
         assert "inbound" in res.data
         assert "outbound" in res.data
+
+
+# ── IDOR Prevention ─────────────────────────────────────────────────────────
+
+
+class TestIDORPrevention:
+    """Verify that a user CANNOT access another tenant's data by guessing UUIDs.
+
+    These tests create a second user + website (the "rival") and ensure that
+    the first user's authenticated client gets 404 when trying to access
+    rival resources — never a 200 that leaks data.
+    """
+
+    @pytest.fixture
+    def rival(self, db, django_user_model):
+        rival_user = django_user_model.objects.create_user(
+            email="rival@evil.test", password="hacker123!"
+        )
+        rival_site = Website.objects.create(
+            name="Rival Corp", url="https://rival.test", user=rival_user
+        )
+        return rival_user, rival_site
+
+    def test_cannot_list_rival_calls(self, client, rival):
+        _, rival_site = rival
+        res = client.get(_url(rival_site.id, "calls/"))
+        assert res.status_code == 404
+
+    def test_cannot_read_rival_call_detail(self, client, rival):
+        _, rival_site = rival
+        call = CallLog.objects.create(
+            website=rival_site,
+            caller_phone="+19998887777",
+            status=CallLog.STATUS_COMPLETED,
+        )
+        res = client.get(_url(rival_site.id, f"calls/{call.id}/"))
+        assert res.status_code == 404
+
+    def test_cannot_list_rival_todos(self, client, rival):
+        _, rival_site = rival
+        res = client.get(_url(rival_site.id, "todos/"))
+        assert res.status_code == 404
+
+    def test_cannot_read_rival_calendar(self, client, rival):
+        _, rival_site = rival
+        res = client.get(_url(rival_site.id, "calendar/"))
+        assert res.status_code == 404
+
+    def test_cannot_read_rival_reminders(self, client, rival):
+        _, rival_site = rival
+        res = client.get(_url(rival_site.id, "reminders/"))
+        assert res.status_code == 404
+
+    def test_cannot_read_rival_usage(self, client, rival):
+        _, rival_site = rival
+        res = client.get(_url(rival_site.id, "usage/"))
+        assert res.status_code == 404
+
+    def test_cannot_read_rival_config(self, client, rival):
+        _, rival_site = rival
+        res = client.get(_url(rival_site.id, "config/"))
+        assert res.status_code == 404
+
+    def test_cannot_dismiss_rival_lead(self, client, website, rival):
+        _, rival_site = rival
+        call = CallLog.objects.create(
+            website=rival_site,
+            caller_phone="+19998887777",
+            status=CallLog.STATUS_COMPLETED,
+            is_possible_lead=True,
+            lead_score=80,
+        )
+        # Use rival's website_id — should 404 on ownership check
+        res = client.post(
+            _url(rival_site.id, f"lead-detection/{call.id}/"),
+            {"action": "dismiss"},
+            format="json",
+        )
+        assert res.status_code == 404
+
+    def test_cannot_read_rival_phone_numbers(self, client, rival):
+        _, rival_site = rival
+        PhoneNumber.objects.create(
+            website=rival_site, number="+15550009999",
+            provider="telnyx", is_verified=True,
+        )
+        res = client.get(_url(rival_site.id, "phone-numbers/"))
+        assert res.status_code == 404
+

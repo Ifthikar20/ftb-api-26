@@ -12,8 +12,14 @@ from apps.websites.models import Website
 
 
 @pytest.fixture
-def website(db):
-    return Website.objects.create(name="Acme", domain="acme.test")
+def user(db):
+    from apps.accounts.models import User
+    return User.objects.create_user(email="pb@test.com", password="x", full_name="PB")
+
+
+@pytest.fixture
+def website(db, user):
+    return Website.objects.create(name="Acme", url="https://acme.test", user=user)
 
 
 @pytest.fixture

@@ -152,6 +152,16 @@ class WebCallView(TenantScopedAPIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        # Enforce plan-based voice minute limits
+        from apps.voice_agent.services.usage_service import UsageLimitExceeded, enforce_usage_limit
+        try:
+            enforce_usage_limit(website.id)
+        except UsageLimitExceeded as e:
+            return Response(
+                {"error": str(e), "code": "usage_limit_exceeded"},
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+
         backend = _get_backend()
 
         if backend in ("livekit", "selfhosted"):
@@ -422,11 +432,13 @@ class CallExtractionView(TenantScopedAPIView):
     """Get the AI extraction results for a specific call."""
 
     def get(self, request, website_id, call_id):
-        self.get_website(website_id)
+        website = self.get_website(website_id)
         from apps.voice_agent.models import CallExtraction
 
         try:
-            extraction = CallExtraction.objects.get(call_log_id=call_id)
+            extraction = CallExtraction.objects.get(
+                call_log_id=call_id, call_log__website=website
+            )
         except CallExtraction.DoesNotExist:
             raise ResourceNotFound("Extraction not yet available for this call.") from None
         return Response(CallExtractionSerializer(extraction).data)
@@ -559,6 +571,29 @@ class PhoneNumberListView(TenantScopedAPIView):
         instance = serializer.save(
             website=website, is_verified=True, verified_at=_tz.now()
         )
+
+        # Auto-create LiveKit SIP inbound trunk so calls route to the agent.
+        # Without this the PhoneNumber row exists but Telnyx has nowhere to
+        # forward inbound calls — they'd ring forever or hit a dead end.
+        if instance.forwarded_to_agent:
+            try:
+                from apps.voice_agent.services.livekit_service import LiveKitService
+
+                LiveKitService.create_sip_trunk(
+                    phone_number=instance.number,
+                    website_id=str(website.id),
+                    provider=instance.provider,
+                )
+            except Exception as e:
+                logger.warning(
+                    "auto_sip_trunk_creation_failed",
+                    extra={
+                        "phone": instance.number,
+                        "website_id": str(website.id),
+                        "error": str(e),
+                    },
+                )
+
         return Response(PhoneNumberSerializer(instance).data, status=status.HTTP_201_CREATED)
 
 
@@ -1281,18 +1316,13 @@ class VoiceUsageView(TenantScopedAPIView):
 
     @staticmethod
     def _plan_limit_for(website_id):
-        """Pull the per-plan voice minutes cap, if billing is wired up.
+        """Pull the per-plan voice minutes cap from the usage service.
 
         Returns ``None`` if no limit is configured — the UI then hides the
-        progress bar instead of showing a misleading "0%". When you wire
-        Stripe / billing, replace this with your real per-plan lookup.
+        progress bar instead of showing a misleading "0%".
         """
-        try:
-            from apps.billing.services.plan_service import get_plan_limit  # type: ignore
-
-            return get_plan_limit(website_id=website_id, feature="voice_minutes")
-        except Exception:  # noqa: BLE001 — billing module may not exist yet
-            return getattr(__import__("django.conf").conf.settings, "VOICE_DEFAULT_PLAN_MINUTES", None)
+        from apps.voice_agent.services.usage_service import get_plan_voice_limit
+        return get_plan_voice_limit(website_id)
 
 
 # ── Lead Detection (transcript-based) ────────────────────────────────────────

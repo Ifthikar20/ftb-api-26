@@ -130,10 +130,10 @@ def test_extraction_creates_records(call_with_transcript, monkeypatch):
     todos = CallTodo.objects.filter(call_log=call_with_transcript)
     assert todos.count() == 4
 
-    # Verify the high-priority action item
+    # Verify the high-priority todo (could be action item OR follow-up)
     high = todos.filter(priority="high").first()
     assert high is not None
-    assert "pricing sheet" in high.description
+    assert "pricing" in high.description.lower()
 
     # Verify the follow-up todo
     followup = todos.filter(description__startswith="Follow-up:").first()

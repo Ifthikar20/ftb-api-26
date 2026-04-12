@@ -58,3 +58,5 @@ htmlcov/
 node_modules/
 package-lock.json
 .claude/worktrees/
+.env.example
+.env.prod.example

@@ -25,4 +25,4 @@ USER appuser
 CMD ["celery", "-A", "config.celery", "worker", \
      "--loglevel=info", \
      "--concurrency=4", \
-     "--queues=default,high,low"]
+     "--queues=default,high,low,ai,integrations,webhooks"]
