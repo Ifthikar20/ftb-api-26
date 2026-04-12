@@ -4,8 +4,13 @@ Email campaign service — create, send, and track campaigns.
 Sending strategy:
   1. If Mailchimp is configured for the website → sync via Mailchimp API.
   2. Otherwise → send directly via SendGrid (existing EmailService).
+
+A/B testing:
+  When is_ab_test=True, recipients are randomly split between
+  variant A (subject/body) and variant B (subject_b/body_b).
 """
 import logging
+import random
 
 from django.utils import timezone
 
@@ -100,17 +105,32 @@ class CampaignService:
 
         sent = 0
         failed = 0
+        lead_list = list(leads)
 
-        for lead in leads:
+        # A/B split: randomly assign variants
+        if campaign.is_ab_test and campaign.subject_b:
+            random.shuffle(lead_list)
+            split_point = int(len(lead_list) * campaign.ab_split_ratio / 100)
+            variant_map = {}
+            for i, lead in enumerate(lead_list):
+                variant_map[lead.pk] = CampaignRecipient.VARIANT_A if i < split_point else CampaignRecipient.VARIANT_B
+        else:
+            variant_map = {lead.pk: CampaignRecipient.VARIANT_A for lead in lead_list}
+
+        for lead in lead_list:
+            variant = variant_map[lead.pk]
+            subject = campaign.subject if variant == CampaignRecipient.VARIANT_A else (campaign.subject_b or campaign.subject)
+            body = campaign.body if variant == CampaignRecipient.VARIANT_A else (campaign.body_b or campaign.body)
+
             recipient, _ = CampaignRecipient.objects.get_or_create(
                 campaign=campaign,
                 lead=lead,
-                defaults={"status": CampaignRecipient.STATUS_QUEUED},
+                defaults={"status": CampaignRecipient.STATUS_QUEUED, "variant": variant},
             )
             success = EmailService.send_email(
                 to=lead.email,
-                subject=campaign.subject,
-                html_content=campaign.body,
+                subject=subject,
+                html_content=body,
             )
             if success:
                 recipient.status = CampaignRecipient.STATUS_SENT
@@ -119,7 +139,7 @@ class CampaignService:
             else:
                 recipient.status = CampaignRecipient.STATUS_FAILED
                 failed += 1
-            recipient.save(update_fields=["status", "sent_at"])
+            recipient.save(update_fields=["status", "sent_at", "variant"])
 
         campaign.status = EmailCampaign.STATUS_SENT if sent > 0 else EmailCampaign.STATUS_FAILED
         campaign.sent_at = timezone.now()
@@ -132,7 +152,7 @@ class CampaignService:
     @staticmethod
     def get_stats(*, campaign: EmailCampaign) -> dict:
         recipients = campaign.recipients.all()
-        return {
+        stats = {
             "recipient_count": campaign.recipient_count,
             "open_count": campaign.open_count,
             "click_count": campaign.click_count,
@@ -144,6 +164,25 @@ class CampaignService:
             "bounced": recipients.filter(status=CampaignRecipient.STATUS_BOUNCED).count(),
             "failed": recipients.filter(status=CampaignRecipient.STATUS_FAILED).count(),
         }
+
+        # A/B testing breakdown
+        if campaign.is_ab_test:
+            for variant in (CampaignRecipient.VARIANT_A, CampaignRecipient.VARIANT_B):
+                v_recipients = recipients.filter(variant=variant)
+                v_total = v_recipients.count() or 1
+                v_opened = v_recipients.filter(
+                    status__in=[CampaignRecipient.STATUS_OPENED, CampaignRecipient.STATUS_CLICKED]
+                ).count()
+                v_clicked = v_recipients.filter(status=CampaignRecipient.STATUS_CLICKED).count()
+                stats[f"variant_{variant.lower()}"] = {
+                    "recipients": v_recipients.count(),
+                    "opened": v_opened,
+                    "clicked": v_clicked,
+                    "open_rate": round(v_opened / v_total * 100, 1),
+                    "click_rate": round(v_clicked / v_total * 100, 1),
+                }
+
+        return stats
 
     @staticmethod
     def record_open(*, tracking_id: str) -> None:

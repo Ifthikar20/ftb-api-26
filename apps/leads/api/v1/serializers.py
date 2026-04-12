@@ -59,6 +59,7 @@ class EmailCampaignSerializer(serializers.ModelSerializer):
         model = EmailCampaign
         fields = [
             "id", "subject", "body", "status", "segment", "canva_design_url",
+            "is_ab_test", "subject_b", "body_b", "ab_split_ratio",
             "sent_at", "recipient_count", "open_count", "click_count",
             "open_rate", "click_rate", "mailchimp_campaign_id",
             "created_by_name", "created_at", "updated_at",

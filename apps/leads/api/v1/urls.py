@@ -9,11 +9,14 @@ urlpatterns = [
     path("<uuid:website_id>/export/", views.LeadExportView.as_view(), name="lead-export"),
     path("<uuid:website_id>/export-xlsx/", views.LeadExportXlsxView.as_view(), name="lead-export-xlsx"),
     path("<uuid:website_id>/export-drive/", views.LeadExportDriveView.as_view(), name="lead-export-drive"),
+    path("<uuid:website_id>/import/", views.LeadImportView.as_view(), name="lead-import"),
+    path("<uuid:website_id>/dedup/", views.LeadDeduplicationView.as_view(), name="lead-dedup"),
     path("<uuid:website_id>/scoring-config/", views.ScoringConfigView.as_view(), name="lead-scoring-config"),
     path("<uuid:website_id>/segments/", views.LeadSegmentListView.as_view(), name="lead-segment-list"),
     path("<uuid:website_id>/segments/<uuid:segment_id>/", views.LeadSegmentDetailView.as_view(), name="lead-segment-detail"),
     path("<uuid:website_id>/<uuid:lead_id>/", views.LeadDetailView.as_view(), name="lead-detail"),
     path("<uuid:website_id>/<uuid:lead_id>/note/", views.LeadNoteView.as_view(), name="lead-note"),
+    path("<uuid:website_id>/<uuid:lead_id>/timeline/", views.LeadTimelineView.as_view(), name="lead-timeline"),
     path("<uuid:website_id>/ai-search/", views.AILeadFinderView.as_view(), name="lead-ai-search"),
     path("<uuid:website_id>/<uuid:lead_id>/email/", views.LeadEmailView.as_view(), name="lead-email"),
     # Campaigns
@@ -27,3 +30,4 @@ urlpatterns = [
     path("<uuid:website_id>/tracked-links/<uuid:link_id>/", views.TrackedLinkDetailView.as_view(), name="tracked-link-detail"),
     path("<uuid:website_id>/tracked-links/<uuid:link_id>/clicks/", views.TrackedLinkClicksView.as_view(), name="tracked-link-clicks"),
 ]
+

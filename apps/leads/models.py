@@ -112,6 +112,11 @@ class EmailCampaign(TimestampMixin):
         "LeadSegment", null=True, blank=True, on_delete=models.SET_NULL, related_name="campaigns"
     )
     canva_design_url = models.URLField(blank=True)  # Optional Canva design reference
+    # A/B testing
+    is_ab_test = models.BooleanField(default=False)
+    subject_b = models.CharField(max_length=500, blank=True, help_text="Variant B subject line (A/B test)")
+    body_b = models.TextField(blank=True, help_text="Variant B body content (A/B test)")
+    ab_split_ratio = models.IntegerField(default=50, help_text="Percentage of recipients assigned to variant A (rest get B)")
     sent_at = models.DateTimeField(null=True, blank=True)
     recipient_count = models.IntegerField(default=0)
     open_count = models.IntegerField(default=0)
@@ -157,9 +162,14 @@ class CampaignRecipient(TimestampMixin):
         (STATUS_FAILED, "Failed"),
     ]
 
+    VARIANT_A = "A"
+    VARIANT_B = "B"
+    VARIANT_CHOICES = [(VARIANT_A, "Variant A"), (VARIANT_B, "Variant B")]
+
     campaign = models.ForeignKey(EmailCampaign, on_delete=models.CASCADE, related_name="recipients")
     lead = models.ForeignKey(Lead, on_delete=models.CASCADE, related_name="campaign_receipts")
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_QUEUED, db_index=True)
+    variant = models.CharField(max_length=1, choices=VARIANT_CHOICES, default=VARIANT_A)
     tracking_id = models.UUIDField(default=uuid.uuid4, unique=True, db_index=True)
     sent_at = models.DateTimeField(null=True, blank=True)
     opened_at = models.DateTimeField(null=True, blank=True)

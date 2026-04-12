@@ -466,3 +466,88 @@ class LeadExportDriveView(TenantScopedAPIView):
             return Response({"error": str(e)}, status=status.HTTP_502_BAD_GATEWAY)
 
         return Response(result)
+
+
+# ── Deduplication ─────────────────────────────────────────────────────────────
+
+class LeadDeduplicationView(TenantScopedAPIView):
+    """Find and merge duplicate leads within a website."""
+
+    def get(self, request, website_id):
+        """Return clusters of duplicate leads (grouped by email)."""
+        self.get_website(website_id)
+        from apps.leads.services.deduplication_service import DeduplicationService
+
+        clusters = DeduplicationService.find_duplicates(website_id=website_id)
+        return Response({
+            "clusters": clusters,
+            "total_clusters": len(clusters),
+        })
+
+    def post(self, request, website_id):
+        """Merge duplicates. Body: {primary_lead_id, duplicate_lead_ids} or {auto: true}."""
+        self.get_website(website_id)
+        from apps.leads.services.deduplication_service import DeduplicationService
+
+        if request.data.get("auto"):
+            result = DeduplicationService.auto_dedup(
+                website_id=website_id, user=request.user
+            )
+            return Response(result)
+
+        primary_id = request.data.get("primary_lead_id")
+        dup_ids = request.data.get("duplicate_lead_ids", [])
+        if not primary_id or not dup_ids:
+            return Response(
+                {"error": "primary_lead_id and duplicate_lead_ids are required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        result = DeduplicationService.merge(
+            primary_lead_id=primary_id,
+            duplicate_lead_ids=dup_ids,
+            user=request.user,
+        )
+        return Response(result)
+
+
+# ── CSV Import ────────────────────────────────────────────────────────────────
+
+class LeadImportView(TenantScopedAPIView):
+    """Import leads from a CSV file."""
+
+    def post(self, request, website_id):
+        self.get_website(website_id)
+        csv_file = request.FILES.get("file")
+        if not csv_file:
+            return Response(
+                {"error": "A CSV file is required. Upload as 'file' in multipart/form-data."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        from apps.leads.services.import_service import LeadImportService
+
+        result = LeadImportService.import_csv(
+            website_id=website_id,
+            csv_file=csv_file,
+            user=request.user,
+        )
+        return Response(result, status=status.HTTP_201_CREATED)
+
+
+# ── Activity Timeline ─────────────────────────────────────────────────────────
+
+class LeadTimelineView(TenantScopedAPIView):
+    """Unified chronological timeline of all activity for a lead."""
+
+    def get(self, request, website_id, lead_id):
+        self.get_website(website_id)
+        lead = LeadService.get_lead(website_id=website_id, lead_id=lead_id)
+
+        limit = int(request.query_params.get("limit", 50))
+        offset = int(request.query_params.get("offset", 0))
+
+        from apps.leads.services.timeline_service import TimelineService
+
+        timeline = TimelineService.get_timeline(lead=lead, limit=limit, offset=offset)
+        return Response(timeline)

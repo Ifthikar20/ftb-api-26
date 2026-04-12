@@ -113,10 +113,8 @@ class AILeadFinder:
                     context += f"- {r['title']} | {r['link']} | {r['snippet']}\n"
                 context += "\nParse these into structured lead profiles and score them.\n"
             else:
-                context = (
-                    "No search results available. Generate realistic lead profiles "
-                    "that match the criteria. These are AI-suggested leads.\n"
-                )
+                # No search results — do NOT fabricate leads
+                return []
 
             resp = client.messages.create(
                 model="claude-sonnet-4-20250514",
