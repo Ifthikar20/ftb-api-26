@@ -56,40 +56,8 @@
       <!-- ═══════════ TAB 1: Overview ═══════════ -->
       <div v-show="activeTab === 'overview' && !noData" @click.self="showOverviewPicker = false">
 
-        <!-- Vendor Integration Bar -->
-        <div class="vendor-bar">
-          <div class="vendor-bar-label">Integrations</div>
-          <div class="vendor-icons">
-            <div class="vendor-chip" :class="{ connected: integrationStatus.pixel }">
-              <div class="vendor-icon-wrap" style="background: #6366f1">
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#fff" stroke-width="1.5"><rect x="2" y="2" width="12" height="12" rx="2"/><path d="M6 6l4 4M10 6l-4 4"/></svg>
-              </div>
-              <span class="vendor-name">FetchBot Pixel</span>
-              <span class="vendor-dot" :class="integrationStatus.pixel ? 'dot-on' : 'dot-off'"></span>
-            </div>
-            <div class="vendor-chip" :class="{ connected: integrationStatus.ga }">
-              <div class="vendor-icon-wrap" style="background: #F5A623">
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#fff" stroke-width="1.5"><rect x="2" y="9" width="3" height="5" rx="1"/><rect x="6.5" y="5" width="3" height="9" rx="1"/><rect x="11" y="2" width="3" height="12" rx="1"/></svg>
-              </div>
-              <span class="vendor-name">Google Analytics</span>
-              <span class="vendor-dot" :class="integrationStatus.ga ? 'dot-on' : 'dot-off'"></span>
-            </div>
-            <div class="vendor-chip" :class="{ connected: integrationStatus.gsc }">
-              <div class="vendor-icon-wrap" style="background: #4285F4">
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#fff" stroke-width="1.5"><circle cx="7" cy="7" r="4"/><path d="M10 10l4 4"/></svg>
-              </div>
-              <span class="vendor-name">Search Console</span>
-              <span class="vendor-dot" :class="integrationStatus.gsc ? 'dot-on' : 'dot-off'"></span>
-            </div>
-            <div class="vendor-chip" :class="{ connected: integrationStatus.facebook }">
-              <div class="vendor-icon-wrap" style="background: #1877F2">
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="#fff"><path d="M9.5 3H11V1h-1.5C8.1 1 7 2.1 7 3.5V5H5v2h2v7h2V7h1.5L11 5H9V3.5c0-.3.2-.5.5-.5z"/></svg>
-              </div>
-              <span class="vendor-name">Facebook Ads</span>
-              <span class="vendor-dot" :class="integrationStatus.facebook ? 'dot-on' : 'dot-off'"></span>
-            </div>
-          </div>
-        </div>
+
+
 
         <!-- KPI Cards -->
         <div class="kpi-grid">

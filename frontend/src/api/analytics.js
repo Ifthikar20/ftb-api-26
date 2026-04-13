@@ -33,7 +33,7 @@ export default {
     visitorTimeline: (wid, vid) => api.get(`/analytics/${wid}/visitors/${vid}/timeline/`),
 
     // AI Insights
-    insights: (wid) => api.get(`/analytics/${wid}/insights/`),
+    insights: (wid, params) => api.get(`/analytics/${wid}/insights/`, { params }),
 
     // Live
     liveEvents: (wid) => api.get(`/analytics/${wid}/live/`),

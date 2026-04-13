@@ -9,4 +9,8 @@ urlpatterns = [
     path("preferences/", views.NotificationPreferencesView.as_view(), name="notification-preferences"),
     path("<uuid:pk>/read/", views.NotificationReadView.as_view(), name="notification-read"),
     path("<uuid:pk>/", views.NotificationDetailView.as_view(), name="notification-detail"),
+
+    # Integration connections (Slack / Discord / Telegram)
+    path("integrations/", views.IntegrationConnectionListView.as_view(), name="integration-list"),
+    path("integrations/<uuid:pk>/", views.IntegrationConnectionDetailView.as_view(), name="integration-detail"),
 ]

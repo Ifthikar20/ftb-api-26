@@ -196,6 +196,7 @@ const iconMap = {
   campaign_runner: 'CR',
   competitor_watcher: 'CW',
   anomaly_responder: 'AR',
+  seo_keyword_optimizer: 'SEO',
 }
 
 function getIcon(type) { return iconMap[type] || 'AI' }

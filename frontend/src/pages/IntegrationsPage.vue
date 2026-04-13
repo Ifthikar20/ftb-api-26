@@ -253,8 +253,9 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import BaseModal from '@/components/ui/BaseModal.vue'
+import integrationsApi from '@/api/integrations'
 
 const scheduleTime = ref('09:00')
 const showConnectModal = ref(false)
@@ -264,6 +265,7 @@ const channelName = ref('')
 const connecting = ref(false)
 const showSuccessToast = ref(false)
 const successMessage = ref('')
+const loading = ref(true)
 
 const formattedTime = computed(() => {
   const [h, m] = scheduleTime.value.split(':').map(Number)
@@ -290,6 +292,7 @@ const integrations = reactive([
     bgColor: 'linear-gradient(135deg, #4A154B15, #E01E5A08)',
     features: ['Daily growth summaries', 'Hot lead alerts in real-time', 'Trend intelligence weekly digest', 'Custom channel routing'],
     connected: false,
+    connectionId: null,
     icon: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M14.5 2a2.5 2.5 0 0 0 0 5H17V4.5A2.5 2.5 0 0 0 14.5 2z" fill="#E01E5A"/><path d="M2 14.5a2.5 2.5 0 0 0 5 0V12H4.5A2.5 2.5 0 0 0 2 14.5z" fill="#36C5F0"/><path d="M9.5 22a2.5 2.5 0 0 0 0-5H7v2.5A2.5 2.5 0 0 0 9.5 22z" fill="#2EB67D"/><path d="M22 9.5a2.5 2.5 0 0 0-5 0V12h2.5A2.5 2.5 0 0 0 22 9.5z" fill="#ECB22E"/></svg>',
   },
   {
@@ -299,6 +302,7 @@ const integrations = reactive([
     bgColor: 'linear-gradient(135deg, #5865F215, #5865F208)',
     features: ['Rich embed messages', 'Weekly performance summaries', 'Bot channel with interactive commands', 'Mention roles on key alerts'],
     connected: false,
+    connectionId: null,
     icon: '<svg width="24" height="24" viewBox="0 0 24 24" fill="#5865F2"><path d="M20.3 4.1a19.4 19.4 0 0 0-4.8-1.5 14.5 14.5 0 0 0-.6 1.3 18 18 0 0 0-5.4 0c-.2-.5-.4-.9-.6-1.3A19.3 19.3 0 0 0 4 4.1 20 20 0 0 0 .5 17.7a19.5 19.5 0 0 0 6 3 14.6 14.6 0 0 0 1.3-2 12.6 12.6 0 0 1-2-.9l.5-.4c3.8 1.8 8 1.8 11.8 0 .2.1.3.3.5.4-.6.4-1.3.7-2 .9.4.7.8 1.4 1.3 2a19.5 19.5 0 0 0 6-3A20 20 0 0 0 20.3 4.1zM8 14.8c-1.2 0-2.2-1.1-2.2-2.4S6.8 10 8 10s2.2 1.1 2.2 2.4S9.2 14.8 8 14.8zm8 0c-1.2 0-2.2-1.1-2.2-2.4S14.8 10 16 10s2.2 1.1 2.2 2.4S17.2 14.8 16 14.8z"/></svg>',
   },
   {
@@ -308,9 +312,33 @@ const integrations = reactive([
     bgColor: 'linear-gradient(135deg, #229ED915, #229ED908)',
     features: ['Instant push notifications', 'Mobile-first growth alerts', 'Reply to get quick analytics', 'Milestone celebrations'],
     connected: false,
+    connectionId: null,
     icon: '<svg width="24" height="24" viewBox="0 0 24 24" fill="#229ED9"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm4.6 6.8l-1.7 7.9c-.1.5-.5.7-.9.4l-2.5-1.8-1.2 1.2c-.1.2-.3.3-.5.3l.2-2.5 4.5-4c.2-.2 0-.3-.3-.1L8.7 13.5l-2.4-.7c-.5-.2-.5-.5.1-.7l9.5-3.7c.4-.1.8.1.7.7z"/></svg>',
   },
 ])
+
+// ── Load saved connections from the API ──
+async function loadConnections() {
+  try {
+    const res = await integrationsApi.list()
+    const saved = res.data?.data || res.data || []
+    for (const conn of saved) {
+      const intg = integrations.find(i => i.id === conn.platform)
+      if (intg) {
+        intg.connected = conn.is_active
+        intg.connectionId = conn.id
+        intg.webhookUrl = conn.webhook_url || ''
+        intg.channelName = conn.channel_name || ''
+      }
+    }
+  } catch (e) {
+    console.warn('Failed to load integrations:', e)
+  } finally {
+    loading.value = false
+  }
+}
+
+onMounted(loadConnections)
 
 function openConnect(intg) {
   activeIntegration.value = intg
@@ -326,8 +354,16 @@ function openSettings(intg) {
   showConnectModal.value = true
 }
 
-function disconnect(intg) {
+async function disconnect(intg) {
+  if (intg.connectionId) {
+    try {
+      await integrationsApi.disconnect(intg.connectionId)
+    } catch (e) {
+      console.error('Disconnect failed:', e)
+    }
+  }
   intg.connected = false
+  intg.connectionId = null
   intg.webhookUrl = ''
   intg.channelName = ''
   showToast(`${intg.name} disconnected`)
@@ -341,106 +377,35 @@ async function confirmConnect() {
   if (!intg) { connecting.value = false; return }
 
   try {
-    // Build test message
-    const now = new Date().toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
-    let sent = false
-
-    if (intg.id === 'slack') {
-      // Slack Incoming Webhook
-      const payload = {
-        text: '📊 *FetchBot Daily Growth Report* — Test Message',
-        blocks: [
-          { type: 'header', text: { type: 'plain_text', text: '📊 FetchBot Daily Growth Report', emoji: true } },
-          { type: 'section', text: { type: 'mrkdwn', text: `*Connected at* ${now}\n\nYou'll receive daily growth reports, hot lead alerts, and trend intelligence right here.` } },
-          { type: 'divider' },
-          { type: 'section', fields: [
-            { type: 'mrkdwn', text: '👥 *142* new visitors\n_+18% from yesterday_' },
-            { type: 'mrkdwn', text: '🔥 *7* hot leads\n_3 ready for outreach_' },
-            { type: 'mrkdwn', text: '📈 *Top trend:* AI tools\n_↑340% this week_' },
-            { type: 'mrkdwn', text: '🎯 *SEO Score:* 92/100\n_2 new keywords ranking_' },
-          ]},
-          { type: 'divider' },
-          { type: 'context', elements: [{ type: 'mrkdwn', text: '✅ FetchBot is now connected! You\'ll receive reports at the scheduled time.' }] },
-        ]
-      }
-      const res = await fetch(webhookUrl.value, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-      sent = res.ok
+    // Map notification prefs to API fields
+    const prefMap = { daily: 'notify_daily_report', hotlead: 'notify_hot_leads', trends: 'notify_trend_digest', milestones: 'notify_milestones' }
+    const notifData = {}
+    for (const p of notifPrefs) {
+      if (prefMap[p.key]) notifData[prefMap[p.key]] = p.enabled
     }
 
-    else if (intg.id === 'discord') {
-      // Discord Webhook
-      const payload = {
-        username: 'FetchBot',
-        avatar_url: 'https://fetchbot.ai/favicon.png',
-        embeds: [{
-          title: '📊 FetchBot Daily Growth Report',
-          description: `Connected at ${now}\n\nYou'll receive daily growth reports, hot lead alerts, and trend intelligence right here.`,
-          color: 0x8b5cf6,
-          fields: [
-            { name: '👥 Visitors', value: '**142** new\n+18% from yesterday', inline: true },
-            { name: '🔥 Hot Leads', value: '**7** identified\n3 ready for outreach', inline: true },
-            { name: '📈 Trending', value: '**AI tools** ↑340%', inline: true },
-            { name: '🎯 SEO Score', value: '**92/100**\n2 new keywords', inline: true },
-          ],
-          footer: { text: '✅ FetchBot is now connected! Reports will arrive at the scheduled time.' },
-          timestamp: new Date().toISOString(),
-        }]
-      }
-      const res = await fetch(webhookUrl.value, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-      sent = res.ok || res.status === 204
-    }
+    // Save to backend (upsert). Backend sends a test message server-side.
+    const res = await integrationsApi.connect({
+      platform: intg.id,
+      webhook_url: webhookUrl.value.trim(),
+      channel_name: channelName.value.trim(),
+      schedule_time: scheduleTime.value,
+      ...notifData,
+    })
 
-    else if (intg.id === 'telegram') {
-      // Telegram Bot API
-      const chatId = webhookUrl.value.trim()
-      const botToken = '7026952887:AAH_placeholder_token' // Replace with real bot token from env
-      const text = `📊 *FetchBot Daily Growth Report*\n_Connected at ${now}_\n\n` +
-        `👥 *142* new visitors · +18% from yesterday\n` +
-        `🔥 *7* hot leads · 3 ready for outreach\n` +
-        `📈 Top trend: *AI tools* ↑340%\n` +
-        `🎯 SEO Score: *92/100* · 2 new keywords\n\n` +
-        `✅ _FetchBot is connected! Reports will arrive daily._`
-      try {
-        const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'Markdown' }),
-        })
-        const data = await res.json()
-        sent = data.ok === true
-      } catch { sent = false }
-    }
-
-    // Update state
+    const saved = res.data?.data || res.data
     intg.connected = true
+    intg.connectionId = saved?.id || null
     intg.webhookUrl = webhookUrl.value
     intg.channelName = channelName.value
 
     connecting.value = false
     showConnectModal.value = false
-
-    if (sent) {
-      showToast(`${intg.name} connected! A test message was sent — check your ${intg.name} channel.`)
-    } else {
-      // Still mark as connected — webhook saved, but test might have failed due to CORS
-      showToast(`${intg.name} connected! Webhook saved — daily reports will be sent from the server.`)
-    }
+    showToast(`${intg.name} connected! A test message was sent — check your ${intg.name} channel.`)
   } catch (err) {
-    // Even if the direct POST fails (CORS), save the connection
-    intg.connected = true
-    intg.webhookUrl = webhookUrl.value
-    intg.channelName = channelName.value
+    console.error('Connect failed:', err)
     connecting.value = false
-    showConnectModal.value = false
-    showToast(`${intg.name} connected! Webhook saved — messages will be sent server-side.`)
+    showToast(`Failed to connect ${intg.name}. Please check the webhook URL.`)
   }
 }
 

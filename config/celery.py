@@ -95,4 +95,9 @@ app.conf.beat_schedule = {
         "task": "apps.analytics.tasks.fetch_platform_trends",
         "schedule": crontab(minute=0, hour="*/6"),  # Every 6 hours
     },
+    # ── Integration Reports ──
+    "daily-growth-reports": {
+        "task": "apps.notifications.tasks.send_daily_growth_reports",
+        "schedule": crontab(minute=0, hour=9),  # 9 AM daily
+    },
 }

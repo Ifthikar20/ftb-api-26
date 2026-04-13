@@ -62,7 +62,7 @@ class NotificationService:
 
     @staticmethod
     def fire_hot_lead(*, user, lead) -> None:
-        """Create hot-lead in-app notification, email alert, and Slack alert."""
+        """Create hot-lead in-app notification, email alert, and external platform alerts."""
         from apps.notifications.services.email_service import EmailService
         from apps.notifications.services.slack_service import SlackService
 
@@ -80,3 +80,27 @@ class NotificationService:
 
         EmailService.send_hot_lead_alert(user=user, lead=lead)
         SlackService.send_hot_lead_alert(user=user, lead=lead)
+
+        # Dispatch to all active IntegrationConnections
+        try:
+            from apps.notifications.models import IntegrationConnection
+            connections = IntegrationConnection.objects.filter(
+                user=user, is_active=True, notify_hot_leads=True
+            )
+            for conn in connections:
+                try:
+                    if conn.platform == "discord":
+                        from apps.notifications.services.discord_service import DiscordService
+                        DiscordService.send_hot_lead_alert(
+                            webhook_url=conn.webhook_url, lead=lead
+                        )
+                    elif conn.platform == "telegram":
+                        from apps.notifications.services.telegram_service import TelegramService
+                        TelegramService.send_hot_lead_alert(
+                            chat_id=conn.webhook_url, lead=lead
+                        )
+                    # Slack is already handled above via user prefs
+                except Exception as e:
+                    logger.warning(f"Hot lead alert failed for {conn.platform}: {e}")
+        except Exception as e:
+            logger.warning(f"Integration dispatch failed: {e}")

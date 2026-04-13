@@ -57,37 +57,139 @@
         </div>
 
         <!-- Keyword Research -->
-        <div v-if="cardId === 'keyword_research'" class="card feature-card">
+        <div v-if="cardId === 'keyword_research'" class="card feature-card kr-card" style="grid-column: span 2">
           <div class="fc-head">
             <div class="fc-icon"><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 12V4l4 4 4-4v8"/></svg></div>
-            <div class="fc-title-wrap"><h3 class="fc-title">Keyword Research</h3><p class="fc-sub">Target the best keywords with AI</p></div>
+            <div class="fc-title-wrap"><h3 class="fc-title">Keyword Research</h3><p class="fc-sub">All keywords captured from your DOM with full breakdown</p></div>
             <button class="fc-remove" @click="removeCard(cardId)" title="Remove">×</button>
           </div>
           <div v-if="scanData.keywords?.length" class="fc-body">
-            <div class="split-screen">
-              <div class="split-left">
-                <div class="split-label">Page Content <span class="text-xs text-muted">— keywords highlighted</span></div>
-                <div class="page-preview" v-html="highlightedContent"></div>
+
+            <!-- Summary Stats -->
+            <div class="kr-summary-row">
+              <div class="kr-sum-stat">
+                <span class="kr-sum-val">{{ scanData.keywords.length }}</span>
+                <span class="kr-sum-lbl">Keywords Found</span>
               </div>
-              <div class="split-right">
-                <div class="split-label">Detected Keywords</div>
-                <div class="kw-found-list">
-                  <div v-for="(k, i) in scanData.keywords.slice(0, 10)" :key="i" class="kw-found-item">
-                    <span class="kw-found-rank">#{{ i + 1 }}</span>
-                    <div class="kw-found-info">
-                      <span class="kw-found-word" :class="'kw-hl-' + (i < 3 ? 'hot' : i < 7 ? 'warm' : 'cool')">{{ k.keyword }}</span>
-                      <div class="kw-found-meta">
-                        <span>{{ k.density }}%</span>
-                        <span v-if="scanData.trends?.[k.keyword]">{{ scanData.trends[k.keyword].interest }}/100</span>
-                        <span v-for="l in k.locations" :key="l" class="seo-loc-tag">{{ l }}</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+              <div class="kr-sum-stat">
+                <span class="kr-sum-val">{{ krPhrasesCount }}</span>
+                <span class="kr-sum-lbl">Phrases (2-word)</span>
+              </div>
+              <div class="kr-sum-stat">
+                <span class="kr-sum-val">{{ krAvgDensity }}%</span>
+                <span class="kr-sum-lbl">Avg Density</span>
+              </div>
+              <div class="kr-sum-stat">
+                <span class="kr-sum-val kr-sum-score" :style="{ color: krTopScore >= 70 ? '#22c55e' : krTopScore >= 40 ? '#f59e0b' : '#ef4444' }">{{ krTopScore }}</span>
+                <span class="kr-sum-lbl">Top Score</span>
+              </div>
+              <div class="kr-sum-stat">
+                <span class="kr-sum-val">{{ krOptimalCount }}/{{ scanData.keywords.length }}</span>
+                <span class="kr-sum-lbl">Optimal Density</span>
               </div>
             </div>
+
+            <!-- Page Content Panel (collapsible) -->
+            <div class="kr-content-panel">
+              <button class="kr-content-toggle" @click="krContentOpen = !krContentOpen">
+                <svg :class="{ 'kr-chevron-open': krContentOpen }" class="kr-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 4.5l3 3 3-3"/></svg>
+                <span class="kr-content-toggle-label">Page Content</span>
+                <span class="kr-content-toggle-sub">— keywords highlighted in context</span>
+              </button>
+              <div v-show="krContentOpen" class="kr-content-body">
+                <div class="page-preview" v-html="highlightedContent"></div>
+              </div>
+            </div>
+
+            <!-- Full Keyword Table -->
+            <div class="kr-table-wrap">
+              <div class="kr-table-header">
+                <span class="kr-table-title">All Detected Keywords</span>
+                <span class="kr-table-count">{{ scanData.keywords.length }} keywords</span>
+              </div>
+              <div class="table-responsive">
+                <table class="data-table kr-table">
+                  <thead>
+                    <tr>
+                      <th class="kr-th-rank">#</th>
+                      <th>Keyword</th>
+                      <th class="text-center">Count</th>
+                      <th>Density</th>
+                      <th class="text-center">Interest</th>
+                      <th class="text-center">Score</th>
+                      <th>Found In</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="(k, i) in scanData.keywords" :key="i" class="kr-row" :class="{ 'kr-row-phrase': k.is_phrase }">
+                      <td class="kr-td-rank">
+                        <span class="kr-rank-num" :class="i < 3 ? 'kr-rank-hot' : i < 7 ? 'kr-rank-warm' : 'kr-rank-cool'">{{ i + 1 }}</span>
+                      </td>
+                      <td>
+                        <div class="kr-kw-cell">
+                          <span class="kr-kw-name">{{ k.keyword }}</span>
+                          <span v-if="k.is_phrase" class="kr-phrase-badge">phrase</span>
+                        </div>
+                      </td>
+                      <td class="text-center">
+                        <span class="kr-count-val">{{ k.count }}×</span>
+                      </td>
+                      <td>
+                        <div class="kr-density-cell">
+                          <div class="kr-density-bar-wrap">
+                            <div class="kr-density-bar" :style="{ width: Math.min(k.density * 20, 100) + '%' }" :class="'kr-ds-' + k.density_status"></div>
+                          </div>
+                          <span class="kr-density-val" :class="'kr-ds-text-' + k.density_status">{{ k.density }}%</span>
+                          <span class="kr-density-tag" :class="'kr-dt-' + k.density_status">{{ k.density_status }}</span>
+                        </div>
+                      </td>
+                      <td class="text-center">
+                        <div v-if="scanData.trends?.[k.keyword]" class="kr-trend-cell">
+                          <span class="kr-trend-val">{{ scanData.trends[k.keyword].interest }}</span>
+                          <span class="kr-trend-dir" :class="'kr-td-' + scanData.trends[k.keyword].trend">
+                            {{ scanData.trends[k.keyword].trend === 'rising' ? '↑' : scanData.trends[k.keyword].trend === 'declining' ? '↓' : '→' }}
+                          </span>
+                        </div>
+                        <span v-else class="kr-na">—</span>
+                      </td>
+                      <td class="text-center">
+                        <div class="kr-score-cell">
+                          <div class="kr-score-ring">
+                            <svg width="28" height="28" viewBox="0 0 28 28">
+                              <circle cx="14" cy="14" r="11" fill="none" stroke="var(--border-color)" stroke-width="2.5"/>
+                              <circle cx="14" cy="14" r="11" fill="none" :stroke="k.score >= 15 ? '#22c55e' : k.score >= 8 ? '#f59e0b' : '#ef4444'" stroke-width="2.5" stroke-linecap="round" :stroke-dasharray="`${(k.score / 30) * 69.1} 69.1`" transform="rotate(-90 14 14)"/>
+                            </svg>
+                            <span class="kr-score-num">{{ Math.round(k.score) }}</span>
+                          </div>
+                        </div>
+                      </td>
+                      <td>
+                        <div class="kr-loc-cell">
+                          <span v-for="l in k.locations" :key="l" class="kr-loc-tag" :class="'kr-lt-' + l">{{ l }}</span>
+                          <span v-if="!k.locations?.length" class="kr-loc-none">body</span>
+                        </div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <!-- Density legend -->
+              <div class="kr-legend">
+                <span class="kr-legend-title">Density:</span>
+                <span class="kr-legend-item"><span class="kr-legend-dot kr-ds-optimal"></span> Optimal (1-3%)</span>
+                <span class="kr-legend-item"><span class="kr-legend-dot kr-ds-low"></span> Low (&lt;1%)</span>
+                <span class="kr-legend-item"><span class="kr-legend-dot kr-ds-high"></span> High (&gt;3%)</span>
+                <span class="kr-legend-sep">|</span>
+                <span class="kr-legend-title">Trend:</span>
+                <span class="kr-legend-item"><span class="kr-td-rising">↑</span> Rising</span>
+                <span class="kr-legend-item"><span class="kr-td-stable">→</span> Stable</span>
+                <span class="kr-legend-item"><span class="kr-td-declining">↓</span> Declining</span>
+              </div>
+            </div>
+
           </div>
-          <div v-else class="fc-empty">Discover keyword ideas your site can win. Analyze search volume, difficulty, and intent.</div>
+          <div v-else class="fc-empty">Click <strong>Scan Website</strong> to crawl your site and extract all keywords from your DOM with density, trends, and scoring.</div>
         </div>
 
         <!-- AI Analysis -->
@@ -986,16 +1088,30 @@ const availableCards = [
   { id: 'history_charts', name: 'Historical Charts', desc: 'Visualize keyword rank trends over time', icon: 'HC' },
 ]
 
-const defaultCards = ['site_audit', 'keyword_research', 'position_tracking', 'ai_analysis']
+const defaultCards = ['keyword_research', 'site_audit']
+const CARD_VERSION = 2 // Bump to force reset to new defaults
 const activeCards = ref([...defaultCards])
 
 const embedCode = ref('')
 const embedCopied = ref(false)
 
 function loadCards() {
-  try { const saved = localStorage.getItem(STORAGE_KEY); if (saved) activeCards.value = JSON.parse(saved) } catch {}
+  try {
+    const savedVersion = localStorage.getItem(STORAGE_KEY + '_v')
+    if (savedVersion && parseInt(savedVersion) >= CARD_VERSION) {
+      const saved = localStorage.getItem(STORAGE_KEY)
+      if (saved) activeCards.value = JSON.parse(saved)
+    } else {
+      // Reset to new defaults on version bump
+      activeCards.value = [...defaultCards]
+      saveCards()
+    }
+  } catch {}
 }
-function saveCards() { localStorage.setItem(STORAGE_KEY, JSON.stringify(activeCards.value)) }
+function saveCards() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(activeCards.value))
+  localStorage.setItem(STORAGE_KEY + '_v', String(CARD_VERSION))
+}
 function toggleCard(id) {
   const idx = activeCards.value.indexOf(id)
   if (idx >= 0) activeCards.value.splice(idx, 1)
@@ -1020,6 +1136,20 @@ function formatFeature(f) {
   return map[f] || f.replace(/_/g, ' ')
 }
 
+const krContentOpen = ref(false)
+
+const krPhrasesCount = computed(() => (scanData.value.keywords || []).filter(k => k.is_phrase).length)
+const krAvgDensity = computed(() => {
+  const kws = scanData.value.keywords || []
+  if (!kws.length) return '0'
+  return (kws.reduce((s, k) => s + (k.density || 0), 0) / kws.length).toFixed(2)
+})
+const krTopScore = computed(() => {
+  const kws = scanData.value.keywords || []
+  return kws.length ? Math.round(Math.max(...kws.map(k => k.score || 0))) : 0
+})
+const krOptimalCount = computed(() => (scanData.value.keywords || []).filter(k => k.density_status === 'optimal').length)
+
 const highlightedContent = computed(() => {
   const meta = scanData.value?.page_meta
   if (!meta) return ''
@@ -1027,8 +1157,9 @@ const highlightedContent = computed(() => {
   let html = ''
   if (meta.title) html += `<div class="pv-section"><span class="pv-tag">TITLE</span> ${highlightWords(meta.title, kws)}</div>`
   if (meta.meta_description) html += `<div class="pv-section"><span class="pv-tag">META</span> ${highlightWords(meta.meta_description, kws)}</div>`
-  if (meta.h1?.length) meta.h1.forEach(h => { html += `<div class="pv-section"><span class="pv-tag">H1</span> <strong>${highlightWords(h, kws)}</strong></div>` })
-  if (meta.h2?.length) meta.h2.slice(0, 4).forEach(h => { html += `<div class="pv-section"><span class="pv-tag">H2</span> ${highlightWords(h, kws)}</div>` })
+  if (meta.h1?.length) meta.h1.forEach(h => { html += `<div class="pv-section"><span class="pv-tag pv-tag-h1">H1</span> <strong>${highlightWords(h, kws)}</strong></div>` })
+  if (meta.h2?.length) meta.h2.slice(0, 6).forEach(h => { html += `<div class="pv-section"><span class="pv-tag pv-tag-h2">H2</span> ${highlightWords(h, kws)}</div>` })
+  if (meta.h3?.length) meta.h3.slice(0, 6).forEach(h => { html += `<div class="pv-section"><span class="pv-tag pv-tag-h3">H3</span> ${highlightWords(h, kws)}</div>` })
   return html || '<div class="text-muted">No page content extracted.</div>'
 })
 
@@ -1278,19 +1409,112 @@ function copyEmbed() {
 .split-screen { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .split-left, .split-right { background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 10px; overflow: hidden; }
 .split-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-primary); margin-bottom: 8px; }
-.page-preview { font-size: 11px; color: var(--text-secondary); line-height: 1.6; max-height: 250px; overflow-y: auto; }
+.page-preview { font-size: 11px; color: var(--text-secondary); line-height: 1.6; max-height: 300px; overflow-y: auto; }
 .page-preview :deep(.pv-section) { padding: 5px 8px; margin-bottom: 4px; background: var(--bg-card); border-radius: var(--radius-md); border-left: 3px solid var(--border-color); }
 .page-preview :deep(.pv-tag) { display: inline-block; font-size: 8px; font-weight: 800; color: white; background: var(--brand-accent); padding: 1px 4px; border-radius: 2px; margin-right: 4px; }
+.page-preview :deep(.pv-tag-h1) { background: #6366f1; }
+.page-preview :deep(.pv-tag-h2) { background: #8b5cf6; }
+.page-preview :deep(.pv-tag-h3) { background: #a78bfa; }
 .page-preview :deep(.kw-highlight) { background: rgba(250,204,21,0.35); color: var(--text-primary); font-weight: 700; padding: 0 2px; border-radius: 2px; }
 
-/* Keyword Found List */
-.kw-found-list { display: flex; flex-direction: column; gap: 4px; max-height: 250px; overflow-y: auto; }
-.kw-found-item { display: flex; align-items: flex-start; gap: 6px; padding: 4px 6px; border-radius: var(--radius-md); background: var(--bg-card); }
-.kw-found-rank { flex-shrink: 0; width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 8px; font-weight: 800; color: var(--text-muted); background: var(--bg-surface); }
-.kw-found-info { flex: 1; min-width: 0; }
-.kw-found-word { font-size: 12px; font-weight: 700; }
-.kw-hl-hot { color: #ef4444; } .kw-hl-warm { color: #f59e0b; } .kw-hl-cool { color: #6366f1; }
-.kw-found-meta { font-size: 9px; color: var(--text-muted); display: flex; gap: 5px; flex-wrap: wrap; }
+/* ── Keyword Research Card (Enhanced) ─────────────────────────────────── */
+.kr-card { }
+
+/* Summary Stats */
+.kr-summary-row { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+.kr-sum-stat { flex: 1; min-width: 80px; text-align: center; padding: 10px 6px; background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-md); }
+.kr-sum-val { display: block; font-size: 20px; font-weight: 800; color: var(--text-primary); line-height: 1.2; }
+.kr-sum-score { font-variant-numeric: tabular-nums; }
+.kr-sum-lbl { display: block; font-size: 9px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; margin-top: 3px; }
+
+/* Collapsible Content Panel */
+.kr-content-panel { margin-bottom: 14px; border: 1px solid var(--border-color); border-radius: var(--radius-md); overflow: hidden; }
+.kr-content-toggle { display: flex; align-items: center; gap: 6px; width: 100%; padding: 10px 12px; border: none; background: var(--bg-surface); color: var(--text-primary); cursor: pointer; transition: background 0.15s; }
+.kr-content-toggle:hover { background: rgba(99,102,241,0.04); }
+.kr-content-toggle-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+.kr-content-toggle-sub { font-size: 10px; color: var(--text-muted); font-weight: 400; }
+.kr-chevron { transition: transform 0.2s; flex-shrink: 0; color: var(--text-muted); }
+.kr-chevron-open { transform: rotate(180deg); }
+.kr-content-body { padding: 10px 12px; border-top: 1px solid var(--border-color); background: var(--bg-card); }
+
+/* Table */
+.kr-table-wrap { }
+.kr-table-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.kr-table-title { font-size: 12px; font-weight: 700; color: var(--text-primary); }
+.kr-table-count { font-size: 10px; color: var(--text-muted); background: var(--bg-surface); padding: 2px 8px; border-radius: var(--radius-full); }
+.kr-table { font-size: 12px; }
+.kr-table th { font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); padding: 8px 10px; border-bottom: 2px solid var(--border-color); white-space: nowrap; }
+.kr-table td { padding: 8px 10px; vertical-align: middle; border-bottom: 1px solid var(--border-color); }
+.kr-th-rank { width: 36px; text-align: center; }
+
+/* Row */
+.kr-row { transition: background 0.12s; }
+.kr-row:hover { background: rgba(99,102,241,0.03); }
+.kr-row-phrase { background: rgba(99,102,241,0.02); }
+
+/* Rank number */
+.kr-td-rank { text-align: center; }
+.kr-rank-num { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; font-size: 10px; font-weight: 800; }
+.kr-rank-hot { background: rgba(239,68,68,0.12); color: #dc2626; }
+.kr-rank-warm { background: rgba(245,158,11,0.12); color: #d97706; }
+.kr-rank-cool { background: rgba(99,102,241,0.1); color: var(--brand-accent); }
+
+/* Keyword cell */
+.kr-kw-cell { display: flex; align-items: center; gap: 6px; }
+.kr-kw-name { font-weight: 700; color: var(--text-primary); }
+.kr-phrase-badge { font-size: 8px; font-weight: 700; padding: 1px 5px; border-radius: var(--radius-full); background: rgba(139,92,246,0.1); color: #7c3aed; text-transform: uppercase; letter-spacing: 0.03em; }
+
+/* Count */
+.kr-count-val { font-size: 12px; font-weight: 700; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+
+/* Density */
+.kr-density-cell { display: flex; align-items: center; gap: 5px; min-width: 140px; }
+.kr-density-bar-wrap { width: 50px; height: 5px; background: var(--bg-input); border-radius: 3px; overflow: hidden; flex-shrink: 0; }
+.kr-density-bar { height: 100%; border-radius: 3px; transition: width 0.4s; }
+.kr-ds-optimal { background: #22c55e; }
+.kr-ds-low { background: #f59e0b; }
+.kr-ds-high { background: #ef4444; }
+.kr-density-val { font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; min-width: 28px; }
+.kr-ds-text-optimal { color: #16a34a; }
+.kr-ds-text-low { color: #d97706; }
+.kr-ds-text-high { color: #dc2626; }
+.kr-density-tag { font-size: 8px; font-weight: 700; padding: 1px 5px; border-radius: var(--radius-full); text-transform: uppercase; letter-spacing: 0.03em; }
+.kr-dt-optimal { background: rgba(34,197,94,0.1); color: #16a34a; }
+.kr-dt-low { background: rgba(245,158,11,0.1); color: #d97706; }
+.kr-dt-high { background: rgba(239,68,68,0.08); color: #dc2626; }
+
+/* Trend */
+.kr-trend-cell { display: inline-flex; align-items: center; gap: 3px; }
+.kr-trend-val { font-size: 12px; font-weight: 700; color: var(--text-primary); }
+.kr-trend-dir { font-size: 14px; font-weight: 800; }
+.kr-td-rising { color: #22c55e; }
+.kr-td-stable { color: var(--text-muted); }
+.kr-td-declining { color: #ef4444; }
+.kr-na { color: var(--text-muted); font-size: 11px; }
+
+/* Score ring */
+.kr-score-cell { display: flex; justify-content: center; }
+.kr-score-ring { position: relative; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; }
+.kr-score-ring svg { position: absolute; top: 0; left: 0; }
+.kr-score-num { font-size: 8px; font-weight: 800; color: var(--text-primary); position: relative; z-index: 1; }
+
+/* Location tags */
+.kr-loc-cell { display: flex; gap: 3px; flex-wrap: wrap; }
+.kr-loc-tag { font-size: 8px; font-weight: 700; padding: 1px 5px; border-radius: 2px; text-transform: uppercase; letter-spacing: 0.03em; }
+.kr-lt-title { background: rgba(99,102,241,0.12); color: var(--brand-accent); }
+.kr-lt-meta { background: rgba(6,182,212,0.1); color: #0891b2; }
+.kr-lt-h1 { background: rgba(139,92,246,0.1); color: #7c3aed; }
+.kr-lt-h2 { background: rgba(168,85,247,0.1); color: #9333ea; }
+.kr-loc-none { font-size: 8px; color: var(--text-muted); font-style: italic; }
+
+/* Legend */
+.kr-legend { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px; padding: 8px 10px; background: var(--bg-surface); border-radius: var(--radius-md); }
+.kr-legend-title { font-size: 9px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.kr-legend-item { display: inline-flex; align-items: center; gap: 3px; font-size: 9px; color: var(--text-secondary); }
+.kr-legend-dot { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
+.kr-legend-sep { color: var(--border-color); font-size: 10px; }
+
+/* Keyword Found List (kept for compatibility) */
 .seo-loc-tag { padding: 0 4px; border-radius: 2px; font-size: 8px; font-weight: 700; background: rgba(99,102,241,0.08); color: var(--brand-accent); }
 
 /* Tracked Keywords Table */

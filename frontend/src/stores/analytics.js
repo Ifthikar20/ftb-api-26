@@ -142,13 +142,14 @@ export const useAnalyticsStore = defineStore('analytics', () => {
         await fetchFunnels(wid)
     }
 
-    async function fetchRetention(wid) {
+    async function fetchRetention(wid, period) {
         wid = wid || activeWebsiteId.value
+        period = period || activePeriod.value
         if (!wid || !isStale('retention', wid)) return
         try {
             const [retRes, engRes] = await Promise.all([
-                analyticsApi.retention(wid, { weeks: 8 }),
-                analyticsApi.engagement(wid, { period: activePeriod.value }),
+                analyticsApi.retention(wid, { weeks: 8, period }),
+                analyticsApi.engagement(wid, { period }),
             ])
             _key(wid).retentionData = retRes.data?.data || retRes.data || {}
             _key(wid).engagementData = engRes.data?.data || engRes.data || {}
@@ -158,12 +159,13 @@ export const useAnalyticsStore = defineStore('analytics', () => {
 
     async function fetchFlows(wid, period) {
         wid = wid || activeWebsiteId.value
+        period = period || activePeriod.value
         if (!wid || !isStale('flows', wid)) return
         try {
             const [flowRes, eeRes, journeyRes] = await Promise.all([
-                analyticsApi.flows(wid, { period: period || activePeriod.value }),
-                analyticsApi.entryExit(wid, { period: period || activePeriod.value }),
-                analyticsApi.journeys(wid, { period: period || activePeriod.value }),
+                analyticsApi.flows(wid, { period }),
+                analyticsApi.entryExit(wid, { period }),
+                analyticsApi.journeys(wid, { period }),
             ])
             _key(wid).flowData = flowRes.data?.data || flowRes.data || {}
             _key(wid).entryExitData = eeRes.data?.data || eeRes.data || {}
@@ -181,11 +183,12 @@ export const useAnalyticsStore = defineStore('analytics', () => {
         } catch { /* keep cached */ }
     }
 
-    async function fetchInsights(wid) {
+    async function fetchInsights(wid, period) {
         wid = wid || activeWebsiteId.value
+        period = period || activePeriod.value
         if (!wid || !isStale('insights', wid)) return
         try {
-            const res = await analyticsApi.insights(wid)
+            const res = await analyticsApi.insights(wid, { period })
             _key(wid).insightsData = res.data?.data || res.data || {}
             _key(wid)._ts.insights = Date.now()
         } catch { /* keep cached */ }
@@ -211,11 +214,12 @@ export const useAnalyticsStore = defineStore('analytics', () => {
         } catch { /* keep cached */ }
     }
 
-    async function fetchVisitors(wid) {
+    async function fetchVisitors(wid, period) {
         wid = wid || activeWebsiteId.value
+        period = period || activePeriod.value
         if (!wid || !isStale('visitors', wid)) return
         try {
-            const res = await analyticsApi.visitors(wid)
+            const res = await analyticsApi.visitors(wid, { period })
             _key(wid).visitorList = res.data?.data || res.data || []
             _key(wid)._ts.visitors = Date.now()
         } catch { /* keep cached */ }
@@ -238,15 +242,16 @@ export const useAnalyticsStore = defineStore('analytics', () => {
     async function loadTabBackground() {
         const tab = activeTab.value
         const wid = activeWebsiteId.value
+        const period = activePeriod.value
         if (!wid) return
         try {
-            if (tab === 'overview') await fetchOverview(wid, activePeriod.value)
+            if (tab === 'overview') await fetchOverview(wid, period)
             else if (tab === 'funnels') await fetchFunnels(wid)
-            else if (tab === 'retention') await fetchRetention(wid)
-            else if (tab === 'flows') await fetchFlows(wid)
-            else if (tab === 'insights') await fetchInsights(wid)
+            else if (tab === 'retention') await fetchRetention(wid, period)
+            else if (tab === 'flows') await fetchFlows(wid, period)
+            else if (tab === 'insights') await fetchInsights(wid, period)
             else if (tab === 'keywords') await fetchKeywords(wid)
-            else if (tab === 'events') await fetchVisitors(wid)
+            else if (tab === 'events') await fetchVisitors(wid, period)
         } catch { /* silent */ }
     }
 
@@ -257,11 +262,10 @@ export const useAnalyticsStore = defineStore('analytics', () => {
 
     function changePeriod(period) {
         activePeriod.value = period
-        // Invalidate overview cache so it re-fetches with new period
+        // Invalidate ALL section caches so every tab re-fetches with the new period
         const c = _key()
         if (c._ts) {
-            c._ts.overview = 0
-            c._ts.flows = 0
+            Object.keys(c._ts).forEach(k => { c._ts[k] = 0 })
         }
         loadTabBackground()
     }

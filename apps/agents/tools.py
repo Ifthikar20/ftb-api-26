@@ -109,6 +109,184 @@ def _generate_content_brief(*, website_id: str, keyword: str, target_audience: s
         return {"title": f"Content for '{keyword}'", "outline": [], "key_points": []}
 
 
+# ── SEO Keyword Optimizer Tools ──────────────────────────────────────────────
+
+
+def _scan_website_keywords(*, website_id: str) -> dict:
+    """Run a full DOM keyword scan on the website and return extracted keywords,
+    density data, trend data, score breakdown, and synonym suggestions."""
+    import hashlib
+
+    from django.core.cache import cache
+
+    from apps.analytics.services.seo_keyword_scanner import SEOKeywordScanner
+    from apps.websites.models import Website
+
+    website = Website.objects.get(id=website_id)
+
+    # Clear cache to force a fresh crawl
+    cache_key = f"seo_scan_{hashlib.md5(website.url.encode()).hexdigest()}"
+    cache.delete(cache_key)
+
+    result = SEOKeywordScanner.scan(website_url=website.url, website_id=str(website.id))
+
+    if result.get("error"):
+        return {"error": result["error"]}
+
+    # Return a meaningful summary the agent can reason about
+    return {
+        "url": result.get("url"),
+        "pages_scanned": result.get("pages_scanned", 0),
+        "score": result.get("score", 0),
+        "score_breakdown": result.get("score_breakdown", {}),
+        "keywords": result.get("keywords", []),
+        "trends": result.get("trends", {}),
+        "suggestions": result.get("suggestions", []),
+        "page_meta": result.get("page_meta", {}),
+        "geo_data": result.get("geo_data", {}),
+    }
+
+
+def _check_ai_visibility(*, website_id: str) -> dict:
+    """Check how visible the website is across AI engines (Claude, ChatGPT,
+    Perplexity) for its top keywords. Returns per-engine visibility scores."""
+    import hashlib
+    from urllib.parse import urlparse
+
+    from django.core.cache import cache
+
+    from apps.analytics.services.seo_keyword_scanner import SEOKeywordScanner
+    from apps.websites.models import Website
+
+    website = Website.objects.get(id=website_id)
+    parsed = urlparse(website.url)
+    domain = parsed.netloc.replace("www.", "")
+
+    # Get the latest scan data
+    cache_key = f"seo_scan_{hashlib.md5(website.url.encode()).hexdigest()}"
+    scan_data = cache.get(cache_key) or {}
+
+    keywords = [k["keyword"] for k in scan_data.get("keywords", [])[:6]]
+    if not keywords:
+        return {"error": "No scan data found. Run scan_website_keywords first."}
+
+    try:
+        ai_rankings = SEOKeywordScanner._check_ai_rankings(keywords, domain)
+        return {
+            "domain": domain,
+            "keywords_checked": keywords,
+            "engines": ai_rankings,
+            "overall_score": ai_rankings.get("overall_score", 0),
+        }
+    except Exception as e:
+        logger.warning(f"AI visibility check failed: {e}")
+        return {"error": str(e), "domain": domain, "keywords_checked": keywords}
+
+
+def _update_seo_rules(*, website_id: str, optimized_title: str = "",
+                       optimized_description: str = "",
+                       focus_keywords: str = "",
+                       schema_type: str = "WebSite",
+                       og_title: str = "", og_description: str = "") -> dict:
+    """Update the Dynamic SEO Optimizer rules for the website based on the
+    agent's analysis. This changes what the live seo-rules/ endpoint serves,
+    which is consumed by the FetchBot script on the user's site.
+
+    Only updates fields that are provided (non-empty)."""
+    import hashlib
+    from urllib.parse import urlparse
+
+    from django.core.cache import cache
+
+    from apps.websites.models import Website
+
+    website = Website.objects.get(id=website_id)
+    parsed = urlparse(website.url)
+    site_name = parsed.netloc.replace("www.", "").split(".")[0].title()
+
+    # Load existing rules or build fresh
+    rules_cache_key = f"seo_rules_{website_id}"
+    rules = cache.get(rules_cache_key) or {"global": {}, "pages": {}}
+
+    # Update global rules
+    if "global" not in rules:
+        rules["global"] = {}
+
+    # Schema
+    rules["global"]["schema"] = {
+        "@context": "https://schema.org",
+        "@type": schema_type or "WebSite",
+        "name": site_name,
+        "url": website.url,
+    }
+    if focus_keywords:
+        rules["global"]["schema"]["keywords"] = focus_keywords
+
+    # Canonical
+    rules["global"]["canonical"] = website.url.rstrip("/") + "{path}"
+
+    # Open Graph
+    og = rules["global"].get("og", {})
+    og["type"] = "website"
+    og["site_name"] = site_name
+    og["url"] = website.url
+    if og_title:
+        og["title"] = og_title
+    if og_description:
+        og["description"] = og_description
+    rules["global"]["og"] = og
+
+    # Homepage page rules
+    page_rules = rules.get("pages", {}).get("/", {})
+    if optimized_title:
+        page_rules["title"] = optimized_title
+    if optimized_description:
+        page_rules["description"] = optimized_description
+    if optimized_title:
+        page_rules.setdefault("og", {})["title"] = optimized_title
+    if optimized_description:
+        page_rules.setdefault("og", {})["description"] = optimized_description
+
+    if page_rules:
+        rules.setdefault("pages", {})["/"] = page_rules
+
+    # Hreflang defaults if not present
+    if "hreflang" not in rules["global"]:
+        rules["global"]["hreflang"] = [
+            {"lang": "en", "href": website.url},
+            {"lang": "x-default", "href": website.url},
+        ]
+
+    # Geo defaults
+    if "geo" not in rules["global"]:
+        rules["global"]["geo"] = {"region": "US"}
+
+    # Save to cache (10 min — will be refreshed on next scan)
+    cache.set(rules_cache_key, rules, 600)
+
+    # Build a summary of what was applied
+    changes_applied = []
+    if optimized_title:
+        changes_applied.append(f"Title → '{optimized_title}'")
+    if optimized_description:
+        changes_applied.append(f"Meta description → '{optimized_description[:60]}...'")
+    if focus_keywords:
+        changes_applied.append(f"Schema keywords → '{focus_keywords}'")
+    if og_title:
+        changes_applied.append(f"OG title → '{og_title}'")
+    if og_description:
+        changes_applied.append(f"OG description → '{og_description[:60]}...'")
+    changes_applied.append("Hreflang tags ensured")
+    changes_applied.append("Geo region tag ensured")
+
+    return {
+        "success": True,
+        "website": website.url,
+        "changes_applied": changes_applied,
+        "rules_cached_for": "10 minutes (auto-refreshes on next scan)",
+    }
+
+
 # ──────────────────────────────────────────────
 # Tool Registry
 # ──────────────────────────────────────────────
@@ -168,6 +346,29 @@ TOOL_REGISTRY = {
             "website_id": {"type": "string", "required": True},
             "keyword": {"type": "string", "required": True},
             "target_audience": {"type": "string", "required": False},
+        },
+    },
+    "scan_website_keywords": {
+        "fn": _scan_website_keywords,
+        "description": "Crawl the website DOM and extract all keywords with density, locations, trends, score breakdown, and synonym suggestions",
+        "params": {"website_id": {"type": "string", "required": True}},
+    },
+    "check_ai_visibility": {
+        "fn": _check_ai_visibility,
+        "description": "Check if Claude, ChatGPT, and Perplexity recommend this domain when asked about its keywords. Returns per-engine visibility scores",
+        "params": {"website_id": {"type": "string", "required": True}},
+    },
+    "update_seo_rules": {
+        "fn": _update_seo_rules,
+        "description": "Update the live Dynamic SEO Optimizer rules (title, meta description, schema, Open Graph) based on keyword analysis. Changes are served by the FetchBot script on the user's site",
+        "params": {
+            "website_id": {"type": "string", "required": True},
+            "optimized_title": {"type": "string", "required": False, "description": "Optimized page title incorporating top keywords"},
+            "optimized_description": {"type": "string", "required": False, "description": "Optimized meta description with keyword coverage"},
+            "focus_keywords": {"type": "string", "required": False, "description": "Comma-separated list of focus keywords for schema markup"},
+            "schema_type": {"type": "string", "required": False, "description": "Schema.org type (WebSite, Organization, etc.)"},
+            "og_title": {"type": "string", "required": False, "description": "Optimized Open Graph title"},
+            "og_description": {"type": "string", "required": False, "description": "Optimized Open Graph description"},
         },
     },
 }

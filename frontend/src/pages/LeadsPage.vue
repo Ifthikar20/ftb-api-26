@@ -6,7 +6,7 @@
         <p class="page-subtitle">Track, score, and manage your website leads.</p>
       </div>
       <div class="header-actions">
-        <select v-if="activeTab === 'table'" class="filter-select" v-model="statusFilter" @change="fetchData">
+        <select class="filter-select" v-model="statusFilter" @change="fetchData">
           <option value="">All Statuses</option>
           <option value="new">New</option>
           <option value="contacted">Contacted</option>
@@ -14,49 +14,35 @@
           <option value="customer">Customer</option>
           <option value="lost">Lost</option>
         </select>
-        <button v-if="activeTab === 'table'" class="btn btn-secondary btn-sm" @click="handleExport">Export CSV</button>
+        <button class="btn btn-secondary btn-sm" @click="handleExport">Export CSV</button>
       </div>
     </div>
 
-    <!-- ═══ AI Search — Glassmorphism ═══ -->
-    <div class="ai-search-card">
-      <div class="ai-search-inner">
-        <div class="ai-search-header">
-          <div class="ai-search-title">
-            <svg class="ai-sparkle" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.4 7.2H22l-6 4.8 2.4 7.2L12 16.4l-6.4 4.8 2.4-7.2-6-4.8h7.6z"/></svg>
-            <span>AI Lead Finder</span>
-          </div>
-          <span class="ai-badge">AI-POWERED</span>
-        </div>
-        <div class="ai-search-input-wrap">
-          <input
-            v-model="aiPrompt"
-            class="ai-search-input"
-            type="text"
-            placeholder='Describe your ideal lead — e.g. "SaaS founders in Austin who tweet about growth marketing"'
-            @keydown.enter="runAISearch"
-          />
-          <button class="ai-search-btn" @click="runAISearch" :disabled="aiSearching || !aiPrompt.trim()">
-            <span v-if="aiSearching" class="ai-spinner"></span>
-            <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4z"/></svg>
-          </button>
-        </div>
-        <div class="ai-chips">
-          <button class="ai-chip" @click="aiPrompt = 'SaaS founders in San Francisco'">SaaS founders in SF</button>
-          <button class="ai-chip" @click="aiPrompt = 'Marketing directors at e-commerce companies'">E-com marketing directors</button>
-          <button class="ai-chip" @click="aiPrompt = 'CTO at fintech startups raising Series A'">Fintech CTOs</button>
-          <button class="ai-chip" @click="aiPrompt = 'VP of Engineering at healthcare startups'">Healthcare VPEs</button>
-        </div>
-        <div v-if="aiSearching" class="ai-agent-feed">
-          <div v-for="(step, i) in aiSteps" :key="i" class="ai-step" :class="{ 'ai-step-active': step.active, 'ai-step-done': step.done }">
-            <span class="ai-step-icon">
-              <span v-if="step.done" class="ai-step-check">✓</span>
-              <span v-else-if="step.active" class="ai-step-spinner"></span>
-              <span v-else class="ai-step-dot"></span>
-            </span>
-            <span class="ai-step-label">{{ step.label }}</span>
-            <span v-if="step.detail" class="ai-step-detail">{{ step.detail }}</span>
-          </div>
+    <!-- ═══ Inline AI Search Bar ═══ -->
+    <div class="ai-inline-bar">
+      <div class="ai-inline-input-wrap">
+        <svg class="ai-inline-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2"><path d="M12 2l2.4 7.2H22l-6 4.8 2.4 7.2L12 16.4l-6.4 4.8 2.4-7.2-6-4.8h7.6z"/></svg>
+        <input
+          v-model="aiPrompt"
+          class="ai-inline-input"
+          type="text"
+          placeholder='AI search — e.g. "SaaS founders in Austin who tweet about growth marketing"'
+          @keydown.enter="runAISearch"
+        />
+        <button class="ai-inline-btn" @click="runAISearch" :disabled="aiSearching || !aiPrompt.trim()">
+          <span v-if="aiSearching" class="ai-spinner"></span>
+          <span v-else>Search</span>
+        </button>
+      </div>
+      <div v-if="aiSearching" class="ai-agent-feed">
+        <div v-for="(step, i) in aiSteps" :key="i" class="ai-step" :class="{ 'ai-step-active': step.active, 'ai-step-done': step.done }">
+          <span class="ai-step-icon">
+            <span v-if="step.done" class="ai-step-check">✓</span>
+            <span v-else-if="step.active" class="ai-step-spinner"></span>
+            <span v-else class="ai-step-dot"></span>
+          </span>
+          <span class="ai-step-label">{{ step.label }}</span>
+          <span v-if="step.detail" class="ai-step-detail">{{ step.detail }}</span>
         </div>
       </div>
     </div>
@@ -64,8 +50,8 @@
     <!-- Tabs -->
     <div class="leads-tabs">
       <button class="leads-tab" :class="{ active: activeTab === 'table' }" @click="activeTab = 'table'">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
-        Cards
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3h18v18H3zM3 9h18M3 15h18M9 3v18"/></svg>
+        Table
       </button>
       <button class="leads-tab" :class="{ active: activeTab === 'pipeline' }" @click="activeTab = 'pipeline'">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3h6v6H3zM15 3h6v6h-6zM9 15h6v6H9z"/><path d="M6 9v3h3M18 9v6h-3M9 18H6v-3" stroke-dasharray="2 2"/></svg>
@@ -80,7 +66,8 @@
       <p class="error-desc">{{ fetchError }}</p>
       <button class="btn btn-secondary btn-sm" @click="fetchData" style="margin-top:12px">Try Again</button>
     </div>
-    <!-- ════════════════ CARD VIEW ════════════════ -->
+
+    <!-- ════════════════ TABLE VIEW ════════════════ -->
     <template v-else-if="activeTab === 'table'">
       <!-- Stats Pills -->
       <div class="stats-pills">
@@ -93,85 +80,76 @@
         </div>
       </div>
 
-      <!-- Select All / Action Row -->
-      <div v-if="allTableLeads.length" class="select-row">
-        <label class="select-all-label">
-          <input type="checkbox" class="modern-check" :checked="aiSelected.length === allTableLeads.length && allTableLeads.length > 0" @change="toggleAllAI" />
-          <span>Select all {{ allTableLeads.length }}</span>
-        </label>
-        <div v-if="aiSelected.length" class="select-info">
-          <span>{{ aiSelected.length }} selected</span>
-        </div>
-      </div>
-
-      <!-- Lead Cards Grid -->
-      <div class="lead-cards-grid">
-        <div
-          v-for="(lead, i) in sortedTableLeads"
-          :key="lead._rowId || i"
-          class="lead-card"
-          :class="{ 'lead-card-selected': aiSelected.includes(i) }"
-          :style="{ '--card-delay': i * 50 + 'ms' }"
-          @click="openLeadDetail(lead)"
-        >
-          <!-- Checkbox -->
-          <div class="lead-card-check" @click.stop>
-            <input type="checkbox" class="modern-check" :checked="aiSelected.includes(i)" @change="toggleAiSelect(i)" />
-          </div>
-
-          <!-- Avatar + Score -->
-          <div class="lead-card-top">
-            <div class="lead-avatar" :class="scoreTier(lead.relevance_score || lead.score || 0)">
-              <span class="lead-initials">{{ initials(lead) }}</span>
-              <svg class="score-ring" width="48" height="48" viewBox="0 0 48 48">
-                <circle cx="24" cy="24" r="21" fill="none" stroke="var(--ring-track)" stroke-width="3" />
-                <circle cx="24" cy="24" r="21" fill="none" stroke="var(--ring-color)" stroke-width="3"
-                  :stroke-dasharray="132"
-                  :stroke-dashoffset="132 - (132 * (lead.relevance_score || lead.score || 0) / 100)"
-                  stroke-linecap="round"
-                  transform="rotate(-90 24 24)"
-                />
-              </svg>
-            </div>
-            <div class="lead-card-identity">
-              <span class="lead-card-name">{{ lead.name || 'Anonymous' }}</span>
-              <span class="lead-card-role" v-if="lead.title">{{ lead.title }}</span>
-            </div>
-            <span class="lead-card-score" :class="scoreTier(lead.relevance_score || lead.score || 0)">{{ lead.relevance_score || lead.score || 0 }}</span>
-          </div>
-
-          <!-- Details -->
-          <div class="lead-card-details">
-            <div class="lead-detail-row" v-if="lead.company">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 21h18M5 21V7l7-4 7 4v14"/><path d="M9 21v-4h6v4"/></svg>
-              <span>{{ lead.company }}</span>
-            </div>
-            <div class="lead-detail-row" v-if="lead.email">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 7l10 7 10-7"/></svg>
-              <span class="detail-email">{{ lead.email }}</span>
-            </div>
-            <div class="lead-detail-row" v-if="lead.location">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2C8.1 2 5 5.1 5 9c0 5.2 7 13 7 13s7-7.8 7-13c0-3.9-3.1-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>
-              <span>{{ lead.location }}</span>
-            </div>
-          </div>
-
-          <!-- Footer -->
-          <div class="lead-card-footer">
-            <span class="src-tag" :class="'src-' + (lead.source || 'ai')">{{ (lead.source || 'ai').toUpperCase() }}</span>
-            <div class="lead-card-links">
-              <a v-if="lead.linkedin_url" :href="lead.linkedin_url" target="_blank" class="card-link" title="LinkedIn" @click.stop>
-                <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M0 1.146C0 .513.526 0 1.175 0h13.65C15.474 0 16 .513 16 1.146v13.708c0 .633-.526 1.146-1.175 1.146H1.175C.526 16 0 15.487 0 14.854V1.146zm4.943 12.248V6.169H2.542v7.225h2.401zm-1.2-8.212c.837 0 1.358-.554 1.358-1.248-.015-.709-.52-1.248-1.342-1.248-.822 0-1.359.54-1.359 1.248 0 .694.521 1.248 1.327 1.248h.016zm4.908 8.212V9.359c0-.216.016-.432.08-.586.173-.431.568-.878 1.232-.878.869 0 1.216.662 1.216 1.634v3.865h2.401V9.25c0-2.22-1.184-3.252-2.764-3.252-1.274 0-1.845.7-2.165 1.193V6.169H6.29c.032.68 0 7.225 0 7.225h2.361z"/></svg>
-              </a>
-              <a v-if="lead.twitter_url" :href="lead.twitter_url" target="_blank" class="card-link" title="X" @click.stop>
-                <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M5.026 15c6.038 0 9.341-5.003 9.341-9.334 0-.14 0-.282-.006-.422A6.685 6.685 0 0016 3.542a6.658 6.658 0 01-1.889.518 3.301 3.301 0 001.447-1.817 6.533 6.533 0 01-2.087.793A3.286 3.286 0 007.875 6.03 9.325 9.325 0 011.114 2.1 3.323 3.323 0 002.13 6.574A3.203 3.203 0 01.64 6.14v.04a3.288 3.288 0 002.632 3.218 3.203 3.203 0 01-.865.115c-.212 0-.418-.02-.62-.058a3.283 3.283 0 003.067 2.277A6.588 6.588 0 01.78 13.58a6.32 6.32 0 01-.78-.045A9.344 9.344 0 005.026 15z"/></svg>
-              </a>
-              <a v-if="lead.website || lead.company_url" :href="lead.website || lead.company_url" target="_blank" class="card-link" title="Website" @click.stop>
-                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M2 8h12M8 2a10 10 0 0 1 3 6 10 10 0 0 1-3 6 10 10 0 0 1-3-6 10 10 0 0 1 3-6z"/></svg>
-              </a>
-            </div>
+      <!-- Leads Table -->
+      <div class="card leads-table-card">
+        <div class="leads-table-header">
+          <label class="select-all-label">
+            <input type="checkbox" class="modern-check" :checked="aiSelected.length === allTableLeads.length && allTableLeads.length > 0" @change="toggleAllAI" />
+            <span>{{ aiSelected.length ? `${aiSelected.length} selected` : `${allTableLeads.length} leads` }}</span>
+          </label>
+          <div v-if="aiSelected.length" class="leads-table-actions">
+            <button class="btn btn-secondary btn-sm" @click="aiSelected = []">Deselect</button>
+            <button class="btn btn-primary btn-sm" @click="addSelectedToPipeline">
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" style="vertical-align:-1px;margin-right:3px"><path d="M1 4h4v4H1zM6 2h4v8H6zM11 5h4v3h-4z"/></svg>
+              Pipeline →
+            </button>
           </div>
         </div>
+
+        <table class="data-table leads-data-table" v-if="allTableLeads.length">
+          <thead>
+            <tr>
+              <th style="width:32px"></th>
+              <th @click="setAiSort('name')" class="sortable-th">Name <span v-if="aiSortKey === 'name'" class="sort-arrow">{{ aiSortDir === 'asc' ? '↑' : '↓' }}</span></th>
+              <th @click="setAiSort('title')" class="sortable-th">Title <span v-if="aiSortKey === 'title'" class="sort-arrow">{{ aiSortDir === 'asc' ? '↑' : '↓' }}</span></th>
+              <th @click="setAiSort('company')" class="sortable-th">Company <span v-if="aiSortKey === 'company'" class="sort-arrow">{{ aiSortDir === 'asc' ? '↑' : '↓' }}</span></th>
+              <th>Email</th>
+              <th>Location</th>
+              <th @click="setAiSort('relevance_score')" class="sortable-th" style="text-align:center">Score <span v-if="aiSortKey === 'relevance_score'" class="sort-arrow">{{ aiSortDir === 'asc' ? '↑' : '↓' }}</span></th>
+              <th style="text-align:center">Source</th>
+              <th style="text-align:right">Links</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="(lead, i) in sortedTableLeads"
+              :key="lead._rowId || i"
+              class="lead-row"
+              :class="{ 'lead-row-selected': aiSelected.includes(i) }"
+              :style="{ '--row-delay': i * 40 + 'ms' }"
+              @click="openLeadDetail(lead)"
+            >
+              <td @click.stop><input type="checkbox" class="modern-check" :checked="aiSelected.includes(i)" @change="toggleAiSelect(i)" /></td>
+              <td>
+                <div class="lead-name-cell">
+                  <div class="lead-avatar-sm" :class="scoreTier(lead.relevance_score || lead.score || 0)">{{ initials(lead) }}</div>
+                  <span class="lead-name-text">{{ lead.name || 'Anonymous' }}</span>
+                </div>
+              </td>
+              <td class="text-muted-cell">{{ lead.title || '—' }}</td>
+              <td>{{ lead.company || '—' }}</td>
+              <td><span v-if="lead.email" class="lead-email-link">{{ lead.email }}</span><span v-else class="text-muted-cell">—</span></td>
+              <td class="text-muted-cell">{{ lead.location || '—' }}</td>
+              <td style="text-align:center">
+                <span class="lead-score-badge" :class="scoreTier(lead.relevance_score || lead.score || 0)">{{ lead.relevance_score || lead.score || 0 }}</span>
+              </td>
+              <td style="text-align:center"><span class="src-tag" :class="'src-' + (lead.source || 'ai')">{{ (lead.source || 'ai').toUpperCase() }}</span></td>
+              <td style="text-align:right" @click.stop>
+                <div class="lead-row-links">
+                  <a v-if="lead.linkedin_url" :href="lead.linkedin_url" target="_blank" class="row-link" title="LinkedIn">
+                    <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><path d="M0 1.146C0 .513.526 0 1.175 0h13.65C15.474 0 16 .513 16 1.146v13.708c0 .633-.526 1.146-1.175 1.146H1.175C.526 16 0 15.487 0 14.854V1.146zm4.943 12.248V6.169H2.542v7.225h2.401zm-1.2-8.212c.837 0 1.358-.554 1.358-1.248-.015-.709-.52-1.248-1.342-1.248-.822 0-1.359.54-1.359 1.248 0 .694.521 1.248 1.327 1.248h.016zm4.908 8.212V9.359c0-.216.016-.432.08-.586.173-.431.568-.878 1.232-.878.869 0 1.216.662 1.216 1.634v3.865h2.401V9.25c0-2.22-1.184-3.252-2.764-3.252-1.274 0-1.845.7-2.165 1.193V6.169H6.29c.032.68 0 7.225 0 7.225h2.361z"/></svg>
+                  </a>
+                  <a v-if="lead.twitter_url" :href="lead.twitter_url" target="_blank" class="row-link" title="X">
+                    <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><path d="M5.026 15c6.038 0 9.341-5.003 9.341-9.334 0-.14 0-.282-.006-.422A6.685 6.685 0 0016 3.542a6.658 6.658 0 01-1.889.518 3.301 3.301 0 001.447-1.817 6.533 6.533 0 01-2.087.793A3.286 3.286 0 007.875 6.03 9.325 9.325 0 011.114 2.1 3.323 3.323 0 002.13 6.574A3.203 3.203 0 01.64 6.14v.04a3.288 3.288 0 002.632 3.218 3.203 3.203 0 01-.865.115c-.212 0-.418-.02-.62-.058a3.283 3.283 0 003.067 2.277A6.588 6.588 0 01.78 13.58a6.32 6.32 0 01-.78-.045A9.344 9.344 0 005.026 15z"/></svg>
+                  </a>
+                  <a v-if="lead.website || lead.company_url" :href="lead.website || lead.company_url" target="_blank" class="row-link" title="Website">
+                    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M2 8h12M8 2a10 10 0 0 1 3 6 10 10 0 0 1-3 6 10 10 0 0 1-3-6 10 10 0 0 1 3-6z"/></svg>
+                  </a>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
 
         <!-- Empty State -->
         <div v-if="allTableLeads.length === 0 && !aiSearching" class="lead-empty-state">
@@ -179,31 +157,10 @@
             <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="1"><circle cx="12" cy="7" r="4"/><path d="M5.5 21c0-3.5 3-6 6.5-6s6.5 2.5 6.5 6"/></svg>
           </div>
           <h3 class="empty-title">No leads yet</h3>
-          <p class="empty-desc">Use the AI prompt above to discover leads, or they'll appear here as visitors interact with your site.</p>
+          <p class="empty-desc">Use the AI search bar above to discover leads, or they'll appear here as visitors interact with your site.</p>
         </div>
       </div>
 
-      <!-- Why This Lead Matches -->
-      <div v-if="aiSelected.length === 1 && aiResults.length" class="ai-reason-panel card">
-        <div class="card-header"><h3 class="card-title" style="font-size:var(--font-xs);text-transform:uppercase;letter-spacing:0.1em;color:var(--text-muted)">Why This Lead Matches</h3></div>
-        <p class="text-sm" style="color:var(--text-secondary);line-height:1.6;margin:0">{{ sortedTableLeads[aiSelected[0]]?.reason || 'No reason provided.' }}</p>
-      </div>
-
-      <!-- Sticky Action Bar -->
-      <Transition name="action-bar">
-        <div v-if="aiSelected.length > 0" class="sticky-action-bar">
-          <div class="action-bar-inner">
-            <span class="action-bar-count">{{ aiSelected.length }} lead{{ aiSelected.length > 1 ? 's' : '' }} selected</span>
-            <div class="action-bar-buttons">
-              <button class="action-btn action-btn-secondary" @click="aiSelected = []">Deselect All</button>
-              <button class="action-btn action-btn-primary" @click="addSelectedToPipeline">
-                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" style="vertical-align:-2px;margin-right:4px"><path d="M1 4h4v4H1zM6 2h4v8H6zM11 5h4v3h-4z"/></svg>
-                View in Pipeline →
-              </button>
-            </div>
-          </div>
-        </div>
-      </Transition>
     </template>
 
     <!-- ════════════════ PIPELINE VIEW ════════════════ -->
@@ -888,127 +845,57 @@ async function sendEmail() {
 }
 
 /* ═══════════════════════════════════════
-   AI Search — Glassmorphism
+   AI Inline Search Bar
    ═══════════════════════════════════════ */
-.ai-search-card {
-  margin-bottom: 24px;
-  padding: 2px;
-  border-radius: calc(var(--radius-lg) + 2px);
-  background: linear-gradient(135deg, #6366f1, #8b5cf6, #a855f7, #6366f1);
-  background-size: 300% 300%;
-  animation: gradient-shift 6s ease infinite;
+.ai-inline-bar {
+  margin-bottom: 20px;
 }
-
-@keyframes gradient-shift {
-  0%, 100% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-}
-
-.ai-search-inner {
+.ai-inline-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0;
   background: var(--bg-card);
-  border-radius: var(--radius-lg);
-  padding: 20px 24px;
-}
-
-.ai-search-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 14px;
-}
-
-.ai-search-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: var(--font-base);
-  font-weight: 700;
-  color: var(--text-primary);
-}
-
-.ai-sparkle {
-  color: #8b5cf6;
-  animation: sparkle-pulse 2s ease-in-out infinite;
-}
-
-@keyframes sparkle-pulse {
-  0%, 100% { transform: scale(1); opacity: 1; }
-  50% { transform: scale(1.15); opacity: 0.7; }
-}
-
-.ai-badge {
-  font-size: 0.55rem;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  padding: 3px 10px;
-  border-radius: var(--radius-full);
-  background: linear-gradient(135deg, #8b5cf6, #6366f1);
-  color: white;
-}
-
-.ai-search-input-wrap {
-  display: flex;
-  gap: 8px;
-}
-
-.ai-search-input {
-  flex: 1;
-  padding: 12px 16px;
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
+  padding: 3px 3px 3px 14px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.ai-inline-input-wrap:focus-within {
+  border-color: #8b5cf6;
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1);
+}
+.ai-inline-icon {
+  flex-shrink: 0;
+  opacity: 0.6;
+}
+.ai-inline-input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  padding: 10px 12px;
   font-size: var(--font-sm);
   font-family: var(--font-family);
-  background: var(--bg-surface);
   color: var(--text-primary);
-  transition: all 0.25s ease;
-}
-
-.ai-search-input:focus {
   outline: none;
-  border-color: #8b5cf6;
-  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.15), 0 0 20px rgba(139, 92, 246, 0.06);
 }
-
-.ai-search-btn {
-  padding: 0 18px;
+.ai-inline-input::placeholder { color: var(--text-muted); }
+.ai-inline-btn {
+  padding: 8px 20px;
   border: none;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-sm);
   background: linear-gradient(135deg, #8b5cf6, #6366f1);
   color: white;
+  font-size: var(--font-xs);
+  font-weight: 600;
+  font-family: var(--font-family);
   cursor: pointer;
+  transition: all 0.2s;
   display: flex;
   align-items: center;
-  justify-content: center;
-  transition: all 0.2s;
-}
-
-.ai-search-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3); }
-.ai-search-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-
-.ai-chips {
-  display: flex;
   gap: 6px;
-  margin-top: 10px;
-  flex-wrap: wrap;
 }
-
-.ai-chip {
-  padding: 4px 12px;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-full);
-  font-size: 0.68rem;
-  font-family: var(--font-family);
-  color: var(--text-muted);
-  background: transparent;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-
-.ai-chip:hover {
-  border-color: #8b5cf6;
-  color: #8b5cf6;
-  background: rgba(139, 92, 246, 0.04);
-}
+.ai-inline-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3); }
+.ai-inline-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* ── Agent Activity Feed ── */
 .ai-agent-feed {
@@ -1193,158 +1080,127 @@ async function sendEmail() {
 }
 
 /* ═══════════════════════════════════════
-   Lead Cards Grid
+   Leads Table
    ═══════════════════════════════════════ */
-.lead-cards-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 14px;
+.leads-table-card {
+  padding: 0;
+  overflow: hidden;
 }
-
-@keyframes card-enter {
-  from { opacity: 0; transform: translateY(12px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.lead-card {
-  position: relative;
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg);
-  padding: 18px 20px 14px;
-  cursor: pointer;
-  transition: all 0.25s cubic-bezier(0.22, 1, 0.36, 1);
-  animation: card-enter 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
-  animation-delay: var(--card-delay, 0ms);
-}
-
-.lead-card:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
-  border-color: var(--border-hover);
-}
-
-.lead-card-selected {
-  border-color: #8b5cf6;
-  box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.12);
-}
-
-.lead-card-check {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  opacity: 0;
-  transition: opacity 0.15s;
-}
-
-.lead-card:hover .lead-card-check,
-.lead-card-selected .lead-card-check { opacity: 1; }
-
-/* ── Avatar + Score Ring ── */
-.lead-card-top {
+.leads-table-header {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 12px;
+  justify-content: space-between;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border-color);
+}
+.leads-table-actions {
+  display: flex;
+  gap: 6px;
 }
 
-.lead-avatar {
-  position: relative;
-  width: 48px; height: 48px;
-  flex-shrink: 0;
+.leads-data-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.leads-data-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--bg-card);
+  padding: 10px 14px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-color);
+  white-space: nowrap;
+  user-select: none;
+}
+.sortable-th { cursor: pointer; }
+.sortable-th:hover { color: var(--text-primary); }
+.sort-arrow { font-size: 10px; margin-left: 2px; color: #8b5cf6; }
+
+.leads-data-table tbody td {
+  padding: 10px 14px;
+  font-size: var(--font-xs);
+  color: var(--text-primary);
+  border-bottom: 1px solid color-mix(in srgb, var(--border-color) 50%, transparent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
+}
+.text-muted-cell { color: var(--text-muted); }
+
+/* Row animation */
+@keyframes row-slide-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.lead-row {
+  cursor: pointer;
+  transition: background 0.15s ease;
+  animation: row-slide-in 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: var(--row-delay, 0ms);
+}
+.lead-row:hover { background: var(--bg-surface); }
+.lead-row-selected { background: rgba(139, 92, 246, 0.04); }
+.lead-row-selected:hover { background: rgba(139, 92, 246, 0.06); }
+
+/* Name cell with mini avatar */
+.lead-name-cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.lead-avatar-sm {
+  width: 30px; height: 30px;
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-}
-
-.lead-initials {
-  font-size: 14px;
+  font-size: 10px;
   font-weight: 700;
   color: var(--text-primary);
-  z-index: 1;
-}
-
-.score-ring {
-  position: absolute;
-  top: 0; left: 0;
-}
-
-.score-hot   { --ring-color: #22c55e; --ring-track: rgba(34, 197, 94, 0.12); }
-.score-warm  { --ring-color: #f59e0b; --ring-track: rgba(245, 158, 11, 0.12); }
-.score-cold  { --ring-color: #94a3b8; --ring-track: rgba(148, 163, 184, 0.12); }
-
-.lead-card-identity {
-  flex: 1;
-  min-width: 0;
-}
-
-.lead-card-name {
-  display: block;
-  font-weight: 700;
-  font-size: var(--font-sm);
-  color: var(--text-primary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.lead-card-role {
-  display: block;
-  font-size: 0.68rem;
-  color: var(--text-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  margin-top: 1px;
-}
-
-.lead-card-score {
-  font-size: 1.1rem;
-  font-weight: 800;
   flex-shrink: 0;
 }
+.lead-avatar-sm.score-hot { background: rgba(34, 197, 94, 0.1); color: #22c55e; }
+.lead-avatar-sm.score-warm { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
+.lead-avatar-sm.score-cold { background: rgba(148, 163, 184, 0.1); color: #94a3b8; }
 
-.lead-card-score.score-hot  { color: #22c55e; }
-.lead-card-score.score-warm { color: #f59e0b; }
-.lead-card-score.score-cold { color: #94a3b8; }
-
-/* ── Details ── */
-.lead-card-details {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-bottom: 12px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid color-mix(in srgb, var(--border-color) 50%, transparent);
+.lead-name-text {
+  font-weight: 600;
+  color: var(--text-primary);
 }
 
-.lead-detail-row {
-  display: flex;
+/* Score badge */
+.lead-score-badge {
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  font-size: var(--font-xs);
-  color: var(--text-secondary);
+  justify-content: center;
+  min-width: 32px;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  font-size: 0.7rem;
+  font-weight: 700;
 }
+.lead-score-badge.score-hot { background: rgba(34, 197, 94, 0.1); color: #22c55e; }
+.lead-score-badge.score-warm { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
+.lead-score-badge.score-cold { background: rgba(148, 163, 184, 0.1); color: #94a3b8; }
 
-.lead-detail-row svg { color: var(--text-muted); flex-shrink: 0; }
-.detail-email { color: var(--brand-accent); }
+/* Email link */
+.lead-email-link { color: var(--brand-accent, #8b5cf6); }
 
-/* ── Footer ── */
-.lead-card-footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.lead-card-links { display: flex; gap: 4px; }
-.card-link {
+/* Row links */
+.lead-row-links { display: flex; gap: 4px; justify-content: flex-end; }
+.row-link {
   display: flex; align-items: center; justify-content: center;
-  width: 28px; height: 28px;
+  width: 26px; height: 26px;
   border-radius: var(--radius-sm);
   color: var(--text-muted);
   transition: all 0.12s;
 }
-.card-link:hover { background: var(--bg-surface); color: var(--text-primary); }
+.row-link:hover { background: var(--bg-surface); color: var(--text-primary); }
 
 /* ── Source Tag ── */
 .src-tag {
