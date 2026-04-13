@@ -278,6 +278,17 @@ Return ONLY valid JSON, no markdown."""
         text = response.content[0].text
         tokens_used = response.usage.input_tokens + response.usage.output_tokens
 
+        # Track AI token usage
+        try:
+            from core.ai_tracking import record_usage
+            record_usage(
+                module="agents", model_name="claude-sonnet-4-6",
+                input_tokens=response.usage.input_tokens,
+                output_tokens=response.usage.output_tokens,
+            )
+        except Exception:
+            pass
+
         try:
             result = json.loads(text)
         except json.JSONDecodeError:

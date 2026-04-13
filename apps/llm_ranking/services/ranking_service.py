@@ -88,6 +88,15 @@ class LLMRankingService:
             import json
             import re as _re
             text = resp.content[0].text.strip()
+            # Track token usage
+            try:
+                from core.ai_tracking import record_usage
+                record_usage(
+                    module="llm_ranking", model_name="claude-sonnet-4-20250514",
+                    input_tokens=resp.usage.input_tokens, output_tokens=resp.usage.output_tokens,
+                )
+            except Exception:
+                pass
             match = _re.search(r"\[.*\]", text, _re.DOTALL)
             if match:
                 ai_prompts = json.loads(match.group())
@@ -121,6 +130,15 @@ class LLMRankingService:
                 system=SYSTEM_INSTRUCTION,
                 messages=[{"role": "user", "content": prompt}],
             )
+            # Track token usage
+            try:
+                from core.ai_tracking import record_usage
+                record_usage(
+                    module="llm_ranking", model_name="claude-sonnet-4-20250514",
+                    input_tokens=resp.usage.input_tokens, output_tokens=resp.usage.output_tokens,
+                )
+            except Exception:
+                pass
             return True, resp.content[0].text.strip(), ""
         except Exception as e:
             return False, "", str(e)

@@ -102,6 +102,17 @@ def _generate_content_brief(*, website_id: str, keyword: str, target_audience: s
         }],
     )
 
+    # Track AI token usage
+    try:
+        from core.ai_tracking import record_usage
+        record_usage(
+            module="agents", model_name="claude-haiku-4-5-20251001",
+            input_tokens=response.usage.input_tokens,
+            output_tokens=response.usage.output_tokens,
+        )
+    except Exception:
+        pass
+
     import json
     try:
         return json.loads(response.content[0].text)

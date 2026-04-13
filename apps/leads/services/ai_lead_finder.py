@@ -52,6 +52,15 @@ class AILeadFinder:
                 ],
             )
             text = resp.content[0].text.strip()
+            # Track token usage
+            try:
+                from core.ai_tracking import record_usage
+                record_usage(
+                    module="lead_finder", model_name="claude-sonnet-4-20250514",
+                    input_tokens=resp.usage.input_tokens, output_tokens=resp.usage.output_tokens,
+                )
+            except Exception:
+                pass
             # Extract JSON from potential markdown code blocks
             json_match = re.search(r"\{.*\}", text, re.DOTALL)
             if json_match:
@@ -164,6 +173,15 @@ class AILeadFinder:
                 ],
             )
             text = resp.content[0].text.strip()
+            # Track token usage
+            try:
+                from core.ai_tracking import record_usage
+                record_usage(
+                    module="lead_finder", model_name="claude-sonnet-4-20250514",
+                    input_tokens=resp.usage.input_tokens, output_tokens=resp.usage.output_tokens,
+                )
+            except Exception:
+                pass
             # Extract JSON array
             json_match = re.search(r"\[.*\]", text, re.DOTALL)
             if json_match:

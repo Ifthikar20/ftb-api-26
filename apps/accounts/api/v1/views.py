@@ -235,3 +235,27 @@ class MeExportView(APIView):
     def get(self, request):
         data = UserService.export_data(user=request.user)
         return Response(data)
+
+
+class AIUsageView(APIView):
+    """Return AI token usage summary for the authenticated user."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from core.ai_tracking import get_usage_summary
+
+        days = int(request.query_params.get("days", 30))
+        days = min(days, 365)  # cap at 1 year
+        summary = get_usage_summary(user=request.user, days=days)
+
+        # Serialize dates and Decimals for JSON
+        for d in summary.get("daily", []):
+            d["day"] = d["day"].isoformat() if d.get("day") else None
+            d["cost"] = float(d.get("cost") or 0)
+        for m in summary.get("by_module", []):
+            m["cost"] = float(m.get("cost") or 0)
+        for m in summary.get("by_model", []):
+            m["cost"] = float(m.get("cost") or 0)
+
+        return Response(summary)
+

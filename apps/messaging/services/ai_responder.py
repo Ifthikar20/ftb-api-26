@@ -102,6 +102,16 @@ def generate_ai_reply(conversation, instruction=None):
             system=system_prompt,
             messages=messages,
         )
+        # Track AI token usage
+        try:
+            from core.ai_tracking import record_usage
+            record_usage(
+                module="messaging", model_name="claude-sonnet-4-20250514",
+                input_tokens=response.usage.input_tokens,
+                output_tokens=response.usage.output_tokens,
+            )
+        except Exception:
+            pass
         return response.content[0].text
     except Exception as e:
         logger.exception("AI reply generation failed: %s", e)

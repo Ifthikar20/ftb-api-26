@@ -167,3 +167,56 @@ class PasswordResetToken(models.Model):
 
     class Meta:
         db_table = "accounts_passwordresettoken"
+
+
+class AITokenUsage(TimestampMixin):
+    """A single AI API call — records model, tokens, cost, and which module made the call."""
+
+    MODULE_CHOICES = [
+        ("lead_finder", "AI Lead Finder"),
+        ("agents", "AI Agents"),
+        ("messaging", "AI Messaging"),
+        ("llm_ranking", "LLM Ranking"),
+        ("seo_keywords", "SEO Keywords"),
+        ("analytics", "AI Insights"),
+    ]
+
+    PROVIDER_CHOICES = [
+        ("anthropic", "Anthropic (Claude)"),
+        ("openai", "OpenAI (GPT)"),
+        ("google", "Google (Gemini)"),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        User, on_delete=models.CASCADE,
+        related_name="ai_token_usage", null=True, blank=True,
+    )
+    website = models.ForeignKey(
+        "websites.Website", on_delete=models.CASCADE,
+        related_name="ai_token_usage", null=True, blank=True,
+    )
+    module = models.CharField(max_length=20, choices=MODULE_CHOICES, db_index=True)
+    provider = models.CharField(max_length=20, choices=PROVIDER_CHOICES, default="anthropic")
+    model_name = models.CharField(max_length=80, help_text="e.g. claude-sonnet-4-20250514")
+    input_tokens = models.IntegerField(default=0)
+    output_tokens = models.IntegerField(default=0)
+    total_tokens = models.IntegerField(default=0)
+    estimated_cost_usd = models.DecimalField(
+        max_digits=10, decimal_places=6, default=0,
+        help_text="Estimated cost in USD based on provider pricing"
+    )
+    duration_ms = models.IntegerField(default=0, help_text="How long the API call took in ms")
+    metadata = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        db_table = "accounts_aitokenusage"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["user", "module", "created_at"]),
+            models.Index(fields=["created_at"]),
+        ]
+
+    def __str__(self):
+        return f"{self.module} | {self.model_name} | {self.total_tokens} tokens"
+
