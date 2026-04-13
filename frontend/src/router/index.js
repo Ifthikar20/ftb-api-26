@@ -89,6 +89,7 @@ const routes = [
     protect('/keywords/:websiteId', 'keywords', () => import('@/pages/KeywordsPage.vue'), true),
     protect('/agents/:websiteId', 'agents', () => import('@/pages/AgentsPage.vue'), true),
     protect('/campaigns/:websiteId', 'campaigns', () => import('@/pages/CampaignsPage.vue'), true),
+    protect('/messaging/:websiteId', 'messaging', () => import('@/pages/MessagingPage.vue'), true),
     protect('/voice-agent/:websiteId', 'voice-agent', () => import('@/pages/VoiceAgentPage.vue'), true),
     protect('/llm-ranking/:websiteId', 'llm-ranking', () => import('@/pages/LLMRankingPage.vue'), true),
     protect('/app/integrations', 'integrations', () => import('@/pages/IntegrationsPage.vue')),

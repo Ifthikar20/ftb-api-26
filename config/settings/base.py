@@ -61,6 +61,7 @@ LOCAL_APPS = [
     "apps.compliance",
     "apps.voice_agent",
     "apps.social_leads",
+    "apps.messaging",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
