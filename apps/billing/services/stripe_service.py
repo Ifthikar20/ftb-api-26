@@ -28,19 +28,19 @@ logger = logging.getLogger("billing")
 
 # ── Stripe Price IDs — 2-tier model ──
 PLAN_PRICE_IDS = {
-    "individual": getattr(settings, "STRIPE_INDIVIDUAL_PRICE_ID", ""),
+    "starter": getattr(settings, "STRIPE_STARTER_PRICE_ID", ""),
     # Enterprise is custom — no self-serve checkout
 }
 
 PLAN_PRICE_IDS_ANNUAL = {
-    "individual": getattr(settings, "STRIPE_INDIVIDUAL_ANNUAL_PRICE_ID", ""),
+    "starter": getattr(settings, "STRIPE_STARTER_ANNUAL_PRICE_ID", ""),
 }
 
 # Legacy mappings for backward compatibility
 _LEGACY_PLAN_MAP = {
-    "starter": "individual",
-    "growth": "individual",
-    "free": "individual",
+    "individual": "starter",
+    "growth": "starter",
+    "free": "starter",
     "scale": "enterprise",
     "team": "enterprise",
     "business": "enterprise",
@@ -48,13 +48,13 @@ _LEGACY_PLAN_MAP = {
 
 # Plan limits for enforcement (mirrors constants.py for service-layer use)
 PLAN_LIMITS = {
-    "individual": {
-        "projects": 3,
-        "pageviews": 50_000,
-        "competitors": 5,
+    "starter": {
+        "projects": 5,
+        "pageviews": 100_000,
+        "competitors": 10,
         "team_members": 1,
-        "ai_credits": 100,
-        "integrations": 2,
+        "ai_credits": 200,
+        "integrations": 3,
     },
     "enterprise": {
         "projects": -1,
@@ -294,7 +294,7 @@ class StripeService:
 
             # If canceled, downgrade to individual
             if new_status == "canceled" and old_status != "canceled":
-                subscription.user.plan = "individual"
+                subscription.user.plan = "starter"
                 subscription.user.save(update_fields=["plan"])
                 audit_log("billing.subscription_canceled", user=subscription.user, action="delete", resource_type="subscription", resource_id=sub_id)
                 logger.info(f"Subscription canceled: user={subscription.user.email}")
@@ -377,13 +377,13 @@ class StripeService:
     def get_plan_limits(plan: str) -> dict:
         """Get the feature limits for a plan."""
         plan = _resolve_plan(plan)
-        return PLAN_LIMITS.get(plan, PLAN_LIMITS["individual"])
+        return PLAN_LIMITS.get(plan, PLAN_LIMITS["starter"])
 
     @staticmethod
     def check_limit(*, user, metric: str) -> bool:
         """Check if user is within their plan limit. Returns True if OK."""
-        plan = _resolve_plan(getattr(user, "plan", "individual"))
-        limits = PLAN_LIMITS.get(plan, PLAN_LIMITS["individual"])
+        plan = _resolve_plan(getattr(user, "plan", "starter"))
+        limits = PLAN_LIMITS.get(plan, PLAN_LIMITS["starter"])
         limit = limits.get(metric, 0)
 
         if limit == -1:
@@ -420,7 +420,7 @@ class StripeService:
             return {"status": subscription.status, "plan": subscription.plan}
 
         except Subscription.DoesNotExist:
-            return {"status": "none", "plan": "individual"}
+            return {"status": "none", "plan": "starter"}
         except (stripe.error.APIConnectionError, stripe.error.RateLimitError) as e:
             stripe_circuit.record_failure()
             logger.error(f"Stripe sync failed (transient): {e}")

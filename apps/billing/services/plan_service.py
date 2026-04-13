@@ -1,5 +1,5 @@
 """
-Plan definitions — 2-tier model (Individual + Enterprise).
+Plan definitions — 2-tier model (Starter + Enterprise).
 
 This is the single source of truth for plan metadata exposed via the API.
 For feature-level gating, use constants.PLAN_LIMITS instead.
@@ -7,30 +7,33 @@ For feature-level gating, use constants.PLAN_LIMITS instead.
 
 PLANS = [
     {
-        "id": "individual",
-        "name": "Individual",
+        "id": "starter",
+        "name": "Starter",
         "segment": "individual",
-        "price_monthly": 14,
-        "price_yearly": 140,
+        "price_monthly": 39,
+        "price_yearly": 390,
+        "trial_days": 5,
         "popular": True,
         "features": [
-            "3 projects",
-            "Up to 50,000 pageviews/month",
-            "100 AI credits/month",
+            "5 projects",
+            "Up to 100,000 pageviews/month",
+            "200 AI credits/month",
             "Lead scoring & hot alerts",
-            "5 competitor tracking",
+            "10 competitor tracking",
+            "Heatmaps & funnels",
+            "Keyword tracking & SEO tools",
             "Pipeline builder",
             "Trend intelligence",
-            "2 integrations (Slack/Discord/Telegram)",
+            "3 integrations (Slack/Discord/Telegram)",
             "Email support",
         ],
         "limits": {
-            "projects": 3,
-            "pageviews": 50_000,
-            "competitors": 5,
+            "projects": 5,
+            "pageviews": 100_000,
+            "competitors": 10,
             "team_members": 1,
-            "ai_credits": 100,
-            "integrations": 2,
+            "ai_credits": 200,
+            "integrations": 3,
         },
     },
     {
@@ -40,7 +43,7 @@ PLANS = [
         "price_monthly": -1,  # Custom
         "price_yearly": -1,
         "features": [
-            "Everything in Individual",
+            "Everything in Starter",
             "Unlimited projects & pageviews",
             "Unlimited AI credits",
             "Unlimited team members",
@@ -67,9 +70,9 @@ PLANS = [
 
 # Legacy plan name → 2-tier mapping
 _LEGACY_MAP = {
-    "starter": "individual",
-    "growth": "individual",
-    "free": "individual",
+    "individual": "starter",
+    "growth": "starter",
+    "free": "starter",
     "scale": "enterprise",
     "team": "enterprise",
     "business": "enterprise",

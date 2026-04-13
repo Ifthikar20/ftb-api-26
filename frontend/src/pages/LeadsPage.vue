@@ -47,9 +47,16 @@
           <button class="ai-chip" @click="aiPrompt = 'CTO at fintech startups raising Series A'">Fintech CTOs</button>
           <button class="ai-chip" @click="aiPrompt = 'VP of Engineering at healthcare startups'">Healthcare VPEs</button>
         </div>
-        <div v-if="aiSearching" class="ai-search-progress">
-          <div class="ai-progress-bar"><div class="ai-progress-fill"></div></div>
-          <span class="ai-progress-text">Searching LinkedIn, X, and the web…</span>
+        <div v-if="aiSearching" class="ai-agent-feed">
+          <div v-for="(step, i) in aiSteps" :key="i" class="ai-step" :class="{ 'ai-step-active': step.active, 'ai-step-done': step.done }">
+            <span class="ai-step-icon">
+              <span v-if="step.done" class="ai-step-check">✓</span>
+              <span v-else-if="step.active" class="ai-step-spinner"></span>
+              <span v-else class="ai-step-dot"></span>
+            </span>
+            <span class="ai-step-label">{{ step.label }}</span>
+            <span v-if="step.detail" class="ai-step-detail">{{ step.detail }}</span>
+          </div>
         </div>
       </div>
     </div>
@@ -371,6 +378,7 @@ const aiSearching = ref(false)
 const aiSearchDone = ref(false)
 const aiResults = ref([])
 const aiMeta = ref({})
+const aiSteps = ref([])
 
 // AI table sorting & selection
 const aiSortKey = ref('relevance_score')
@@ -704,17 +712,68 @@ async function handleExport() {
 onMounted(fetchData)
 
 // ── AI Lead Finder ──
+function advanceStep(steps, index, detail) {
+  if (index > 0 && steps[index - 1]) {
+    steps[index - 1].active = false
+    steps[index - 1].done = true
+  }
+  if (steps[index]) {
+    steps[index].active = true
+    if (detail) steps[index].detail = detail
+  }
+}
+
 async function runAISearch() {
   if (!aiPrompt.value.trim() || aiSearching.value) return
   aiSearching.value = true
   aiSearchDone.value = false
   aiResults.value = []
   aiSelected.value = []
+
+  // Initialize step-by-step feed
+  const steps = [
+    { label: 'Parsing your prompt with AI…', detail: '', active: false, done: false },
+    { label: 'Searching LinkedIn profiles…', detail: '', active: false, done: false },
+    { label: 'Searching X (Twitter) profiles…', detail: '', active: false, done: false },
+    { label: 'Scoring & ranking leads with AI…', detail: '', active: false, done: false },
+    { label: 'Compiling results…', detail: '', active: false, done: false },
+  ]
+  aiSteps.value = steps
+
+  // Animate steps on a timer while the API call runs
+  advanceStep(steps, 0)
+  aiSteps.value = [...steps]
+
+  const stepTimers = []
+  stepTimers.push(setTimeout(() => { advanceStep(steps, 1); aiSteps.value = [...steps] }, 2000))
+  stepTimers.push(setTimeout(() => { advanceStep(steps, 2); aiSteps.value = [...steps] }, 4500))
+  stepTimers.push(setTimeout(() => { advanceStep(steps, 3); aiSteps.value = [...steps] }, 7000))
+
   try {
     const { data } = await leadsApi.aiSearch(websiteId, { prompt: aiPrompt.value })
     aiResults.value = data?.leads || []
     aiMeta.value = data || {}
+
+    // Complete remaining steps
+    stepTimers.forEach(clearTimeout)
+    steps.forEach(s => { s.active = false; s.done = true })
+
+    // Update step details from response
+    const src = data?.sources_searched || {}
+    if (src.linkedin) steps[1].detail = `${src.linkedin} profiles found`
+    if (src.twitter) steps[2].detail = `${src.twitter} profiles found`
+    steps[3].detail = `${aiResults.value.length} leads scored`
+    steps[4].detail = data?.engine === 'openclaw' ? 'via OpenClaw Agent' : 'via Claude AI'
+    aiSteps.value = [...steps]
   } catch (e) {
+    stepTimers.forEach(clearTimeout)
+    steps.forEach(s => { s.active = false })
+    const failIdx = steps.findIndex(s => !s.done)
+    if (failIdx >= 0) {
+      steps[failIdx].label = 'Search failed — try again'
+      steps[failIdx].active = false
+    }
+    aiSteps.value = [...steps]
     console.error('AI search failed', e)
   } finally {
     aiSearching.value = false
@@ -951,20 +1010,69 @@ async function sendEmail() {
   background: rgba(139, 92, 246, 0.04);
 }
 
-.ai-search-progress { margin-top: 12px; }
-.ai-progress-bar { height: 3px; border-radius: 2px; background: var(--bg-surface); overflow: hidden; }
-.ai-progress-fill {
-  height: 100%;
-  width: 40%;
-  border-radius: 2px;
-  background: linear-gradient(90deg, #8b5cf6, #6366f1);
-  animation: progress-slide 1.5s ease-in-out infinite;
+/* ── Agent Activity Feed ── */
+.ai-agent-feed {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  background: var(--bg-surface);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
 }
-@keyframes progress-slide {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(350%); }
+.ai-step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: var(--font-xs);
+  color: var(--text-muted);
+  padding: 4px 0;
+  opacity: 0.35;
+  transition: all 0.3s ease;
 }
-.ai-progress-text { font-size: var(--font-xs); color: var(--text-muted); margin-top: 6px; display: block; }
+.ai-step-active {
+  opacity: 1;
+  color: #8b5cf6;
+  font-weight: 600;
+}
+.ai-step-done {
+  opacity: 0.7;
+  color: var(--color-success);
+}
+.ai-step-icon {
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.ai-step-check {
+  color: var(--color-success);
+  font-weight: 700;
+  font-size: 11px;
+}
+.ai-step-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(139, 92, 246, 0.2);
+  border-top-color: #8b5cf6;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+.ai-step-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--border-color);
+}
+.ai-step-label { flex: 1; }
+.ai-step-detail {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-weight: 400;
+}
 
 /* ── Spinner ── */
 @keyframes spin { to { transform: rotate(360deg); } }

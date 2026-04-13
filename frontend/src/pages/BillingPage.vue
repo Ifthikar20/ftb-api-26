@@ -14,41 +14,44 @@
       <div class="pricing-hero">
         <div class="pricing-pair">
 
-          <!-- Individual -->
-          <div class="tier-card" :class="{ active: currentSegment === 'individual' }">
-            <div v-if="currentSegment === 'individual'" class="current-badge">Your Plan</div>
+          <!-- Starter -->
+          <div class="tier-card" :class="{ active: currentSegment === 'individual' || currentSegment === 'starter' }">
+            <div v-if="currentSegment === 'individual' || currentSegment === 'starter'" class="current-badge">Your Plan</div>
             <div class="tier-icon" style="background: linear-gradient(135deg, #8b5cf6, #6366f1)">
               <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
             </div>
-            <h2 class="tier-name">Individual</h2>
-            <p class="tier-tagline">For solopreneurs, freelancers, and indie hackers</p>
+            <h2 class="tier-name">Starter</h2>
+            <p class="tier-tagline">For small companies, freelancers, and individuals</p>
 
             <div class="tier-price">
-              <span class="price-amount">$14</span>
+              <span class="price-amount">$39</span>
               <span class="price-period">/month</span>
             </div>
-            <div class="price-annual-note" v-if="annual">Billed $140/year (save 17%)</div>
+            <div class="price-annual-note" v-if="annual">Billed $390/year (save 17%)</div>
+            <div class="price-annual-note" v-else>5-day free trial, then $39/mo</div>
 
             <div class="tier-limits">
-              <div class="limit-pill"><span class="lp-val">3</span><span class="lp-label">Projects</span></div>
-              <div class="limit-pill"><span class="lp-val">50K</span><span class="lp-label">Pageviews</span></div>
-              <div class="limit-pill"><span class="lp-val">100</span><span class="lp-label">AI Credits</span></div>
+              <div class="limit-pill"><span class="lp-val">5</span><span class="lp-label">Projects</span></div>
+              <div class="limit-pill"><span class="lp-val">100K</span><span class="lp-label">Pageviews</span></div>
+              <div class="limit-pill"><span class="lp-val">200</span><span class="lp-label">AI Credits</span></div>
             </div>
 
             <ul class="tier-features">
               <li><span class="feat-check">✓</span> Full analytics dashboard</li>
               <li><span class="feat-check">✓</span> Lead scoring & hot alerts</li>
-              <li><span class="feat-check">✓</span> 5 competitor tracking</li>
+              <li><span class="feat-check">✓</span> 10 competitor tracking</li>
+              <li><span class="feat-check">✓</span> Heatmaps & funnels</li>
+              <li><span class="feat-check">✓</span> Keyword tracking & SEO</li>
               <li><span class="feat-check">✓</span> Pipeline builder</li>
-              <li><span class="feat-check">✓</span> 2 integrations (Slack/Discord/Telegram)</li>
+              <li><span class="feat-check">✓</span> 3 integrations (Slack/Discord/Telegram)</li>
               <li><span class="feat-check">✓</span> Trend intelligence</li>
               <li class="feat-disabled"><span class="feat-dash">—</span> SSO / SAML</li>
               <li class="feat-disabled"><span class="feat-dash">—</span> API access</li>
               <li class="feat-disabled"><span class="feat-dash">—</span> White-label</li>
             </ul>
 
-            <button v-if="currentSegment !== 'individual'" class="btn btn-primary btn-lg w-full" @click="handlePlanSelect('individual')" :disabled="checkingOut">
-              {{ checkingOut === 'individual' ? 'Redirecting...' : 'Get Started' }}
+            <button v-if="currentSegment !== 'individual' && currentSegment !== 'starter'" class="btn btn-primary btn-lg w-full" @click="handlePlanSelect('starter')" :disabled="checkingOut">
+              {{ checkingOut === 'starter' ? 'Redirecting...' : 'Start Free Trial' }}
             </button>
             <button v-else class="btn btn-secondary btn-lg w-full" disabled>Active Plan</button>
           </div>
@@ -115,7 +118,7 @@
           <thead>
             <tr>
               <th>Feature</th>
-              <th class="text-center">Individual — $14/mo</th>
+              <th class="text-center">Starter — $39/mo</th>
               <th class="text-center highlight-col">Enterprise — Custom</th>
             </tr>
           </thead>
@@ -212,7 +215,7 @@ const annual = ref(false)
 const checkingOut = ref(null)
 const portalLoading = ref(false)
 
-const limits = { pageviews: 50000, ai_credits: 100, leads: 200 }
+const limits = { pageviews: 100000, ai_credits: 200, leads: 500 }
 
 const currentSegment = computed(() => subscription.value?.segment || subscription.value?.plan || 'individual')
 
@@ -229,18 +232,18 @@ const featureRows = [
   { name: 'Pipeline builder', individual: true, enterprise: true },
   { name: 'Custom scoring rules', individual: false, enterprise: true },
   { name: 'Integrations', section: true },
-  { name: 'Slack / Discord / Telegram', individual: '2 connections', enterprise: 'Unlimited' },
+  { name: 'Slack / Discord / Telegram', individual: '3 connections', enterprise: 'Unlimited' },
   { name: 'Daily growth reports', individual: true, enterprise: true },
   { name: 'Real-time alerts', individual: true, enterprise: true },
   { name: 'SEO', section: true },
-  { name: 'Automated SEO audit', individual: true, enterprise: true },
+  { name: 'Keyword tracking & SEO tools', individual: true, enterprise: true },
   { name: 'White-label PDF reports', individual: false, enterprise: true },
   { name: 'Trend intelligence', individual: true, enterprise: true },
   { name: 'Niche analysis', individual: false, enterprise: true },
   { name: 'Platform', section: true },
-  { name: 'Projects', individual: '3', enterprise: 'Unlimited' },
+  { name: 'Projects', individual: '5', enterprise: 'Unlimited' },
   { name: 'Team members', individual: '1', enterprise: 'Unlimited' },
-  { name: 'AI credits / month', individual: '100', enterprise: 'Unlimited' },
+  { name: 'AI credits / month', individual: '200', enterprise: 'Unlimited' },
   { name: 'SSO / SAML', individual: false, enterprise: true },
   { name: 'API access', individual: false, enterprise: true },
   { name: 'White label', individual: false, enterprise: true },

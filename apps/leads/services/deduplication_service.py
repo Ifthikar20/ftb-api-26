@@ -51,7 +51,7 @@ class DeduplicationService:
 
     @staticmethod
     @transaction.atomic
-    def merge(*, primary_lead_id: str, duplicate_lead_ids: list[str], user=None) -> dict:
+    def merge(*, primary_lead_id: str, duplicate_lead_ids: list[str], user=None, website_id: str = None) -> dict:
         """
         Merge duplicate leads into a single primary lead.
 
@@ -59,8 +59,13 @@ class DeduplicationService:
         - Fills empty fields on primary from duplicates
         - Soft-deletes the duplicate leads
         """
-        primary = Lead.objects.select_for_update().get(id=primary_lead_id)
-        duplicates = Lead.objects.select_for_update().filter(id__in=duplicate_lead_ids)
+        lookup = {"id": primary_lead_id}
+        dup_lookup = {"id__in": duplicate_lead_ids}
+        if website_id:
+            lookup["website_id"] = website_id
+            dup_lookup["website_id"] = website_id
+        primary = Lead.objects.select_for_update().get(**lookup)
+        duplicates = Lead.objects.select_for_update().filter(**dup_lookup)
 
         merged_count = 0
 

@@ -85,6 +85,17 @@ class AILeadFinder:
                 timeout=10,
             )
             data = resp.json()
+
+            # Check for API errors (403 = API not enabled, 400 = bad key, etc.)
+            if resp.status_code != 200:
+                error_msg = data.get("error", {}).get("message", resp.text[:200])
+                logger.error(
+                    "Google Custom Search API error (HTTP %d): %s",
+                    resp.status_code,
+                    error_msg,
+                )
+                return []
+
             results = []
             for item in data.get("items", []):
                 results.append({

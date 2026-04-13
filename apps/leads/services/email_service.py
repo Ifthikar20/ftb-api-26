@@ -13,9 +13,9 @@ logger = logging.getLogger(__name__)
 
 class LeadEmailService:
     @staticmethod
-    def send_email(*, lead_id: int, subject: str, body: str, sent_by) -> LeadEmail:
+    def send_email(*, lead_id: int, website_id: str, subject: str, body: str, sent_by) -> LeadEmail:
         """Send an email to a lead and record it."""
-        lead = Lead.objects.select_related("visitor").get(pk=lead_id)
+        lead = Lead.objects.select_related("visitor").get(pk=lead_id, website_id=website_id)
         to_email = lead.email
 
         if not to_email:
@@ -48,10 +48,10 @@ class LeadEmailService:
         return email_record
 
     @staticmethod
-    def get_email_history(*, lead_id: int) -> list:
+    def get_email_history(*, lead_id: int, website_id: str) -> list:
         """Return all emails sent to a lead."""
         return list(
-            LeadEmail.objects.filter(lead_id=lead_id)
+            LeadEmail.objects.filter(lead_id=lead_id, lead__website_id=website_id)
             .values("id", "subject", "to_email", "status", "sent_at", "body")
             .order_by("-sent_at")
         )

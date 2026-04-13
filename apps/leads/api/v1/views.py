@@ -175,7 +175,7 @@ class LeadEmailView(TenantScopedAPIView):
 
         try:
             email_record = LeadEmailService.send_email(
-                lead_id=lead_id, subject=subject, body=body, sent_by=request.user
+                lead_id=lead_id, website_id=website_id, subject=subject, body=body, sent_by=request.user
             )
             return Response({
                 "success": True,
@@ -190,7 +190,7 @@ class LeadEmailView(TenantScopedAPIView):
         self.get_website(website_id)
         from apps.leads.services.email_service import LeadEmailService
 
-        emails = LeadEmailService.get_email_history(lead_id=lead_id)
+        emails = LeadEmailService.get_email_history(lead_id=lead_id, website_id=website_id)
         return Response(emails)
 
 
@@ -507,6 +507,7 @@ class LeadDeduplicationView(TenantScopedAPIView):
             primary_lead_id=primary_id,
             duplicate_lead_ids=dup_ids,
             user=request.user,
+            website_id=str(website_id),
         )
         return Response(result)
 

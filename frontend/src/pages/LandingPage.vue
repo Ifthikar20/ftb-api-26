@@ -4,7 +4,7 @@
     <nav class="nav" :class="{ scrolled }">
       <div class="wrap nav-row">
         <router-link to="/" class="brand">
-          <svg width="32" height="32" viewBox="0 0 28 28" fill="none"><circle cx="14" cy="14" r="14" fill="#131718"/><path d="M9 10h4v8H9z M15 7h4v11h-4z" fill="#fff"/></svg>
+          <img src="/images/fb-logo.png" alt="FetchBot" class="brand-logo" />
           <span class="brand-name">FetchBot</span>
           <span class="brand-beta">BETA</span>
         </router-link>
@@ -155,7 +155,7 @@
     <footer class="footer">
       <div class="wrap footer-row">
         <div class="footer-brand">
-          <svg width="24" height="24" viewBox="0 0 28 28" fill="none"><circle cx="14" cy="14" r="14" fill="#131718"/><path d="M9 10h4v8H9z M15 7h4v11h-4z" fill="#fff"/></svg>
+          <img src="/images/fb-logo.png" alt="FetchBot" class="footer-logo" />
           <span>FetchBot</span>
         </div>
         <span class="footer-copy">2026 FetchBot. Privacy. Terms.</span>
@@ -293,9 +293,40 @@ const steps = [
 ]
 
 const plans = [
-  { name: 'Starter', price: 'Free', per: '', desc: 'For side projects.', features: ['1 website', '1,000 pageviews/mo', 'Keyword tracking (10)'], cta: 'Start Free', featured: false },
-  { name: 'Growth', price: '$29', per: 'mo', desc: 'For growing businesses.', features: ['5 websites', '50,000 pageviews/mo', 'Full analytics + AI', 'Heatmaps & funnels', 'Lead identification'], cta: 'Start Free Trial', featured: true },
-  { name: 'Scale', price: '$99', per: 'mo', desc: 'For agencies.', features: ['50 websites', '500,000 pageviews/mo', 'Everything in Growth', 'API access'], cta: 'Contact Sales', featured: false },
+  {
+    name: 'Starter',
+    price: '$39',
+    per: 'mo',
+    desc: 'For small companies & individuals.',
+    features: [
+      '5 websites',
+      '100,000 pageviews/mo',
+      'Full analytics + AI',
+      'Heatmaps & funnels',
+      'Lead identification',
+      'Keyword tracking & SEO',
+      '5-day free trial',
+    ],
+    cta: 'Start Free Trial',
+    featured: true,
+  },
+  {
+    name: 'Enterprise',
+    price: 'Custom',
+    per: '',
+    desc: 'For teams & agencies.',
+    features: [
+      'Everything in Starter',
+      'Unlimited projects & pageviews',
+      'Unlimited AI credits',
+      'SSO / SAML',
+      'Full API access',
+      'White-label reports',
+      'Dedicated support & SLA',
+    ],
+    cta: 'Contact Sales',
+    featured: false,
+  },
 ]
 </script>
 
@@ -340,6 +371,7 @@ em { color: #5B8DEF; font-style: italic; }
 .nav.scrolled { background: rgba(255,255,255,0.96); box-shadow: 0 1px 0 rgba(0,0,0,0.06); }
 .nav-row { display: flex; align-items: center; justify-content: space-between; }
 .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+.brand-logo { width: 36px; height: 36px; object-fit: contain; }
 .brand-name { font-family: 'DM Serif Display', Georgia, serif; font-size: 20px; color: #131718; letter-spacing: -0.02em; }
 .brand-beta {
   display: inline-block;
@@ -649,7 +681,7 @@ em { color: #5B8DEF; font-style: italic; }
 
 /* ── Pricing ── */
 .pricing { padding: 96px 0; }
-.price-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.price-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; max-width: 800px; margin: 0 auto; }
 .price-card {
   display: flex; flex-direction: column;
   background: #fff; border: 1px solid rgba(0,0,0,0.06);
@@ -698,6 +730,7 @@ em { color: #5B8DEF; font-style: italic; }
 .footer { padding: 24px 0; border-top: 1px solid rgba(0,0,0,0.06); }
 .footer-row { display: flex; align-items: center; justify-content: space-between; }
 .footer-brand { display: flex; align-items: center; gap: 8px; font-family: 'DM Serif Display', Georgia, serif; font-size: 16px; }
+.footer-logo { width: 28px; height: 28px; object-fit: contain; }
 .footer-copy { font-size: 11px; color: #a09a93; }
 
 /* ── Responsive ── */

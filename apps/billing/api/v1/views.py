@@ -29,7 +29,7 @@ class BillingOverviewView(APIView):
             plan_data = PlanService.get_plan(subscription.plan)
         except Subscription.DoesNotExist:
             subscription = None
-            plan_data = PlanService.get_plan("individual")
+            plan_data = PlanService.get_plan("starter")
 
         # Determine segment
         segment = getattr(request.user, "segment", None) or "individual"
@@ -38,7 +38,7 @@ class BillingOverviewView(APIView):
         usage = UsageService.get_current_usage(user=request.user)
 
         return Response({
-            "plan": getattr(request.user, "plan", "individual"),
+            "plan": getattr(request.user, "plan", "starter"),
             "segment": segment,
             "plan_details": plan_data,
             "subscription_status": subscription.status if subscription else "none",
@@ -65,11 +65,11 @@ class CheckoutView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        plan = request.data.get("plan", "individual")
+        plan = request.data.get("plan", "starter")
         annual = request.data.get("annual", False)
 
         # Validate plan — only individual is available for self-serve checkout
-        valid_plans = ["individual"]
+        valid_plans = ["starter"]
         if plan not in valid_plans:
             return Response(
                 {
@@ -173,7 +173,7 @@ class UsageView(APIView):
 
     def get(self, request):
         usage = UsageService.get_current_usage(user=request.user)
-        limits = StripeService.get_plan_limits(getattr(request.user, "plan", "individual"))
+        limits = StripeService.get_plan_limits(getattr(request.user, "plan", "starter"))
 
         # Combine usage with limits for the frontend
         metrics = []

@@ -7,27 +7,28 @@ class Segment(models.TextChoices):
 
 
 class Plan(models.TextChoices):
-    INDIVIDUAL = "individual", "Individual"
+    STARTER = "starter", "Starter"
     ENTERPRISE = "enterprise", "Enterprise"
     # Legacy aliases for migration compatibility
-    STARTER = "starter", "Starter (Legacy)"
+    INDIVIDUAL = "individual", "Individual (Legacy)"
     GROWTH = "growth", "Growth (Legacy)"
     SCALE = "scale", "Scale (Legacy)"
 
 
 # ── Feature limits per plan ──────────────────────────────────────────
-# Individual = $14/mo flat.  Enterprise = custom pricing per user.
+# Starter = $39/mo (5-day free trial).  Enterprise = custom pricing.
 PLAN_LIMITS = {
-    Plan.INDIVIDUAL: {
+    Plan.STARTER: {
         "segment": Segment.INDIVIDUAL,
-        "price_monthly": 14,
-        "price_yearly": 140,
-        "projects": 3,
-        "pageviews": 50_000,
+        "price_monthly": 39,
+        "price_yearly": 390,
+        "trial_days": 5,
+        "projects": 5,
+        "pageviews": 100_000,
         "team_members": 1,
-        "ai_credits_monthly": 100,
-        "integrations": 2,
-        "competitors": 5,
+        "ai_credits_monthly": 200,
+        "integrations": 3,
+        "competitors": 10,
         "voice_minutes_monthly": 100,
         "pipeline_builder": True,
         "trend_intelligence": True,
@@ -69,9 +70,9 @@ PLAN_LIMITS = {
     },
 }
 
-# Legacy aliases → map to Individual
-PLAN_LIMITS[Plan.STARTER] = PLAN_LIMITS[Plan.INDIVIDUAL]
-PLAN_LIMITS[Plan.GROWTH] = PLAN_LIMITS[Plan.INDIVIDUAL]
+# Legacy aliases → map to Starter
+PLAN_LIMITS[Plan.INDIVIDUAL] = PLAN_LIMITS[Plan.STARTER]
+PLAN_LIMITS[Plan.GROWTH] = PLAN_LIMITS[Plan.STARTER]
 PLAN_LIMITS[Plan.SCALE] = PLAN_LIMITS[Plan.ENTERPRISE]
 
 
