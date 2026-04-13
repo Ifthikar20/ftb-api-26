@@ -219,7 +219,7 @@ function formatTime(dt) {
 }
 
 async function apiFetch(path, options = {}) {
-  const token = auth.token || localStorage.getItem('access_token')
+  const token = auth.accessToken || localStorage.getItem('access_token')
   const res = await fetch(`/api/v1/messaging/${websiteId.value}${path}`, {
     headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', ...options.headers },
     ...options,
