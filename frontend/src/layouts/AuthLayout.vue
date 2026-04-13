@@ -1,27 +1,35 @@
 <template>
   <div class="auth-layout">
     <div class="auth-left">
-      <div class="auth-brand">
-        <div class="brand-logo">
-          <img src="/images/fb-logo.png" alt="FetchBot" style="width:32px;height:32px;object-fit:contain" />
-        </div>
-        <span class="brand-name">FetchBot</span>
-      </div>
+      <!-- Watercolor video background -->
+      <video class="auth-video-bg" autoplay muted loop playsinline>
+        <source src="/videos/watercolor-main.mp4" type="video/mp4" />
+      </video>
+      <div class="auth-video-overlay"></div>
 
-      <div class="auth-hero">
-        <h1 class="auth-headline">Marketing Intelligence, <br/><em>Simplified.</em></h1>
-        <p class="auth-tagline">Track visitors, score leads, audit your site, and grow with AI — all in one platform.</p>
-        <span class="version-badge">v2.1</span>
-      </div>
-
-      <div class="auth-features">
-        <div class="feature-item">
-          <span class="feature-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M2 14V6l4-4 4 4 4-4v12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg></span>
-          <span>Real-time analytics</span>
+      <div class="auth-left-content">
+        <div class="auth-brand">
+          <div class="brand-logo">
+            <img src="/images/fb-logo.png" alt="FetchBot" style="width:32px;height:32px;object-fit:contain;filter:brightness(10)" />
+          </div>
+          <span class="brand-name">FetchBot</span>
         </div>
-        <div class="feature-item">
-          <span class="feature-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="5" r="3" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M2 14c0-3 3-5 6-5s6 2 6 5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></span>
-          <span>Lead scoring</span>
+
+        <div class="auth-hero">
+          <h1 class="auth-headline">Marketing Intelligence, <br/><em>Simplified.</em></h1>
+          <p class="auth-tagline">Track visitors, score leads, audit your site, and grow with AI — all in one platform.</p>
+          <span class="version-badge">v2.1</span>
+        </div>
+
+        <div class="auth-features">
+          <div class="feature-item">
+            <span class="feature-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M2 14V6l4-4 4 4 4-4v12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg></span>
+            <span>Real-time analytics</span>
+          </div>
+          <div class="feature-item">
+            <span class="feature-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="5" r="3" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M2 14c0-3 3-5 6-5s6 2 6 5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></span>
+            <span>Lead scoring</span>
+          </div>
         </div>
       </div>
     </div>
@@ -74,15 +82,42 @@ onMounted(() => {
   min-height: 100vh;
 }
 
-/* ── Left Panel ── */
+/* ── Left Panel — Video Background ── */
 .auth-left {
   flex: 1;
-  background: var(--bg-root);
+  position: relative;
+  overflow: hidden;
+}
+
+.auth-video-bg {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  object-fit: cover;
+  z-index: 0;
+}
+
+.auth-video-overlay {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  background: linear-gradient(
+    160deg,
+    rgba(0, 0, 0, 0.55) 0%,
+    rgba(0, 0, 0, 0.35) 40%,
+    rgba(0, 0, 0, 0.20) 100%
+  );
+  z-index: 1;
+}
+
+.auth-left-content {
+  position: relative;
+  z-index: 2;
   display: flex;
   flex-direction: column;
   justify-content: center;
+  height: 100%;
   padding: 48px 56px;
-  position: relative;
 }
 
 .auth-brand {
@@ -97,7 +132,8 @@ onMounted(() => {
 .brand-name {
   font-family: var(--font-display);
   font-size: var(--font-xl);
-  color: var(--text-primary);
+  color: #ffffff;
+  text-shadow: 0 1px 8px rgba(0,0,0,0.3);
 }
 
 .auth-hero {
@@ -109,19 +145,22 @@ onMounted(() => {
   font-size: clamp(2rem, 4vw, 3.5rem);
   font-weight: 400;
   line-height: 1.15;
-  color: var(--text-primary);
+  color: #ffffff;
   margin-bottom: 20px;
+  text-shadow: 0 2px 16px rgba(0,0,0,0.3);
 }
 
 .auth-headline em {
   font-style: italic;
+  color: #c4dafe;
 }
 
 .auth-tagline {
   font-size: var(--font-md);
-  color: var(--text-secondary);
+  color: rgba(255, 255, 255, 0.85);
   line-height: 1.7;
   max-width: 420px;
+  text-shadow: 0 1px 6px rgba(0,0,0,0.2);
 }
 
 .version-badge {
@@ -131,10 +170,12 @@ onMounted(() => {
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.05em;
-  color: var(--color-accent, #6366f1);
-  background: color-mix(in srgb, var(--color-accent, #6366f1) 10%, transparent);
-  border: 1px solid color-mix(in srgb, var(--color-accent, #6366f1) 25%, transparent);
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.25);
   border-radius: 999px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
 .auth-features {
@@ -149,11 +190,12 @@ onMounted(() => {
   gap: 8px;
   font-size: var(--font-sm);
   font-weight: 500;
-  color: var(--text-secondary);
+  color: rgba(255, 255, 255, 0.8);
 }
 
 .feature-icon {
   font-size: 18px;
+  color: rgba(255, 255, 255, 0.9);
 }
 
 /* ── Right Panel ── */

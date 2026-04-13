@@ -24,7 +24,10 @@
     <section class="hero">
       <div class="wrap">
         <h1 class="hero-h anim" data-anim="fade-up">
-          MARKETING<br/>INTELLIGENCE,<br/><em>SIMPLIFIED.</em>
+          <span class="tw-line" ref="twLine1"></span><br/>
+          <span class="tw-line" ref="twLine2"></span><br/>
+          <em><span class="tw-line" ref="twLine3"></span></em>
+          <span class="tw-cursor" :class="{ 'tw-cursor--done': twDone }">|</span>
         </h1>
         <p class="hero-p anim" data-anim="fade-up" data-delay="60">
           Track visitors, score leads, audit your site, and grow<br class="hide-m"/>
@@ -70,13 +73,14 @@
                :style="{ transform: `translateX(${trackOffset}px)` }">
             <div v-for="(f, i) in features" :key="f.title"
                  class="carousel-card" :class="[f.tint, { expanded: activeCard === i }]"
+                 :style="{ animationDelay: `${i * 100}ms` }"
                  @click="activeCard = activeCard === i ? -1 : i">
               <span class="card-num">{{ String(i + 1).padStart(2, '0') }}</span>
               <div class="card-visual">
                 <div class="card-icon" v-html="f.icon"></div>
               </div>
               <h3 class="card-title">{{ f.title }}</h3>
-              <div class="card-expand" v-if="activeCard === i">
+              <div class="card-expand" :class="{ 'card-expand--open': activeCard === i }">
                 <span class="card-arrow">
                   <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 12L12 4M12 4H5M12 4v7"/></svg>
                 </span>
@@ -169,6 +173,12 @@ const activeCat = ref(0)
 const trackOffset = ref(0)
 const trackRef = ref(null)
 
+/* Typewriter refs */
+const twLine1 = ref(null)
+const twLine2 = ref(null)
+const twLine3 = ref(null)
+const twDone = ref(false)
+
 const cardStep = 280
 const visibleCards = 4
 let cycleTimer = null
@@ -189,6 +199,35 @@ function resetCycle() {
   startCycle()
 }
 
+/* Typewriter engine */
+function typeWriter(el, text, speed = 65) {
+  return new Promise(resolve => {
+    let idx = 0
+    function tick() {
+      if (!el) { resolve(); return }
+      if (idx <= text.length) {
+        el.textContent = text.slice(0, idx)
+        idx++
+        setTimeout(tick, speed)
+      } else {
+        resolve()
+      }
+    }
+    tick()
+  })
+}
+
+async function runTypewriter() {
+  await new Promise(r => setTimeout(r, 400)) // initial pause
+  await typeWriter(twLine1.value, 'MARKETING', 80)
+  await new Promise(r => setTimeout(r, 200))
+  await typeWriter(twLine2.value, 'INTELLIGENCE,', 70)
+  await new Promise(r => setTimeout(r, 200))
+  await typeWriter(twLine3.value, 'SIMPLIFIED.', 70)
+  await new Promise(r => setTimeout(r, 400))
+  twDone.value = true
+}
+
 onMounted(() => {
   const onScroll = () => { scrolled.value = window.scrollY > 40 }
   window.addEventListener('scroll', onScroll, { passive: true })
@@ -205,6 +244,7 @@ onMounted(() => {
 
   document.querySelectorAll('.anim').forEach(el => obs.observe(el))
   startCycle()
+  runTypewriter()
 
   onUnmounted(() => {
     window.removeEventListener('scroll', onScroll)
@@ -262,8 +302,9 @@ const plans = [
 <style scoped>
 /* ═══════════════════════════════════
    FetchBot — Travel Lab style
-   White bg · League Gothic/DM Serif headlines
+   White bg · DM Serif Display headlines
    Horizontal numbered card carousel
+   Typewriter hero · word cycler
    ═══════════════════════════════════ */
 
 /* ── Animations ── */
@@ -343,10 +384,32 @@ em { color: #5B8DEF; font-style: italic; }
 .hero-h {
   font-family: 'DM Serif Display', Georgia, serif;
   font-weight: 400; font-size: clamp(2.8rem, 6vw, 5.5rem);
-  line-height: 0.95; letter-spacing: -0.03em;
+  line-height: 1.05; letter-spacing: -0.03em;
   text-transform: uppercase;
   margin-bottom: 24px;
+  min-height: 3.3em; /* prevent layout shift during typewriter */
 }
+
+/* Typewriter cursor */
+.tw-line {
+  display: inline;
+}
+.tw-cursor {
+  display: inline-block;
+  font-weight: 300;
+  color: #5B8DEF;
+  animation: tw-blink 0.6s step-end infinite;
+  margin-left: 2px;
+}
+.tw-cursor--done {
+  animation: tw-blink 1.2s step-end infinite;
+  opacity: 0.5;
+}
+@keyframes tw-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
 .hero-p { font-size: 16px; color: #6e6a65; line-height: 1.7; max-width: 480px; margin-bottom: 32px; }
 .hero-ctas { display: flex; gap: 12px; }
 .btn-primary {
@@ -375,19 +438,27 @@ em { color: #5B8DEF; font-style: italic; }
   font-weight: 400; text-transform: uppercase;
   letter-spacing: -0.02em;
   display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap;
+  line-height: 1.2;
 }
 
 /* ── Framer-style word cycler ── */
 .feat-word-cycler {
-  display: inline-block; position: relative;
-  min-width: 180px; height: 1.1em;
-  vertical-align: baseline; overflow: hidden;
+  display: inline-flex;
+  position: relative;
+  min-width: 240px;
+  height: 1.25em;
+  vertical-align: baseline;
+  overflow: hidden;
+  align-items: flex-end;
 }
 .feat-word {
-  display: inline-block; position: absolute;
+  display: inline-block;
+  position: absolute;
   left: 0; bottom: 0;
-  color: #5B8DEF; font-style: italic;
+  color: #5B8DEF;
+  font-style: italic;
   white-space: nowrap;
+  line-height: 1.2;
 }
 .feat-word-glow {
   position: absolute; bottom: -4px; left: 0; right: 0;
@@ -407,6 +478,7 @@ em { color: #5B8DEF; font-style: italic; }
 }
 .word-cycle-leave-active {
   transition: all 0.35s cubic-bezier(0.55, 0, 1, 0.45);
+  position: absolute;
 }
 .word-cycle-enter-from {
   opacity: 0; transform: translateY(100%) scale(0.9);
@@ -432,8 +504,25 @@ em { color: #5B8DEF; font-style: italic; }
   font-size: clamp(1rem, 1.8vw, 1.3rem);
   font-style: italic; color: #94a3b8;
   padding: 0; transition: all 0.3s;
+  position: relative;
 }
-.feat-tab.active { color: #5B8DEF; text-decoration: underline; text-underline-offset: 4px; text-decoration-color: #5B8DEF; }
+.feat-tab.active {
+  color: #5B8DEF;
+  text-decoration: none;
+}
+.feat-tab.active::after {
+  content: '';
+  position: absolute;
+  bottom: -4px; left: 0; right: 0;
+  height: 2px;
+  background: #5B8DEF;
+  border-radius: 1px;
+  animation: tab-slide-in 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes tab-slide-in {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
 .feat-tab:hover { color: #131718; }
 
 /* Carousel track */
@@ -449,8 +538,25 @@ em { color: #5B8DEF; font-style: italic; }
   border-radius: 16px; padding: 24px 20px;
   cursor: pointer; position: relative;
   display: flex; flex-direction: column;
-  transition: all 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+  transition: flex 0.45s cubic-bezier(0.22, 1, 0.36, 1),
+              transform 0.3s cubic-bezier(0.22, 1, 0.36, 1),
+              box-shadow 0.3s ease;
   overflow: hidden;
+  animation: card-entrance 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes card-entrance {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.carousel-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.08);
 }
 .carousel-card.expanded {
   flex: 0 0 340px;
@@ -470,15 +576,34 @@ em { color: #5B8DEF; font-style: italic; }
   margin-bottom: 16px;
 }
 .card-visual { margin-bottom: auto; }
-.card-icon { color: #131718; opacity: 0.7; }
+.card-icon {
+  color: #131718; opacity: 0.7;
+  transition: transform 0.3s ease;
+}
+.carousel-card:hover .card-icon {
+  transform: scale(1.1);
+}
 .card-title {
   font-size: 18px; font-weight: 800;
   color: #131718; letter-spacing: -0.01em;
   margin-top: auto;
 }
 
-/* Expanded card details */
-.card-expand { margin-top: 10px; }
+/* Expanded card details — smooth reveal */
+.card-expand {
+  margin-top: 0;
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  transition: max-height 0.45s cubic-bezier(0.22, 1, 0.36, 1),
+              opacity 0.35s ease,
+              margin-top 0.35s ease;
+}
+.card-expand--open {
+  max-height: 200px;
+  opacity: 1;
+  margin-top: 10px;
+}
 .card-arrow { display: flex; justify-content: flex-end; margin-bottom: 8px; }
 .card-desc { font-size: 12px; color: #131718; opacity: 0.75; line-height: 1.5; margin-bottom: 10px; }
 .card-replaces { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #131718; opacity: 0.4; }
@@ -584,9 +709,10 @@ em { color: #5B8DEF; font-style: italic; }
   .carousel-card { flex: 0 0 220px; min-height: 260px; }
   .carousel-card.expanded { flex: 0 0 280px; }
   .hide-m { display: none; }
+  .feat-word-cycler { min-width: 160px; }
 }
 @media (max-width: 640px) {
-  .hero-h { font-size: 2.4rem; }
+  .hero-h { font-size: 2.4rem; min-height: auto; }
   .hero-ctas { flex-direction: column; align-items: flex-start; }
 }
 </style>
