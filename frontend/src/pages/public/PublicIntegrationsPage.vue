@@ -67,7 +67,7 @@
                 </div>
                 <div class="pi-card-badges">
                   <span v-if="intg.status === 'active'" class="pi-card-status pi-status-active">Active</span>
-                  <span v-else-if="intg.status === 'needs-key'" class="pi-card-status pi-status-key">Needs Key</span>
+                  <span v-else-if="intg.status === 'needs-key'" class="pi-card-status pi-status-unavailable">Unavailable</span>
                   <span v-else class="pi-card-status pi-status-soon">Coming Soon</span>
                   <span class="pi-card-tag" :style="{ color: intg.tagColor, background: intg.tagBg }">{{ intg.category }}</span>
                 </div>
@@ -353,7 +353,7 @@ const filteredIntegrations = computed(() => {
   text-transform: uppercase; letter-spacing: 0.3px;
 }
 .pi-status-active { background: #dcfce7; color: #16a34a; }
-.pi-status-key { background: #fef3c7; color: #d97706; }
+.pi-status-unavailable { background: #f1f5f9; color: #64748b; }
 .pi-status-soon { background: #f1f5f9; color: #94a3b8; }
 .pi-card-tag {
   font-size: 10px; font-weight: 600; padding: 3px 8px;

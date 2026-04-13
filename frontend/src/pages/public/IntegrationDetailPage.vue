@@ -37,7 +37,7 @@
           <div>
             <div class="id-hero-badges">
               <span v-if="integration.status === 'active'" class="id-status-badge id-status-active">✓ Active</span>
-              <span v-else-if="integration.status === 'needs-key'" class="id-status-badge id-status-key">Needs API Key</span>
+              <span v-else-if="integration.status === 'needs-key'" class="id-status-badge id-status-unavailable">Unavailable</span>
               <span v-else class="id-status-badge id-status-soon">Coming Soon</span>
               <span class="id-hero-tag" :style="{ color: integration.tagColor, background: integration.tagBg }">{{ integration.category }}</span>
             </div>
@@ -114,8 +114,8 @@
             </div>
             <div class="id-info-row">
               <span class="id-info-label">Status</span>
-              <span class="id-info-value" :class="{ 'text-green': integration.status === 'active', 'text-amber': integration.status === 'needs-key' }">
-                {{ integration.status === 'active' ? 'Active' : integration.status === 'needs-key' ? 'Needs API Key' : 'Coming Soon' }}
+              <span class="id-info-value" :class="{ 'text-green': integration.status === 'active' }">
+                {{ integration.status === 'active' ? 'Active' : integration.status === 'needs-key' ? 'Unavailable' : 'Coming Soon' }}
               </span>
             </div>
             <div class="id-info-row">
@@ -296,7 +296,7 @@ watch(() => route.params.slug, () => { window.scrollTo({ top: 0, behavior: 'smoo
 .id-hero-badges { display: flex; gap: 8px; margin-bottom: 8px; }
 .id-status-badge { font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 100px; text-transform: uppercase; letter-spacing: 0.3px; }
 .id-status-active { background: #dcfce7; color: #16a34a; }
-.id-status-key { background: #fef3c7; color: #d97706; }
+.id-status-unavailable { background: #f1f5f9; color: #64748b; }
 .id-status-soon { background: #f1f5f9; color: #94a3b8; }
 .id-hero-tag { display: inline-block; font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 100px; text-transform: uppercase; letter-spacing: 0.3px; }
 .id-hero h1 { font-size: 36px; font-weight: 800; margin: 0 0 8px; letter-spacing: -0.5px; }

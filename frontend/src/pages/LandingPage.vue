@@ -12,6 +12,7 @@
           <a href="#features">Features</a>
           <a href="#how">How It Works</a>
           <a href="#pricing">Pricing</a>
+          <router-link to="/integrations">Integrations</router-link>
         </div>
         <div class="nav-right">
           <router-link to="/login" class="nav-link-text">Log In</router-link>
