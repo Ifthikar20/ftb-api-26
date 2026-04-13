@@ -1,6 +1,13 @@
 from rest_framework import serializers
 
-from apps.messaging.models import AIInstruction, Channel, Contact, Conversation, Message
+from apps.messaging.models import (
+    AgentTrainingDoc,
+    AIInstruction,
+    Channel,
+    Contact,
+    Conversation,
+    Message,
+)
 
 
 class ChannelSerializer(serializers.ModelSerializer):
@@ -17,14 +24,21 @@ class ChannelSerializer(serializers.ModelSerializer):
 
 class MessageSerializer(serializers.ModelSerializer):
     sender_display = serializers.CharField(source="get_sent_by_display", read_only=True)
+    ai_audit = serializers.SerializerMethodField()
 
     class Meta:
         model = Message
         fields = [
             "id", "direction", "message_type", "content", "media_url",
-            "sent_by", "sender_display", "is_read", "created_at",
+            "sent_by", "sender_display", "is_read", "created_at", "ai_audit",
         ]
         read_only_fields = ["id", "created_at"]
+
+    def get_ai_audit(self, obj):
+        """Return AI audit metadata for AI-sent messages, None otherwise."""
+        if obj.sent_by == "ai" and obj.metadata:
+            return obj.metadata.get("ai_audit")
+        return None
 
 
 class ContactSerializer(serializers.ModelSerializer):
@@ -73,11 +87,27 @@ class SendMessageSerializer(serializers.Serializer):
     )
 
 
+# ── Agent Training Docs ──────────────────────────────────────────
+
+class AgentTrainingDocSerializer(serializers.ModelSerializer):
+    doc_type_display = serializers.CharField(source="get_doc_type_display", read_only=True)
+
+    class Meta:
+        model = AgentTrainingDoc
+        fields = [
+            "id", "title", "doc_type", "doc_type_display", "content",
+            "is_active", "sort_order", "created_at", "updated_at",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]
+
+
 class AIInstructionSerializer(serializers.ModelSerializer):
+    personality_display = serializers.CharField(source="get_personality_display", read_only=True)
+
     class Meta:
         model = AIInstruction
         fields = [
-            "id", "name", "instruction_text", "personality",
+            "id", "name", "instruction_text", "personality", "personality_display",
             "product_context", "booking_enabled", "auto_qualify",
             "is_active", "created_at", "updated_at",
         ]

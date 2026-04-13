@@ -138,8 +138,51 @@ class Message(TimestampMixin):
         return f"{self.get_direction_display()} – {self.content[:60]}"
 
 
+class AgentTrainingDoc(TimestampMixin):
+    """A markdown training document for the messaging AI agent.
+
+    Users create .md files to train the agent on products, tone, objection
+    handling, scripts, and FAQs.  All active docs are concatenated into the
+    system prompt when generating AI replies.
+    """
+
+    DOC_TYPES = [
+        ("persona", "Persona & Tone"),
+        ("product", "Product Knowledge"),
+        ("rules", "Rules & Objections"),
+        ("script", "Sales Script"),
+        ("faq", "FAQ"),
+        ("custom", "Custom"),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    website = models.ForeignKey(
+        "websites.Website", on_delete=models.CASCADE, related_name="agent_training_docs"
+    )
+    title = models.CharField(max_length=200)
+    doc_type = models.CharField(max_length=20, choices=DOC_TYPES, default="custom")
+    content = models.TextField(help_text="Markdown content the AI agent uses as training context")
+    is_active = models.BooleanField(default=True)
+    sort_order = models.IntegerField(default=0)
+
+    class Meta:
+        ordering = ["sort_order", "-created_at"]
+
+    def __str__(self):
+        return f"{self.title} ({self.get_doc_type_display()}) – {self.website}"
+
+
 class AIInstruction(TimestampMixin):
-    """Natural-language instructions for the AI sales agent."""
+    """Agent configuration — tone, feature flags, and legacy instruction text."""
+
+    TONE_CHOICES = [
+        ("professional", "Professional"),
+        ("friendly", "Friendly"),
+        ("casual", "Casual"),
+        ("assertive", "Assertive"),
+        ("bargaining", "Bargaining"),
+        ("empathetic", "Empathetic"),
+    ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     website = models.ForeignKey(
@@ -147,14 +190,16 @@ class AIInstruction(TimestampMixin):
     )
     name = models.CharField(max_length=120, default="Default Agent")
     instruction_text = models.TextField(
-        help_text="Describe how the AI should behave, sell, qualify leads, etc."
+        blank=True,
+        help_text="Legacy instruction text. Prefer AgentTrainingDoc for new content.",
     )
     personality = models.CharField(
-        max_length=30, default="professional",
-        help_text="Tone: professional, friendly, casual, assertive"
+        max_length=30, choices=TONE_CHOICES, default="professional",
+        help_text="Active tone the AI agent uses when responding",
     )
     product_context = models.TextField(
-        blank=True, help_text="Products/services, pricing, USPs for the AI to reference"
+        blank=True,
+        help_text="Legacy product context. Prefer AgentTrainingDoc for new content.",
     )
     booking_enabled = models.BooleanField(
         default=False, help_text="Whether the AI can book appointments in chat"

@@ -1,5 +1,6 @@
 import logging
 import uuid
+from pathlib import Path
 
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -8,8 +9,16 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.messaging.models import AIInstruction, Channel, Contact, Conversation, Message
+from apps.messaging.models import (
+    AgentTrainingDoc,
+    AIInstruction,
+    Channel,
+    Contact,
+    Conversation,
+    Message,
+)
 from apps.messaging.api.v1.serializers import (
+    AgentTrainingDocSerializer,
     AIInstructionSerializer,
     ChannelSerializer,
     ConversationDetailSerializer,
@@ -20,6 +29,8 @@ from apps.messaging.api.v1.serializers import (
 from apps.messaging.services.ai_responder import generate_ai_reply
 
 logger = logging.getLogger(__name__)
+
+TEMPLATE_DIR = Path(__file__).resolve().parent.parent.parent / "training_templates"
 
 
 # ── Helpers ──────────────────────────────────────────────────────
@@ -140,20 +151,21 @@ class AIReplyView(APIView):
             channel__website=website,
         )
 
-        reply_text = generate_ai_reply(conversation)
-        if not reply_text:
+        result = generate_ai_reply(conversation)
+        if not result:
             return Response(
-                {"error": "Could not generate AI reply. Check AI instructions and API key."},
+                {"error": "Could not generate AI reply. Check training docs and API key."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Create AI message
+        # Create AI message with audit metadata
         msg = Message.objects.create(
             conversation=conversation,
             direction="outbound",
             message_type="text",
-            content=reply_text,
+            content=result.content,
             sent_by="ai",
+            metadata={"ai_audit": result.audit} if result.audit else {},
         )
 
         # Update conversation
@@ -203,6 +215,159 @@ class AIInstructionDetailView(generics.RetrieveUpdateDestroyAPIView):
         return get_object_or_404(
             AIInstruction, id=self.kwargs["instruction_id"], website=website
         )
+
+
+# ── Training Docs ─────────────────────────────────────────────────
+
+class TrainingDocListCreateView(generics.ListCreateAPIView):
+    """List all training docs for a website or create a new one."""
+    serializer_class = AgentTrainingDocSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        website = _get_website(self.request, self.kwargs["website_id"])
+        return AgentTrainingDoc.objects.filter(website=website)
+
+    def perform_create(self, serializer):
+        website = _get_website(self.request, self.kwargs["website_id"])
+        serializer.save(website=website)
+
+
+class TrainingDocDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """Get, update, or delete a training doc."""
+    serializer_class = AgentTrainingDocSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_object(self):
+        website = _get_website(self.request, self.kwargs["website_id"])
+        return get_object_or_404(
+            AgentTrainingDoc, id=self.kwargs["doc_id"], website=website
+        )
+
+
+class TrainingTemplateListView(APIView):
+    """List available starter templates."""
+    permission_classes = [IsAuthenticated]
+
+    TEMPLATES = [
+        {
+            "slug": "persona",
+            "title": "Persona & Introduction",
+            "doc_type": "persona",
+            "description": "Define who the agent is and how it greets contacts.",
+            "filename": "persona.md",
+            "sort_order": 0,
+        },
+        {
+            "slug": "product_catalog",
+            "title": "Product Catalog",
+            "doc_type": "product",
+            "description": "Products, pricing, and key features the agent can reference.",
+            "filename": "product_catalog.md",
+            "sort_order": 10,
+        },
+        {
+            "slug": "objection_handling",
+            "title": "Objection Handling",
+            "doc_type": "rules",
+            "description": "How to respond to common objections like price, competitors, and hesitation.",
+            "filename": "objection_handling.md",
+            "sort_order": 20,
+        },
+        {
+            "slug": "booking_script",
+            "title": "Booking Script",
+            "doc_type": "script",
+            "description": "When and how to suggest demos and collect booking info.",
+            "filename": "booking_script.md",
+            "sort_order": 30,
+        },
+    ]
+
+    def get(self, request, website_id):
+        _get_website(request, website_id)  # auth check
+        return Response(self.TEMPLATES)
+
+
+class TrainingTemplateApplyView(APIView):
+    """Create a training doc from a starter template."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, website_id):
+        website = _get_website(request, website_id)
+        slug = request.data.get("slug")
+        if not slug:
+            return Response({"error": "slug is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Find the template
+        templates = {t["slug"]: t for t in TrainingTemplateListView.TEMPLATES}
+        template = templates.get(slug)
+        if not template:
+            return Response({"error": f"Unknown template: {slug}"}, status=status.HTTP_404_NOT_FOUND)
+
+        # Read the .md file
+        filepath = TEMPLATE_DIR / template["filename"]
+        if not filepath.exists():
+            return Response({"error": "Template file not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        content = filepath.read_text(encoding="utf-8")
+        # Substitute placeholders
+        content = content.replace("{{business_name}}", website.name or "our business")
+
+        # Upsert
+        doc, created = AgentTrainingDoc.objects.update_or_create(
+            website=website,
+            title=template["title"],
+            defaults={
+                "doc_type": template["doc_type"],
+                "content": content,
+                "is_active": True,
+                "sort_order": template["sort_order"],
+            },
+        )
+
+        return Response(
+            AgentTrainingDocSerializer(doc).data,
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )
+
+
+class AgentToneUpdateView(APIView):
+    """Update the agent's active tone."""
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, website_id):
+        website = _get_website(request, website_id)
+        tone = request.data.get("tone")
+
+        valid_tones = [c[0] for c in AIInstruction.TONE_CHOICES]
+        if tone not in valid_tones:
+            return Response(
+                {"error": f"Invalid tone. Choose from: {', '.join(valid_tones)}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        instruction, _ = AIInstruction.objects.get_or_create(
+            website=website,
+            defaults={"name": "Default Agent", "personality": tone},
+        )
+        if instruction.personality != tone:
+            instruction.personality = tone
+            instruction.save(update_fields=["personality", "updated_at"])
+
+        return Response({"tone": tone, "display": dict(AIInstruction.TONE_CHOICES).get(tone)})
+
+    def get(self, request, website_id):
+        website = _get_website(request, website_id)
+        instruction = website.ai_instructions.filter(is_active=True).first()
+        tone = instruction.personality if instruction else "professional"
+        return Response({
+            "tone": tone,
+            "display": dict(AIInstruction.TONE_CHOICES).get(tone, "Professional"),
+            "available_tones": [
+                {"key": k, "label": v} for k, v in AIInstruction.TONE_CHOICES
+            ],
+        })
 
 
 # ── Demo Data ─────────────────────────────────────────────────────
@@ -311,8 +476,8 @@ class SeedDemoDataView(APIView):
                 conv.save()
                 created += 1
 
-        # Create default AI instruction
-        AIInstruction.objects.get_or_create(
+        # Create default AI instruction with bargaining tone
+        instruction, _ = AIInstruction.objects.get_or_create(
             website=website,
             name="Default Sales Agent",
             defaults={
@@ -321,7 +486,7 @@ class SeedDemoDataView(APIView):
                     "Your goal is to qualify leads, answer product questions, and book demo calls. "
                     "Be helpful, professional, and proactive."
                 ),
-                "personality": "friendly",
+                "personality": "bargaining",
                 "product_context": (
                     "FetchBot features: Real-time analytics, AI lead scoring, keyword tracking, "
                     "voice agents, LLM ranking checker, heatmaps, campaign management. "
@@ -332,5 +497,26 @@ class SeedDemoDataView(APIView):
                 "auto_qualify": True,
             },
         )
+
+        # Seed training docs from templates
+        template_slugs = ["persona", "product_catalog", "objection_handling"]
+        for slug in template_slugs:
+            templates_map = {t["slug"]: t for t in TrainingTemplateListView.TEMPLATES}
+            template = templates_map.get(slug)
+            if template:
+                filepath = TEMPLATE_DIR / template["filename"]
+                if filepath.exists():
+                    content = filepath.read_text(encoding="utf-8")
+                    content = content.replace("{{business_name}}", website.name or "FetchBot")
+                    AgentTrainingDoc.objects.update_or_create(
+                        website=website,
+                        title=template["title"],
+                        defaults={
+                            "doc_type": template["doc_type"],
+                            "content": content,
+                            "is_active": True,
+                            "sort_order": template["sort_order"],
+                        },
+                    )
 
         return Response({"created": created, "message": f"Created {created} demo conversations"})

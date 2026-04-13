@@ -1,6 +1,7 @@
 from django.urls import path
 
 from apps.messaging.api.v1.views import (
+    AgentToneUpdateView,
     AIInstructionDetailView,
     AIInstructionListCreateView,
     AIReplyView,
@@ -10,6 +11,10 @@ from apps.messaging.api.v1.views import (
     ConversationListView,
     SeedDemoDataView,
     SendMessageView,
+    TrainingDocDetailView,
+    TrainingDocListCreateView,
+    TrainingTemplateApplyView,
+    TrainingTemplateListView,
 )
 
 urlpatterns = [
@@ -27,7 +32,18 @@ urlpatterns = [
     # Contacts
     path("<uuid:website_id>/contacts/", ContactListView.as_view(), name="messaging-contacts"),
 
-    # AI Instructions
+    # Agent Training Docs (.md knowledge base)
+    path("<uuid:website_id>/training-docs/", TrainingDocListCreateView.as_view(), name="messaging-training-docs"),
+    path("<uuid:website_id>/training-docs/<uuid:doc_id>/", TrainingDocDetailView.as_view(), name="messaging-training-doc-detail"),
+
+    # Starter Templates
+    path("<uuid:website_id>/training-docs/templates/", TrainingTemplateListView.as_view(), name="messaging-templates"),
+    path("<uuid:website_id>/training-docs/from-template/", TrainingTemplateApplyView.as_view(), name="messaging-apply-template"),
+
+    # Agent Tone
+    path("<uuid:website_id>/agent-tone/", AgentToneUpdateView.as_view(), name="messaging-agent-tone"),
+
+    # AI Instructions (legacy — kept for backwards compat)
     path("<uuid:website_id>/instructions/", AIInstructionListCreateView.as_view(), name="messaging-instructions"),
     path("<uuid:website_id>/instructions/<uuid:instruction_id>/", AIInstructionDetailView.as_view(), name="messaging-instruction-detail"),
 

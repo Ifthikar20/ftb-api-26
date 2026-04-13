@@ -148,7 +148,7 @@ router.beforeEach(async (to, from, next) => {
     }
 
     // Guard: project-specific pages require an active project
-    const projectPages = ['analytics', 'leads', 'heatmap', 'keywords', 'agents', 'campaigns', 'llm-ranking', 'voice-agent', 'website-detail']
+    const projectPages = ['analytics', 'leads', 'heatmap', 'keywords', 'agents', 'campaigns', 'messaging', 'llm-ranking', 'voice-agent', 'website-detail']
     if (projectPages.includes(to.name) && auth.isAuthenticated) {
         const app = useAppStore()
         if (!app.activeWebsite) {
