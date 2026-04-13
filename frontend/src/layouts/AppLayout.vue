@@ -69,7 +69,7 @@
           <span v-if="!appStore.sidebarCollapsed" class="nav-text">LLM Ranking</span>
         </router-link>
 
-        <router-link to="/integrations" class="nav-link" exact-active-class="active" style="--nav-color: #22c55e">
+        <router-link to="/app/integrations" class="nav-link" exact-active-class="active" style="--nav-color: #22c55e">
           <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M10 13a5 5 0 007.5.5l3-3a5 5 0 00-7-7l-1.5 1.5"/><path d="M14 11a5 5 0 00-7.5-.5l-3 3a5 5 0 007 7l1.5-1.5"/></svg></span>
           <span v-if="!appStore.sidebarCollapsed" class="nav-text">Integrations</span>
         </router-link>

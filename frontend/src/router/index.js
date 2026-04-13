@@ -37,6 +37,21 @@ const routes = [
         meta: { public: true }
     },
 
+    /* ── Public Integrations Showcase ── */
+    {
+        path: '/integrations',
+        name: 'public-integrations',
+        component: () => import('@/pages/public/PublicIntegrationsPage.vue'),
+        meta: { public: true }
+    },
+    {
+        path: '/integration/:slug',
+        name: 'integration-detail',
+        component: () => import('@/pages/public/IntegrationDetailPage.vue'),
+        meta: { public: true },
+        props: true
+    },
+
     /* ── Auth (public) ── */
     {
         path: '/login',
@@ -76,7 +91,7 @@ const routes = [
     protect('/campaigns/:websiteId', 'campaigns', () => import('@/pages/CampaignsPage.vue'), true),
     protect('/voice-agent/:websiteId', 'voice-agent', () => import('@/pages/VoiceAgentPage.vue'), true),
     protect('/llm-ranking/:websiteId', 'llm-ranking', () => import('@/pages/LLMRankingPage.vue'), true),
-    protect('/integrations', 'integrations', () => import('@/pages/IntegrationsPage.vue')),
+    protect('/app/integrations', 'integrations', () => import('@/pages/IntegrationsPage.vue')),
     protect('/billing', 'billing', () => import('@/pages/BillingPage.vue')),
     protect('/settings', 'settings', () => import('@/pages/SettingsPage.vue')),
 
