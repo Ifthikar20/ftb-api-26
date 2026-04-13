@@ -31,11 +31,16 @@
     <section class="id-hero">
       <div class="id-hero-inner">
         <div class="id-hero-left">
-          <div class="id-hero-icon" :style="{ background: integration.bgColor }">
-            <span v-html="integration.icon"></span>
+          <div class="id-hero-icon">
+            <img :src="integration.logo" :alt="integration.name" @error="onLogoError($event)" />
           </div>
           <div>
-            <span class="id-hero-tag" :style="{ color: integration.tagColor, background: integration.tagBg }">{{ integration.category }}</span>
+            <div class="id-hero-badges">
+              <span v-if="integration.status === 'active'" class="id-status-badge id-status-active">✓ Active</span>
+              <span v-else-if="integration.status === 'needs-key'" class="id-status-badge id-status-key">Needs API Key</span>
+              <span v-else class="id-status-badge id-status-soon">Coming Soon</span>
+              <span class="id-hero-tag" :style="{ color: integration.tagColor, background: integration.tagBg }">{{ integration.category }}</span>
+            </div>
             <h1>{{ integration.name }}</h1>
             <p class="id-hero-short">{{ integration.shortDesc }}</p>
           </div>
@@ -80,6 +85,15 @@
 
         <!-- Sidebar -->
         <aside class="id-aside">
+          <!-- Used In -->
+          <div class="id-usedin-card" v-if="integration.usedIn">
+            <h3>Used In App</h3>
+            <div class="id-usedin-loc">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+              <span>{{ integration.usedIn }}</span>
+            </div>
+          </div>
+
           <!-- Features -->
           <div class="id-features-card">
             <h3>Features</h3>
@@ -99,6 +113,12 @@
               <span class="id-info-value">{{ integration.category }}</span>
             </div>
             <div class="id-info-row">
+              <span class="id-info-label">Status</span>
+              <span class="id-info-value" :class="{ 'text-green': integration.status === 'active', 'text-amber': integration.status === 'needs-key' }">
+                {{ integration.status === 'active' ? 'Active' : integration.status === 'needs-key' ? 'Needs API Key' : 'Coming Soon' }}
+              </span>
+            </div>
+            <div class="id-info-row">
               <span class="id-info-label">Setup</span>
               <span class="id-info-value">Under 30 seconds</span>
             </div>
@@ -106,9 +126,9 @@
               <span class="id-info-label">Code Required</span>
               <span class="id-info-value">None</span>
             </div>
-            <div class="id-info-row">
-              <span class="id-info-label">Data Sync</span>
-              <span class="id-info-value">Real-time</span>
+            <div class="id-info-row" v-if="integration.envVars">
+              <span class="id-info-label">Env Vars</span>
+              <span class="id-info-value id-mono">{{ integration.envVars }}</span>
             </div>
           </div>
         </aside>
@@ -125,8 +145,8 @@
             :to="`/integration/${rel.slug}`"
             class="id-related-card"
           >
-            <div class="id-related-icon" :style="{ background: rel.bgColor }">
-              <span v-html="rel.icon"></span>
+            <div class="id-related-icon">
+              <img :src="rel.logo" :alt="rel.name" @error="onLogoError($event)" />
             </div>
             <div>
               <h4>{{ rel.name }}</h4>
@@ -183,26 +203,33 @@ const route = useRoute()
 const scrolled = ref(false)
 
 function onScroll() { scrolled.value = window.scrollY > 20 }
+function onLogoError(e) { e.target.style.display = 'none' }
 onMounted(() => window.addEventListener('scroll', onScroll))
 onUnmounted(() => window.removeEventListener('scroll', onScroll))
 
-// Full integration catalog (shared source of truth)
+// Real integration catalog with actual company logos and statuses
 const allIntegrations = [
-  { slug: 'fetchbot-pixel', name: 'FetchBot Pixel', category: 'Analytics', categoryKey: 'analytics', shortDesc: 'One-line JavaScript snippet for real-time visitor tracking, heatmaps, and session recording.', bgColor: 'linear-gradient(135deg, #6366f120, #8b5cf620)', tagColor: '#6366f1', tagBg: '#6366f110', icon: '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="1.5"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg>', longDesc: 'Install FetchBot\'s lightweight tracking pixel on any website with a single line of code. Automatically captures pageviews, clicks, scroll depth, and session recordings — zero configuration required. The pixel also powers real-time heatmaps and visitor identification for the full analytics suite.', features: ['Real-time visitor tracking', 'Click and scroll heatmaps', 'Session recording', 'Zero-config installation'], docsUrl: '#' },
-  { slug: 'google-analytics', name: 'Google Analytics', category: 'Analytics', categoryKey: 'analytics', shortDesc: 'Import your GA4 data into FetchBot for unified analytics and AI-powered insights.', bgColor: 'linear-gradient(135deg, #f9ab0020, #e3740020)', tagColor: '#e37400', tagBg: '#e3740010', icon: '<svg width="28" height="28" viewBox="0 0 24 24" fill="#e37400"><path d="M22 12c0-5.5-4.5-10-10-10S2 6.5 2 12s4.5 10 10 10c1 0 2-.2 3-.4V14h-4v-3h7v1z"/></svg>', longDesc: 'Bring your Google Analytics 4 data directly into FetchBot. Compare GA metrics with FetchBot\'s server-side data for a complete picture of your traffic. FetchBot\'s AI cross-references both datasets to detect discrepancies and uncover hidden insights.', features: ['GA4 data import', 'Unified dashboard', 'Cross-platform comparison', 'AI anomaly detection'], docsUrl: '#' },
-  { slug: 'google-search-console', name: 'Google Search Console', category: 'SEO', categoryKey: 'seo', shortDesc: 'Pull real Google ranking data, impressions, and clicks to power keyword intelligence.', bgColor: 'linear-gradient(135deg, #4285f420, #34a85320)', tagColor: '#4285f4', tagBg: '#4285f410', icon: '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#4285f4" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>', longDesc: 'Connect Google Search Console to get real search ranking data, impressions, CTR, and click data directly into FetchBot\'s keyword intelligence engine. Track how your keywords perform over time and correlate ranking changes with content updates.', features: ['Real search rankings', 'Click-through rate tracking', 'Impression data', 'Keyword position history'], docsUrl: '#' },
-  { slug: 'slack', name: 'Slack', category: 'Messaging', categoryKey: 'messaging', shortDesc: 'Get daily growth reports, hot lead alerts, and trend intelligence delivered to Slack.', bgColor: 'linear-gradient(135deg, #4A154B15, #E01E5A10)', tagColor: '#4A154B', tagBg: '#4A154B10', icon: '<svg width="28" height="28" viewBox="0 0 24 24" fill="none"><path d="M14.5 2a2.5 2.5 0 0 0 0 5H17V4.5A2.5 2.5 0 0 0 14.5 2z" fill="#E01E5A"/><path d="M2 14.5a2.5 2.5 0 0 0 5 0V12H4.5A2.5 2.5 0 0 0 2 14.5z" fill="#36C5F0"/><path d="M9.5 22a2.5 2.5 0 0 0 0-5H7v2.5A2.5 2.5 0 0 0 9.5 22z" fill="#2EB67D"/><path d="M22 9.5a2.5 2.5 0 0 0-5 0V12h2.5A2.5 2.5 0 0 0 22 9.5z" fill="#ECB22E"/></svg>', longDesc: 'Connect Slack to receive automated daily growth summaries, instant hot lead alerts, weekly SEO trend digests, and growth milestone celebrations — right in your team channels. FetchBot formats messages using Slack Block Kit for rich, scannable reports your whole team can benefit from.', features: ['Daily growth reports', 'Hot lead instant alerts', 'Weekly trend digests', 'Custom channel routing'], docsUrl: '#' },
-  { slug: 'discord', name: 'Discord', category: 'Messaging', categoryKey: 'messaging', shortDesc: 'Share rich-embed growth reports and lead alerts in your Discord server.', bgColor: 'linear-gradient(135deg, #5865F215, #5865F210)', tagColor: '#5865F2', tagBg: '#5865F210', icon: '<svg width="28" height="28" viewBox="0 0 24 24" fill="#5865F2"><path d="M20.3 4.1a19.4 19.4 0 0 0-4.8-1.5 14.5 14.5 0 0 0-.6 1.3 18 18 0 0 0-5.4 0c-.2-.5-.4-.9-.6-1.3A19.3 19.3 0 0 0 4 4.1 20 20 0 0 0 .5 17.7a19.5 19.5 0 0 0 6 3 14.6 14.6 0 0 0 1.3-2 12.6 12.6 0 0 1-2-.9l.5-.4c3.8 1.8 8 1.8 11.8 0 .2.1.3.3.5.4-.6.4-1.3.7-2 .9.4.7.8 1.4 1.3 2a19.5 19.5 0 0 0 6-3A20 20 0 0 0 20.3 4.1zM8 14.8c-1.2 0-2.2-1.1-2.2-2.4S6.8 10 8 10s2.2 1.1 2.2 2.4S9.2 14.8 8 14.8zm8 0c-1.2 0-2.2-1.1-2.2-2.4S14.8 10 16 10s2.2 1.1 2.2 2.4S17.2 14.8 16 14.8z"/></svg>', longDesc: 'Get rich embed notifications delivered to your Discord server. FetchBot uses Discord\'s embed format for beautifully formatted growth reports, hot lead alerts, and weekly performance summaries that your team can act on instantly.', features: ['Rich embed messages', 'Weekly performance summaries', 'Hot lead alerts', 'Role mentions on alerts'], docsUrl: '#' },
-  { slug: 'telegram', name: 'Telegram', category: 'Messaging', categoryKey: 'messaging', shortDesc: 'Receive instant push notifications for growth milestones and hot leads on mobile.', bgColor: 'linear-gradient(135deg, #229ED915, #229ED910)', tagColor: '#229ED9', tagBg: '#229ED910', icon: '<svg width="28" height="28" viewBox="0 0 24 24" fill="#229ED9"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm4.6 6.8l-1.7 7.9c-.1.5-.5.7-.9.4l-2.5-1.8-1.2 1.2c-.1.2-.3.3-.5.3l.2-2.5 4.5-4c.2-.2 0-.3-.3-.1L8.7 13.5l-2.4-.7c-.5-.2-.5-.5.1-.7l9.5-3.7c.4-.1.8.1.7.7z"/></svg>', longDesc: 'Get instant mobile push notifications for hot leads, growth milestones, and daily summaries right on your phone via Telegram. Perfect for founders and solopreneurs who need to stay informed on the go.', features: ['Instant push notifications', 'Mobile-first growth alerts', 'Daily summaries', 'Milestone celebrations'], docsUrl: '#' },
-  { slug: 'stripe', name: 'Stripe', category: 'Payments', categoryKey: 'payments', shortDesc: 'Track subscriptions, payments, and revenue attribution with Stripe billing.', bgColor: 'linear-gradient(135deg, #635bff15, #635bff10)', tagColor: '#635bff', tagBg: '#635bff10', icon: '<svg width="28" height="28" viewBox="0 0 24 24" fill="#635bff"><path d="M13.976 9.15c-2.172-.806-3.356-1.426-3.356-2.409 0-.831.683-1.305 1.901-1.305 2.227 0 4.515.858 6.09 1.631l.89-5.494C18.252.975 15.697 0 12.165 0 9.667 0 7.589.654 6.104 1.872 4.56 3.147 3.757 4.992 3.757 7.218c0 4.039 2.467 5.76 6.476 7.219 2.585.92 3.445 1.574 3.445 2.583 0 .98-.84 1.545-2.354 1.545-1.875 0-4.965-.921-7.076-2.19L3.37 21.8c1.857 1.029 5.166 2.2 8.63 2.2 2.59 0 4.749-.657 6.29-1.834C19.77 20.873 20.5 19 20.5 16.65c0-4.171-2.505-5.834-6.524-7.5z"/></svg>', longDesc: 'Integrate Stripe to track payments, subscriptions, and revenue. See which marketing channels drive the most revenue with full payment attribution. FetchBot auto-creates lead records for new customers.', features: ['Payment tracking', 'Subscription management', 'Revenue attribution', 'Customer portal'], docsUrl: '#' },
-  { slug: 'hubspot', name: 'HubSpot', category: 'CRM', categoryKey: 'crm', shortDesc: 'Sync leads, deals, and contacts bidirectionally with HubSpot CRM.', bgColor: 'linear-gradient(135deg, #ff7a5920, #ff5c3510)', tagColor: '#ff5c35', tagBg: '#ff5c3510', icon: '<svg width="28" height="28" viewBox="0 0 24 24" fill="#ff5c35"><circle cx="12" cy="12" r="10"/></svg>', longDesc: 'Connect HubSpot CRM to sync leads, deals, and contacts bidirectionally. FetchBot\'s lead scoring enriches HubSpot records with behavioral data from your website visitors.', features: ['Bidirectional lead sync', 'Deal pipeline tracking', 'Lead score enrichment', 'Contact timeline'], docsUrl: '#' },
-  { slug: 'salesforce', name: 'Salesforce', category: 'CRM', categoryKey: 'crm', shortDesc: 'Push enriched leads and opportunity data to Salesforce.', bgColor: 'linear-gradient(135deg, #00a1e020, #1798c110)', tagColor: '#00a1e0', tagBg: '#00a1e010', icon: '<svg width="28" height="28" viewBox="0 0 24 24" fill="#00a1e0"><circle cx="12" cy="12" r="10"/></svg>', longDesc: 'Enterprise-grade Salesforce integration. Push FetchBot\'s AI-enriched leads directly into Salesforce with full field mapping and activity logging.', features: ['Lead push to Salesforce', 'Field mapping', 'Opportunity tracking', 'Activity logging'], docsUrl: '#' },
-  { slug: 'facebook-ads', name: 'Facebook Ads', category: 'Ads', categoryKey: 'ads', shortDesc: 'Capture Facebook Lead Ads submissions and track conversions.', bgColor: 'linear-gradient(135deg, #1877f220, #1877f210)', tagColor: '#1877f2', tagBg: '#1877f210', icon: '<svg width="28" height="28" viewBox="0 0 24 24" fill="#1877f2"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>', longDesc: 'Connect Facebook Ads to capture lead form submissions via webhooks and track conversions from ad campaigns directly in FetchBot.', features: ['Lead Ads capture', 'Conversion tracking', 'Audience sync', 'ROAS reporting'], docsUrl: '#' },
-  { slug: 'google-ads', name: 'Google Ads', category: 'Ads', categoryKey: 'ads', shortDesc: 'Track Google Ads conversions and sync lead data for better targeting.', bgColor: 'linear-gradient(135deg, #4285f420, #34a85310)', tagColor: '#4285f4', tagBg: '#4285f410', icon: '<svg width="28" height="28" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="18" r="4" fill="#4285f4"/><path d="M2 12l8 8 12-16" stroke="#34a853" stroke-width="2" fill="none"/></svg>', longDesc: 'Integrate Google Ads to track conversions, sync offline leads, and measure true ROAS across your campaigns.', features: ['Conversion imports', 'Offline lead sync', 'ROAS tracking', 'Keyword attribution'], docsUrl: '#' },
-  { slug: 'dataforseo', name: 'DataForSEO', category: 'SEO', categoryKey: 'seo', shortDesc: 'Get real Google SERP rankings, search volume, CPC, and difficulty data.', bgColor: 'linear-gradient(135deg, #2ecc7120, #27ae6010)', tagColor: '#27ae60', tagBg: '#27ae6010', icon: '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#27ae60" stroke-width="1.5"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg>', longDesc: 'DataForSEO powers FetchBot\'s keyword intelligence with real Google SERP data. Get accurate search volume, CPC, keyword difficulty, and SERP feature data for every keyword you track.', features: ['Real SERP rankings', 'Search volume data', 'CPC and difficulty', 'SERP feature detection'], docsUrl: '#' },
-  { slug: 'retell-ai', name: 'Retell.ai', category: 'Voice & Calls', categoryKey: 'voice', shortDesc: 'Power AI voice agents with natural-sounding conversations.', bgColor: 'linear-gradient(135deg, #8b5cf620, #6366f110)', tagColor: '#8b5cf6', tagBg: '#8b5cf610', icon: '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="1.5"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="M12 19v4"/></svg>', longDesc: 'Retell.ai powers FetchBot\'s Voice Agent with ultra-realistic AI voice conversations. Build outbound call campaigns with AI agents that sound human.', features: ['AI voice calling', 'Natural conversations', 'Call campaigns', 'Transcript extraction'], docsUrl: '#' },
-  { slug: 'zapier', name: 'Zapier', category: 'Automation', categoryKey: 'automation', shortDesc: 'Connect FetchBot to 5,000+ apps through Zapier.', bgColor: 'linear-gradient(135deg, #ff4a0020, #ff4a0010)', tagColor: '#ff4a00', tagBg: '#ff4a0010', icon: '<svg width="28" height="28" viewBox="0 0 24 24" fill="#ff4a00"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>', longDesc: 'Connect FetchBot to over 5,000 applications through Zapier. Trigger workflows when leads are scored, keywords change rank, or traffic spikes.', features: ['5,000+ app connections', 'Lead triggers', 'Keyword alerts', 'Custom workflows'], docsUrl: '#' },
-  { slug: 'webhooks', name: 'Webhooks', category: 'Automation', categoryKey: 'automation', shortDesc: 'Send real-time event data to any custom URL.', bgColor: 'linear-gradient(135deg, #64748b20, #47556910)', tagColor: '#475569', tagBg: '#47556910', icon: '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="1.5"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.5 1.5"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.5-1.5"/></svg>', longDesc: 'Send any FetchBot event to your own endpoints via webhooks. Build custom integrations with full control over the data format. Retry logic ensures delivery.', features: ['Real-time events', 'Custom URLs', 'Retry on failure', 'Event filtering'], docsUrl: '#' },
+  { slug: 'fetchbot-pixel', name: 'FetchBot Pixel', category: 'Analytics & AI', categoryKey: 'analytics', status: 'active', usedIn: 'Analytics → Pixel Setup', shortDesc: 'One-line JavaScript snippet for real-time visitor tracking, heatmaps, and session recording.', logo: '/images/fb-logo.png', tagColor: '#6366f1', tagBg: '#6366f110', envVars: 'Built-in', longDesc: 'Install FetchBot\'s lightweight tracking pixel on any website with a single line of code. Automatically captures pageviews, clicks, scroll depth, and session recordings — zero configuration required. The pixel also powers real-time heatmaps and visitor identification for the full analytics suite.', features: ['Real-time visitor tracking', 'Click and scroll heatmaps', 'Session recording', 'Zero-config installation'], docsUrl: '#' },
+  { slug: 'anthropic', name: 'Anthropic Claude', category: 'Analytics & AI', categoryKey: 'analytics', status: 'active', usedIn: 'Agents, AI Insights, LLM Ranking', shortDesc: 'Powers AI lead finder, agent engine, LLM ranking checker, and AI keyword insights.', logo: 'https://cdn.brandfetch.io/idgvU5PlJs/w/400/h/400/theme/dark/icon.jpeg', tagColor: '#d97706', tagBg: '#d9770610', envVars: 'ANTHROPIC_API_KEY', longDesc: 'Anthropic Claude is the core AI backbone of FetchBot. It powers the AI Lead Finder to discover and qualify prospects, drives the Agent Engine for complex multi-step tasks, generates AI Insights for analytics dashboards, and runs the LLM Ranking checker to see how your brand appears in AI search.', features: ['AI Lead Finder engine', 'Agent task execution', 'AI analytics insights', 'LLM ranking analysis'], docsUrl: '#' },
+  { slug: 'google-search', name: 'Google Custom Search', category: 'Analytics & AI', categoryKey: 'analytics', status: 'active', usedIn: 'Leads → AI Lead Finder', shortDesc: 'Enables AI Lead Finder to discover prospects by scraping Google search results.', logo: 'https://cdn.brandfetch.io/idS5WhqBbM/w/400/h/400/theme/dark/icon.jpeg', tagColor: '#4285f4', tagBg: '#4285f410', envVars: 'GOOGLE_SEARCH_API_KEY', longDesc: 'Google Custom Search API powers FetchBot\'s AI Lead Finder. When you define your ideal customer profile, FetchBot queries Google to find matching companies and contacts, then enriches the results with AI analysis.', features: ['AI prospect discovery', 'Company matching', 'Programmatic search', 'Result enrichment'], docsUrl: '#' },
+  { slug: 'slack', name: 'Slack', category: 'Messaging', categoryKey: 'messaging', status: 'active', usedIn: 'Settings → Integrations', shortDesc: 'Daily growth reports, hot lead alerts, and trend intelligence delivered to Slack channels.', logo: 'https://cdn.brandfetch.io/idBZMioBmb/w/400/h/400/theme/dark/icon.jpeg', tagColor: '#4A154B', tagBg: '#4A154B10', envVars: 'SLACK_CLIENT_ID', longDesc: 'Connect Slack to receive automated daily growth summaries, instant hot lead alerts, weekly SEO trend digests, and growth milestone celebrations — right in your team channels.', features: ['Daily growth reports', 'Hot lead instant alerts', 'Weekly trend digests', 'Custom channel routing'], docsUrl: '#' },
+  { slug: 'discord', name: 'Discord', category: 'Messaging', categoryKey: 'messaging', status: 'active', usedIn: 'Settings → Integrations', shortDesc: 'Rich-embed growth reports and lead alerts in your Discord server.', logo: 'https://cdn.brandfetch.io/idSUrLOWbf/w/400/h/400/theme/dark/icon.jpeg', tagColor: '#5865F2', tagBg: '#5865F210', envVars: 'Webhook URL (per-user)', longDesc: 'Get rich embed notifications delivered to your Discord server with beautifully formatted growth reports, hot lead alerts, and performance summaries.', features: ['Rich embed messages', 'Weekly performance summaries', 'Hot lead alerts', 'Role mentions on alerts'], docsUrl: '#' },
+  { slug: 'telegram', name: 'Telegram', category: 'Messaging', categoryKey: 'messaging', status: 'active', usedIn: 'Settings → Integrations', shortDesc: 'Instant push notifications for growth milestones and hot leads on mobile.', logo: 'https://cdn.brandfetch.io/id--5lFBH-/w/400/h/400/theme/dark/icon.jpeg', tagColor: '#229ED9', tagBg: '#229ED910', envVars: 'TELEGRAM_BOT_TOKEN', longDesc: 'Get instant mobile push notifications for hot leads, growth milestones, and daily summaries right on your phone via Telegram.', features: ['Instant push notifications', 'Mobile-first growth alerts', 'Daily summaries', 'Milestone celebrations'], docsUrl: '#' },
+  { slug: 'sendgrid', name: 'SendGrid', category: 'CRM & Email', categoryKey: 'crm', status: 'active', usedIn: 'Campaigns → Email, Voice Agent', shortDesc: 'Transactional and campaign email delivery powered by SendGrid\'s API.', logo: 'https://cdn.brandfetch.io/idBVwj2lVd/w/400/h/400/theme/dark/icon.jpeg', tagColor: '#1A82e2', tagBg: '#1A82e210', envVars: 'SENDGRID_API_KEY', longDesc: 'SendGrid powers all transactional and marketing emails in FetchBot, including campaign emails, voice agent confirmations, and system notifications.', features: ['Campaign emails', 'Transactional emails', 'Voice Agent confirmations', 'Delivery analytics'], docsUrl: '#' },
+  { slug: 'mailchimp', name: 'Mailchimp', category: 'CRM & Email', categoryKey: 'crm', status: 'active', usedIn: 'Campaigns → Audience Sync', shortDesc: 'Sync lead segments to Mailchimp audiences for targeted email campaigns.', logo: 'https://cdn.brandfetch.io/idjWz4L_P1/w/400/h/400/theme/dark/icon.jpeg', tagColor: '#ffe01b', tagBg: '#ffe01b15', envVars: 'MAILCHIMP_API_KEY', longDesc: 'Sync FetchBot lead segments directly to Mailchimp audiences. Run targeted email campaigns using FetchBot\'s AI-scored leads with Mailchimp\'s powerful email tools.', features: ['Audience sync', 'Lead segment export', 'Campaign integration', 'Subscriber management'], docsUrl: '#' },
+  { slug: 'hubspot', name: 'HubSpot', category: 'CRM & Email', categoryKey: 'crm', status: 'needs-key', usedIn: 'Leads → CRM Sync (planned)', shortDesc: 'Bidirectional lead, deal, and contact sync with HubSpot CRM.', logo: 'https://cdn.brandfetch.io/idchmboHEZ/w/400/h/400/theme/dark/icon.jpeg', tagColor: '#ff7a59', tagBg: '#ff7a5910', envVars: 'HUBSPOT_CLIENT_ID', longDesc: 'Connect HubSpot CRM to sync leads, deals, and contacts bidirectionally. FetchBot\'s lead scoring enriches HubSpot records with behavioral data from your website visitors.', features: ['Bidirectional lead sync', 'Deal pipeline tracking', 'Lead score enrichment', 'Contact timeline'], docsUrl: '#' },
+  { slug: 'stripe', name: 'Stripe', category: 'Payments', categoryKey: 'payments', status: 'active', usedIn: 'Billing → Subscriptions', shortDesc: 'Subscription billing, payment processing, and revenue attribution.', logo: 'https://cdn.brandfetch.io/idxAg10C0L/w/400/h/400/theme/dark/icon.jpeg', tagColor: '#635bff', tagBg: '#635bff10', envVars: 'STRIPE_SECRET_KEY', longDesc: 'Stripe powers all FetchBot billing and payments. Handles subscription management, payment processing, webhook events, and revenue tracking.', features: ['Subscription management', 'Payment processing', 'Webhook event handling', 'Revenue attribution'], docsUrl: '#' },
+  { slug: 'dataforseo', name: 'DataForSEO', category: 'SEO & Search', categoryKey: 'seo', status: 'active', usedIn: 'Keywords → Position Tracking', shortDesc: 'Real Google SERP rankings, search volume, CPC, and keyword difficulty data.', logo: 'https://cdn.brandfetch.io/idJX-AKleh/w/400/h/400/theme/dark/icon.jpeg', tagColor: '#27ae60', tagBg: '#27ae6010', envVars: 'DATAFORSEO_LOGIN', longDesc: 'DataForSEO powers FetchBot\'s keyword intelligence with real Google SERP data. Get accurate search volume, CPC, keyword difficulty, and SERP feature data.', features: ['Real SERP rankings', 'Search volume data', 'CPC and difficulty', 'SERP feature detection'], docsUrl: '#' },
+  { slug: 'semrush', name: 'Semrush', category: 'SEO & Search', categoryKey: 'seo', status: 'needs-key', usedIn: 'Keywords (planned)', shortDesc: 'Competitor analysis, keyword rankings, and backlink data from Semrush.', logo: 'https://cdn.brandfetch.io/ideTXz7HkP/w/400/h/400/theme/dark/icon.jpeg', tagColor: '#ff622d', tagBg: '#ff622d10', envVars: 'SEMRUSH_API_KEY', longDesc: 'Connect Semrush for deeper competitive intelligence. Get competitor keyword rankings, backlink profiles, and domain authority data.', features: ['Competitor keyword spying', 'Backlink analysis', 'Domain authority', 'Traffic estimation'], docsUrl: '#' },
+  { slug: 'retell-ai', name: 'Retell.ai', category: 'Voice & Calls', categoryKey: 'voice', status: 'active', usedIn: 'Voice Agent → Managed', shortDesc: 'Power AI voice agents with ultra-realistic conversations for outbound calls.', logo: 'https://cdn.brandfetch.io/idia0OQj_R/w/400/h/400/theme/dark/icon.jpeg', tagColor: '#8b5cf6', tagBg: '#8b5cf610', envVars: 'RETELL_API_KEY', longDesc: 'Retell.ai powers FetchBot\'s managed Voice Agent with ultra-realistic AI voice conversations. Build outbound call campaigns with AI agents that sound human.', features: ['AI voice calling', 'Natural conversations', 'Call campaigns', 'Transcript extraction'], docsUrl: '#' },
+  { slug: 'telnyx', name: 'Telnyx', category: 'Voice & Calls', categoryKey: 'voice', status: 'active', usedIn: 'Voice Agent → Phone Numbers', shortDesc: 'Buy, verify, and manage phone numbers for AI voice agent campaigns.', logo: 'https://cdn.brandfetch.io/idHNOFtw6k/w/400/h/400/theme/dark/icon.jpeg', tagColor: '#00c04b', tagBg: '#00c04b10', envVars: 'TELNYX_API_KEY', longDesc: 'Telnyx provides phone number provisioning, SIP trunking, and outbound dialing for FetchBot\'s voice agent system.', features: ['Phone number provisioning', 'SIP trunking', 'Outbound dialing', 'Call recording'], docsUrl: '#' },
+  { slug: 'livekit', name: 'LiveKit', category: 'Voice & Calls', categoryKey: 'voice', status: 'active', usedIn: 'Voice Agent → Browser Calling', shortDesc: 'Real-time voice and video infrastructure for browser-based calling.', logo: 'https://cdn.brandfetch.io/idEZpPWK5V/w/400/h/400/theme/dark/icon.jpeg', tagColor: '#0d6efd', tagBg: '#0d6efd10', envVars: 'LIVEKIT_API_KEY', longDesc: 'LiveKit provides real-time WebRTC infrastructure for browser-based voice calls. Powers the in-browser voice agent experience.', features: ['Browser calling', 'WebRTC infrastructure', 'Real-time audio', 'Session management'], docsUrl: '#' },
+  { slug: 'facebook', name: 'Facebook / Meta', category: 'Ads & Social', categoryKey: 'ads', status: 'needs-key', usedIn: 'Social Leads → Facebook', shortDesc: 'Capture Facebook Lead Ads and track ad-driven conversions.', logo: 'https://cdn.brandfetch.io/idtRGwMrG2/w/400/h/400/theme/dark/icon.jpeg', tagColor: '#1877f2', tagBg: '#1877f210', envVars: 'FACEBOOK_APP_ID', longDesc: 'Connect Facebook to capture lead form submissions and track ad conversions directly in FetchBot.', features: ['Lead Ads capture', 'Conversion tracking', 'Audience sync', 'ROAS reporting'], docsUrl: '#' },
+  { slug: 'linkedin', name: 'LinkedIn', category: 'Ads & Social', categoryKey: 'ads', status: 'needs-key', usedIn: 'Social Leads → LinkedIn', shortDesc: 'Import leads and sync B2B contact data from LinkedIn.', logo: 'https://cdn.brandfetch.io/idawOgYOsG/w/400/h/400/theme/dark/icon.jpeg', tagColor: '#0a66c2', tagBg: '#0a66c210', envVars: 'LINKEDIN_CLIENT_ID', longDesc: 'Connect LinkedIn to import B2B leads and contacts, sync professional profile data.', features: ['B2B lead import', 'Contact sync', 'Company data', 'InMail integration'], docsUrl: '#' },
+  { slug: 'x-twitter', name: 'X (Twitter)', category: 'Ads & Social', categoryKey: 'ads', status: 'needs-key', usedIn: 'Keywords → Trending Topics', shortDesc: 'Import trending topics from X to drive content strategy.', logo: 'https://cdn.brandfetch.io/idZAyF9rlg/w/400/h/400/theme/dark/icon.jpeg', tagColor: '#14171a', tagBg: '#14171a10', envVars: 'X_BEARER_TOKEN', longDesc: 'X (Twitter) API powers trending topic discovery for keyword intelligence. Identify viral content topics to drive your SEO strategy.', features: ['Trending topic import', 'Content strategy', 'Hashtag analysis', 'Social listening'], docsUrl: '#' },
+  { slug: 'google-oauth', name: 'Google OAuth', category: 'Automation', categoryKey: 'automation', status: 'active', usedIn: 'Login, Google Drive Export', shortDesc: 'Secure login and data export to Google Sheets and Google Drive.', logo: 'https://cdn.brandfetch.io/idS5WhqBbM/w/400/h/400/theme/dark/icon.jpeg', tagColor: '#4285f4', tagBg: '#4285f410', envVars: 'GOOGLE_OAUTH_CLIENT_ID', longDesc: 'Google OAuth enables secure single sign-on and powers Google Drive / Sheets export for lead data.', features: ['SSO login', 'Google Drive export', 'Sheets integration', 'Secure authorization'], docsUrl: '#' },
+  { slug: 'sentry', name: 'Sentry', category: 'Automation', categoryKey: 'automation', status: 'active', usedIn: 'Error Monitoring (infra)', shortDesc: 'Real-time error tracking and performance monitoring for the platform.', logo: 'https://cdn.brandfetch.io/idLGnxgVGF/w/400/h/400/theme/dark/icon.jpeg', tagColor: '#362d59', tagBg: '#362d5910', envVars: 'SENTRY_DSN', longDesc: 'Sentry provides real-time error tracking, performance monitoring, and crash reporting for the FetchBot platform.', features: ['Error tracking', 'Performance monitoring', 'Crash reporting', 'Release tracking'], docsUrl: '#' },
+  { slug: 'webhooks', name: 'Webhooks', category: 'Automation', categoryKey: 'automation', status: 'active', usedIn: 'Settings → Integrations', shortDesc: 'Send real-time event data to any custom URL for complete flexibility.', logo: '/images/fb-logo.png', tagColor: '#475569', tagBg: '#47556910', envVars: 'Custom URL (per-user)', longDesc: 'Send any FetchBot event to your own endpoints. Build custom integrations with full control over the payload format. Retry logic ensures delivery.', features: ['Real-time events', 'Custom URLs', 'Retry on failure', 'Event filtering'], docsUrl: '#' },
 ]
 
 const integration = computed(() => {
@@ -213,7 +240,7 @@ const setupSteps = computed(() => {
   if (!integration.value) return []
   return [
     { title: 'Connect your account', desc: `Sign in to FetchBot and navigate to Settings → Integrations → ${integration.value.name}.` },
-    { title: 'Authorize access', desc: `Enter your ${integration.value.name} credentials or webhook URL, then click "Connect".` },
+    { title: 'Authorize access', desc: `Enter your ${integration.value.name} credentials or API key, then click "Connect".` },
     { title: 'Configure preferences', desc: 'Choose which notifications and data syncs you want enabled. Customize channel routing.' },
     { title: 'Start receiving data', desc: `${integration.value.name} is now connected. Data will sync in real-time within seconds.` },
   ]
@@ -238,7 +265,7 @@ watch(() => route.params.slug, () => { window.scrollTo({ top: 0, behavior: 'smoo
   background: #fafafa; color: #0f172a; min-height: 100vh;
 }
 
-/* Nav — same as listing */
+/* Nav */
 .id-nav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; background: rgba(255,255,255,0.8); backdrop-filter: blur(20px); border-bottom: 1px solid transparent; transition: all 0.3s; }
 .id-nav.scrolled { border-bottom-color: #e2e8f0; box-shadow: 0 1px 8px rgba(0,0,0,0.04); }
 .id-nav-row { max-width: 1280px; margin: 0 auto; padding: 14px 32px; display: flex; align-items: center; gap: 32px; }
@@ -264,8 +291,14 @@ watch(() => route.params.slug, () => { window.scrollTo({ top: 0, behavior: 'smoo
 .id-hero { padding: 32px 32px 48px; }
 .id-hero-inner { max-width: 1280px; margin: 0 auto; display: flex; align-items: flex-start; justify-content: space-between; gap: 32px; }
 .id-hero-left { display: flex; align-items: flex-start; gap: 20px; }
-.id-hero-icon { width: 72px; height: 72px; border-radius: 16px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.id-hero-tag { display: inline-block; font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 100px; text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 8px; }
+.id-hero-icon { width: 72px; height: 72px; border-radius: 16px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; overflow: hidden; background: #f8fafc; border: 1px solid #e2e8f0; }
+.id-hero-icon img { width: 100%; height: 100%; object-fit: cover; border-radius: 16px; }
+.id-hero-badges { display: flex; gap: 8px; margin-bottom: 8px; }
+.id-status-badge { font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 100px; text-transform: uppercase; letter-spacing: 0.3px; }
+.id-status-active { background: #dcfce7; color: #16a34a; }
+.id-status-key { background: #fef3c7; color: #d97706; }
+.id-status-soon { background: #f1f5f9; color: #94a3b8; }
+.id-hero-tag { display: inline-block; font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 100px; text-transform: uppercase; letter-spacing: 0.3px; }
 .id-hero h1 { font-size: 36px; font-weight: 800; margin: 0 0 8px; letter-spacing: -0.5px; }
 .id-hero-short { font-size: 16px; color: #64748b; margin: 0; line-height: 1.5; max-width: 500px; }
 .id-hero-actions { display: flex; gap: 12px; flex-shrink: 0; padding-top: 12px; }
@@ -292,6 +325,11 @@ watch(() => route.params.slug, () => { window.scrollTo({ top: 0, behavior: 'smoo
 .id-step h4 { font-size: 14px; font-weight: 600; margin: 0 0 4px; }
 .id-step p { font-size: 13px; color: #64748b; margin: 0; line-height: 1.5; }
 
+/* Used In card */
+.id-usedin-card { background: #f5f3ff; border-radius: 14px; border: 1px solid #ede9fe; padding: 20px; }
+.id-usedin-card h3 { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #6366f1; margin: 0 0 10px; }
+.id-usedin-loc { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; color: #4f46e5; }
+
 /* Feature card */
 .id-features-card, .id-info-card { background: white; border-radius: 14px; border: 1px solid #e2e8f0; padding: 24px; }
 .id-features-card h3, .id-info-card h3 { font-size: 14px; font-weight: 700; margin: 0 0 14px; text-transform: uppercase; letter-spacing: 0.5px; color: #94a3b8; }
@@ -303,6 +341,9 @@ watch(() => route.params.slug, () => { window.scrollTo({ top: 0, behavior: 'smoo
 .id-info-row:last-child { border-bottom: none; }
 .id-info-label { font-size: 13px; color: #94a3b8; }
 .id-info-value { font-size: 13px; font-weight: 600; color: #334155; }
+.id-mono { font-family: monospace; font-size: 11px; }
+.text-green { color: #16a34a !important; }
+.text-amber { color: #d97706 !important; }
 
 /* Related */
 .id-related { padding: 60px 32px; background: #f8fafc; border-top: 1px solid #e2e8f0; }
@@ -311,7 +352,8 @@ watch(() => route.params.slug, () => { window.scrollTo({ top: 0, behavior: 'smoo
 .id-related-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
 .id-related-card { display: flex; gap: 16px; padding: 20px; border-radius: 12px; background: white; border: 1px solid #e2e8f0; text-decoration: none; color: inherit; transition: all 0.2s; }
 .id-related-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.06); }
-.id-related-icon { width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.id-related-icon { width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; overflow: hidden; background: #f8fafc; border: 1px solid #f1f5f9; }
+.id-related-icon img { width: 100%; height: 100%; object-fit: cover; border-radius: 12px; }
 .id-related-card h4 { font-size: 15px; font-weight: 700; margin: 0 0 4px; }
 .id-related-card p { font-size: 13px; color: #64748b; margin: 0; line-height: 1.4; }
 
