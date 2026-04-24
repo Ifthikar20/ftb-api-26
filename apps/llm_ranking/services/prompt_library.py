@@ -1,170 +1,194 @@
 """
 Prompt library for LLM Ranking audits.
 
-Each prompt simulates a realistic buyer query a user would type into an
-AI assistant. Templates are organised by *intent* (recommendation, comparison,
-alternatives, use-case, category, local, persona, review) because different
-intents surface different sets of results from the same LLM.
+The catalogue lives in JSON files under `apps/llm_ranking/prompt_packs/`:
 
-Why intents matter for benchmarking:
-- A "recommendation" query often returns a single top pick.
-- A "comparison" query typically returns a ranked list of 3-10.
-- An "alternatives" query surfaces a competitor set.
-- A "persona" query ("for a 5-person startup") returns fit-for-segment answers.
-Mixing them gives a more honest picture of how a brand performs across the
-purchase funnel, instead of over-fitting to one question shape.
+  default.json        — industry-agnostic base set (always loaded)
+  saas.json           — B2B SaaS
+  ecommerce.json      — e-commerce / DTC
+  legal.json          — law firms and legal services
+  agency.json         — marketing / creative agencies
+  healthcare.json     — clinics and telehealth
+
+Each pack ships with a `industry_keys` list; when an audit's industry string
+matches any of those keys (case-insensitive substring match), the pack is
+layered over the default set. The final mix is intent-balanced so no single
+query shape dominates the benchmark.
+
+Why JSON instead of Python:
+- Non-engineers can edit prompts without a deploy (PR on a json file).
+- Industry packs are self-contained and trivial to add (drop a new file).
+- Future `PromptPack` Django model can persist overrides above these defaults
+  without redesigning the schema.
+
+Each JSON pack matches this shape:
+
+  {
+    "schema": "prompt-pack/v1",
+    "name": "...",
+    "description": "...",
+    "industry_keys": ["..."],
+    "prompts": [
+      {"text": "...", "intent": "recommendation", "placeholders": ["industry"]}
+    ]
+  }
 """
+from __future__ import annotations
+
+import json
+import logging
 from dataclasses import dataclass, field
+from functools import lru_cache
+from pathlib import Path
 from typing import Iterable
+
+logger = logging.getLogger("apps")
+
+PACK_DIR = Path(__file__).resolve().parent.parent / "prompt_packs"
+DEFAULT_PACK = "default"
+
+# Intent weighting. Controls how many prompts from each intent bucket the
+# sampler tries to take. Tunable here (not in JSON) because it's about
+# sampling strategy, not prompt content.
+INTENT_PRIORITY: tuple[tuple[str, int], ...] = (
+    ("recommendation", 2),
+    ("comparison",     2),
+    ("use_case",       2),
+    ("alternatives",   1),
+    ("category",       1),
+    ("persona",        1),
+    ("review",         1),
+    ("local",          1),
+)
+
+VALID_INTENTS: frozenset = frozenset(i for i, _ in INTENT_PRIORITY)
 
 
 @dataclass(frozen=True)
 class PromptTemplate:
     text: str
     intent: str
-    # Placeholders present in the text; used for strict templating.
     placeholders: frozenset = field(default_factory=frozenset)
 
     def fill(self, **kwargs) -> str:
-        # Only substitute placeholders this template actually declared —
-        # avoids KeyError on templates that don't use every variable.
         safe = {k: v for k, v in kwargs.items() if k in self.placeholders}
         return self.text.format(**safe) if self.placeholders else self.text
 
 
-# ── Template sets by intent ──────────────────────────────────────────────────
+@dataclass(frozen=True)
+class PromptPack:
+    name: str
+    description: str
+    industry_keys: tuple[str, ...]
+    templates: tuple[PromptTemplate, ...]
 
-# Recommendation — "what should I use"
-RECOMMENDATION = [
-    PromptTemplate(
-        "What are the best {industry} tools available right now?",
-        "recommendation", frozenset({"industry"})),
-    PromptTemplate(
-        "Which {industry} solutions do most companies use?",
-        "recommendation", frozenset({"industry"})),
-    PromptTemplate(
-        "What are the leading {industry} products recommended by experts?",
-        "recommendation", frozenset({"industry"})),
-    PromptTemplate(
-        "If you had to recommend one {industry} platform today, which would it be and why?",
-        "recommendation", frozenset({"industry"})),
-]
 
-# Comparison — explicit "X vs Y" shape
-COMPARISON = [
-    PromptTemplate(
-        "Compare the top 5 {industry} platforms and explain their strengths.",
-        "comparison", frozenset({"industry"})),
-    PromptTemplate(
-        "Give me a side-by-side comparison of the most popular {industry} tools.",
-        "comparison", frozenset({"industry"})),
-    PromptTemplate(
-        "What are the pros and cons of the leading {industry} products?",
-        "comparison", frozenset({"industry"})),
-]
+# ── Pack loading ──────────────────────────────────────────────────────────────
 
-# Alternatives — "what else should I consider" (surfaces competitor sets)
-ALTERNATIVES = [
-    PromptTemplate(
-        "What are some good alternatives to the market leader in {industry}?",
-        "alternatives", frozenset({"industry"})),
-    PromptTemplate(
-        "Which up-and-coming {industry} tools should I look at?",
-        "alternatives", frozenset({"industry"})),
-    PromptTemplate(
-        "What are the best indie or newer {industry} platforms?",
-        "alternatives", frozenset({"industry"})),
-]
+def _parse_pack(data: dict) -> PromptPack:
+    """Convert a raw JSON dict into a PromptPack. Drops malformed entries."""
+    templates: list[PromptTemplate] = []
+    for raw in data.get("prompts", []) or []:
+        if not isinstance(raw, dict):
+            continue
+        text = (raw.get("text") or "").strip()
+        intent = (raw.get("intent") or "").strip()
+        if not text or intent not in VALID_INTENTS:
+            continue
+        placeholders = frozenset(raw.get("placeholders") or [])
+        templates.append(PromptTemplate(text=text, intent=intent, placeholders=placeholders))
+    return PromptPack(
+        name=str(data.get("name") or "Unnamed"),
+        description=str(data.get("description") or ""),
+        industry_keys=tuple(str(k).lower() for k in (data.get("industry_keys") or [])),
+        templates=tuple(templates),
+    )
 
-# Use-case — "I need to do X, what tool should I use"
-USE_CASE = [
-    PromptTemplate(
-        "I need to {use_case}. What tools should I consider?",
-        "use_case", frozenset({"use_case"})),
-    PromptTemplate(
-        "What's the best {industry} platform for {use_case}?",
-        "use_case", frozenset({"industry", "use_case"})),
-    PromptTemplate(
-        "Can you recommend a {industry} solution that helps with {use_case}?",
-        "use_case", frozenset({"industry", "use_case"})),
-]
 
-# Category — "what even is this space" (low-funnel education queries)
-CATEGORY = [
-    PromptTemplate(
-        "I'm new to {industry}. What are the main tools I should know about?",
-        "category", frozenset({"industry"})),
-    PromptTemplate(
-        "What categories of {industry} software exist and which are the top vendors in each?",
-        "category", frozenset({"industry"})),
-]
+@lru_cache(maxsize=32)
+def load_pack(name: str) -> PromptPack | None:
+    """Load a single pack by filename stem. Returns None if the file is missing."""
+    path = PACK_DIR / f"{name}.json"
+    if not path.is_file():
+        return None
+    try:
+        with path.open(encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception as exc:
+        logger.warning("Failed to load prompt pack %s: %s", name, exc)
+        return None
+    return _parse_pack(data)
 
-# Local — region/market scoped (only used when a location is set)
-LOCAL = [
-    PromptTemplate(
-        "What are the best {industry} tools in {location}?",
-        "local", frozenset({"industry", "location"})),
-    PromptTemplate(
-        "Which {industry} platforms do businesses in {location} use most?",
-        "local", frozenset({"industry", "location"})),
-]
 
-# Persona — bias toward specific buyer shapes
-PERSONA = [
-    PromptTemplate(
-        "What {industry} tool would you recommend for a 5-person startup?",
-        "persona", frozenset({"industry"})),
-    PromptTemplate(
-        "What {industry} platform is best for a mid-market company (50-200 employees)?",
-        "persona", frozenset({"industry"})),
-    PromptTemplate(
-        "Which {industry} solution is best for enterprise teams with strict security requirements?",
-        "persona", frozenset({"industry"})),
-]
+def list_available_packs() -> list[str]:
+    """Names of all JSON files in the pack directory (without extension)."""
+    if not PACK_DIR.is_dir():
+        return []
+    return sorted(p.stem for p in PACK_DIR.glob("*.json"))
 
-# Review-style — surfaces sentiment and third-party citations
-REVIEW = [
-    PromptTemplate(
-        "What do users say are the pros and cons of the top {industry} tools?",
-        "review", frozenset({"industry"})),
-    PromptTemplate(
-        "Which {industry} products have the best reputation among reviewers?",
-        "review", frozenset({"industry"})),
-]
 
-# The master set. Each entry carries its intent so the UI can group / weight.
-ALL_TEMPLATES: tuple = (
-    *RECOMMENDATION,
-    *COMPARISON,
-    *ALTERNATIVES,
-    *USE_CASE,
-    *CATEGORY,
-    *PERSONA,
-    *REVIEW,
-)
+def _industry_packs() -> list[PromptPack]:
+    """Every pack except the default, loaded and cached."""
+    packs: list[PromptPack] = []
+    for name in list_available_packs():
+        if name == DEFAULT_PACK:
+            continue
+        pack = load_pack(name)
+        if pack is not None:
+            packs.append(pack)
+    return packs
 
+
+def match_industry_pack(industry: str) -> PromptPack | None:
+    """Return the first industry pack whose keys match the given industry string.
+
+    Matching is case-insensitive substring: pack key "saas" matches
+    "SaaS analytics" or "B2B SaaS". First match wins (packs are scanned in
+    alphabetical order).
+    """
+    if not industry:
+        return None
+    haystack = industry.lower()
+    for pack in _industry_packs():
+        for key in pack.industry_keys:
+            if key and key in haystack:
+                return pack
+    return None
+
+
+# ── Sampling ─────────────────────────────────────────────────────────────────
 
 def _dedupe_preserving_order(items: Iterable[str]) -> list[str]:
-    seen = set()
-    result = []
+    seen: set = set()
+    out: list[str] = []
     for item in items:
         key = item.strip().lower()
         if key and key not in seen:
             seen.add(key)
-            result.append(item.strip())
-    return result
+            out.append(item.strip())
+    return out
+
+
+def _bucket_by_intent(templates: Iterable[PromptTemplate]) -> dict[str, list[PromptTemplate]]:
+    buckets: dict[str, list[PromptTemplate]] = {intent: [] for intent in VALID_INTENTS}
+    for t in templates:
+        buckets.setdefault(t.intent, []).append(t)
+    return buckets
 
 
 class PromptLibrary:
     """
     Generates an intent-balanced prompt set for an audit.
 
-    The default mix samples across all intents so no single query shape
-    dominates the benchmark. Capped at `max_prompts` so API cost stays
-    bounded.
+    The default pack is always loaded. If `industry` matches one of the
+    industry packs, its templates are layered in FIRST within each intent
+    bucket so the industry-specific phrasings take priority over the
+    generic defaults.
     """
 
     DEFAULT_MAX = 10
+
+    # ── Public API ────────────────────────────────────────────────────────
 
     @classmethod
     def generate(
@@ -175,35 +199,23 @@ class PromptLibrary:
         location: str = "",
         max_prompts: int = DEFAULT_MAX,
     ) -> list[dict]:
-        """Return a list of {"text": str, "intent": str} dicts.
-
-        We return dicts (not bare strings) so callers can surface intents
-        to the UI without re-classifying. Existing callers that only need
-        strings can map `p["text"] for p in generate(...)`.
-        """
+        """Return a list of {"text": str, "intent": str} dicts."""
         industry_norm = (industry or "software").strip()
         use_case_norm = (use_case or industry_norm).strip()
         location_norm = (location or "").strip()
 
-        # Intent weighting: we take the first N from each set to keep a balanced
-        # mix even when max_prompts is small. Recommendation and comparison
-        # are load-bearing (highest intent-to-mention signal), so they get more.
-        priority_order: list[tuple[tuple[PromptTemplate, ...], int]] = [
-            (tuple(RECOMMENDATION), 2),  # take 2 recommendation prompts
-            (tuple(COMPARISON),     2),
-            (tuple(USE_CASE),       2),
-            (tuple(ALTERNATIVES),   1),
-            (tuple(CATEGORY),       1),
-            (tuple(PERSONA),        1),
-            (tuple(REVIEW),         1),
-        ]
-        if location_norm:
-            priority_order.insert(3, (tuple(LOCAL), 1))
+        templates = cls._resolved_templates(industry_norm)
+        buckets = _bucket_by_intent(templates)
 
         picked: list[dict] = []
         seen_texts: set = set()
 
-        for bucket, take_n in priority_order:
+        for intent, take_n in INTENT_PRIORITY:
+            # Skip `local` unless a location is provided — filling without
+            # location yields broken prompts.
+            if intent == "local" and not location_norm:
+                continue
+            bucket = buckets.get(intent, [])
             taken = 0
             for template in bucket:
                 if taken >= take_n:
@@ -220,7 +232,7 @@ class PromptLibrary:
                 if not text or key in seen_texts:
                     continue
                 seen_texts.add(key)
-                picked.append({"text": text, "intent": template.intent})
+                picked.append({"text": text, "intent": intent})
                 taken += 1
                 if len(picked) >= max_prompts:
                     return picked
@@ -236,7 +248,6 @@ class PromptLibrary:
         location: str = "",
         max_prompts: int = DEFAULT_MAX,
     ) -> list[str]:
-        """Convenience wrapper for callers that only need the text list."""
         return [
             p["text"] for p in cls.generate(
                 industry=industry,
@@ -248,22 +259,24 @@ class PromptLibrary:
 
     @classmethod
     def intents_for(cls, prompt_texts: Iterable[str]) -> list[str]:
-        """Best-effort lookup of intent tags for arbitrary prompt strings.
+        """Best-effort intent tag for arbitrary prompt text.
 
-        Useful when the audit stored prompts as bare strings (backward compat)
-        and the UI wants to show an intent chip next to each one.
+        Uses substring matching against every known template (with
+        placeholders stripped) so a generated-and-filled prompt still maps
+        back to its source intent.
         """
         index: dict[str, str] = {}
-        for t in ALL_TEMPLATES:
-            # Match the frozen template text form; substitutions won't be exact,
-            # so we also index on a lowered, placeholder-stripped key.
-            normalized = t.text.lower()
+        for t in cls._resolved_templates(industry=""):
+            normalised = t.text.lower()
             for ph in t.placeholders:
-                normalized = normalized.replace("{" + ph + "}", "")
-            index[normalized.strip()] = t.intent
-        out = []
+                normalised = normalised.replace("{" + ph + "}", "")
+            key = " ".join(normalised.split())
+            if key:
+                index[key] = t.intent
+
+        out: list[str] = []
         for text in prompt_texts:
-            lower = text.strip().lower()
+            lower = " ".join(text.lower().split())
             matched = "custom"
             for key, intent in index.items():
                 if key and key in lower:
@@ -271,3 +284,44 @@ class PromptLibrary:
                     break
             out.append(matched)
         return out
+
+    @classmethod
+    def resolved_pack_names(cls, industry: str) -> list[str]:
+        """Debug / UI helper: which packs are active for this industry?"""
+        used = [DEFAULT_PACK]
+        pack = match_industry_pack(industry)
+        if pack is not None:
+            # Find the filename for this pack so callers can show "saas"
+            for name in list_available_packs():
+                if name == DEFAULT_PACK:
+                    continue
+                loaded = load_pack(name)
+                if loaded is not None and loaded.name == pack.name:
+                    used.append(name)
+                    break
+        return used
+
+    # ── Internals ─────────────────────────────────────────────────────────
+
+    @classmethod
+    def _resolved_templates(cls, industry: str) -> tuple[PromptTemplate, ...]:
+        """Combine the default pack with the matching industry pack (if any).
+
+        Industry templates come first so the sampler prefers them when
+        filling each intent bucket, before falling back to default phrasings.
+        """
+        default = load_pack(DEFAULT_PACK)
+        default_templates = default.templates if default else ()
+        industry_pack = match_industry_pack(industry) if industry else None
+        industry_templates = industry_pack.templates if industry_pack else ()
+        # Dedupe by exact (intent, text) pair to avoid duplicates when an
+        # industry pack reuses a default-style phrasing.
+        seen: set = set()
+        merged: list[PromptTemplate] = []
+        for t in (*industry_templates, *default_templates):
+            sig = (t.intent, t.text.strip().lower())
+            if sig in seen:
+                continue
+            seen.add(sig)
+            merged.append(t)
+        return tuple(merged)

@@ -444,3 +444,109 @@ class TestPromptLibrary:
         from apps.llm_ranking.services.prompt_library import PromptLibrary
         intents = PromptLibrary.intents_for(["Should I buy a kayak this weekend?"])
         assert intents == ["custom"]
+
+
+# ── Prompt pack JSON loader ───────────────────────────────────────────────────
+
+class TestPromptPackLoader:
+    def test_default_pack_loads(self):
+        from apps.llm_ranking.services.prompt_library import load_pack, DEFAULT_PACK
+        pack = load_pack(DEFAULT_PACK)
+        assert pack is not None
+        assert pack.name
+        assert len(pack.templates) > 0
+
+    def test_default_pack_has_industry_coverage(self):
+        # The default pack should carry prompts for every intent we weight.
+        from apps.llm_ranking.services.prompt_library import (
+            INTENT_PRIORITY, load_pack, DEFAULT_PACK,
+        )
+        pack = load_pack(DEFAULT_PACK)
+        assert pack is not None
+        intents_in_pack = {t.intent for t in pack.templates}
+        expected = {intent for intent, _ in INTENT_PRIORITY}
+        assert expected.issubset(intents_in_pack)
+
+    def test_unknown_pack_returns_none(self):
+        from apps.llm_ranking.services.prompt_library import load_pack
+        assert load_pack("not_a_real_pack_xyz") is None
+
+    def test_list_available_packs_contains_known_industries(self):
+        from apps.llm_ranking.services.prompt_library import list_available_packs
+        names = set(list_available_packs())
+        # These are the packs we ship with the repo.
+        assert {"default", "saas", "ecommerce", "legal", "agency", "healthcare"}.issubset(names)
+
+    def test_match_industry_saas(self):
+        from apps.llm_ranking.services.prompt_library import match_industry_pack
+        pack = match_industry_pack("SaaS analytics")
+        assert pack is not None
+        assert "saas" in pack.industry_keys or any("saas" in k for k in pack.industry_keys)
+
+    def test_match_industry_legal(self):
+        from apps.llm_ranking.services.prompt_library import match_industry_pack
+        pack = match_industry_pack("Law firm specialising in IP")
+        assert pack is not None
+        assert any(k in ("law firm", "legal", "attorney", "lawyer", "legal services", "legal tech")
+                   for k in pack.industry_keys)
+
+    def test_match_industry_ecommerce(self):
+        from apps.llm_ranking.services.prompt_library import match_industry_pack
+        pack = match_industry_pack("Shopify store for DTC skincare")
+        assert pack is not None
+
+    def test_match_industry_no_match_returns_none(self):
+        from apps.llm_ranking.services.prompt_library import match_industry_pack
+        # Deliberately weird industry to avoid substring hits.
+        assert match_industry_pack("underwater basket weaving") is None
+
+    def test_match_industry_empty_string(self):
+        from apps.llm_ranking.services.prompt_library import match_industry_pack
+        assert match_industry_pack("") is None
+
+    def test_generate_includes_industry_pack_prompts(self):
+        """When an industry matches, its prompts should appear in the output."""
+        from apps.llm_ranking.services.prompt_library import PromptLibrary, load_pack
+        saas_pack = load_pack("saas")
+        assert saas_pack is not None
+        saas_texts = {t.text for t in saas_pack.templates}
+
+        generated = PromptLibrary.generate_texts(industry="SaaS", max_prompts=10)
+        # At least one generated prompt should come from the saas pack (templates
+        # with placeholders are filled; check via substring of the pre-fill text
+        # with the placeholder stripped).
+        saas_signals = [t.split("{")[0] for t in saas_texts]
+        assert any(
+            any(sig and sig in g for sig in saas_signals if len(sig) > 12)
+            for g in generated
+        )
+
+    def test_generate_falls_back_to_default_for_unknown_industry(self):
+        from apps.llm_ranking.services.prompt_library import PromptLibrary
+        prompts = PromptLibrary.generate_texts(industry="rubber duck racing", max_prompts=6)
+        assert len(prompts) > 0  # default pack still produces prompts
+
+    def test_resolved_pack_names_reflects_industry_match(self):
+        from apps.llm_ranking.services.prompt_library import PromptLibrary
+        names = PromptLibrary.resolved_pack_names(industry="SaaS analytics")
+        assert "default" in names
+        assert "saas" in names
+
+    def test_resolved_pack_names_default_only_for_unknown(self):
+        from apps.llm_ranking.services.prompt_library import PromptLibrary
+        names = PromptLibrary.resolved_pack_names(industry="rubber duck racing")
+        assert names == ["default"]
+
+    def test_malformed_pack_entries_are_skipped(self):
+        from apps.llm_ranking.services.prompt_library import _parse_pack
+        pack = _parse_pack({
+            "name": "Test",
+            "industry_keys": [],
+            "prompts": [
+                {"text": "good {industry}", "intent": "recommendation", "placeholders": ["industry"]},
+                "not a dict",                                   # dropped
+                {"text": "", "intent": "recommendation"},       # dropped: empty text
+                {"text": "bad intent", "intent": "made_up"},    # dropped: invalid intent
+            ],
+        })
+        assert len(pack.templates) == 1
