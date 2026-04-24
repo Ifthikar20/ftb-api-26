@@ -539,7 +539,10 @@ async function createAndGoToPixel() {
     createdSite.value = site
     websites.value.push(site)
     appStore.setWebsites(websites.value)
-    wizardStep.value = 5
+    appStore.setActiveWebsite(site)
+    showAddModal.value = false
+    // Redirect to full onboarding wizard
+    router.push(`/onboarding/${site.id}`)
   } catch (e) { console.error('Create failed', e) }
   finally { adding.value = false }
 }

@@ -10,4 +10,5 @@ urlpatterns = [
     path("<uuid:pk>/pixel/verify/", views.PixelVerifyView.as_view(), name="website-pixel-verify"),
     path("<uuid:pk>/pixel/regenerate/", views.PixelRegenerateView.as_view(), name="website-pixel-regenerate"),
     path("<uuid:pk>/settings/", views.WebsiteSettingsView.as_view(), name="website-settings"),
+    path("<uuid:pk>/onboarding/assist/", views.OnboardingAssistView.as_view(), name="website-onboarding-assist"),
 ]
