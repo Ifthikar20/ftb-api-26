@@ -73,13 +73,127 @@
           <div class="carousel-track" ref="trackRef"
                :style="{ transform: `translateX(${trackOffset}px)` }">
             <div v-for="(f, i) in features" :key="f.title"
-                 class="carousel-card" :class="[f.tint, { expanded: activeCard === i }]"
+                 class="carousel-card" :class="[f.tint, { expanded: activeCard === i, 'is-playing': activeCard === i }]"
                  :style="{ animationDelay: `${i * 100}ms` }"
-                 @click="activeCard = activeCard === i ? -1 : i">
+                 @click="activeCard = activeCard === i ? -1 : i"
+                 @mouseenter="pauseAutoAdvance"
+                 @mouseleave="resumeAutoAdvance">
               <span class="card-num">{{ String(i + 1).padStart(2, '0') }}</span>
+
+              <!-- Per-tool animated visual -->
               <div class="card-visual">
-                <div class="card-icon" v-html="f.icon"></div>
+                <!-- Analytics: line chart with drawing animation -->
+                <div v-if="f.visual === 'chart'" class="viz viz-chart">
+                  <div class="viz-stat">
+                    <div class="viz-stat-value">{{ f.metric.value }}</div>
+                    <div class="viz-stat-meta">
+                      <span class="viz-stat-label">{{ f.metric.label }}</span>
+                      <span class="viz-stat-delta up">{{ f.metric.delta }}</span>
+                    </div>
+                  </div>
+                  <svg class="chart-svg" viewBox="0 0 220 70" preserveAspectRatio="none">
+                    <defs>
+                      <linearGradient :id="'g-' + i" x1="0" x2="0" y1="0" y2="1">
+                        <stop offset="0%" stop-color="#131718" stop-opacity="0.35"/>
+                        <stop offset="100%" stop-color="#131718" stop-opacity="0"/>
+                      </linearGradient>
+                    </defs>
+                    <path class="chart-area" :d="buildAreaPath(f.chart)" :fill="'url(#g-' + i + ')'" />
+                    <path class="chart-line" :d="buildLinePath(f.chart)" fill="none" stroke="#131718" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+                    <circle class="chart-pulse" :cx="220" :cy="lastY(f.chart)" r="3" fill="#131718"/>
+                  </svg>
+                </div>
+
+                <!-- Heatmaps: pulsing radial hotspots -->
+                <div v-else-if="f.visual === 'heatmap'" class="viz viz-heatmap">
+                  <div class="viz-stat">
+                    <div class="viz-stat-value">{{ f.metric.value }}</div>
+                    <div class="viz-stat-meta">
+                      <span class="viz-stat-label">{{ f.metric.label }}</span>
+                      <span class="viz-stat-delta">{{ f.metric.delta }}</span>
+                    </div>
+                  </div>
+                  <div class="heatmap-canvas">
+                    <div class="heatmap-cursor"></div>
+                    <div
+                      v-for="(h, hi) in f.hotspots"
+                      :key="hi"
+                      class="heat-blob"
+                      :style="{
+                        left: h.x + '%',
+                        top: h.y + '%',
+                        width: h.size + 'px',
+                        height: h.size + 'px',
+                        animationDelay: h.delay + 's',
+                        opacity: h.intensity,
+                      }"
+                    ></div>
+                  </div>
+                </div>
+
+                <!-- Keywords: animated rank bars -->
+                <div v-else-if="f.visual === 'keywords'" class="viz viz-keywords">
+                  <div class="viz-stat">
+                    <div class="viz-stat-value">{{ f.metric.value }}</div>
+                    <div class="viz-stat-meta">
+                      <span class="viz-stat-label">{{ f.metric.label }}</span>
+                      <span class="viz-stat-delta up">{{ f.metric.delta }}</span>
+                    </div>
+                  </div>
+                  <div class="kw-list">
+                    <div
+                      v-for="(k, ki) in f.keywords"
+                      :key="k.term"
+                      class="kw-row"
+                      :style="{ animationDelay: (0.15 + ki * 0.12) + 's' }"
+                    >
+                      <span class="kw-rank">#{{ k.rank }}</span>
+                      <span class="kw-term">{{ k.term }}</span>
+                      <span class="kw-bar">
+                        <span class="kw-bar-fill" :style="{ width: k.score + '%', animationDelay: (0.25 + ki * 0.12) + 's' }"></span>
+                      </span>
+                      <span class="kw-delta">
+                        <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5">
+                          <path d="M5 8V2M2 5l3-3 3 3"/>
+                        </svg>
+                        {{ k.prev - k.rank }}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Lead ID: stacked company chips sliding in -->
+                <div v-else-if="f.visual === 'leads'" class="viz viz-leads">
+                  <div class="viz-stat">
+                    <div class="viz-stat-value">{{ f.metric.value }}</div>
+                    <div class="viz-stat-meta">
+                      <span class="viz-stat-label">{{ f.metric.label }}</span>
+                      <span class="viz-stat-delta up">{{ f.metric.delta }}</span>
+                    </div>
+                  </div>
+                  <div class="lead-list">
+                    <div
+                      v-for="(l, li) in f.leads"
+                      :key="l.domain"
+                      class="lead-row"
+                      :style="{ animationDelay: (0.2 + li * 0.14) + 's' }"
+                    >
+                      <div class="lead-avatar" :style="{ background: leadColors[li % leadColors.length] }">
+                        {{ l.name[0] }}
+                      </div>
+                      <div class="lead-meta">
+                        <div class="lead-name">{{ l.name }}</div>
+                        <div class="lead-domain">{{ l.domain }}</div>
+                      </div>
+                      <span class="lead-score" :class="{ hot: l.hot }">{{ l.score }}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Fallback: icon -->
+                <div v-else class="card-icon" v-html="f.icon"></div>
               </div>
+
               <h3 class="card-title">{{ f.title }}</h3>
               <div class="card-expand" :class="{ 'card-expand--open': activeCard === i }">
                 <span class="card-arrow">
@@ -169,7 +283,7 @@
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 
 const scrolled = ref(false)
-const activeCard = ref(1)
+const activeCard = ref(0)
 const activeCat = ref(0)
 const trackOffset = ref(0)
 const trackRef = ref(null)
@@ -183,6 +297,45 @@ const twDone = ref(false)
 const cardStep = 280
 const visibleCards = 4
 let cycleTimer = null
+let featureTimer = null
+const featureDwellMs = 4200
+
+const leadColors = ['#131718', '#C65A2F', '#4A7FB0', '#5E6B73']
+
+// ── Chart path helpers ──
+const CHART_W = 220
+const CHART_H = 70
+function chartPoints(series) {
+  const max = Math.max(...series, 1)
+  const stepX = CHART_W / (series.length - 1 || 1)
+  return series.map((v, i) => [i * stepX, CHART_H - (v / max) * (CHART_H - 6) - 3])
+}
+function buildLinePath(series) {
+  const pts = chartPoints(series)
+  if (!pts.length) return ''
+  return pts.reduce((acc, [x, y], i) => acc + (i === 0 ? `M${x},${y}` : ` L${x},${y}`), '')
+}
+function buildAreaPath(series) {
+  const line = buildLinePath(series)
+  if (!line) return ''
+  return `${line} L${CHART_W},${CHART_H} L0,${CHART_H} Z`
+}
+function lastY(series) {
+  const pts = chartPoints(series)
+  return pts.length ? pts[pts.length - 1][1] : CHART_H
+}
+
+function startFeatureAutoAdvance() {
+  stopFeatureAutoAdvance()
+  featureTimer = setInterval(() => {
+    activeCard.value = (activeCard.value + 1) % features.length
+  }, featureDwellMs)
+}
+function stopFeatureAutoAdvance() {
+  if (featureTimer) { clearInterval(featureTimer); featureTimer = null }
+}
+function pauseAutoAdvance() { stopFeatureAutoAdvance() }
+function resumeAutoAdvance() { startFeatureAutoAdvance() }
 
 function scrollCarousel(dir) {
   const maxOffset = -(features.length - visibleCards) * cardStep
@@ -246,11 +399,13 @@ onMounted(() => {
   document.querySelectorAll('.anim').forEach(el => obs.observe(el))
   startCycle()
   runTypewriter()
+  startFeatureAutoAdvance()
 
   onUnmounted(() => {
     window.removeEventListener('scroll', onScroll)
     obs.disconnect()
     clearInterval(cycleTimer)
+    stopFeatureAutoAdvance()
   })
 })
 
@@ -262,6 +417,9 @@ const features = [
     desc: 'Real-time visitors, pageviews, conversions, and user flow — with AI anomaly detection.',
     replaces: 'Replaces Mixpanel',
     tint: 'tint-peach',
+    visual: 'chart',
+    metric: { value: '2,847', label: 'Visitors today', delta: '+18%' },
+    chart: [12, 28, 22, 40, 34, 56, 48, 70, 64, 82, 74, 96],
     icon: '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M3 20V10l4-4 4 4 4-4 4 4v10" stroke-linejoin="round"/></svg>'
   },
   {
@@ -269,6 +427,15 @@ const features = [
     desc: 'See exactly where visitors click, scroll, and engage on every page of your website.',
     replaces: 'Replaces Hotjar',
     tint: 'tint-blue',
+    visual: 'heatmap',
+    metric: { value: '4,132', label: 'Clicks tracked', delta: '12 hotspots' },
+    hotspots: [
+      { x: 22, y: 30, size: 42, delay: 0,    intensity: 0.9 },
+      { x: 62, y: 22, size: 28, delay: 0.35, intensity: 0.7 },
+      { x: 78, y: 58, size: 50, delay: 0.7,  intensity: 1.0 },
+      { x: 35, y: 70, size: 32, delay: 1.05, intensity: 0.55 },
+      { x: 50, y: 48, size: 22, delay: 1.4,  intensity: 0.6 },
+    ],
     icon: '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8" cy="9" r="2"/><circle cx="16" cy="9" r="1.5" opacity=".5"/><circle cx="12" cy="15" r="2.5"/></svg>'
   },
   {
@@ -276,6 +443,14 @@ const features = [
     desc: 'AI keyword scoring, rank tracking, and Google Trends integration for every page.',
     replaces: 'Replaces Semrush',
     tint: 'tint-yellow',
+    visual: 'keywords',
+    metric: { value: '87', label: 'Tracked keywords', delta: '+4 new #1s' },
+    keywords: [
+      { term: 'ai analytics', rank: 3, prev: 7,  score: 92 },
+      { term: 'visitor tracking', rank: 1, prev: 2, score: 88 },
+      { term: 'heatmap tool', rank: 5, prev: 11, score: 74 },
+      { term: 'lead scoring saas', rank: 2, prev: 4, score: 81 },
+    ],
     icon: '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>'
   },
   {
@@ -283,6 +458,13 @@ const features = [
     desc: 'Identify companies visiting your site with behavioral scoring and company intel.',
     replaces: 'Replaces Clearbit',
     tint: 'tint-peach',
+    visual: 'leads',
+    metric: { value: '23', label: 'Companies today', delta: '4 hot leads' },
+    leads: [
+      { name: 'Acme Corp',      domain: 'acme.com',    score: 94, hot: true },
+      { name: 'Vector Labs',    domain: 'vectorlabs.io', score: 81, hot: true },
+      { name: 'Northwind Ltd',  domain: 'northwind.co',  score: 67, hot: false },
+    ],
     icon: '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="12" cy="7" r="4"/><path d="M5.5 21c0-3.5 3-6 6.5-6s6.5 2.5 6.5 6"/></svg>'
   },
 ]
@@ -592,7 +774,252 @@ em { color: #5B8DEF; font-style: italic; }
   box-shadow: 0 8px 24px rgba(0,0,0,0.08);
 }
 .carousel-card.expanded {
-  flex: 0 0 340px;
+  flex: 0 0 420px;
+  min-height: 360px;
+  box-shadow: 0 18px 48px rgba(0,0,0,0.14);
+  transform: translateY(-4px);
+}
+
+/* ── Per-tool animated visuals ── */
+.viz {
+  position: relative;
+  margin-bottom: auto;
+  width: 100%;
+}
+.viz-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 10px;
+}
+.viz-stat-value {
+  font-family: 'DM Serif Display', Georgia, serif;
+  font-weight: 400;
+  font-size: 30px;
+  color: #131718;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+.viz-stat-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.viz-stat-label { color: #131718; opacity: 0.6; font-weight: 600; }
+.viz-stat-delta {
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(19,23,24,0.08);
+  color: #131718;
+  font-weight: 700;
+}
+.viz-stat-delta.up { background: rgba(24,110,58,0.14); color: #186E3A; }
+
+/* Chart (Analytics) */
+.viz-chart { padding-right: 4px; }
+.chart-svg {
+  width: 100%;
+  height: 70px;
+  overflow: visible;
+  display: block;
+}
+.chart-line {
+  stroke-dasharray: 600;
+  stroke-dashoffset: 600;
+  transition: stroke-dashoffset 0s;
+}
+.chart-area { opacity: 0; }
+.chart-pulse { opacity: 0; }
+.is-playing .chart-line {
+  animation: chart-draw 1.5s cubic-bezier(0.22, 1, 0.36, 1) 0.1s forwards;
+}
+.is-playing .chart-area {
+  animation: fade-in 0.9s ease 0.9s forwards;
+}
+.is-playing .chart-pulse {
+  animation: pulse-dot 1.4s ease-in-out 1.6s infinite;
+}
+@keyframes chart-draw {
+  to { stroke-dashoffset: 0; }
+}
+@keyframes fade-in {
+  to { opacity: 1; }
+}
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); transform-origin: center; }
+  50% { opacity: 0.25; transform: scale(1.8); }
+}
+
+/* Heatmap */
+.viz-heatmap { }
+.heatmap-canvas {
+  position: relative;
+  width: 100%;
+  height: 110px;
+  border-radius: 10px;
+  background:
+    repeating-linear-gradient(90deg, rgba(19,23,24,0.05) 0 1px, transparent 1px 36px),
+    repeating-linear-gradient(0deg,  rgba(19,23,24,0.05) 0 1px, transparent 1px 24px),
+    rgba(255,255,255,0.35);
+  overflow: hidden;
+}
+.heat-blob {
+  position: absolute;
+  border-radius: 50%;
+  transform: translate(-50%, -50%) scale(0.4);
+  background: radial-gradient(circle, rgba(220,82,48,0.9) 0%, rgba(245,166,35,0.5) 45%, rgba(245,166,35,0) 75%);
+  filter: blur(2px);
+  opacity: 0;
+  pointer-events: none;
+}
+.is-playing .heat-blob {
+  animation: heat-pulse 2.1s ease-in-out infinite;
+}
+@keyframes heat-pulse {
+  0%   { transform: translate(-50%, -50%) scale(0.4); opacity: 0; }
+  30%  { opacity: 0.9; }
+  60%  { transform: translate(-50%, -50%) scale(1.1); opacity: 0.9; }
+  100% { transform: translate(-50%, -50%) scale(1.5); opacity: 0; }
+}
+.heatmap-cursor {
+  position: absolute;
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  border: 1.5px solid #131718;
+  top: 25%; left: 15%;
+  opacity: 0;
+}
+.is-playing .heatmap-cursor {
+  animation: cursor-move 6s ease-in-out infinite;
+}
+@keyframes cursor-move {
+  0%   { top: 25%;  left: 15%; opacity: 0; }
+  10%  { opacity: 1; }
+  25%  { top: 22%;  left: 62%; }
+  50%  { top: 58%;  left: 78%; }
+  75%  { top: 70%;  left: 35%; }
+  95%  { top: 48%;  left: 50%; opacity: 1; }
+  100% { top: 48%;  left: 50%; opacity: 0; }
+}
+
+/* Keywords */
+.kw-list { display: flex; flex-direction: column; gap: 6px; }
+.kw-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: #131718;
+  opacity: 0;
+  transform: translateX(-8px);
+}
+.is-playing .kw-row {
+  animation: kw-slide-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+@keyframes kw-slide-in {
+  to { opacity: 1; transform: translateX(0); }
+}
+.kw-rank {
+  width: 24px;
+  font-weight: 700;
+  font-family: 'DM Serif Display', Georgia, serif;
+  font-size: 13px;
+  letter-spacing: -0.02em;
+}
+.kw-term {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+}
+.kw-bar {
+  position: relative;
+  flex: 0 0 70px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(19,23,24,0.12);
+  overflow: hidden;
+}
+.kw-bar-fill {
+  display: block;
+  height: 100%;
+  background: #131718;
+  border-radius: 2px;
+  transform: scaleX(0);
+  transform-origin: left center;
+}
+.is-playing .kw-bar-fill {
+  animation: kw-bar-grow 0.9s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+@keyframes kw-bar-grow {
+  to { transform: scaleX(1); }
+}
+.kw-delta {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #186E3A;
+  background: rgba(24,110,58,0.12);
+  padding: 2px 5px;
+  border-radius: 4px;
+}
+
+/* Lead ID */
+.lead-list { display: flex; flex-direction: column; gap: 6px; }
+.lead-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.55);
+  border: 1px solid rgba(19,23,24,0.06);
+  opacity: 0;
+  transform: translateY(8px);
+}
+.is-playing .lead-row {
+  animation: lead-slide-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+@keyframes lead-slide-in {
+  to { opacity: 1; transform: translateY(0); }
+}
+.lead-avatar {
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff;
+  font-weight: 700;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+.lead-meta { flex: 1; min-width: 0; }
+.lead-name { font-size: 12px; font-weight: 700; color: #131718; line-height: 1.2; }
+.lead-domain { font-size: 10px; color: #131718; opacity: 0.55; }
+.lead-score {
+  font-size: 11px;
+  font-weight: 800;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: rgba(19,23,24,0.08);
+  color: #131718;
+}
+.lead-score.hot {
+  background: #DC5230;
+  color: #fff;
+  box-shadow: 0 0 0 0 rgba(220,82,48,0.7);
+}
+.is-playing .lead-score.hot {
+  animation: lead-hot-pulse 1.8s ease-in-out 0.8s infinite;
+}
+@keyframes lead-hot-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(220,82,48,0.6); }
+  50%      { box-shadow: 0 0 0 6px rgba(220,82,48,0); }
 }
 
 /* Card tints — Travel Lab branding */
