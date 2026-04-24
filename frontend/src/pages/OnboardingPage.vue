@@ -138,11 +138,13 @@
 import { ref, reactive, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/app'
+import { useAuthStore } from '@/stores/auth'
 import websitesApi from '@/api/websites'
 
 const route = useRoute()
 const router = useRouter()
 const appStore = useAppStore()
+const authStore = useAuthStore()
 
 const step = ref(0)
 const generatingDesc = ref(false)
@@ -356,7 +358,13 @@ async function nextStep() {
 }
 
 async function finish() {
-  if (websiteId.value) {
+  // Re-check session — onboarding just changed onboarding_completed, so the
+  // gate may now point at paywall (new users) or app (returning users).
+  const session = await authStore.fetchSession()
+  const next = session?.next_route
+  if (next === 'paywall') {
+    router.push('/paywall')
+  } else if (websiteId.value) {
     router.push(`/analytics/${websiteId.value}`)
   } else {
     router.push('/dashboard')
