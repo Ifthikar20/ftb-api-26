@@ -215,6 +215,96 @@
       </div>
     </section>
 
+    <!-- ═══ Our Tools For — Framer-style tool carousel ═══ -->
+    <section class="tools-for" id="tools">
+      <div class="wrap">
+        <div class="tools-head">
+          <span class="tools-eyebrow">OUR TOOLS FOR</span>
+          <div class="tools-tabs" role="tablist">
+            <button
+              v-for="(tab, i) in toolTabs"
+              :key="tab.id"
+              :class="['tools-tab', { 'tools-tab-active': toolTab === i }]"
+              type="button"
+              @click="toolTab = i"
+            >{{ tab.label }}</button>
+          </div>
+        </div>
+
+        <div class="tools-grid">
+          <article
+            v-for="(card, i) in toolCards"
+            :key="card.id"
+            :class="['tool-card', `tool-card-${card.accent}`, { 'tool-card-active': toolIndex === i }]"
+            @click="toolIndex = i"
+          >
+            <header class="tool-card-head">
+              <span class="tool-num">{{ String(i + 1).padStart(2, '0') }}</span>
+              <span class="tool-label">{{ card.label }}</span>
+            </header>
+
+            <div class="tool-metric">
+              <div class="tool-metric-num">{{ card.mainValue }}</div>
+              <div class="tool-metric-sub">{{ card.mainLabel }}</div>
+              <span v-if="card.badge" :class="['tool-badge', card.badgeTone]">{{ card.badge }}</span>
+            </div>
+
+            <!-- Custom visual per card -->
+            <div v-if="card.kind === 'keywords'" class="tool-viz tool-viz-list">
+              <div v-for="k in card.items" :key="k.term" class="kw-row">
+                <span :class="['kw-pos', posClass(k.pos)]">#{{ k.pos }}</span>
+                <span class="kw-term">{{ k.term }}</span>
+                <span class="kw-delta">{{ k.delta }}</span>
+              </div>
+            </div>
+
+            <div v-else-if="card.kind === 'leads'" class="tool-viz tool-viz-list">
+              <div v-for="c in card.items" :key="c.name" class="lead-row">
+                <span class="lead-avatar">{{ c.name[0] }}</span>
+                <span class="lead-meta">
+                  <span class="lead-name">{{ c.name }}</span>
+                  <span class="lead-domain">{{ c.domain }}</span>
+                </span>
+                <span :class="['lead-score', scoreTone(c.score)]">{{ c.score }}</span>
+              </div>
+            </div>
+
+            <div v-else-if="card.kind === 'spark'" class="tool-viz tool-viz-spark">
+              <svg viewBox="0 0 220 52" preserveAspectRatio="none" class="spark-svg">
+                <path :d="card.path" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                <path :d="card.area" :fill="card.fill" opacity="0.1" />
+              </svg>
+            </div>
+
+            <div v-else-if="card.kind === 'dots'" class="tool-viz tool-viz-dots">
+              <span
+                v-for="(d, di) in card.dots"
+                :key="di"
+                class="viz-dot"
+                :style="{ top: d.y + '%', left: d.x + '%', transform: `scale(${d.size})` }"
+              />
+            </div>
+          </article>
+        </div>
+
+        <div class="tools-bottom">
+          <div class="tool-caption">
+            <p class="tool-desc">{{ toolCards[toolIndex].desc }}</p>
+            <span class="tool-replace">Replaces <strong>{{ toolCards[toolIndex].replaces }}</strong></span>
+          </div>
+          <div class="tool-pager">
+            <button class="tool-arrow" type="button" @click="toolIndex = (toolIndex - 1 + toolCards.length) % toolCards.length" aria-label="Previous">
+              <svg width="14" height="14" viewBox="0 0 16 16"><path d="M10 3L5 8l5 5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <span class="tool-count">{{ toolIndex + 1 }} / {{ toolCards.length }}</span>
+            <button class="tool-arrow" type="button" @click="toolIndex = (toolIndex + 1) % toolCards.length" aria-label="Next">
+              <svg width="14" height="14" viewBox="0 0 16 16"><path d="M6 3l5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- ═══ How It Works ═══ -->
     <section class="how" id="how">
       <div class="wrap">
@@ -283,6 +373,102 @@ const activeCard = ref(0)
 const activeCat = ref(0)
 const trackOffset = ref(0)
 const trackRef = ref(null)
+
+/* ── "Our tools for" section ── */
+const toolTab = ref(3) // default to "SEO Intelligence" active
+const toolTabs = [
+  { id: 'seo', label: 'SEO' },
+  { id: 'growth', label: 'Growth' },
+  { id: 'analytics', label: 'Analytics' },
+  { id: 'seo-intel', label: 'SEO Intelligence' },
+]
+
+const toolIndex = ref(3) // default highlight "Lead ID"
+const toolCards = [
+  {
+    id: 'analytics',
+    label: 'Analytics',
+    accent: 'blue',
+    mainValue: '2,847',
+    mainLabel: 'Visitors today',
+    badge: '+18%',
+    badgeTone: 'tone-pos',
+    kind: 'spark',
+    path: 'M0,40 L20,34 L40,32 L60,28 L80,30 L100,22 L120,18 L140,22 L160,14 L180,12 L200,8 L220,6',
+    area: 'M0,40 L20,34 L40,32 L60,28 L80,30 L100,22 L120,18 L140,22 L160,14 L180,12 L200,8 L220,6 L220,52 L0,52 Z',
+    fill: '#0a1f3d',
+    desc: 'Track every visit, session, and source in real time — see what works without sampling.',
+    replaces: 'Google Analytics',
+  },
+  {
+    id: 'heatmaps',
+    label: 'Heatmaps',
+    accent: 'coral',
+    mainValue: '4,132',
+    mainLabel: 'Clicks tracked',
+    badge: '12 hotspots',
+    badgeTone: 'tone-neutral',
+    kind: 'dots',
+    dots: [
+      { x: 22, y: 30, size: 1.4 },
+      { x: 48, y: 22, size: 1.1 },
+      { x: 72, y: 38, size: 1.8 },
+      { x: 30, y: 60, size: 1.2 },
+      { x: 60, y: 68, size: 2.2 },
+      { x: 82, y: 58, size: 1 },
+      { x: 12, y: 76, size: 0.9 },
+      { x: 44, y: 80, size: 1.3 },
+    ],
+    desc: 'See exactly where users click, scroll, and hesitate. Ship UI changes with proof.',
+    replaces: 'Hotjar',
+  },
+  {
+    id: 'keywords',
+    label: 'Keywords',
+    accent: 'green',
+    mainValue: '87',
+    mainLabel: 'Tracked keywords',
+    badge: '+4 new #1s',
+    badgeTone: 'tone-pos',
+    kind: 'keywords',
+    items: [
+      { pos: 3, term: 'ai analytics', delta: '4' },
+      { pos: 1, term: 'visitor tracking', delta: '1' },
+      { pos: 5, term: 'heatmap tool', delta: '6' },
+      { pos: 2, term: 'lead scoring saas', delta: '2' },
+    ],
+    desc: 'Monitor rankings daily, catch movement before competitors, and own the SERP.',
+    replaces: 'Ahrefs',
+  },
+  {
+    id: 'lead-id',
+    label: 'Lead ID',
+    accent: 'rausch',
+    mainValue: '23',
+    mainLabel: 'Companies today',
+    badge: '4 hot leads',
+    badgeTone: 'tone-accent',
+    kind: 'leads',
+    items: [
+      { name: 'Acme Corp', domain: 'acme.com', score: 94 },
+      { name: 'Vector Labs', domain: 'vectorlabs.io', score: 81 },
+      { name: 'Northwind Ltd', domain: 'northwind.co', score: 67 },
+    ],
+    desc: 'Identify companies visiting your site with behavioral scoring and company intel.',
+    replaces: 'Clearbit',
+  },
+]
+
+function posClass(pos) {
+  if (pos === 1) return 'pos-1'
+  if (pos <= 3) return 'pos-3'
+  return 'pos-5'
+}
+function scoreTone(score) {
+  if (score >= 90) return 'score-hot'
+  if (score >= 75) return 'score-warm'
+  return 'score-cool'
+}
 
 /* Typewriter refs */
 const twLine1 = ref(null)
@@ -1171,5 +1357,367 @@ em { color: #5B8DEF; font-style: italic; }
 @media (max-width: 640px) {
   .hero-h { font-size: 2.4rem; min-height: auto; }
   .hero-ctas { flex-direction: column; align-items: flex-start; }
+}
+
+/* ──────────────────────────────────────────────────
+   "Our Tools For" section — Airbnb-style cards
+   Warm neutrals + per-card accent borders (rausch, coral,
+   teal/babu, sky). Fonts: Geist + Inter.
+   ────────────────────────────────────────────────── */
+.tools-for {
+  --ab-fg: #222222;
+  --ab-fg-muted: #6a6a6a;
+  --ab-fg-subtle: #b0b0b0;
+  --ab-bg: #f7f7f7;
+  --ab-card: #ffffff;
+  --ab-hairline: #ebebeb;
+  --ab-hairline-strong: #dddddd;
+  --ab-rausch: #ff385c;
+  --ab-coral: #e07856;
+  --ab-babu: #00a699;
+  --ab-sky: #428bca;
+  --ab-arches: #fc642d;
+  padding: 120px 0 100px;
+  background: var(--ab-bg);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  color: var(--ab-fg);
+}
+.tools-for .wrap { max-width: 1200px; margin: 0 auto; padding: 0 24px; }
+
+.tools-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 32px;
+  margin-bottom: 56px;
+  flex-wrap: wrap;
+}
+
+.tools-eyebrow {
+  font-family: 'Geist', 'Inter', system-ui, sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  color: var(--ab-fg-muted);
+  text-transform: uppercase;
+}
+
+.tools-tabs {
+  display: inline-flex;
+  gap: 2px;
+  padding: 4px;
+  background: #ffffff;
+  border: 1px solid var(--ab-hairline);
+  border-radius: 999px;
+}
+
+.tools-tab {
+  appearance: none;
+  border: none;
+  background: transparent;
+  padding: 9px 18px;
+  border-radius: 999px;
+  font-family: 'Inter', sans-serif;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--ab-fg-muted);
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+.tools-tab:hover { color: var(--ab-fg); background: #f7f7f7; }
+.tools-tab-active {
+  background: var(--ab-fg);
+  color: #ffffff;
+}
+.tools-tab-active:hover { background: var(--ab-fg); color: #ffffff; }
+
+.tools-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 18px;
+  margin-bottom: 48px;
+}
+
+/* Base tool card */
+.tool-card {
+  --accent: var(--ab-fg);
+  --accent-soft: #f7f7f7;
+  --accent-strong: #222222;
+  position: relative;
+  background: var(--ab-card);
+  border: 1px solid var(--ab-hairline);
+  border-radius: 16px;
+  padding: 22px 22px 26px;
+  cursor: pointer;
+  transition: all 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+  min-height: 340px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+.tool-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 4px;
+  background: var(--accent);
+  border-top-left-radius: 16px;
+  border-top-right-radius: 16px;
+  opacity: 0.9;
+}
+.tool-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(0, 0, 0, 0.04);
+  border-color: var(--accent);
+}
+.tool-card-active {
+  border-color: var(--accent);
+  box-shadow: 0 12px 32px -10px color-mix(in srgb, var(--accent) 28%, transparent), 0 2px 6px rgba(0, 0, 0, 0.06);
+}
+.tool-card-active::before { height: 6px; opacity: 1; }
+
+/* Per-tool accents */
+.tool-card-rausch { --accent: var(--ab-rausch); --accent-soft: #fff1f3; --accent-strong: #c01e3c; }
+.tool-card-coral  { --accent: var(--ab-coral);  --accent-soft: #fdf2ec; --accent-strong: #a55436; }
+.tool-card-green  { --accent: var(--ab-babu);   --accent-soft: #e6f6f4; --accent-strong: #007a72; }
+.tool-card-blue   { --accent: var(--ab-sky);    --accent-soft: #eef4fb; --accent-strong: #2e63a1; }
+
+.tool-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+.tool-num {
+  font-family: 'Geist', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+  padding: 3px 9px;
+  border-radius: 6px;
+}
+.tool-label {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--ab-fg-muted);
+  text-transform: uppercase;
+}
+
+.tool-metric { margin-bottom: 18px; }
+.tool-metric-num {
+  font-family: 'Geist', 'Inter', sans-serif;
+  font-size: 40px;
+  font-weight: 500;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  color: var(--ab-fg);
+  margin-bottom: 4px;
+}
+.tool-metric-sub {
+  font-size: 13.5px;
+  color: var(--ab-fg-muted);
+  margin-bottom: 10px;
+}
+.tool-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-family: 'Inter', sans-serif;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+.tool-badge.tone-pos {
+  background: #e6f6f4;
+  color: #007a72;
+}
+.tool-badge.tone-neutral {
+  background: #f2f2f2;
+  color: #555555;
+}
+.tool-badge.tone-accent {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+/* ── Keyword list ── */
+.tool-viz-list { margin-top: auto; display: flex; flex-direction: column; gap: 6px; }
+.kw-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  background: #fafafa;
+  border: 1px solid var(--ab-hairline);
+  border-radius: 8px;
+  font-size: 12.5px;
+}
+.kw-pos {
+  font-family: 'Geist', sans-serif;
+  font-weight: 500;
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  min-width: 26px;
+  text-align: center;
+  letter-spacing: 0.02em;
+}
+.kw-pos.pos-1 { background: #e6f6f4; color: #007a72; }
+.kw-pos.pos-3 { background: #eef4fb; color: #2e63a1; }
+.kw-pos.pos-5 { background: #f2f2f2; color: #555555; }
+.kw-term { color: #333333; font-size: 12.5px; }
+.kw-delta {
+  font-family: 'Geist', sans-serif;
+  font-size: 11px;
+  color: var(--ab-fg-subtle);
+}
+
+/* ── Lead rows ── */
+.lead-row {
+  display: grid;
+  grid-template-columns: 28px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  background: #fafafa;
+  border: 1px solid var(--ab-hairline);
+  border-radius: 8px;
+}
+.lead-avatar {
+  display: inline-flex;
+  width: 26px;
+  height: 26px;
+  align-items: center;
+  justify-content: center;
+  background: var(--ab-rausch);
+  color: #ffffff;
+  font-family: 'Geist', sans-serif;
+  font-weight: 500;
+  font-size: 11px;
+  border-radius: 6px;
+}
+.lead-meta { display: flex; flex-direction: column; line-height: 1.25; min-width: 0; }
+.lead-name { font-size: 12.5px; font-weight: 600; color: var(--ab-fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lead-domain { font-size: 11px; color: var(--ab-fg-subtle); }
+.lead-score {
+  font-family: 'Geist', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 4px;
+  min-width: 30px;
+  text-align: center;
+}
+.lead-score.score-hot  { background: #fff1f3; color: var(--ab-rausch); }
+.lead-score.score-warm { background: #fdf2ec; color: var(--ab-arches); }
+.lead-score.score-cool { background: #f2f2f2; color: #555555; }
+
+/* ── Sparkline (Analytics) ── */
+.tool-viz-spark { margin-top: auto; color: var(--accent); }
+.spark-svg { width: 100%; height: 52px; display: block; }
+
+/* ── Heatmap dots (Heatmaps) ── */
+.tool-viz-dots {
+  position: relative;
+  margin-top: auto;
+  height: 80px;
+  background: #fafafa;
+  border: 1px solid var(--ab-hairline);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.viz-dot {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  margin-left: -5px;
+  margin-top: -5px;
+  background: var(--accent);
+  border-radius: 50%;
+  box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 55%, transparent);
+  opacity: 0.85;
+}
+
+/* ── Bottom caption + pager ── */
+.tools-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 32px;
+  padding-top: 28px;
+  border-top: 1px solid var(--ab-hairline);
+}
+.tool-caption { max-width: 680px; }
+.tool-desc {
+  font-family: 'Inter', sans-serif;
+  font-size: 17px;
+  line-height: 1.5;
+  font-weight: 500;
+  color: var(--ab-fg);
+  margin: 0 0 8px;
+  letter-spacing: -0.01em;
+}
+.tool-replace {
+  font-size: 12.5px;
+  color: var(--ab-fg-muted);
+  letter-spacing: 0.01em;
+}
+.tool-replace strong {
+  color: var(--ab-fg);
+  font-family: 'Geist', sans-serif;
+  font-weight: 500;
+}
+
+.tool-pager {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.tool-count {
+  font-family: 'Geist', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ab-fg);
+  min-width: 40px;
+  text-align: center;
+  letter-spacing: 0.01em;
+}
+.tool-arrow {
+  appearance: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 1px solid var(--ab-hairline-strong);
+  color: var(--ab-fg);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.18s ease;
+}
+.tool-arrow:hover {
+  background: var(--ab-fg);
+  color: #ffffff;
+  border-color: var(--ab-fg);
+}
+
+@media (max-width: 1024px) {
+  .tools-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 640px) {
+  .tools-for { padding: 80px 0 72px; }
+  .tools-grid { grid-template-columns: 1fr; gap: 14px; }
+  .tool-card { min-height: auto; }
+  .tools-head { flex-direction: column; align-items: flex-start; gap: 20px; }
+  .tools-bottom { flex-direction: column; align-items: flex-start; gap: 18px; }
 }
 </style>
