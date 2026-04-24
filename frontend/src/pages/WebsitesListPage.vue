@@ -61,24 +61,16 @@
 
     <!-- Onboarding Wizard Modal -->
     <div v-if="showAddModal" class="modal-overlay" @click.self="showAddModal = false">
-      <div class="modal-content slide-up" style="max-width: 560px">
+      <div class="modal-content slide-up wizard-modal">
         <div class="modal-header">
-          <h2 class="modal-title">{{ wizardStep === 1 ? 'Add Project' : wizardStep === 2 ? 'Choose Platform' : 'Install Pixel' }}</h2>
+          <div class="wizard-step-label">STEP {{ wizardStep }} OF {{ TOTAL_STEPS }}</div>
           <button class="btn-icon btn-ghost" @click="showAddModal = false">✕</button>
-        </div>
-
-        <!-- Progress Bar -->
-        <div class="wizard-progress">
-          <div class="wizard-progress-bar" :style="{ width: (wizardStep / 3 * 100) + '%' }"></div>
-        </div>
-        <div class="wizard-steps-label">
-          <span :class="{ active: wizardStep >= 1 }">1. Basics</span>
-          <span :class="{ active: wizardStep >= 2 }">2. Platform</span>
-          <span :class="{ active: wizardStep >= 3 }">3. Pixel</span>
         </div>
 
         <!-- Step 1: Basic Info -->
         <div v-if="wizardStep === 1" class="wizard-body">
+          <h2 class="wizard-title">Add your project</h2>
+          <p class="wizard-subtitle">Tell us about your site so we can tailor the rest of the setup.</p>
           <div class="form-group">
             <label class="form-label">Project Name</label>
             <input v-model="newSite.name" class="form-input" placeholder="My Awesome Site" required />
@@ -91,14 +83,173 @@
             <label class="form-label">Industry <span class="text-muted">(optional)</span></label>
             <input v-model="newSite.industry" class="form-input" placeholder="SaaS, E-commerce, etc." />
           </div>
-          <button class="btn btn-primary w-full" :disabled="!newSite.name || !newSite.url" @click="wizardStep = 2">
-            Next →
+          <button class="btn btn-primary btn-wizard-continue" :disabled="!newSite.name || !newSite.url" @click="goToCompetitors">
+            Continue
           </button>
         </div>
 
-        <!-- Step 2: Platform Type -->
+        <!-- Step 2: AI Competitors -->
         <div v-if="wizardStep === 2" class="wizard-body">
-          <p class="wizard-desc">What platform is your website built on? This helps us optimize tracking and integrations.</p>
+          <h2 class="wizard-title">Your AI competitors</h2>
+          <p class="wizard-subtitle">
+            We found these brands appearing alongside yours in AI answers. You can track up to
+            {{ competitorLimit }}. Remove any that aren't relevant or add your own.
+          </p>
+
+          <div v-if="detectingCompetitors" class="competitor-loading">
+            <div class="spinner"></div>
+            <span>Scanning AI answers for brands appearing alongside {{ displayDomain }}...</span>
+          </div>
+
+          <div v-else class="competitor-list">
+            <div v-for="(c, i) in competitors" :key="c.domain" class="competitor-row">
+              <div class="competitor-favicon" :style="{ background: c.color }">
+                {{ c.domain[0].toUpperCase() }}
+              </div>
+              <span class="competitor-domain">{{ c.domain }}</span>
+              <button class="competitor-remove" @click="removeCompetitor(i)" aria-label="Remove">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+            </div>
+
+            <div v-if="!competitors.length" class="competitor-empty">
+              No competitors added yet. Add one below to get started.
+            </div>
+          </div>
+
+          <div class="competitor-add-row">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            <input
+              v-model="newCompetitorInput"
+              class="competitor-add-input"
+              placeholder="Add a competitor (e.g. example.com)"
+              @keyup.enter="addCompetitor"
+            />
+            <button v-if="newCompetitorInput.trim()" class="competitor-add-btn" @click="addCompetitor">Add</button>
+          </div>
+
+          <button class="btn btn-primary btn-wizard-continue" :disabled="detectingCompetitors" @click="wizardStep = 3">
+            Continue
+          </button>
+
+          <div class="wizard-dots">
+            <span class="dot" :class="{ active: wizardStep >= 1 }"></span>
+            <span class="dot" :class="{ active: wizardStep >= 2 }"></span>
+            <span class="dot" :class="{ active: wizardStep >= 3 }"></span>
+            <span class="dot" :class="{ active: wizardStep >= 4 }"></span>
+            <span class="dot" :class="{ active: wizardStep >= 5 }"></span>
+          </div>
+        </div>
+
+        <!-- Step 3: Topic Source -->
+        <div v-if="wizardStep === 3" class="wizard-body">
+          <h2 class="wizard-title">How should we find topics?</h2>
+          <p class="wizard-subtitle">Choose how you'd like to discover topics for your project.</p>
+
+          <div class="topic-source-list">
+            <div
+              class="topic-source-card"
+              :class="{ selected: topicSource === 'gsc' }"
+              @click="topicSource = 'gsc'"
+            >
+              <div class="topic-radio">
+                <span class="topic-radio-dot" v-if="topicSource === 'gsc'"></span>
+              </div>
+              <div class="topic-source-body">
+                <div class="topic-source-title-row">
+                  <svg width="18" height="18" viewBox="0 0 48 48">
+                    <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+                    <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+                    <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+                    <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+                  </svg>
+                  <span class="topic-source-title">Google Search Console</span>
+                  <span class="badge-recommended">Recommended</span>
+                </div>
+                <p class="topic-source-desc">
+                  Use Google Search Console data to find topics based on your site's actual search performance.
+                </p>
+              </div>
+            </div>
+
+            <div
+              class="topic-source-card"
+              :class="{ selected: topicSource === 'ai' }"
+              @click="topicSource = 'ai'"
+            >
+              <div class="topic-radio">
+                <span class="topic-radio-dot" v-if="topicSource === 'ai'"></span>
+              </div>
+              <div class="topic-source-body">
+                <div class="topic-source-title-row">
+                  <span class="topic-source-title">AI-powered suggestions</span>
+                </div>
+                <p class="topic-source-desc">
+                  Let our AI analyze your domain and suggest relevant topics automatically.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <!-- GSC connected state -->
+          <div v-if="topicSource === 'gsc' && gscConnected" class="gsc-connected-panel">
+            <div class="gsc-connected-header">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-success, #34D399)" stroke-width="2.5">
+                <polyline points="20 6 9 17 4 12"/>
+              </svg>
+              <span>Connected to Google as <strong>{{ gscAccountEmail }}</strong></span>
+              <button class="gsc-disconnect" @click="disconnectGsc">Disconnect</button>
+            </div>
+            <label class="form-label" style="margin-top: 12px">Select the property to track</label>
+            <div class="gsc-property-list">
+              <label v-for="p in gscProperties" :key="p" class="gsc-property-row" :class="{ selected: gscSelectedProperty === p }">
+                <input type="radio" :value="p" v-model="gscSelectedProperty" />
+                <span class="gsc-property-label">{{ p }}</span>
+              </label>
+            </div>
+          </div>
+
+          <button
+            v-if="topicSource === 'gsc' && !gscConnected"
+            class="btn btn-primary btn-wizard-continue"
+            @click="connectGsc"
+            :disabled="connectingGsc"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px">
+              <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/>
+              <path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/>
+            </svg>
+            {{ connectingGsc ? 'Connecting...' : 'Connect Google Search Console' }}
+          </button>
+
+          <button
+            v-else
+            class="btn btn-primary btn-wizard-continue"
+            :disabled="topicSource === 'gsc' && !gscSelectedProperty"
+            @click="wizardStep = 4"
+          >
+            Continue
+          </button>
+
+          <p class="wizard-helper">You can switch methods or add GSC data anytime from settings.</p>
+
+          <div class="wizard-dots">
+            <span class="dot" :class="{ active: wizardStep >= 1 }"></span>
+            <span class="dot" :class="{ active: wizardStep >= 2 }"></span>
+            <span class="dot" :class="{ active: wizardStep >= 3 }"></span>
+            <span class="dot" :class="{ active: wizardStep >= 4 }"></span>
+            <span class="dot" :class="{ active: wizardStep >= 5 }"></span>
+          </div>
+        </div>
+
+        <!-- Step 4: Platform Type -->
+        <div v-if="wizardStep === 4" class="wizard-body">
+          <h2 class="wizard-title">Choose your platform</h2>
+          <p class="wizard-subtitle">What platform is your website built on? This helps us optimize tracking and integrations.</p>
           <div class="platform-grid">
             <div v-for="p in platforms" :key="p.id" class="platform-card" :class="{ selected: newSite.platform_type === p.id }" @click="newSite.platform_type = p.id">
               <div class="platform-icon" :style="{ background: p.color }">
@@ -110,15 +261,15 @@
             </div>
           </div>
           <div class="wizard-nav">
-            <button class="btn btn-secondary" @click="wizardStep = 1">← Back</button>
+            <button class="btn btn-secondary" @click="wizardStep = 3">Back</button>
             <button class="btn btn-primary" :disabled="!newSite.platform_type" @click="createAndGoToPixel">
-              {{ adding ? 'Creating...' : 'Next →' }}
+              {{ adding ? 'Creating...' : 'Continue' }}
             </button>
           </div>
         </div>
 
-        <!-- Step 3: Pixel Installation -->
-        <div v-if="wizardStep === 3" class="wizard-body">
+        <!-- Step 5: Pixel Installation -->
+        <div v-if="wizardStep === 5" class="wizard-body">
           <div v-if="newSite.platform_type === 'shopify'" class="pixel-instructions">
             <div class="pixel-icon" style="background: #96bf48"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg></div>
             <h4>Shopify Integration</h4>
@@ -214,6 +365,106 @@ const createdSite = ref(null)
 const copied = ref(false)
 const newSite = reactive({ name: '', url: '', industry: '', platform_type: 'custom' })
 
+const TOTAL_STEPS = 5
+const competitorLimit = 10
+
+// Step 2: AI Competitors
+const competitors = ref([])
+const newCompetitorInput = ref('')
+const detectingCompetitors = ref(false)
+
+// Step 3: Topic Source
+const topicSource = ref('gsc')
+const gscConnected = ref(false)
+const connectingGsc = ref(false)
+const gscAccountEmail = ref('')
+const gscProperties = ref([])
+const gscSelectedProperty = ref('')
+
+const COMPETITOR_COLORS = ['#111', '#1A1A1A', '#0F766E', '#0EA5E9', '#F59E0B', '#7C3AED', '#DC2626']
+
+const displayDomain = computed(() => {
+  try {
+    const u = new URL(newSite.url)
+    return u.hostname.replace(/^www\./, '')
+  } catch {
+    return newSite.url || 'your site'
+  }
+})
+
+function normalizeDomain(raw) {
+  if (!raw) return ''
+  let s = raw.trim().toLowerCase()
+  s = s.replace(/^https?:\/\//, '').replace(/^www\./, '')
+  s = s.split('/')[0]
+  return s
+}
+
+async function goToCompetitors() {
+  wizardStep.value = 2
+  if (competitors.value.length) return
+  detectingCompetitors.value = true
+  try {
+    // Stubbed detection — replace with API call to competitor discovery service.
+    await new Promise(r => setTimeout(r, 700))
+    const seed = [
+      'lyst.com', 'stylight.com', 'lovethesales.com',
+      'shopdropapp.com', 'slickdeals.net', 'fashionphile.com', 'farfetch.com',
+    ]
+    competitors.value = seed.map((domain, i) => ({
+      domain,
+      color: COMPETITOR_COLORS[i % COMPETITOR_COLORS.length],
+    }))
+  } finally {
+    detectingCompetitors.value = false
+  }
+}
+
+function addCompetitor() {
+  const domain = normalizeDomain(newCompetitorInput.value)
+  if (!domain) return
+  if (competitors.value.some(c => c.domain === domain)) {
+    newCompetitorInput.value = ''
+    return
+  }
+  if (competitors.value.length >= competitorLimit) return
+  competitors.value.push({
+    domain,
+    color: COMPETITOR_COLORS[competitors.value.length % COMPETITOR_COLORS.length],
+  })
+  newCompetitorInput.value = ''
+}
+
+function removeCompetitor(i) {
+  competitors.value.splice(i, 1)
+}
+
+async function connectGsc() {
+  connectingGsc.value = true
+  try {
+    // Stubbed OAuth — replace with real OAuth redirect to /integrations/gsc/auth/start.
+    await new Promise(r => setTimeout(r, 800))
+    gscAccountEmail.value = 'you@gmail.com'
+    const primary = `sc-domain:${displayDomain.value || 'outfi.ai'}`
+    gscProperties.value = [
+      primary,
+      'https://www.' + (displayDomain.value || 'outfi.ai') + '/',
+      'sc-domain:outfi.ai',
+    ].filter((v, i, a) => a.indexOf(v) === i)
+    gscSelectedProperty.value = primary
+    gscConnected.value = true
+  } finally {
+    connectingGsc.value = false
+  }
+}
+
+function disconnectGsc() {
+  gscConnected.value = false
+  gscAccountEmail.value = ''
+  gscProperties.value = []
+  gscSelectedProperty.value = ''
+}
+
 const platforms = [
   { id: 'shopify', name: 'Shopify', desc: 'E-commerce on Shopify', color: '#96bf48', icon: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg>' },
   { id: 'wordpress', name: 'WordPress', desc: 'Blog or CMS', color: '#21759b', icon: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 8h10M7 12h7M7 16h9"/></svg>' },
@@ -288,7 +539,7 @@ async function createAndGoToPixel() {
     createdSite.value = site
     websites.value.push(site)
     appStore.setWebsites(websites.value)
-    wizardStep.value = 3
+    wizardStep.value = 5
   } catch (e) { console.error('Create failed', e) }
   finally { adding.value = false }
 }
@@ -307,6 +558,14 @@ function openWizard() {
   newSite.url = ''
   newSite.industry = ''
   newSite.platform_type = 'custom'
+  competitors.value = []
+  newCompetitorInput.value = ''
+  detectingCompetitors.value = false
+  topicSource.value = 'gsc'
+  gscConnected.value = false
+  gscAccountEmail.value = ''
+  gscProperties.value = []
+  gscSelectedProperty.value = ''
   showAddModal.value = true
 }
 </script>
@@ -403,13 +662,289 @@ function openWizard() {
 }
 
 /* ── Onboarding Wizard ── */
-.wizard-progress { height: 4px; background: var(--border-color); border-radius: 4px; margin: 0 0 12px; }
-.wizard-progress-bar { height: 100%; background: var(--brand-accent, #6366f1); border-radius: 4px; transition: width 0.3s ease; }
-.wizard-steps-label { display: flex; justify-content: space-between; margin-bottom: 20px; font-size: var(--font-xs); color: var(--text-muted); }
-.wizard-steps-label .active { color: var(--text-primary); font-weight: 600; }
-.wizard-body { display: flex; flex-direction: column; gap: 16px; }
-.wizard-desc { font-size: var(--font-sm); color: var(--text-secondary); margin: 0; }
+.wizard-modal { max-width: 560px; }
+.wizard-step-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  letter-spacing: 1.2px;
+}
+.wizard-title {
+  font-size: 26px;
+  font-weight: 800;
+  color: var(--text-primary);
+  margin: 4px 0 8px;
+  line-height: 1.2;
+}
+.wizard-subtitle {
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.55;
+  margin: 0 0 20px;
+}
+.wizard-body { display: flex; flex-direction: column; gap: 14px; }
 .wizard-nav { display: flex; gap: 12px; justify-content: space-between; margin-top: 8px; }
+.wizard-helper {
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0;
+}
+.btn-wizard-continue {
+  width: 100%;
+  padding: 14px 24px;
+  font-size: 15px;
+  font-weight: 600;
+  border-radius: 10px;
+  margin-top: 8px;
+}
+
+/* Progress dots */
+.wizard-dots {
+  display: flex;
+  gap: 8px;
+  margin-top: 18px;
+  justify-content: flex-start;
+}
+.wizard-dots .dot {
+  width: 28px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border-color);
+  transition: background 0.2s;
+}
+.wizard-dots .dot.active { background: var(--brand-accent, #4F46E5); }
+
+/* Competitor list */
+.competitor-loading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 24px;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+.spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--border-color);
+  border-top-color: var(--brand-accent, #4F46E5);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.competitor-list {
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--bg-base, #fff);
+  max-height: 280px;
+  overflow-y: auto;
+}
+.competitor-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-color);
+}
+.competitor-row:last-child { border-bottom: none; }
+.competitor-favicon {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: 700;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+.competitor-domain {
+  flex: 1;
+  font-size: 14px;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+.competitor-remove {
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  transition: all 0.15s;
+}
+.competitor-remove:hover {
+  background: var(--bg-surface);
+  color: var(--color-danger, #DC2626);
+}
+.competitor-empty {
+  padding: 24px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.competitor-add-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0;
+  color: var(--brand-accent, #4F46E5);
+}
+.competitor-add-input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  font-size: 14px;
+  color: var(--text-primary);
+  outline: none;
+  padding: 6px 0;
+}
+.competitor-add-input::placeholder {
+  color: var(--brand-accent, #4F46E5);
+  font-weight: 500;
+}
+.competitor-add-btn {
+  padding: 4px 12px;
+  background: var(--brand-accent, #4F46E5);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* Topic Source */
+.topic-source-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.topic-source-card {
+  display: flex;
+  gap: 14px;
+  padding: 16px 18px;
+  border: 2px solid var(--border-color);
+  border-radius: 14px;
+  cursor: pointer;
+  transition: all 0.15s;
+  background: var(--bg-base, #fff);
+}
+.topic-source-card:hover { border-color: var(--text-muted); }
+.topic-source-card.selected {
+  border-color: var(--brand-accent, #4F46E5);
+  background: rgba(79, 70, 229, 0.04);
+}
+.topic-radio {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid var(--border-color);
+  flex-shrink: 0;
+  margin-top: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.topic-source-card.selected .topic-radio { border-color: var(--brand-accent, #4F46E5); }
+.topic-radio-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--brand-accent, #4F46E5);
+}
+.topic-source-body { flex: 1; }
+.topic-source-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+}
+.topic-source-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.topic-source-desc {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin: 0;
+}
+.badge-recommended {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--brand-accent, #4F46E5);
+  color: var(--brand-accent, #4F46E5);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* GSC connected panel */
+.gsc-connected-panel {
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 16px;
+  background: var(--bg-surface);
+  display: flex;
+  flex-direction: column;
+}
+.gsc-connected-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+.gsc-disconnect {
+  margin-left: auto;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.gsc-property-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+.gsc-property-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s;
+  background: var(--bg-base, #fff);
+}
+.gsc-property-row:hover { border-color: var(--text-muted); }
+.gsc-property-row.selected {
+  border-color: var(--brand-accent, #4F46E5);
+  background: rgba(79, 70, 229, 0.04);
+}
+.gsc-property-label {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 13px;
+  color: var(--text-primary);
+}
 
 .platform-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
 .platform-card { position: relative; padding: 16px; border-radius: 14px; border: 2px solid var(--border-color); cursor: pointer; text-align: center; transition: all 0.2s; background: var(--bg-surface); }
