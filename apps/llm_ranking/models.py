@@ -123,3 +123,53 @@ class LLMRankingResult(TimestampMixin):
     def __str__(self):
         mentioned = "mentioned" if self.is_mentioned else "not mentioned"
         return f"LLMResult({self.provider}, {mentioned}, rank={self.mention_rank})"
+
+
+class LLMRankingSchedule(TimestampMixin):
+    """
+    Per-website periodic LLM ranking audit schedule.
+
+    When enabled, a Celery Beat task checks for schedules whose next_run_at
+    has passed and creates + queues a new LLMRankingAudit automatically.
+    """
+
+    FREQUENCY_WEEKLY = "weekly"
+    FREQUENCY_BIWEEKLY = "biweekly"
+    FREQUENCY_MONTHLY = "monthly"
+    FREQUENCY_CHOICES = [
+        (FREQUENCY_WEEKLY, "Weekly"),
+        (FREQUENCY_BIWEEKLY, "Every 2 Weeks"),
+        (FREQUENCY_MONTHLY, "Monthly"),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    website = models.OneToOneField(
+        "websites.Website", on_delete=models.CASCADE, related_name="llm_ranking_schedule"
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="+"
+    )
+    is_enabled = models.BooleanField(default=True, db_index=True)
+    frequency = models.CharField(
+        max_length=20, choices=FREQUENCY_CHOICES, default=FREQUENCY_WEEKLY
+    )
+    # Business context for auto-generated audits
+    business_name = models.CharField(max_length=200)
+    business_description = models.TextField(blank=True)
+    industry = models.CharField(max_length=100)
+    location = models.CharField(max_length=200, blank=True)
+    keywords = models.JSONField(default=list)
+    providers = models.JSONField(
+        default=list,
+        help_text="LLM providers to query. Empty = all.",
+    )
+    # Scheduling fields
+    next_run_at = models.DateTimeField(db_index=True)
+    last_run_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "llm_ranking_schedule"
+
+    def __str__(self):
+        status = "enabled" if self.is_enabled else "disabled"
+        return f"LLMSchedule({self.website.name}, {self.frequency}, {status})"

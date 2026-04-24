@@ -215,10 +215,17 @@ class CampaignListView(TenantScopedListAPIView):
         campaign = CampaignService.create(
             website=website,
             created_by=request.user,
+            name=serializer.validated_data.get("name", ""),
             subject=serializer.validated_data["subject"],
             body=serializer.validated_data["body"],
+            from_name=serializer.validated_data.get("from_name", ""),
+            from_email=serializer.validated_data.get("from_email", ""),
             segment=serializer.validated_data.get("segment"),
             canva_design_url=serializer.validated_data.get("canva_design_url", ""),
+            is_ab_test=serializer.validated_data.get("is_ab_test", False),
+            subject_b=serializer.validated_data.get("subject_b", ""),
+            body_b=serializer.validated_data.get("body_b", ""),
+            ab_split_ratio=serializer.validated_data.get("ab_split_ratio", 50),
         )
         return Response(EmailCampaignSerializer(campaign).data, status=status.HTTP_201_CREATED)
 
@@ -314,6 +321,71 @@ class CampaignRecipientsView(TenantScopedListAPIView):
         campaign = CampaignService.get(website_id=website_id, campaign_id=campaign_id)
         recipients = CampaignRecipient.objects.filter(campaign=campaign).select_related("lead")
         return self.paginated_response(recipients, CampaignRecipientSerializer)
+
+
+class CampaignPreviewRecipientsView(TenantScopedAPIView):
+    """Preview recipient count for a campaign before sending."""
+
+    def get(self, request, website_id):
+        self.get_website(website_id)
+        from apps.leads.services.campaign_service import CampaignService
+
+        segment_id = request.query_params.get("segment_id")
+        count = CampaignService.preview_recipients(
+            website_id=website_id,
+            segment_id=segment_id,
+        )
+
+        # Detect which provider will be used and estimate cost
+        provider = "sendgrid"
+        cost_per_1k = 0.50  # SendGrid fallback estimate
+        try:
+            from apps.leads.services.resend_service import resend_configured
+            if resend_configured():
+                provider = "resend"
+                cost_per_1k = 0.40  # Resend Pro: $20/50k
+        except ImportError:
+            try:
+                from apps.leads.services.ses_service import ses_configured
+                if ses_configured():
+                    provider = "ses"
+                    cost_per_1k = 0.10
+            except ImportError:
+                pass
+
+        estimated_cost = round(count * cost_per_1k / 1000, 4)
+        return Response({
+            "recipient_count": count,
+            "estimated_cost_usd": estimated_cost,
+            "cost_per_1k": cost_per_1k,
+            "provider": provider,
+        })
+
+
+class CampaignAIGenerateView(TenantScopedAPIView):
+    """Generate email body HTML using AI."""
+
+    def post(self, request, website_id):
+        website = self.get_website(website_id)
+        prompt = request.data.get("prompt", "").strip()
+        if not prompt:
+            return Response(
+                {"error": "A prompt is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        from apps.leads.services.campaign_service import CampaignService
+
+        body_html = CampaignService.generate_email_body(
+            prompt=prompt,
+            website_name=website.name,
+        )
+        if not body_html:
+            return Response(
+                {"error": "AI generation failed. Check API key configuration."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response({"body_html": body_html})
 
 
 # ── Tracked Links ─────────────────────────────────────────────────────────────

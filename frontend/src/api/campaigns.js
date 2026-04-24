@@ -9,4 +9,7 @@ export default {
     send: (wid, cid) => api.post(`/leads/${wid}/campaigns/${cid}/send/`),
     stats: (wid, cid) => api.get(`/leads/${wid}/campaigns/${cid}/stats/`),
     recipients: (wid, cid) => api.get(`/leads/${wid}/campaigns/${cid}/recipients/`),
+    previewRecipients: (wid, params) => api.get(`/leads/${wid}/campaigns/preview-recipients/`, { params }),
+    aiGenerate: (wid, data) => api.post(`/leads/${wid}/campaigns/ai-generate/`, data),
+    segments: (wid) => api.get(`/leads/${wid}/segments/`),
 }

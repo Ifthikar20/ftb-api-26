@@ -8,9 +8,22 @@
           when users ask them to find a service like yours.
         </p>
       </div>
-      <button class="btn btn-primary btn-sm" @click="openRunAudit" :disabled="running">
-        {{ running ? 'Running audit...' : 'Run New Audit' }}
-      </button>
+      <div class="header-actions">
+        <button class="btn btn-secondary btn-sm" @click="showScheduleModal = true">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-right:4px"><circle cx="8" cy="8" r="6"/><path d="M8 4v4l3 2"/></svg>
+          {{ schedule ? 'Edit Schedule' : 'Schedule' }}
+        </button>
+        <button class="btn btn-primary btn-sm" @click="openRunAudit" :disabled="running">
+          {{ running ? 'Running audit...' : 'Run New Audit' }}
+        </button>
+      </div>
+    </div>
+
+    <!-- Schedule banner -->
+    <div v-if="schedule && schedule.is_enabled" class="schedule-banner">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 4v4l3 2"/></svg>
+      <span>Auto-audit runs <strong>{{ schedule.frequency_display }}</strong> — next run {{ formatRelative(schedule.next_run_at) }}</span>
+      <button class="btn btn-ghost btn-xs" @click="disableSchedule">Disable</button>
     </div>
 
     <div v-if="loading" class="loading-state">Loading LLM ranking data...</div>
@@ -141,6 +154,31 @@
               <div v-if="p.avg_rank" class="text-xs text-muted" style="margin-top:4px">Avg rank #{{ p.avg_rank }}</div>
               <div class="text-xs" style="margin-top:2px;color:var(--text-muted)">{{ p.succeeded }}/{{ p.total_prompts }} queries OK</div>
             </template>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ Charts Section ═══ -->
+      <div v-if="latestBreakdown.length || historyData.length" class="charts-row" style="margin-bottom:24px">
+        <!-- Provider Comparison Bar Chart -->
+        <div v-if="latestBreakdown.length" class="card chart-card">
+          <div class="card-header">
+            <h3 class="card-title">Provider Comparison</h3>
+            <span class="text-xs text-muted">Mention rate across LLMs</span>
+          </div>
+          <div class="chart-wrap">
+            <Bar :data="providerChartData" :options="providerChartOptions" />
+          </div>
+        </div>
+
+        <!-- Trend Line Chart -->
+        <div v-if="historyData.length >= 2" class="card chart-card">
+          <div class="card-header">
+            <h3 class="card-title">Score Trend</h3>
+            <span class="text-xs text-muted">AI visibility over time</span>
+          </div>
+          <div class="chart-wrap">
+            <Line :data="trendChartData" :options="trendChartOptions" />
           </div>
         </div>
       </div>
@@ -364,6 +402,50 @@
         </button>
       </template>
     </BaseModal>
+
+    <!-- Schedule Modal -->
+    <BaseModal v-model="showScheduleModal" title="Schedule Periodic Audits">
+      <p class="text-sm text-muted" style="margin-bottom:16px;line-height:1.5">
+        Automatically run LLM ranking audits on a schedule so you can track visibility trends without manual effort.
+      </p>
+      <div class="form-group">
+        <label class="form-label">Business Name</label>
+        <input v-model="scheduleForm.business_name" class="form-input" placeholder="e.g. Acme Corp" />
+      </div>
+      <div class="form-group" style="margin-top:12px">
+        <label class="form-label">Industry</label>
+        <input v-model="scheduleForm.industry" class="form-input" placeholder="e.g. SaaS, marketing" />
+      </div>
+      <div class="form-group" style="margin-top:12px">
+        <label class="form-label">Location (optional)</label>
+        <input v-model="scheduleForm.location" class="form-input" placeholder="e.g. US, Europe" />
+      </div>
+      <div class="form-group" style="margin-top:12px">
+        <label class="form-label">Frequency</label>
+        <select v-model="scheduleForm.frequency" class="form-input">
+          <option value="weekly">Weekly</option>
+          <option value="biweekly">Every 2 Weeks</option>
+          <option value="monthly">Monthly</option>
+        </select>
+      </div>
+      <div class="form-group" style="margin-top:12px">
+        <label class="form-label">Providers</label>
+        <div class="provider-checks">
+          <label v-for="p in availableProviders" :key="p.value" class="check-label">
+            <input type="checkbox" :value="p.value" v-model="scheduleForm.providers" />
+            {{ p.label }}
+          </label>
+        </div>
+      </div>
+      <p v-if="scheduleError" class="form-error" style="margin-top:8px">{{ scheduleError }}</p>
+      <template #footer>
+        <button v-if="schedule" class="btn btn-danger" @click="deleteSchedule" style="margin-right:auto">Remove Schedule</button>
+        <button class="btn btn-secondary" @click="showScheduleModal = false">Cancel</button>
+        <button class="btn btn-primary" @click="saveSchedule" :disabled="savingSchedule">
+          {{ savingSchedule ? 'Saving...' : 'Save Schedule' }}
+        </button>
+      </template>
+    </BaseModal>
   </div>
 </template>
 
@@ -373,6 +455,21 @@ import { useRoute } from 'vue-router'
 import { useToast } from '@/composables/useToast'
 import llmRankingApi from '@/api/llm_ranking'
 import BaseModal from '@/components/ui/BaseModal.vue'
+import { Line, Bar } from 'vue-chartjs'
+import {
+  Chart as ChartJS,
+  CategoryScale, LinearScale, PointElement, LineElement,
+  BarElement, Filler, Tooltip, Legend,
+} from 'chart.js'
+
+ChartJS.register(
+  CategoryScale, LinearScale, PointElement, LineElement,
+  BarElement, Filler, Tooltip, Legend,
+)
+
+ChartJS.defaults.color = '#8a8a9a'
+ChartJS.defaults.font.family = "'Inter', 'SF Pro Display', system-ui, sans-serif"
+ChartJS.defaults.font.size = 11
 
 const route = useRoute()
 const websiteId = route.params.websiteId
@@ -390,7 +487,21 @@ const auditDetail = ref(null)
 const showFindings = ref(true)
 const showMethodology = ref(false)
 const confirmDeleteId = ref(null)
+const historyData = ref([])
 let pollTimer = null
+
+// Schedule state
+const schedule = ref(null)
+const showScheduleModal = ref(false)
+const savingSchedule = ref(false)
+const scheduleError = ref('')
+const scheduleForm = ref({
+  business_name: '',
+  industry: '',
+  location: '',
+  frequency: 'weekly',
+  providers: ['claude', 'gpt4', 'gemini', 'perplexity'],
+})
 
 const customPromptsText = ref('')
 const auditForm = ref({
@@ -472,6 +583,119 @@ const auditETA = computed(() => {
   return `~${mins} min remaining`
 })
 
+// ── Chart Data ─────────────────────────────────────────────────────────────
+
+const PROVIDER_COLORS = {
+  claude: '#A78BFA',
+  gpt4: '#34D399',
+  gemini: '#5B8DEF',
+  perplexity: '#F59E0B',
+}
+
+const providerChartData = computed(() => {
+  const bd = latestBreakdown.value.filter(p => p.succeeded > 0)
+  return {
+    labels: bd.map(p => p.provider_display || providerLabel(p.provider)),
+    datasets: [{
+      label: 'Mention Rate (%)',
+      data: bd.map(p => p.mention_rate),
+      backgroundColor: bd.map(p => PROVIDER_COLORS[p.provider] || '#6B7280'),
+      borderRadius: 6,
+      barThickness: 36,
+    }],
+  }
+})
+
+const providerChartOptions = {
+  responsive: true,
+  maintainAspectRatio: false,
+  plugins: {
+    legend: { display: false },
+    tooltip: {
+      backgroundColor: '#1e1e2e',
+      padding: 10,
+      cornerRadius: 8,
+      callbacks: {
+        label: (ctx) => `${ctx.parsed.y}% mention rate`,
+      },
+    },
+  },
+  scales: {
+    y: {
+      min: 0,
+      max: 100,
+      grid: { color: 'rgba(255,255,255,0.04)' },
+      ticks: { callback: (v) => v + '%' },
+    },
+    x: {
+      grid: { display: false },
+    },
+  },
+}
+
+const trendChartData = computed(() => {
+  const history = historyData.value
+  return {
+    labels: history.map(h => {
+      const d = new Date(h.completed_at)
+      return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+    }),
+    datasets: [
+      {
+        label: 'Overall Score',
+        data: history.map(h => h.overall_score),
+        borderColor: '#A78BFA',
+        backgroundColor: 'rgba(167,139,250,0.08)',
+        fill: true,
+        tension: 0.4,
+        pointRadius: 4,
+        pointBackgroundColor: '#A78BFA',
+      },
+      {
+        label: 'Mention Rate (%)',
+        data: history.map(h => h.mention_rate),
+        borderColor: '#34D399',
+        backgroundColor: 'rgba(52,211,153,0.06)',
+        fill: true,
+        tension: 0.4,
+        pointRadius: 3,
+        pointBackgroundColor: '#34D399',
+        borderDash: [4, 4],
+      },
+    ],
+  }
+})
+
+const trendChartOptions = {
+  responsive: true,
+  maintainAspectRatio: false,
+  interaction: { mode: 'index', intersect: false },
+  plugins: {
+    legend: {
+      position: 'bottom',
+      labels: { usePointStyle: true, pointStyle: 'circle', padding: 16 },
+    },
+    tooltip: {
+      backgroundColor: '#1e1e2e',
+      padding: 10,
+      cornerRadius: 8,
+    },
+  },
+  scales: {
+    y: {
+      min: 0,
+      max: 100,
+      grid: { color: 'rgba(255,255,255,0.04)' },
+      ticks: { callback: (v) => v },
+    },
+    x: {
+      grid: { display: false },
+    },
+  },
+}
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
+
 function ringFillStyle(score) {
   if (score == null) return {}
   const pct = Math.min(100, Math.max(0, score))
@@ -488,7 +712,6 @@ function ringFillStyle(score) {
 }
 
 function mentionBadge(rate) {
-  // mention_rate is already 0-100 from backend
   const pct = rate || 0
   return pct >= 60 ? 'badge-success' : pct >= 30 ? 'badge-warning' : 'badge-neutral'
 }
@@ -503,6 +726,18 @@ function providerInitial(p) {
 
 function formatDate(dt) {
   return new Date(dt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+function formatRelative(dt) {
+  if (!dt) return '—'
+  const d = new Date(dt)
+  const now = new Date()
+  const diffMs = d - now
+  if (diffMs < 0) return 'any moment now'
+  const diffDays = Math.ceil(diffMs / 86400000)
+  if (diffDays <= 1) return 'tomorrow'
+  if (diffDays <= 7) return `in ${diffDays} days`
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }
 
 function scorePillClass(score) {
@@ -595,6 +830,78 @@ async function confirmDelete(audit) {
   }
 }
 
+// ── Schedule Functions ─────────────────────────────────────────────────────
+
+async function fetchSchedule() {
+  try {
+    const { data } = await llmRankingApi.getSchedule(websiteId)
+    schedule.value = data?.data?.schedule || data?.schedule || null
+    if (schedule.value) {
+      scheduleForm.value = {
+        business_name: schedule.value.business_name || '',
+        industry: schedule.value.industry || '',
+        location: schedule.value.location || '',
+        frequency: schedule.value.frequency || 'weekly',
+        providers: schedule.value.providers?.length ? schedule.value.providers : ['claude', 'gpt4', 'gemini', 'perplexity'],
+      }
+    }
+  } catch (e) {
+    console.error('Schedule fetch error', e)
+  }
+}
+
+async function saveSchedule() {
+  if (!scheduleForm.value.business_name) { scheduleError.value = 'Business name is required.'; return }
+  if (!scheduleForm.value.industry) { scheduleError.value = 'Industry is required.'; return }
+  savingSchedule.value = true
+  scheduleError.value = ''
+  try {
+    const { data } = await llmRankingApi.saveSchedule(websiteId, {
+      ...scheduleForm.value,
+      is_enabled: true,
+    })
+    schedule.value = data?.data?.schedule || data?.schedule || null
+    showScheduleModal.value = false
+    toast.success('Schedule saved! Audits will run automatically.')
+  } catch (err) {
+    scheduleError.value = err.displayMessage || 'Failed to save schedule.'
+  } finally {
+    savingSchedule.value = false
+  }
+}
+
+async function disableSchedule() {
+  try {
+    await llmRankingApi.deleteSchedule(websiteId)
+    schedule.value = null
+    toast.success('Schedule disabled.')
+  } catch (err) {
+    toast.error(err.displayMessage || 'Failed to disable schedule.')
+  }
+}
+
+async function deleteSchedule() {
+  try {
+    await llmRankingApi.deleteSchedule(websiteId)
+    schedule.value = null
+    showScheduleModal.value = false
+    toast.success('Schedule removed.')
+  } catch (err) {
+    toast.error(err.displayMessage || 'Failed to remove schedule.')
+  }
+}
+
+// ── History ────────────────────────────────────────────────────────────────
+
+async function fetchHistory() {
+  try {
+    const { data } = await llmRankingApi.history(websiteId)
+    historyData.value = data?.data || data || []
+  } catch (e) {
+    console.error('History fetch error', e)
+  }
+}
+
 // Auto-polling for running audits
 function startPolling() {
   stopPolling()
@@ -618,6 +925,7 @@ function startPolling() {
       // Load breakdown for the latest completed audit
       if (audits.value.length && audits.value[0].status === 'completed' && !latestBreakdown.value.length) {
         await selectAudit(audits.value[0])
+        await fetchHistory()
       }
     } catch (e) {
       console.error('Poll error', e)
@@ -659,12 +967,33 @@ async function fetchData() {
   }
 }
 
-onMounted(fetchData)
+onMounted(async () => {
+  await Promise.all([fetchData(), fetchHistory(), fetchSchedule()])
+})
 onBeforeUnmount(stopPolling)
 </script>
 
 <style scoped>
 .loading-state { text-align: center; padding: 80px 20px; font-size: var(--font-md); color: var(--text-muted); }
+
+/* Header actions */
+.header-actions { display: flex; gap: 8px; align-items: center; }
+
+/* Schedule banner */
+.schedule-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: var(--radius-md);
+  background: rgba(167, 139, 250, 0.08);
+  border: 1px solid rgba(167, 139, 250, 0.2);
+  margin-bottom: 20px;
+  font-size: var(--font-sm);
+  color: var(--text-secondary);
+}
+.schedule-banner strong { color: var(--text-primary); }
+.btn-xs { font-size: var(--font-xs); padding: 2px 8px; }
 
 /* Score summary */
 .score-main { display: flex; align-items: center; gap: 32px; }
@@ -766,6 +1095,18 @@ onBeforeUnmount(stopPolling)
   color: var(--text-secondary);
 }
 .provider-name { font-size: var(--font-sm); font-weight: 600; color: var(--text-primary); }
+
+/* Charts row */
+.charts-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  gap: 20px;
+}
+.chart-card { overflow: hidden; }
+.chart-wrap {
+  padding: 16px;
+  height: 260px;
+}
 
 /* Methodology */
 .methodology-content { padding: 16px; }

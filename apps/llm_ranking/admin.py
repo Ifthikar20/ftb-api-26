@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from apps.llm_ranking.models import LLMRankingAudit, LLMRankingResult
+from apps.llm_ranking.models import LLMRankingAudit, LLMRankingResult, LLMRankingSchedule
 
 
 class LLMRankingResultInline(admin.TabularInline):
@@ -26,3 +26,12 @@ class LLMRankingResultAdmin(admin.ModelAdmin):
     list_filter = ("provider", "is_mentioned", "sentiment", "query_succeeded")
     search_fields = ("prompt", "response_text")
     ordering = ("-created_at",)
+
+
+@admin.register(LLMRankingSchedule)
+class LLMRankingScheduleAdmin(admin.ModelAdmin):
+    list_display = ("id", "website", "business_name", "frequency", "is_enabled", "next_run_at", "last_run_at")
+    list_filter = ("is_enabled", "frequency")
+    search_fields = ("business_name", "website__name")
+    readonly_fields = ("id", "created_at", "updated_at")
+    ordering = ("next_run_at",)
