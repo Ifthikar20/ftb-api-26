@@ -48,7 +48,7 @@ class WebsiteService:
 
     @staticmethod
     def update(*, website: Website, user, **kwargs) -> Website:
-        allowed_fields = {"name", "industry"}
+        allowed_fields = {"name", "industry", "description", "topics", "onboarding_completed"}
         for field in allowed_fields & kwargs.keys():
             setattr(website, field, kwargs[field])
         website.save()

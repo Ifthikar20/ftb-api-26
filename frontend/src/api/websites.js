@@ -13,4 +13,12 @@ export default {
     updateSettings: (id, data) => api.put(`/websites/${id}/settings/`, data),
     getTeam: (id) => api.get(`/websites/${id}/team/`),
     inviteTeam: (id, data) => api.post(`/websites/${id}/team/invite/`, data),
+    // Onboarding assist (AI-powered)
+    onboardingAssist: (id, data) => api.post(`/websites/${id}/onboarding/assist/`, data),
+    // Competitors
+    listCompetitors: (websiteId) => api.get(`/competitors/${websiteId}/`),
+    addCompetitor: (websiteId, data) => api.post(`/competitors/${websiteId}/`, data),
+    deleteCompetitor: (websiteId, compId) => api.delete(`/competitors/${websiteId}/${compId}/`),
+    discoverCompetitors: (websiteId) => api.get(`/competitors/${websiteId}/discover/`),
 }
+

@@ -9,7 +9,8 @@ class WebsiteSerializer(serializers.ModelSerializer):
     class Meta:
         model = Website
         fields = [
-            "id", "url", "name", "industry", "platform_type", "onboarding_completed",
+            "id", "url", "name", "industry", "description", "topics",
+            "platform_type", "onboarding_completed",
             "pixel_key", "pixel_verified", "pixel_verified_at", "crawl_status",
             "is_active", "pixel_snippet", "created_at", "updated_at",
         ]
@@ -32,6 +33,13 @@ class WebsiteCreateSerializer(serializers.Serializer):
 class WebsiteUpdateSerializer(serializers.Serializer):
     name = serializers.CharField(max_length=200, required=False)
     industry = serializers.CharField(max_length=100, required=False)
+    description = serializers.CharField(required=False, allow_blank=True)
+    topics = serializers.ListField(
+        child=serializers.CharField(max_length=200),
+        required=False,
+        default=list,
+    )
+    onboarding_completed = serializers.BooleanField(required=False)
 
 
 class WebsiteSettingsSerializer(serializers.ModelSerializer):

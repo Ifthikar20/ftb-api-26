@@ -92,6 +92,7 @@ const routes = [
     protect('/messaging/:websiteId', 'messaging', () => import('@/pages/MessagingPage.vue'), true),
     protect('/voice-agent/:websiteId', 'voice-agent', () => import('@/pages/VoiceAgentPage.vue'), true),
     protect('/llm-ranking/:websiteId', 'llm-ranking', () => import('@/pages/LLMRankingPage.vue'), true),
+    protect('/onboarding/:websiteId', 'onboarding', () => import('@/pages/OnboardingPage.vue'), true),
     protect('/app/integrations', 'integrations', () => import('@/pages/IntegrationsPage.vue')),
     protect('/billing', 'billing', () => import('@/pages/BillingPage.vue')),
     protect('/settings', 'settings', () => import('@/pages/SettingsPage.vue')),

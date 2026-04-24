@@ -483,7 +483,7 @@ async function createProject() {
     newProject.value = { name: '', url: '', industry: '' }
     showAddProject.value = false
     toast.success('Project created successfully!')
-    router.push(`/websites/${project.id}`)
+    router.push(`/onboarding/${project.id}`)
   } catch (err) {
     const msg = err.displayMessage || 'We couldn\'t create the project. Please check the URL and try again.'
     createError.value = msg
