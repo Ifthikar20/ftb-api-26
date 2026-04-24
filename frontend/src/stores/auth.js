@@ -7,6 +7,7 @@ export const useAuthStore = defineStore('auth', () => {
     const accessToken = ref(null)
     const user = ref(null)
     const loading = ref(false)
+    const session = ref(null)
 
     const isAuthenticated = computed(() => !!accessToken.value)
     const userInitials = computed(() => {
@@ -61,6 +62,18 @@ export const useAuthStore = defineStore('auth', () => {
         }
     }
 
+    async function fetchSession() {
+        try {
+            const { data } = await api.get('/auth/session/', { _silentError: true })
+            session.value = data.data || data
+            if (session.value?.user) user.value = session.value.user
+            return session.value
+        } catch {
+            session.value = null
+            return null
+        }
+    }
+
     async function refreshToken() {
         try {
             const { data } = await api.post('/auth/refresh/', {}, { _silentError: true })
@@ -77,12 +90,14 @@ export const useAuthStore = defineStore('auth', () => {
     function clearAuth() {
         accessToken.value = null
         user.value = null
+        session.value = null
         localStorage.removeItem('fb-session')
     }
 
     return {
         accessToken,
         user,
+        session,
         loading,
         isAuthenticated,
         userInitials,
@@ -90,6 +105,7 @@ export const useAuthStore = defineStore('auth', () => {
         register,
         logout,
         fetchMe,
+        fetchSession,
         refreshToken,
         clearAuth,
     }

@@ -89,13 +89,36 @@ class TestLLMRankingAuditListView:
         assert response.status_code == 401
 
     def test_create_audit_missing_required_fields(self, auth_client):
+        """When neither the request nor the website has an industry, return 400."""
         client, user, website = auth_client
+        website.industry = ""
+        website.save(update_fields=["industry"])
         response = client.post(
             f"/api/v1/llm-ranking/{website.id}/audits/",
-            {"industry": "SaaS"},  # missing business_name
+            {},
             format="json",
         )
         assert response.status_code == 400
+
+    def test_create_audit_falls_back_to_website_fields(self, auth_client):
+        """business_name/industry/keywords default to the Website row when omitted."""
+        client, user, website = auth_client
+        website.name = "Acme Corp"
+        website.industry = "SaaS"
+        website.description = "We build pipelines."
+        website.topics = ["pipelines", "data"]
+        website.save()
+
+        with patch("apps.llm_ranking.tasks.run_llm_ranking_audit.delay"):
+            response = client.post(
+                f"/api/v1/llm-ranking/{website.id}/audits/",
+                {"custom_prompts": ["Test prompt"]},
+                format="json",
+            )
+        assert response.status_code == 202
+        data = response.json()
+        assert data["business_name"] == "Acme Corp"
+        assert data["industry"] == "SaaS"
 
 
 @pytest.mark.django_db

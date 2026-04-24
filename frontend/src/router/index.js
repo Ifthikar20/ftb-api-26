@@ -93,6 +93,13 @@ const routes = [
     protect('/voice-agent/:websiteId', 'voice-agent', () => import('@/pages/VoiceAgentPage.vue'), true),
     protect('/llm-ranking/:websiteId', 'llm-ranking', () => import('@/pages/LLMRankingPage.vue'), true),
     protect('/onboarding/:websiteId', 'onboarding', () => import('@/pages/OnboardingPage.vue'), true),
+    protect('/app-onboarding', 'app-onboarding', () => import('@/pages/AppOnboardingPage.vue')),
+    {
+        path: '/paywall',
+        name: 'paywall',
+        component: () => import('@/pages/PaywallPage.vue'),
+        meta: { requiresAuth: true, layout: 'auth' }
+    },
     protect('/app/integrations', 'integrations', () => import('@/pages/IntegrationsPage.vue')),
     protect('/billing', 'billing', () => import('@/pages/BillingPage.vue')),
     protect('/settings', 'settings', () => import('@/pages/SettingsPage.vue')),
@@ -115,6 +122,13 @@ const router = createRouter({
 
 let sessionRestored = false
 
+// Routes exempt from the onboarding/paywall gate (user is mid-flow fixing their state)
+const GATE_EXEMPT = new Set([
+    'login', 'register', 'forgot-password', 'verify-email',
+    'landing', 'terms', 'privacy', 'public-integrations', 'integration-detail',
+    'onboarding', 'app-onboarding', 'paywall', 'not-found',
+])
+
 router.beforeEach(async (to, from, next) => {
     const auth = useAuthStore()
 
@@ -126,7 +140,7 @@ router.beforeEach(async (to, from, next) => {
             try {
                 await auth.refreshToken()
                 if (auth.accessToken) {
-                    await auth.fetchMe()
+                    await auth.fetchSession()
                 }
             } catch {
                 // No valid session — continue as guest
@@ -146,6 +160,23 @@ router.beforeEach(async (to, from, next) => {
     // If guest visits a guest-only page (login/register) but is already logged in, go to dashboard
     if (to.meta.guest && auth.isAuthenticated) {
         return next({ name: 'dashboard' })
+    }
+
+    // Onboarding + paywall gate: authenticated users with incomplete setup
+    // must finish onboarding and subscribe before reaching the app.
+    if (auth.isAuthenticated && !GATE_EXEMPT.has(to.name)) {
+        // Refresh session on transition into a protected route if we don't have one
+        if (!auth.session) {
+            await auth.fetchSession()
+        }
+        const route = auth.session?.next_route
+        if (route === 'onboarding') {
+            const wid = auth.session?.onboarding?.first_incomplete_website_id
+            return next(wid ? { name: 'onboarding', params: { websiteId: wid } } : { name: 'app-onboarding' })
+        }
+        if (route === 'paywall') {
+            return next({ name: 'paywall' })
+        }
     }
 
     // Guard: project-specific pages require an active project

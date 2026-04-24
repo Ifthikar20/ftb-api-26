@@ -68,8 +68,8 @@ class CheckoutView(APIView):
         plan = request.data.get("plan", "starter")
         annual = request.data.get("annual", False)
 
-        # Validate plan — only individual is available for self-serve checkout
-        valid_plans = ["starter"]
+        # Validate plan — starter and pro are self-serve; enterprise requires sales contact
+        valid_plans = ["starter", "pro"]
         if plan not in valid_plans:
             return Response(
                 {

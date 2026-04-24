@@ -7,7 +7,8 @@ class Segment(models.TextChoices):
 
 
 class Plan(models.TextChoices):
-    STARTER = "starter", "Starter"
+    STARTER = "starter", "Starter ($29/mo)"
+    PRO = "pro", "Pro ($96/mo)"
     ENTERPRISE = "enterprise", "Enterprise"
     # Legacy aliases for migration compatibility
     INDIVIDUAL = "individual", "Individual (Legacy)"
@@ -20,18 +21,18 @@ class Plan(models.TextChoices):
 PLAN_LIMITS = {
     Plan.STARTER: {
         "segment": Segment.INDIVIDUAL,
-        "price_monthly": 39,
-        "price_yearly": 390,
-        "trial_days": 5,
-        "projects": 5,
-        "pageviews": 100_000,
+        "price_monthly": 29,
+        "price_yearly": 290,
+        "trial_days": 0,
+        "projects": 1,
+        "pageviews": 50_000,
         "team_members": 1,
-        "ai_credits_monthly": 200,
+        "ai_credits_monthly": 100,
         "integrations": 3,
-        "competitors": 10,
-        "voice_minutes_monthly": 100,
+        "competitors": 5,
+        "voice_minutes_monthly": 60,
         "pipeline_builder": True,
-        "trend_intelligence": True,
+        "trend_intelligence": False,
         "sso": False,
         "api_access": False,
         "white_label": False,
@@ -41,6 +42,31 @@ PLAN_LIMITS = {
             "dashboard", "projects", "analytics", "leads",
             "heatmaps", "keywords",
             "campaigns", "integrations", "billing", "settings",
+        ],
+    },
+    Plan.PRO: {
+        "segment": Segment.INDIVIDUAL,
+        "price_monthly": 96,
+        "price_yearly": 960,
+        "trial_days": 0,
+        "projects": 5,
+        "pageviews": 250_000,
+        "team_members": 5,
+        "ai_credits_monthly": 500,
+        "integrations": 10,
+        "competitors": 25,
+        "voice_minutes_monthly": 300,
+        "pipeline_builder": True,
+        "trend_intelligence": True,
+        "sso": False,
+        "api_access": True,
+        "white_label": False,
+        "dedicated_support": False,
+        "tabs": [
+            "dashboard", "projects", "analytics", "leads",
+            "heatmaps", "keywords",
+            "agents", "campaigns", "llm_ranking",
+            "integrations", "billing", "settings",
         ],
     },
     Plan.ENTERPRISE: {

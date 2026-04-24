@@ -16,4 +16,5 @@ urlpatterns = [
     path("me/", views.MeView.as_view(), name="auth-me"),
     path("me/export/", views.MeExportView.as_view(), name="auth-me-export"),
     path("me/ai-usage/", views.AIUsageView.as_view(), name="auth-ai-usage"),
+    path("session/", views.SessionView.as_view(), name="auth-session"),
 ]

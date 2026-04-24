@@ -1,5 +1,11 @@
 <template>
   <div class="llm-ranking-page fade-in">
+    <FirstRunLLMRanking
+      v-if="showFirstRun"
+      :website="activeWebsite"
+      @audit-started="handleAuditStarted"
+    />
+    <template v-else>
     <div class="page-header">
       <div>
         <h1 class="page-title">LLM Ranking</h1>
@@ -449,6 +455,7 @@
         </button>
       </template>
     </BaseModal>
+    </template>
   </div>
 </template>
 
@@ -456,8 +463,10 @@
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
 import { useToast } from '@/composables/useToast'
+import { useAppStore } from '@/stores/app'
 import llmRankingApi from '@/api/llm_ranking'
 import BaseModal from '@/components/ui/BaseModal.vue'
+import FirstRunLLMRanking from '@/components/llm_ranking/FirstRunLLMRanking.vue'
 import { Line, Bar } from 'vue-chartjs'
 import {
   Chart as ChartJS,
@@ -477,6 +486,8 @@ ChartJS.defaults.font.size = 11
 const route = useRoute()
 const websiteId = route.params.websiteId
 const toast = useToast()
+const appStore = useAppStore()
+const activeWebsite = computed(() => appStore.activeWebsite)
 
 const audits = ref([])
 const history = ref([])
@@ -537,6 +548,19 @@ const isAuditRunning = computed(() => {
   const s = latestAudit.value?.status
   return s === 'running' || s === 'pending'
 })
+
+// First-run gate: user lands here before ever running an audit.
+const showFirstRun = computed(() => !loading.value && audits.value.length === 0)
+
+function handleAuditStarted(audit) {
+  // The new audit record is now live — add it to the list, select it, and
+  // begin polling. This swaps the view out of first-run into the dashboard.
+  if (audit?.id) {
+    audits.value.unshift(audit)
+    selectedAuditId.value = audit.id
+  }
+  toast.success('Audit started. Results will appear as each LLM responds.')
+}
 
 // Live per-query results: sorted newest-first for the running ticker
 const liveResults = computed(() => {
@@ -1230,16 +1254,6 @@ function stopPolling() {
   if (pollTimer) {
     clearInterval(pollTimer)
     pollTimer = null
-  }
-}
-
-async function fetchHistory() {
-  try {
-    const { data } = await llmRankingApi.history(websiteId)
-    history.value = data?.data || data || []
-  } catch (e) {
-    console.error('LLM ranking history fetch error', e)
-    history.value = []
   }
 }
 

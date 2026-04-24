@@ -68,10 +68,17 @@ class LLMRankingAuditListSerializer(serializers.ModelSerializer):
 
 
 class RunAuditSerializer(serializers.Serializer):
-    """Input serializer for creating a new audit."""
-    business_name = serializers.CharField(max_length=200)
+    """
+    Input serializer for creating a new audit.
+
+    business_name/industry/description/keywords are OPTIONAL overrides — when
+    omitted the view reads them from the Website row. This prevents clients
+    from having to re-send data the server already knows, and keeps audits
+    consistent with the tracked website.
+    """
+    business_name = serializers.CharField(max_length=200, required=False, allow_blank=True)
     business_description = serializers.CharField(required=False, default="", allow_blank=True)
-    industry = serializers.CharField(max_length=100)
+    industry = serializers.CharField(max_length=100, required=False, allow_blank=True)
     location = serializers.CharField(max_length=200, required=False, default="", allow_blank=True)
     keywords = serializers.ListField(
         child=serializers.CharField(max_length=100),

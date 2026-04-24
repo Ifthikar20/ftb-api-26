@@ -43,15 +43,34 @@ class LLMRankingAuditListView(TenantScopedListAPIView):
 
         from apps.llm_ranking.services.ranking_service import LLMRankingService
 
+        # Fall back to Website row fields when the client omits them. This is
+        # the source of truth — the form doesn't need to resend what the
+        # website already knows.
+        business_name = data.get("business_name") or website.name
+        industry = data.get("industry") or (website.industry or "")
+        business_description = data.get("business_description") or (website.description or "")
+        keywords = data.get("keywords") or (website.topics or [])
+
+        if not business_name:
+            return Response(
+                {"error": "business_name is required (website has no name set)."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not industry:
+            return Response(
+                {"error": "industry is required (set one on the website or pass it in the request)."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         # Generate or use supplied prompts
         if data["custom_prompts"]:
             prompts = data["custom_prompts"]
         else:
             prompts = LLMRankingService.generate_prompts(
-                business_name=data["business_name"],
-                industry=data["industry"],
-                description=data["business_description"],
-                keywords=data["keywords"],
+                business_name=business_name,
+                industry=industry,
+                description=business_description,
+                keywords=keywords,
                 use_case=data["use_case"],
                 location=data.get("location", ""),
             )
@@ -62,11 +81,11 @@ class LLMRankingAuditListView(TenantScopedListAPIView):
         audit = LLMRankingAudit.objects.create(
             website=website,
             created_by=request.user,
-            business_name=data["business_name"],
-            business_description=data["business_description"],
-            industry=data["industry"],
+            business_name=business_name,
+            business_description=business_description,
+            industry=industry,
             location=data.get("location", ""),
-            keywords=data["keywords"],
+            keywords=keywords,
             prompts=prompts,
             providers_queried=selected_providers,
         )
@@ -79,6 +98,42 @@ class LLMRankingAuditListView(TenantScopedListAPIView):
             LLMRankingAuditListSerializer(audit).data,
             status=status.HTTP_202_ACCEPTED,
         )
+
+
+class LLMRankingPreviewPromptsView(TenantScopedAPIView):
+    """
+    GET — returns the prompts that `generate_prompts` would produce for this
+    website without creating an audit. Used by the first-run UI to show users
+    what will be asked before they commit to a paid run.
+    """
+
+    def get(self, request, website_id):
+        from apps.llm_ranking.services.ranking_service import LLMRankingService
+
+        website = self.get_website(website_id)
+        industry = request.query_params.get("industry") or (website.industry or "")
+        location = request.query_params.get("location") or ""
+        use_case = request.query_params.get("use_case") or ""
+        keywords = request.query_params.getlist("keywords") or (website.topics or [])
+
+        prompts = LLMRankingService.generate_prompts(
+            business_name=website.name,
+            industry=industry,
+            description=website.description or "",
+            keywords=keywords,
+            use_case=use_case,
+            location=location,
+        )
+        return Response({
+            "prompts": prompts,
+            "source": {
+                "business_name": website.name,
+                "industry": industry,
+                "description": website.description or "",
+                "keywords": keywords,
+                "location": location,
+            },
+        })
 
 
 class LLMRankingAuditDetailView(TenantScopedAPIView):
