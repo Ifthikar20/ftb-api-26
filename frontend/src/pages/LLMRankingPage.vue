@@ -148,8 +148,8 @@
         </div>
       </div>
 
-      <!-- Prompts for this audit (always visible once we have prompts) -->
-      <div v-if="latestAudit && (latestAudit.prompts || []).length" class="card" style="margin-bottom:24px">
+      <!-- Simple prompts list (shown only during pending/running) -->
+      <div v-if="isAuditRunning && (latestAudit.prompts || []).length" class="card" style="margin-bottom:24px">
         <div class="card-header" style="cursor:pointer" @click="showPrompts = !showPrompts">
           <h3 class="card-title">
             Questions we're asking
@@ -173,6 +173,116 @@
             <span class="prompt-intent">{{ promptIntents[i] || 'custom' }}</span>
           </div>
         </div>
+      </div>
+
+      <!-- Prompt Intelligence (rich view shown when audit is complete) -->
+      <div v-if="isAuditComplete && intentGroups.length" class="card" style="margin-bottom:24px">
+        <div class="card-header">
+          <h3 class="card-title">
+            Prompt Intelligence
+            <span class="text-xs text-muted" style="font-weight:500">
+              · {{ uniquePromptCount }} prompt{{ uniquePromptCount === 1 ? '' : 's' }}
+              grouped by intent
+            </span>
+          </h3>
+          <div class="pi-filter">
+            <label class="text-xs text-muted" style="margin-right:6px">Provider:</label>
+            <select v-model="providerFilter" class="pi-select">
+              <option value="">All</option>
+              <option v-for="p in availableProviderFilters" :key="p" :value="p">{{ providerLabel(p) }}</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="pi-groups">
+          <div v-for="group in intentGroups" :key="group.intent" class="pi-group">
+            <div class="pi-group-header" @click="toggleIntent(group.intent)">
+              <svg class="pi-chevron" :class="{ open: !collapsedIntents.has(group.intent) }"
+                   width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M5 4l5 4-5 4"/>
+              </svg>
+              <span class="pi-intent-name">{{ formatIntent(group.intent) }}</span>
+              <span class="pi-group-stats">
+                {{ group.prompts.length }} prompt{{ group.prompts.length === 1 ? '' : 's' }}
+                · {{ group.avgVisibility }}% avg visibility
+              </span>
+              <span class="pi-vis-bar-wrap">
+                <span class="pi-vis-bar" :style="{ width: group.avgVisibility + '%', background: visibilityColor(group.avgVisibility) }"></span>
+              </span>
+            </div>
+
+            <div v-if="!collapsedIntents.has(group.intent)" class="pi-group-body">
+              <div v-for="p in group.prompts" :key="p.text" class="pi-prompt">
+                <div class="pi-prompt-text">{{ p.text }}</div>
+                <div class="pi-prompt-meta">
+                  <span class="pi-stat">
+                    Visibility: <strong :style="{ color: visibilityColor(p.visibility) }">{{ p.visibility }}%</strong>
+                  </span>
+                  <span v-if="p.avgRank" class="pi-stat">
+                    Avg rank: <strong>#{{ p.avgRank }}</strong>
+                  </span>
+                  <span class="pi-stat">
+                    <span
+                      v-for="d in p.providerDots"
+                      :key="d.provider"
+                      class="pi-dot"
+                      :class="{ hit: d.mentioned, fail: !d.succeeded }"
+                      :title="providerLabel(d.provider) + ': ' + providerDotTitle(d)"
+                    >{{ providerInitial(d.provider) }}</span>
+                  </span>
+                </div>
+                <div v-if="p.topCompetitors.length" class="pi-competitors">
+                  <span class="pi-comp-label">Co-mentioned:</span>
+                  <span
+                    v-for="c in p.topCompetitors.slice(0, 4)"
+                    :key="c.name"
+                    class="pi-comp-chip"
+                  >{{ c.name }} <span class="pi-comp-count">×{{ c.count }}</span></span>
+                </div>
+                <details v-if="p.responses.length" class="pi-responses">
+                  <summary class="pi-responses-toggle">
+                    View {{ p.responses.length }} response{{ p.responses.length === 1 ? '' : 's' }}
+                  </summary>
+                  <div v-for="r in p.responses" :key="r.provider" class="pi-response">
+                    <div class="pi-response-header">
+                      <span class="pi-response-provider">{{ providerLabel(r.provider) }}</span>
+                      <span v-if="r.is_mentioned" class="badge badge-success">Ranked #{{ r.mention_rank || '—' }}</span>
+                      <span v-else class="badge badge-neutral">Not mentioned</span>
+                      <span v-if="r.sentiment && r.sentiment !== 'not_mentioned'"
+                            class="badge" :class="sentimentBadge(r.sentiment)">{{ r.sentiment }}</span>
+                    </div>
+                    <pre class="pi-response-text">{{ r.response_text }}</pre>
+                  </div>
+                </details>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Competitors mentioned alongside you -->
+      <div v-if="isAuditComplete && competitorLeaderboard.length" class="card" style="margin-bottom:24px">
+        <div class="card-header">
+          <h3 class="card-title">Competitors mentioned alongside you</h3>
+          <span class="text-xs text-muted">
+            {{ competitorLeaderboard.length }} brand{{ competitorLeaderboard.length === 1 ? '' : 's' }} detected across {{ uniquePromptCount }} prompt{{ uniquePromptCount === 1 ? '' : 's' }}
+          </span>
+        </div>
+        <div class="comp-leaderboard">
+          <div v-for="(c, i) in competitorLeaderboard" :key="c.name" class="comp-row">
+            <span class="comp-rank">{{ i + 1 }}</span>
+            <span class="comp-name">{{ c.name }}</span>
+            <span class="comp-bar-wrap">
+              <span class="comp-bar" :style="{ width: (c.promptCount / uniquePromptCount * 100) + '%' }"></span>
+            </span>
+            <span class="comp-coverage">{{ c.promptCount }}/{{ uniquePromptCount }} prompts</span>
+            <span v-if="c.avgRank" class="comp-avg-rank">avg #{{ c.avgRank }}</span>
+          </div>
+        </div>
+        <p class="text-xs text-muted" style="padding:0 16px 16px">
+          These are the brands most frequently listed alongside you in AI answers.
+          Your real competitive set in AI — not just the ones you entered.
+        </p>
       </div>
 
       <!-- Live query ticker (running audits only) -->
@@ -556,6 +666,155 @@ const liveResults = computed(() => {
   const list = auditDetail.value?.results || []
   return [...list].reverse()
 })
+
+// ── Prompt Intelligence aggregation ─────────────────────────────────────────
+const providerFilter = ref('')
+const collapsedIntents = ref(new Set())
+
+function toggleIntent(intent) {
+  const s = new Set(collapsedIntents.value)
+  if (s.has(intent)) s.delete(intent)
+  else s.add(intent)
+  collapsedIntents.value = s
+}
+
+const filteredResults = computed(() => {
+  const results = auditDetail.value?.results || []
+  if (!providerFilter.value) return results
+  return results.filter(r => r.provider === providerFilter.value)
+})
+
+const availableProviderFilters = computed(() => {
+  const set = new Set((auditDetail.value?.results || []).map(r => r.provider))
+  return [...set]
+})
+
+const uniquePromptCount = computed(() => {
+  return new Set((auditDetail.value?.results || []).map(r => r.prompt)).size
+})
+
+// Map prompt text -> intent, derived once from the audit's prompts list
+const promptIntentByText = computed(() => {
+  const map = {}
+  const prompts = latestAudit.value?.prompts || []
+  prompts.forEach((p, i) => { map[p] = promptIntents.value[i] || 'custom' })
+  return map
+})
+
+// Build per-prompt aggregate rows from the filtered result set
+const promptRows = computed(() => {
+  const byPrompt = new Map()
+  for (const r of filteredResults.value) {
+    if (!byPrompt.has(r.prompt)) byPrompt.set(r.prompt, [])
+    byPrompt.get(r.prompt).push(r)
+  }
+
+  const rows = []
+  for (const [text, results] of byPrompt.entries()) {
+    const succeeded = results.filter(r => r.query_succeeded)
+    const mentioned = succeeded.filter(r => r.is_mentioned)
+    const visibility = succeeded.length
+      ? Math.round(mentioned.length / succeeded.length * 100)
+      : 0
+    const ranks = mentioned.map(r => r.mention_rank).filter(x => x != null)
+    const avgRank = ranks.length
+      ? (ranks.reduce((a, b) => a + b, 0) / ranks.length).toFixed(1).replace(/\.0$/, '')
+      : null
+
+    const providerDots = results.map(r => ({
+      provider: r.provider,
+      mentioned: r.is_mentioned,
+      succeeded: r.query_succeeded,
+      rank: r.mention_rank,
+    }))
+
+    // Aggregate competitors co-mentioned in this prompt's responses
+    const compCounts = new Map()
+    for (const r of results) {
+      for (const c of (r.competitors_mentioned || [])) {
+        if (!c?.name) continue
+        compCounts.set(c.name, (compCounts.get(c.name) || 0) + 1)
+      }
+    }
+    const topCompetitors = [...compCounts.entries()]
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count)
+
+    rows.push({
+      text,
+      intent: promptIntentByText.value[text] || 'custom',
+      visibility,
+      avgRank,
+      providerDots,
+      topCompetitors,
+      responses: results.filter(r => r.query_succeeded && r.response_text),
+    })
+  }
+  return rows
+})
+
+const intentGroups = computed(() => {
+  const groups = {}
+  for (const row of promptRows.value) {
+    if (!groups[row.intent]) groups[row.intent] = []
+    groups[row.intent].push(row)
+  }
+  return Object.entries(groups)
+    .map(([intent, prompts]) => {
+      const avgVisibility = prompts.length
+        ? Math.round(prompts.reduce((a, p) => a + p.visibility, 0) / prompts.length)
+        : 0
+      return { intent, prompts, avgVisibility }
+    })
+    .sort((a, b) => b.avgVisibility - a.avgVisibility)
+})
+
+// Competitors leaderboard: aggregated across all prompts, not filtered
+const competitorLeaderboard = computed(() => {
+  const results = auditDetail.value?.results || []
+  const stats = new Map()
+  for (const r of results) {
+    if (!r.query_succeeded) continue
+    for (const c of (r.competitors_mentioned || [])) {
+      if (!c?.name) continue
+      if (!stats.has(c.name)) stats.set(c.name, { name: c.name, prompts: new Set(), ranks: [] })
+      const s = stats.get(c.name)
+      s.prompts.add(r.prompt)
+      if (typeof c.position === 'number') s.ranks.push(c.position)
+    }
+  }
+  return [...stats.values()]
+    .map(s => ({
+      name: s.name,
+      promptCount: s.prompts.size,
+      avgRank: s.ranks.length
+        ? (s.ranks.reduce((a, b) => a + b, 0) / s.ranks.length).toFixed(1).replace(/\.0$/, '')
+        : null,
+    }))
+    .sort((a, b) => b.promptCount - a.promptCount)
+    .slice(0, 10)
+})
+
+function formatIntent(intent) {
+  if (!intent) return 'Other'
+  return intent.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+}
+
+function visibilityColor(pct) {
+  if (pct >= 60) return 'var(--color-success, #10B981)'
+  if (pct >= 30) return 'var(--color-warning, #F59E0B)'
+  return 'var(--color-danger, #DC2626)'
+}
+
+function providerDotTitle(d) {
+  if (!d.succeeded) return 'failed'
+  if (d.mentioned) return `mentioned #${d.rank || '—'}`
+  return 'not mentioned'
+}
+
+function sentimentBadge(s) {
+  return s === 'positive' ? 'badge-success' : s === 'negative' ? 'badge-danger' : 'badge-neutral'
+}
 
 // Score factor breakdown (must sum to ~overall_score)
 const mentionPts = computed(() => {
@@ -1287,6 +1546,206 @@ onBeforeUnmount(stopPolling)
   border-radius: 999px;
   background: rgba(91, 141, 239, 0.12);
   color: #3B5EAF;
+}
+
+/* Prompt Intelligence (post-audit rich view) */
+.pi-filter { display: flex; align-items: center; }
+.pi-select {
+  padding: 4px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font-size: var(--font-xs);
+  font-weight: 600;
+}
+.pi-groups { display: flex; flex-direction: column; gap: 12px; padding: 16px; }
+.pi-group {
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-base);
+  overflow: hidden;
+}
+.pi-group-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  cursor: pointer;
+  background: var(--bg-surface);
+  user-select: none;
+}
+.pi-group-header:hover { background: rgba(0,0,0,0.02); }
+.pi-chevron { color: var(--text-muted); transition: transform 0.2s; flex-shrink: 0; }
+.pi-chevron.open { transform: rotate(90deg); }
+.pi-intent-name {
+  font-size: var(--font-xs);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-primary);
+}
+.pi-group-stats {
+  font-size: var(--font-xs);
+  color: var(--text-muted);
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+.pi-vis-bar-wrap {
+  flex: 0 0 80px;
+  height: 4px;
+  background: var(--border-color);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-left: 8px;
+}
+.pi-vis-bar {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.5s ease;
+}
+
+.pi-group-body { display: flex; flex-direction: column; padding: 4px 0; }
+.pi-prompt {
+  padding: 12px 14px;
+  border-top: 1px solid var(--border-color);
+}
+.pi-prompt:first-child { border-top: none; }
+.pi-prompt-text {
+  font-size: var(--font-sm);
+  color: var(--text-primary);
+  font-weight: 500;
+  line-height: 1.45;
+  margin-bottom: 8px;
+}
+.pi-prompt-meta {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-size: var(--font-xs);
+  color: var(--text-muted);
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+.pi-stat { display: inline-flex; align-items: center; gap: 4px; }
+.pi-stat strong { font-weight: 700; color: var(--text-primary); }
+.pi-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--border-color);
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 800;
+  margin-left: 2px;
+  cursor: help;
+}
+.pi-dot.hit  { background: var(--color-success, #10B981); color: #fff; }
+.pi-dot.fail { background: var(--color-danger, #DC2626); color: #fff; opacity: 0.7; }
+
+.pi-competitors {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: var(--font-xs);
+}
+.pi-comp-label { color: var(--text-muted); font-weight: 600; margin-right: 2px; }
+.pi-comp-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  font-weight: 500;
+}
+.pi-comp-count {
+  color: var(--text-muted);
+  margin-left: 4px;
+  font-weight: 600;
+}
+
+.pi-responses { margin-top: 10px; }
+.pi-responses-toggle {
+  font-size: var(--font-xs);
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px 0;
+}
+.pi-responses-toggle:hover { color: var(--text-primary); }
+.pi-response {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+}
+.pi-response-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.pi-response-provider { font-weight: 700; font-size: var(--font-sm); color: var(--text-primary); }
+.pi-response-text {
+  margin: 0;
+  font-size: var(--font-xs);
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 260px;
+  overflow-y: auto;
+  color: var(--text-secondary);
+  font-family: inherit;
+}
+
+/* Competitors leaderboard */
+.comp-leaderboard { display: flex; flex-direction: column; padding: 16px 16px 0; gap: 6px; }
+.comp-row {
+  display: grid;
+  grid-template-columns: 24px 1fr 1fr auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  background: var(--bg-base);
+  border: 1px solid var(--border-color);
+  font-size: var(--font-sm);
+}
+.comp-rank {
+  font-family: 'DM Serif Display', Georgia, serif;
+  font-size: var(--font-md);
+  color: var(--text-muted);
+  text-align: center;
+}
+.comp-name { font-weight: 700; color: var(--text-primary); }
+.comp-bar-wrap {
+  height: 6px;
+  background: var(--border-color);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.comp-bar {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #5B8DEF, #A78BFA);
+  border-radius: 3px;
+  transition: width 0.5s ease;
+}
+.comp-coverage { font-size: var(--font-xs); color: var(--text-muted); white-space: nowrap; }
+.comp-avg-rank {
+  font-size: var(--font-xs);
+  font-weight: 700;
+  color: var(--text-primary);
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--bg-surface);
 }
 
 /* Live ticker (during a running audit) */
