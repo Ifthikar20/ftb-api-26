@@ -1,5 +1,6 @@
 import logging
 
+from django.db.models import Avg, Count, Q
 from rest_framework import status
 from rest_framework.response import Response
 
@@ -8,7 +9,7 @@ from apps.llm_ranking.api.v1.serializers import (
     LLMRankingAuditSerializer,
     RunAuditSerializer,
 )
-from apps.llm_ranking.models import LLMRankingAudit
+from apps.llm_ranking.models import LLMRankingAudit, LLMRankingResult
 from core.views import TenantScopedAPIView, TenantScopedListAPIView
 
 logger = logging.getLogger("apps")
@@ -119,19 +120,50 @@ class LLMRankingRecommendationsView(TenantScopedAPIView):
 
 class LLMRankingHistoryView(TenantScopedAPIView):
     """
-    GET — return historical overall_score over time for trend charts.
+    GET — return historical aggregate and per-provider stats for trend charts.
     """
 
     def get(self, request, website_id):
         self.get_website(website_id)
-        audits = (
+        audits = list(
             LLMRankingAudit.objects
             .filter(website_id=website_id, status=LLMRankingAudit.STATUS_COMPLETED)
             .order_by("completed_at")
             .values("id", "completed_at", "overall_score", "mention_rate",
                     "avg_mention_rank", "providers_queried")
         )
-        return Response(list(audits))
+        if not audits:
+            return Response([])
+
+        audit_ids = [a["id"] for a in audits]
+        stats_rows = (
+            LLMRankingResult.objects
+            .filter(audit_id__in=audit_ids, query_succeeded=True)
+            .values("audit_id", "provider")
+            .annotate(
+                succeeded=Count("id"),
+                mentioned=Count("id", filter=Q(is_mentioned=True)),
+                avg_rank=Avg("mention_rank", filter=Q(is_mentioned=True)),
+            )
+        )
+
+        by_audit: dict = {}
+        for row in stats_rows:
+            succeeded = row["succeeded"] or 0
+            mentioned = row["mentioned"] or 0
+            rate = round(mentioned / succeeded * 100, 1) if succeeded else 0.0
+            by_audit.setdefault(row["audit_id"], []).append({
+                "provider": row["provider"],
+                "succeeded": succeeded,
+                "mentioned": mentioned,
+                "mention_rate": rate,
+                "avg_rank": round(row["avg_rank"], 1) if row["avg_rank"] is not None else None,
+            })
+
+        for audit in audits:
+            audit["providers"] = by_audit.get(audit["id"], [])
+
+        return Response(audits)
 
 
 class LLMRankingProviderBreakdownView(TenantScopedAPIView):

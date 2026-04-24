@@ -145,6 +145,35 @@
         </div>
       </div>
 
+      <!-- AI Visibility Trends -->
+      <div v-if="history.length >= 1" class="card" style="margin-bottom:24px">
+        <div class="card-header">
+          <h3 class="card-title">AI Visibility Trends</h3>
+          <span class="text-xs text-muted">{{ history.length }} completed audit{{ history.length !== 1 ? 's' : '' }}</span>
+        </div>
+
+        <div v-if="history.length === 1" class="empty-state" style="padding:24px">
+          <p class="empty-state-desc">
+            Run at least one more audit to see how your AI visibility changes over time.
+          </p>
+        </div>
+
+        <div v-else class="trends-grid">
+          <div class="trend-block">
+            <div class="trend-label">Overall Score & Mention Rate</div>
+            <div class="trend-chart-wrap">
+              <Line :data="overallTrendData" :options="overallTrendOptions" />
+            </div>
+          </div>
+          <div class="trend-block">
+            <div class="trend-label">Per-LLM Mention Rate</div>
+            <div class="trend-chart-wrap">
+              <Line :data="providerTrendData" :options="providerTrendOptions" />
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Detailed Findings -->
       <div v-if="auditDetail && auditDetail.results && auditDetail.results.length" class="card" style="margin-bottom:24px">
         <div class="card-header" style="cursor:pointer" @click="showFindings = !showFindings">
@@ -373,12 +402,24 @@ import { useRoute } from 'vue-router'
 import { useToast } from '@/composables/useToast'
 import llmRankingApi from '@/api/llm_ranking'
 import BaseModal from '@/components/ui/BaseModal.vue'
+import { Line } from 'vue-chartjs'
+import {
+  Chart as ChartJS,
+  CategoryScale, LinearScale, PointElement, LineElement,
+  Filler, Tooltip, Legend,
+} from 'chart.js'
+
+ChartJS.register(
+  CategoryScale, LinearScale, PointElement, LineElement,
+  Filler, Tooltip, Legend,
+)
 
 const route = useRoute()
 const websiteId = route.params.websiteId
 const toast = useToast()
 
 const audits = ref([])
+const history = ref([])
 const loading = ref(true)
 const running = ref(false)
 const showRunForm = ref(false)
@@ -391,6 +432,13 @@ const showFindings = ref(true)
 const showMethodology = ref(false)
 const confirmDeleteId = ref(null)
 let pollTimer = null
+
+const PROVIDER_META = {
+  claude:     { label: 'Claude',     color: '#A78BFA' },
+  gpt4:       { label: 'GPT-4',      color: '#34D399' },
+  gemini:     { label: 'Gemini',     color: '#5B8DEF' },
+  perplexity: { label: 'Perplexity', color: '#F59E0B' },
+}
 
 const customPromptsText = ref('')
 const auditForm = ref({
@@ -451,6 +499,118 @@ const promptsUsed = computed(() => {
   if (!auditDetail.value?.results) return 0
   return new Set(auditDetail.value.results.filter(r => r.query_succeeded).map(r => r.prompt)).size
 })
+
+// ── Historic trend charts ──
+const shortDate = (dt) => new Date(dt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+
+const trendLabels = computed(() => history.value.map(h => shortDate(h.completed_at)))
+
+const overallTrendData = computed(() => ({
+  labels: trendLabels.value,
+  datasets: [
+    {
+      label: 'Overall Score',
+      data: history.value.map(h => h.overall_score ?? 0),
+      borderColor: '#F5A623',
+      backgroundColor: 'rgba(245, 166, 35, 0.12)',
+      fill: true,
+      tension: 0.35,
+      borderWidth: 2.5,
+      pointRadius: 3,
+      pointHoverRadius: 5,
+      yAxisID: 'y',
+    },
+    {
+      label: 'Mention Rate (%)',
+      data: history.value.map(h => Math.round(h.mention_rate || 0)),
+      borderColor: '#5B8DEF',
+      backgroundColor: 'rgba(91, 141, 239, 0.08)',
+      fill: false,
+      tension: 0.35,
+      borderWidth: 2,
+      pointRadius: 3,
+      pointHoverRadius: 5,
+      yAxisID: 'y',
+    },
+  ],
+}))
+
+const overallTrendOptions = {
+  responsive: true,
+  maintainAspectRatio: false,
+  interaction: { mode: 'index', intersect: false },
+  plugins: {
+    legend: { display: true, position: 'top', align: 'end', labels: { usePointStyle: true, pointStyle: 'circle', padding: 16, boxWidth: 6 } },
+    tooltip: {
+      backgroundColor: 'rgba(26, 26, 46, 0.95)', titleColor: '#fff', bodyColor: '#ccc',
+      borderColor: 'rgba(91, 141, 239, 0.15)', borderWidth: 1, padding: 12, cornerRadius: 8,
+      displayColors: true, usePointStyle: true,
+    },
+  },
+  scales: {
+    x: { grid: { display: false }, border: { display: false }, ticks: { maxTicksLimit: 10, padding: 8 } },
+    y: { grid: { color: 'rgba(138, 138, 154, 0.08)', drawTicks: false }, border: { display: false }, ticks: { padding: 10 }, beginAtZero: true, max: 100 },
+  },
+}
+
+// Build per-provider datasets: one line per provider across all audits
+const providerTrendDatasets = computed(() => {
+  const providers = new Set()
+  for (const h of history.value) {
+    for (const p of (h.providers || [])) providers.add(p.provider)
+  }
+  return [...providers].map(key => {
+    const meta = PROVIDER_META[key] || { label: key, color: '#6B7280' }
+    return {
+      label: meta.label,
+      data: history.value.map(h => {
+        const entry = (h.providers || []).find(x => x.provider === key)
+        return entry ? entry.mention_rate : null
+      }),
+      borderColor: meta.color,
+      backgroundColor: meta.color + '22',
+      fill: false,
+      tension: 0.35,
+      borderWidth: 2,
+      pointRadius: 3,
+      pointHoverRadius: 5,
+      spanGaps: true,
+    }
+  })
+})
+
+const providerTrendData = computed(() => ({
+  labels: trendLabels.value,
+  datasets: providerTrendDatasets.value,
+}))
+
+const providerTrendOptions = {
+  responsive: true,
+  maintainAspectRatio: false,
+  interaction: { mode: 'index', intersect: false },
+  plugins: {
+    legend: { display: true, position: 'top', align: 'end', labels: { usePointStyle: true, pointStyle: 'circle', padding: 16, boxWidth: 6 } },
+    tooltip: {
+      backgroundColor: 'rgba(26, 26, 46, 0.95)', titleColor: '#fff', bodyColor: '#ccc',
+      borderColor: 'rgba(91, 141, 239, 0.15)', borderWidth: 1, padding: 12, cornerRadius: 8,
+      displayColors: true, usePointStyle: true,
+      callbacks: {
+        label: (ctx) => ctx.parsed.y == null ? `${ctx.dataset.label}: n/a` : `${ctx.dataset.label}: ${ctx.parsed.y}%`,
+      },
+    },
+  },
+  scales: {
+    x: { grid: { display: false }, border: { display: false }, ticks: { maxTicksLimit: 10, padding: 8 } },
+    y: {
+      grid: { color: 'rgba(138, 138, 154, 0.08)', drawTicks: false },
+      border: { display: false },
+      ticks: { padding: 10, callback: (v) => v + '%' },
+      beginAtZero: true,
+      max: 100,
+      title: { display: true, text: 'Mention rate', color: '#8a8a9a', font: { size: 11 } },
+    },
+  },
+}
 
 const auditProgressPct = computed(() => {
   const a = latestAudit.value
@@ -607,17 +767,20 @@ function startPolling() {
     try {
       const { data } = await llmRankingApi.listAudits(websiteId)
       const newAudits = data?.data?.results || data?.results || data || []
-      // Check if any previously running audit has completed
+      let anyCompleted = false
       for (const newA of newAudits) {
         const oldA = audits.value.find(a => a.id === newA.id)
         if (oldA && (oldA.status === 'pending' || oldA.status === 'running') && newA.status === 'completed') {
           toast.success(`Audit for "${newA.business_name}" completed! Score: ${newA.overall_score}/100`)
+          anyCompleted = true
         }
       }
       audits.value = newAudits
-      // Load breakdown for the latest completed audit
       if (audits.value.length && audits.value[0].status === 'completed' && !latestBreakdown.value.length) {
         await selectAudit(audits.value[0])
+      }
+      if (anyCompleted) {
+        await fetchHistory()
       }
     } catch (e) {
       console.error('Poll error', e)
@@ -632,10 +795,24 @@ function stopPolling() {
   }
 }
 
+async function fetchHistory() {
+  try {
+    const { data } = await llmRankingApi.history(websiteId)
+    history.value = data?.data || data || []
+  } catch (e) {
+    console.error('LLM ranking history fetch error', e)
+    history.value = []
+  }
+}
+
 async function fetchData() {
   loading.value = true
   try {
-    const { data } = await llmRankingApi.listAudits(websiteId)
+    const [listRes] = await Promise.all([
+      llmRankingApi.listAudits(websiteId),
+      fetchHistory(),
+    ])
+    const { data } = listRes
     audits.value = data?.data?.results || data?.results || data || []
     if (audits.value.length) {
       // Auto-select the first completed audit so its findings load
@@ -856,6 +1033,35 @@ onBeforeUnmount(stopPolling)
   border-top: 1px solid var(--border-color);
   font-size: var(--font-sm);
   color: var(--text-primary);
+}
+
+/* Visibility trend charts */
+.trends-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  padding: 16px;
+}
+@media (max-width: 900px) {
+  .trends-grid { grid-template-columns: 1fr; }
+}
+.trend-block {
+  padding: 12px 16px;
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+.trend-label {
+  font-size: var(--font-xs);
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 10px;
+}
+.trend-chart-wrap {
+  position: relative;
+  height: 240px;
 }
 
 /* Findings summary */
