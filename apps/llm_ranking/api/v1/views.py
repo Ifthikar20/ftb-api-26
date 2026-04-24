@@ -129,19 +129,50 @@ class LLMRankingRecommendationsView(TenantScopedAPIView):
 
 class LLMRankingHistoryView(TenantScopedAPIView):
     """
-    GET — return historical overall_score over time for trend charts.
+    GET — return historical aggregate and per-provider stats for trend charts.
     """
 
     def get(self, request, website_id):
         self.get_website(website_id)
-        audits = (
+        audits = list(
             LLMRankingAudit.objects
             .filter(website_id=website_id, status=LLMRankingAudit.STATUS_COMPLETED)
             .order_by("completed_at")
             .values("id", "completed_at", "overall_score", "mention_rate",
                     "avg_mention_rank", "providers_queried")
         )
-        return Response(list(audits))
+        if not audits:
+            return Response([])
+
+        audit_ids = [a["id"] for a in audits]
+        stats_rows = (
+            LLMRankingResult.objects
+            .filter(audit_id__in=audit_ids, query_succeeded=True)
+            .values("audit_id", "provider")
+            .annotate(
+                succeeded=Count("id"),
+                mentioned=Count("id", filter=Q(is_mentioned=True)),
+                avg_rank=Avg("mention_rank", filter=Q(is_mentioned=True)),
+            )
+        )
+
+        by_audit: dict = {}
+        for row in stats_rows:
+            succeeded = row["succeeded"] or 0
+            mentioned = row["mentioned"] or 0
+            rate = round(mentioned / succeeded * 100, 1) if succeeded else 0.0
+            by_audit.setdefault(row["audit_id"], []).append({
+                "provider": row["provider"],
+                "succeeded": succeeded,
+                "mentioned": mentioned,
+                "mention_rate": rate,
+                "avg_rank": round(row["avg_rank"], 1) if row["avg_rank"] is not None else None,
+            })
+
+        for audit in audits:
+            audit["providers"] = by_audit.get(audit["id"], [])
+
+        return Response(audits)
 
 
 class LLMRankingProviderBreakdownView(TenantScopedAPIView):
@@ -158,6 +189,8 @@ class LLMRankingProviderBreakdownView(TenantScopedAPIView):
             website_id=website_id,
         )
 
+        from apps.llm_ranking.services.ranking_service import wilson_ci
+
         breakdown = {}
         for result in audit.results.all():
             p = result.provider
@@ -169,6 +202,8 @@ class LLMRankingProviderBreakdownView(TenantScopedAPIView):
                     "succeeded": 0,
                     "mentioned": 0,
                     "mention_rate": 0.0,
+                    "mention_rate_ci_lower": 0.0,
+                    "mention_rate_ci_upper": 0.0,
                     "avg_rank": None,
                     "sentiments": {"positive": 0, "neutral": 0, "negative": 0},
                 }
@@ -181,12 +216,15 @@ class LLMRankingProviderBreakdownView(TenantScopedAPIView):
                 if result.sentiment in entry["sentiments"]:
                     entry["sentiments"][result.sentiment] += 1
 
-        # Compute derived fields
+        # Compute derived fields: point estimate + 95% Wilson CI
         for entry in breakdown.values():
             if entry["succeeded"]:
                 entry["mention_rate"] = round(
                     entry["mentioned"] / entry["succeeded"] * 100, 1
                 )
+                ci_low, ci_high = wilson_ci(entry["mentioned"], entry["succeeded"])
+                entry["mention_rate_ci_lower"] = round(ci_low * 100, 1)
+                entry["mention_rate_ci_upper"] = round(ci_high * 100, 1)
             ranks = [
                 r.mention_rank
                 for r in audit.results.filter(

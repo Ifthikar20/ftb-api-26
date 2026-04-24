@@ -5,6 +5,7 @@ Queries Claude, GPT-4, Gemini, and Perplexity with discovery prompts
 and measures how prominently the business appears in AI-generated answers.
 """
 import logging
+import math
 import re
 
 from django.conf import settings
@@ -12,23 +13,28 @@ from django.utils import timezone
 
 logger = logging.getLogger("apps")
 
+
+def wilson_ci(successes: int, n: int, z: float = 1.96) -> tuple[float, float]:
+    """Return (lower, upper) bounds of a Wilson score 95% CI for a proportion.
+
+    Wilson is preferred over the normal approximation because it stays
+    sensible when p is close to 0 or 1 and when n is small. Pure Python
+    so we avoid pulling in scipy/statsmodels at call sites.
+    """
+    if n <= 0:
+        return 0.0, 0.0
+    p = successes / n
+    denom = 1.0 + (z * z) / n
+    centre = (p + (z * z) / (2.0 * n)) / denom
+    half = (z / denom) * math.sqrt((p * (1.0 - p) / n) + (z * z) / (4.0 * n * n))
+    return max(0.0, centre - half), min(1.0, centre + half)
+
 # Providers and human labels
 PROVIDERS = ["claude", "gpt4", "gemini", "perplexity"]
 
-# Default prompt templates. {industry}, {use_case}, {location} are interpolated.
-DEFAULT_PROMPT_TEMPLATES = [
-    "What are the best {industry} tools available right now?",
-    "Can you recommend a {industry} platform that helps with {use_case}?",
-    "I'm looking for {industry} software. What are the top options?",
-    "Which {industry} solutions do most companies use?",
-    "If I need to {use_case}, what tools should I consider?",
-    "What are the leading {industry} products recommended by experts?",
-]
-
-LOCATION_PROMPT_TEMPLATES = [
-    "What are the best {industry} tools in {location}?",
-    "Can you recommend a {industry} platform for businesses in {location}?",
-]
+# Deterministic prompt templates live in apps.llm_ranking.services.prompt_library
+# so callers can consume intent-tagged variants in the UI without duplicating
+# the catalogue.
 
 # System instruction to encourage numbered lists for accurate rank extraction
 SYSTEM_INSTRUCTION = (
@@ -48,21 +54,23 @@ class LLMRankingService:
                          location: str = "") -> list[str]:
         """
         Generate discovery prompts from business context.
-        Uses Claude to produce additional natural-language variants.
-        """
-        use_case = use_case or (keywords[0] if keywords else industry)
-        base_prompts = [
-            t.format(industry=industry or "software", use_case=use_case,
-                     location=location or "the US")
-            for t in DEFAULT_PROMPT_TEMPLATES
-        ]
 
-        # Add location-specific prompts
-        if location:
-            base_prompts += [
-                t.format(industry=industry or "software", location=location)
-                for t in LOCATION_PROMPT_TEMPLATES
-            ]
+        Uses the intent-balanced PromptLibrary for the deterministic base set,
+        then asks Claude for additional natural-language variants to cover
+        phrasings the library can't anticipate.
+        """
+        from apps.llm_ranking.services.prompt_library import PromptLibrary
+
+        use_case = use_case or (keywords[0] if keywords else industry)
+
+        # Library returns an intent-balanced set (recommendation, comparison,
+        # use-case, alternatives, category, local, persona, review).
+        base_prompts = PromptLibrary.generate_texts(
+            industry=industry or "software",
+            use_case=use_case,
+            location=location,
+            max_prompts=10,
+        )
 
         # Use Claude to generate additional natural variants
         try:
@@ -347,15 +355,24 @@ class LLMRankingService:
         """
         Compute aggregate metrics from a list of LLMRankingResult objects.
 
-        Returns dict with overall_score, mention_rate, avg_mention_rank.
+        Returns dict with overall_score, mention_rate, avg_mention_rank,
+        and 95% Wilson CI bounds on the mention rate (percent units).
         """
         total = len(results)
         if not total:
-            return {"overall_score": 0, "mention_rate": 0.0, "avg_mention_rank": 0.0}
+            return {
+                "overall_score": 0,
+                "mention_rate": 0.0,
+                "avg_mention_rank": 0.0,
+                "mention_rate_ci_lower": 0.0,
+                "mention_rate_ci_upper": 0.0,
+            }
 
         succeeded = [r for r in results if r.query_succeeded]
         mentioned = [r for r in succeeded if r.is_mentioned]
         mention_rate = len(mentioned) / len(succeeded) * 100 if succeeded else 0.0
+
+        ci_low, ci_high = wilson_ci(len(mentioned), len(succeeded))
 
         ranks = [r.mention_rank for r in mentioned if r.mention_rank is not None]
         avg_rank = sum(ranks) / len(ranks) if ranks else 0.0
@@ -396,6 +413,8 @@ class LLMRankingService:
             "overall_score": overall,
             "mention_rate": round(mention_rate, 1),
             "avg_mention_rank": round(avg_rank, 1),
+            "mention_rate_ci_lower": round(ci_low * 100, 1),
+            "mention_rate_ci_upper": round(ci_high * 100, 1),
         }
 
     # ── Main audit runner ──────────────────────────────────────────────────
@@ -453,21 +472,29 @@ class LLMRankingService:
                     succeeded, response_text, error = False, "", str(exc)
                     logger.warning("Provider %s threw for audit %s: %s", provider, audit_id, exc)
 
-                analysis = (
-                    LLMRankingService._analyze_mention(
+                if succeeded:
+                    from apps.llm_ranking.services.extraction_service import (
+                        HaikuExtractionService,
+                    )
+                    analysis = HaikuExtractionService.extract(
                         response_text=response_text,
-                        business_name=audit.business_name,
+                        brand_name=audit.business_name,
                         keywords=audit.keywords,
                     )
-                    if succeeded
-                    else {
+                else:
+                    analysis = {
                         "is_mentioned": False,
                         "mention_rank": None,
                         "sentiment": LLMRankingResult.SENTIMENT_NOT_MENTIONED,
                         "confidence_score": 0.0,
                         "mention_context": "",
+                        "is_linked": False,
+                        "competitors_mentioned": [],
+                        "primary_recommendation": "",
+                        "citations": [],
+                        "extraction_model": "",
+                        "extraction_version": "",
                     }
-                )
 
                 result = LLMRankingResult.objects.create(
                     audit=audit,
@@ -481,6 +508,12 @@ class LLMRankingService:
                     mention_context=analysis["mention_context"],
                     query_succeeded=succeeded,
                     error_message=error,
+                    is_linked=analysis.get("is_linked", False),
+                    competitors_mentioned=analysis.get("competitors_mentioned", []),
+                    primary_recommendation=analysis.get("primary_recommendation", ""),
+                    citations=analysis.get("citations", []),
+                    extraction_model=analysis.get("extraction_model", ""),
+                    extraction_version=analysis.get("extraction_version", ""),
                 )
                 all_results.append(result)
 
@@ -499,11 +532,15 @@ class LLMRankingService:
         audit.overall_score = scores["overall_score"]
         audit.mention_rate = scores["mention_rate"]
         audit.avg_mention_rank = scores["avg_mention_rank"]
+        audit.mention_rate_ci_lower = scores["mention_rate_ci_lower"]
+        audit.mention_rate_ci_upper = scores["mention_rate_ci_upper"]
         audit.providers_queried = providers_succeeded
+        audit.extraction_method = LLMRankingAudit.EXTRACTION_LLM
         audit.completed_at = timezone.now()
         audit.save(update_fields=[
             "status", "overall_score", "mention_rate", "avg_mention_rank",
-            "providers_queried", "completed_at", "updated_at",
+            "mention_rate_ci_lower", "mention_rate_ci_upper",
+            "providers_queried", "extraction_method", "completed_at", "updated_at",
         ])
 
         logger.info(

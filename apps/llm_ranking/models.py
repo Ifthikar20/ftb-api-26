@@ -55,6 +55,21 @@ class LLMRankingAudit(TimestampMixin):
     started_at = models.DateTimeField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
     error_message = models.TextField(blank=True)
+    # Statistics: number of replicates per (prompt, provider) — N=1 is the current default
+    runs_per_query = models.IntegerField(default=1)
+    # 95% Wilson CI on the overall mention_rate (percent 0-100)
+    mention_rate_ci_lower = models.FloatField(default=0.0)
+    mention_rate_ci_upper = models.FloatField(default=0.0)
+    # How per-response extraction was performed
+    EXTRACTION_HEURISTIC = "heuristic"
+    EXTRACTION_LLM = "llm"
+    EXTRACTION_CHOICES = [
+        (EXTRACTION_HEURISTIC, "Heuristic (regex + lexicon)"),
+        (EXTRACTION_LLM, "LLM (Haiku-class model)"),
+    ]
+    extraction_method = models.CharField(
+        max_length=20, choices=EXTRACTION_CHOICES, default=EXTRACTION_HEURISTIC
+    )
 
     class Meta:
         db_table = "llm_ranking_audit"
@@ -112,6 +127,20 @@ class LLMRankingResult(TimestampMixin):
     # Whether the LLM query succeeded (False = API error / rate limit)
     query_succeeded = models.BooleanField(default=True)
     error_message = models.TextField(blank=True)
+    # Replicate index within a (prompt, provider) pair — 0 for single-run audits
+    run_id = models.IntegerField(default=0)
+    # Whether the business name appeared as a hyperlink in the response
+    is_linked = models.BooleanField(default=False)
+    # List of competitor brands mentioned in this response
+    # Each entry: {"name": str, "position": int|null, "linked": bool}
+    competitors_mentioned = models.JSONField(default=list, blank=True)
+    # Which brand the LLM explicitly recommended (if any)
+    primary_recommendation = models.CharField(max_length=200, blank=True)
+    # URLs cited in the response
+    citations = models.JSONField(default=list, blank=True)
+    # Which model + prompt version was used to extract structured data
+    extraction_model = models.CharField(max_length=100, blank=True)
+    extraction_version = models.CharField(max_length=20, blank=True)
 
     class Meta:
         db_table = "llm_ranking_result"

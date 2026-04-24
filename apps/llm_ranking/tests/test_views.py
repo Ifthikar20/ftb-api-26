@@ -214,3 +214,54 @@ class TestLLMRankingHistoryView:
         data = response.json()["data"]
         assert len(data) == 1
         assert data[0]["overall_score"] == 60
+        assert data[0]["providers"] == []
+
+    def test_history_includes_per_provider_stats(self, auth_client):
+        from apps.llm_ranking.models import LLMRankingResult
+
+        client, user, website = auth_client
+        audit = LLMRankingAuditFactory(
+            website=website, created_by=user,
+            status=LLMRankingAudit.STATUS_COMPLETED, overall_score=75,
+        )
+        # Claude: 2 of 2 mentions, ranks 1 and 3 (avg 2.0)
+        LLMRankingResultFactory(
+            audit=audit, provider=LLMRankingResult.PROVIDER_CLAUDE,
+            query_succeeded=True, is_mentioned=True, mention_rank=1,
+        )
+        LLMRankingResultFactory(
+            audit=audit, provider=LLMRankingResult.PROVIDER_CLAUDE,
+            query_succeeded=True, is_mentioned=True, mention_rank=3,
+        )
+        # GPT-4: 1 of 2 mentioned
+        LLMRankingResultFactory(
+            audit=audit, provider=LLMRankingResult.PROVIDER_GPT4,
+            query_succeeded=True, is_mentioned=True, mention_rank=2,
+        )
+        LLMRankingResultFactory(
+            audit=audit, provider=LLMRankingResult.PROVIDER_GPT4,
+            query_succeeded=True, is_mentioned=False, mention_rank=None,
+        )
+        # Failed queries must be excluded from per-provider stats
+        LLMRankingResultFactory(
+            audit=audit, provider=LLMRankingResult.PROVIDER_GEMINI,
+            query_succeeded=False, is_mentioned=False, mention_rank=None,
+        )
+
+        response = client.get(f"/api/v1/llm-ranking/{website.id}/history/")
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert len(data) == 1
+
+        providers = {p["provider"]: p for p in data[0]["providers"]}
+        assert set(providers.keys()) == {"claude", "gpt4"}
+
+        assert providers["claude"]["succeeded"] == 2
+        assert providers["claude"]["mentioned"] == 2
+        assert providers["claude"]["mention_rate"] == 100.0
+        assert providers["claude"]["avg_rank"] == 2.0
+
+        assert providers["gpt4"]["succeeded"] == 2
+        assert providers["gpt4"]["mentioned"] == 1
+        assert providers["gpt4"]["mention_rate"] == 50.0
+        assert providers["gpt4"]["avg_rank"] == 2.0

@@ -68,20 +68,23 @@
               <circle cx="50" cy="50" r="42" class="ring-fill" :style="ringFillStyle(latestAudit.overall_score)" />
             </svg>
             <div class="score-center">
-              <span class="score-num">{{ latestAudit.overall_score ?? '—' }}</span>
+              <span class="score-num">{{ isAuditComplete ? latestAudit.overall_score : '—' }}</span>
               <span class="score-denom">/100</span>
             </div>
           </div>
           <div class="score-meta">
             <div class="card-title">AI Visibility Score</div>
             <p class="text-sm text-muted" style="margin-top:4px;margin-bottom:12px">
-              How prominently LLMs mention your business
+              {{ isAuditComplete
+                ? 'How prominently LLMs mention your business'
+                : 'Score will appear once the audit finishes running.' }}
             </p>
             <div class="flex gap-8" style="margin-bottom:8px">
-              <span class="badge" :class="mentionBadge(latestAudit.mention_rate)">
+              <span v-if="isAuditComplete" class="badge" :class="mentionBadge(latestAudit.mention_rate)">
                 {{ Math.round(latestAudit.mention_rate || 0) }}% mention rate
               </span>
-              <span class="badge badge-neutral">{{ (latestAudit.providers_queried || []).length }} provider{{ (latestAudit.providers_queried || []).length !== 1 ? 's' : '' }}</span>
+              <span v-else class="badge badge-neutral">Running across {{ (latestAudit.providers_queried || []).length }} provider{{ (latestAudit.providers_queried || []).length !== 1 ? 's' : '' }}</span>
+              <span v-if="isAuditComplete" class="badge badge-neutral">{{ (latestAudit.providers_queried || []).length }} provider{{ (latestAudit.providers_queried || []).length !== 1 ? 's' : '' }}</span>
               <span v-if="latestAudit.location" class="badge badge-neutral">{{ latestAudit.location }}</span>
             </div>
             <!-- Progress bar for running audits -->
@@ -476,6 +479,7 @@ const websiteId = route.params.websiteId
 const toast = useToast()
 
 const audits = ref([])
+const history = ref([])
 const loading = ref(true)
 const running = ref(false)
 const showRunForm = ref(false)
@@ -486,6 +490,7 @@ const recommendations = ref([])
 const auditDetail = ref(null)
 const showFindings = ref(true)
 const showMethodology = ref(false)
+const showPrompts = ref(true)
 const confirmDeleteId = ref(null)
 const historyData = ref([])
 let pollTimer = null
@@ -527,6 +532,167 @@ const latestAudit = computed(() => {
   return audits.value.find(a => a.status === 'completed') || audits.value[0] || null
 })
 
+const isAuditComplete = computed(() => latestAudit.value?.status === 'completed')
+const isAuditRunning = computed(() => {
+  const s = latestAudit.value?.status
+  return s === 'running' || s === 'pending'
+})
+
+// Live per-query results: sorted newest-first for the running ticker
+const liveResults = computed(() => {
+  const list = auditDetail.value?.results || []
+  return [...list].reverse()
+})
+
+// ── Prompt Intelligence aggregation ─────────────────────────────────────────
+const providerFilter = ref('')
+const collapsedIntents = ref(new Set())
+
+function toggleIntent(intent) {
+  const s = new Set(collapsedIntents.value)
+  if (s.has(intent)) s.delete(intent)
+  else s.add(intent)
+  collapsedIntents.value = s
+}
+
+const filteredResults = computed(() => {
+  const results = auditDetail.value?.results || []
+  if (!providerFilter.value) return results
+  return results.filter(r => r.provider === providerFilter.value)
+})
+
+const availableProviderFilters = computed(() => {
+  const set = new Set((auditDetail.value?.results || []).map(r => r.provider))
+  return [...set]
+})
+
+const uniquePromptCount = computed(() => {
+  return new Set((auditDetail.value?.results || []).map(r => r.prompt)).size
+})
+
+// Map prompt text -> intent, derived once from the audit's prompts list
+const promptIntentByText = computed(() => {
+  const map = {}
+  const prompts = latestAudit.value?.prompts || []
+  prompts.forEach((p, i) => { map[p] = promptIntents.value[i] || 'custom' })
+  return map
+})
+
+// Build per-prompt aggregate rows from the filtered result set
+const promptRows = computed(() => {
+  const byPrompt = new Map()
+  for (const r of filteredResults.value) {
+    if (!byPrompt.has(r.prompt)) byPrompt.set(r.prompt, [])
+    byPrompt.get(r.prompt).push(r)
+  }
+
+  const rows = []
+  for (const [text, results] of byPrompt.entries()) {
+    const succeeded = results.filter(r => r.query_succeeded)
+    const mentioned = succeeded.filter(r => r.is_mentioned)
+    const visibility = succeeded.length
+      ? Math.round(mentioned.length / succeeded.length * 100)
+      : 0
+    const ranks = mentioned.map(r => r.mention_rank).filter(x => x != null)
+    const avgRank = ranks.length
+      ? (ranks.reduce((a, b) => a + b, 0) / ranks.length).toFixed(1).replace(/\.0$/, '')
+      : null
+
+    const providerDots = results.map(r => ({
+      provider: r.provider,
+      mentioned: r.is_mentioned,
+      succeeded: r.query_succeeded,
+      rank: r.mention_rank,
+    }))
+
+    // Aggregate competitors co-mentioned in this prompt's responses
+    const compCounts = new Map()
+    for (const r of results) {
+      for (const c of (r.competitors_mentioned || [])) {
+        if (!c?.name) continue
+        compCounts.set(c.name, (compCounts.get(c.name) || 0) + 1)
+      }
+    }
+    const topCompetitors = [...compCounts.entries()]
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count)
+
+    rows.push({
+      text,
+      intent: promptIntentByText.value[text] || 'custom',
+      visibility,
+      avgRank,
+      providerDots,
+      topCompetitors,
+      responses: results.filter(r => r.query_succeeded && r.response_text),
+    })
+  }
+  return rows
+})
+
+const intentGroups = computed(() => {
+  const groups = {}
+  for (const row of promptRows.value) {
+    if (!groups[row.intent]) groups[row.intent] = []
+    groups[row.intent].push(row)
+  }
+  return Object.entries(groups)
+    .map(([intent, prompts]) => {
+      const avgVisibility = prompts.length
+        ? Math.round(prompts.reduce((a, p) => a + p.visibility, 0) / prompts.length)
+        : 0
+      return { intent, prompts, avgVisibility }
+    })
+    .sort((a, b) => b.avgVisibility - a.avgVisibility)
+})
+
+// Competitors leaderboard: aggregated across all prompts, not filtered
+const competitorLeaderboard = computed(() => {
+  const results = auditDetail.value?.results || []
+  const stats = new Map()
+  for (const r of results) {
+    if (!r.query_succeeded) continue
+    for (const c of (r.competitors_mentioned || [])) {
+      if (!c?.name) continue
+      if (!stats.has(c.name)) stats.set(c.name, { name: c.name, prompts: new Set(), ranks: [] })
+      const s = stats.get(c.name)
+      s.prompts.add(r.prompt)
+      if (typeof c.position === 'number') s.ranks.push(c.position)
+    }
+  }
+  return [...stats.values()]
+    .map(s => ({
+      name: s.name,
+      promptCount: s.prompts.size,
+      avgRank: s.ranks.length
+        ? (s.ranks.reduce((a, b) => a + b, 0) / s.ranks.length).toFixed(1).replace(/\.0$/, '')
+        : null,
+    }))
+    .sort((a, b) => b.promptCount - a.promptCount)
+    .slice(0, 10)
+})
+
+function formatIntent(intent) {
+  if (!intent) return 'Other'
+  return intent.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+}
+
+function visibilityColor(pct) {
+  if (pct >= 60) return 'var(--color-success, #10B981)'
+  if (pct >= 30) return 'var(--color-warning, #F59E0B)'
+  return 'var(--color-danger, #DC2626)'
+}
+
+function providerDotTitle(d) {
+  if (!d.succeeded) return 'failed'
+  if (d.mentioned) return `mentioned #${d.rank || '—'}`
+  return 'not mentioned'
+}
+
+function sentimentBadge(s) {
+  return s === 'positive' ? 'badge-success' : s === 'negative' ? 'badge-danger' : 'badge-neutral'
+}
+
 // Score factor breakdown (must sum to ~overall_score)
 const mentionPts = computed(() => {
   const a = latestAudit.value
@@ -562,6 +728,118 @@ const promptsUsed = computed(() => {
   if (!auditDetail.value?.results) return 0
   return new Set(auditDetail.value.results.filter(r => r.query_succeeded).map(r => r.prompt)).size
 })
+
+// ── Historic trend charts ──
+const shortDate = (dt) => new Date(dt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+
+const trendLabels = computed(() => history.value.map(h => shortDate(h.completed_at)))
+
+const overallTrendData = computed(() => ({
+  labels: trendLabels.value,
+  datasets: [
+    {
+      label: 'Overall Score',
+      data: history.value.map(h => h.overall_score ?? 0),
+      borderColor: '#F5A623',
+      backgroundColor: 'rgba(245, 166, 35, 0.12)',
+      fill: true,
+      tension: 0.35,
+      borderWidth: 2.5,
+      pointRadius: 3,
+      pointHoverRadius: 5,
+      yAxisID: 'y',
+    },
+    {
+      label: 'Mention Rate (%)',
+      data: history.value.map(h => Math.round(h.mention_rate || 0)),
+      borderColor: '#5B8DEF',
+      backgroundColor: 'rgba(91, 141, 239, 0.08)',
+      fill: false,
+      tension: 0.35,
+      borderWidth: 2,
+      pointRadius: 3,
+      pointHoverRadius: 5,
+      yAxisID: 'y',
+    },
+  ],
+}))
+
+const overallTrendOptions = {
+  responsive: true,
+  maintainAspectRatio: false,
+  interaction: { mode: 'index', intersect: false },
+  plugins: {
+    legend: { display: true, position: 'top', align: 'end', labels: { usePointStyle: true, pointStyle: 'circle', padding: 16, boxWidth: 6 } },
+    tooltip: {
+      backgroundColor: 'rgba(26, 26, 46, 0.95)', titleColor: '#fff', bodyColor: '#ccc',
+      borderColor: 'rgba(91, 141, 239, 0.15)', borderWidth: 1, padding: 12, cornerRadius: 8,
+      displayColors: true, usePointStyle: true,
+    },
+  },
+  scales: {
+    x: { grid: { display: false }, border: { display: false }, ticks: { maxTicksLimit: 10, padding: 8 } },
+    y: { grid: { color: 'rgba(138, 138, 154, 0.08)', drawTicks: false }, border: { display: false }, ticks: { padding: 10 }, beginAtZero: true, max: 100 },
+  },
+}
+
+// Build per-provider datasets: one line per provider across all audits
+const providerTrendDatasets = computed(() => {
+  const providers = new Set()
+  for (const h of history.value) {
+    for (const p of (h.providers || [])) providers.add(p.provider)
+  }
+  return [...providers].map(key => {
+    const meta = PROVIDER_META[key] || { label: key, color: '#6B7280' }
+    return {
+      label: meta.label,
+      data: history.value.map(h => {
+        const entry = (h.providers || []).find(x => x.provider === key)
+        return entry ? entry.mention_rate : null
+      }),
+      borderColor: meta.color,
+      backgroundColor: meta.color + '22',
+      fill: false,
+      tension: 0.35,
+      borderWidth: 2,
+      pointRadius: 3,
+      pointHoverRadius: 5,
+      spanGaps: true,
+    }
+  })
+})
+
+const providerTrendData = computed(() => ({
+  labels: trendLabels.value,
+  datasets: providerTrendDatasets.value,
+}))
+
+const providerTrendOptions = {
+  responsive: true,
+  maintainAspectRatio: false,
+  interaction: { mode: 'index', intersect: false },
+  plugins: {
+    legend: { display: true, position: 'top', align: 'end', labels: { usePointStyle: true, pointStyle: 'circle', padding: 16, boxWidth: 6 } },
+    tooltip: {
+      backgroundColor: 'rgba(26, 26, 46, 0.95)', titleColor: '#fff', bodyColor: '#ccc',
+      borderColor: 'rgba(91, 141, 239, 0.15)', borderWidth: 1, padding: 12, cornerRadius: 8,
+      displayColors: true, usePointStyle: true,
+      callbacks: {
+        label: (ctx) => ctx.parsed.y == null ? `${ctx.dataset.label}: n/a` : `${ctx.dataset.label}: ${ctx.parsed.y}%`,
+      },
+    },
+  },
+  scales: {
+    x: { grid: { display: false }, border: { display: false }, ticks: { maxTicksLimit: 10, padding: 8 } },
+    y: {
+      grid: { color: 'rgba(138, 138, 154, 0.08)', drawTicks: false },
+      border: { display: false },
+      ticks: { padding: 10, callback: (v) => v + '%' },
+      beginAtZero: true,
+      max: 100,
+      title: { display: true, text: 'Mention rate', color: '#8a8a9a', font: { size: 11 } },
+    },
+  },
+}
 
 const auditProgressPct = computed(() => {
   const a = latestAudit.value
@@ -781,6 +1059,8 @@ async function submitAudit() {
     const audit = data?.data || data
     audits.value.unshift(audit)
     selectedAuditId.value = audit.id
+    // Show the prompts panel immediately so the user sees what's being asked
+    auditDetail.value = audit
     showRunForm.value = false
     toast.success('Audit queued. Results will appear once complete.')
     // Start polling for results
@@ -914,17 +1194,30 @@ function startPolling() {
     try {
       const { data } = await llmRankingApi.listAudits(websiteId)
       const newAudits = data?.data?.results || data?.results || data || []
-      // Check if any previously running audit has completed
+      let anyCompleted = false
       for (const newA of newAudits) {
         const oldA = audits.value.find(a => a.id === newA.id)
         if (oldA && (oldA.status === 'pending' || oldA.status === 'running') && newA.status === 'completed') {
           toast.success(`Audit for "${newA.business_name}" completed! Score: ${newA.overall_score}/100`)
+          anyCompleted = true
         }
       }
       audits.value = newAudits
-      // Load breakdown for the latest completed audit
       if (audits.value.length && audits.value[0].status === 'completed' && !latestBreakdown.value.length) {
         await selectAudit(audits.value[0])
+        await fetchHistory()
+      }
+      // During a running audit, fetch partial results so the live ticker
+      // updates as each LLM finishes — without blocking on /breakdown/ or
+      // /recommendations/ which require a completed audit.
+      const selected = audits.value.find(a => a.id === selectedAuditId.value)
+      if (selected && (selected.status === 'running' || selected.status === 'pending')) {
+        try {
+          const dRes = await llmRankingApi.getAudit(websiteId, selected.id)
+          auditDetail.value = dRes.data?.data || dRes.data || null
+        } catch (_) { /* ignore partial fetch errors */ }
+      }
+      if (anyCompleted) {
         await fetchHistory()
       }
     } catch (e) {
@@ -940,10 +1233,24 @@ function stopPolling() {
   }
 }
 
+async function fetchHistory() {
+  try {
+    const { data } = await llmRankingApi.history(websiteId)
+    history.value = data?.data || data || []
+  } catch (e) {
+    console.error('LLM ranking history fetch error', e)
+    history.value = []
+  }
+}
+
 async function fetchData() {
   loading.value = true
   try {
-    const { data } = await llmRankingApi.listAudits(websiteId)
+    const [listRes] = await Promise.all([
+      llmRankingApi.listAudits(websiteId),
+      fetchHistory(),
+    ])
+    const { data } = listRes
     audits.value = data?.data?.results || data?.results || data || []
     if (audits.value.length) {
       // Auto-select the first completed audit so its findings load
@@ -1199,6 +1506,35 @@ onBeforeUnmount(stopPolling)
   color: var(--text-primary);
 }
 
+/* Visibility trend charts */
+.trends-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  padding: 16px;
+}
+@media (max-width: 900px) {
+  .trends-grid { grid-template-columns: 1fr; }
+}
+.trend-block {
+  padding: 12px 16px;
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+.trend-label {
+  font-size: var(--font-xs);
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 10px;
+}
+.trend-chart-wrap {
+  position: relative;
+  height: 240px;
+}
+
 /* Findings summary */
 .findings-summary {
   display: grid;
@@ -1275,6 +1611,296 @@ onBeforeUnmount(stopPolling)
   overflow-y: auto;
   border: 1px solid var(--border-color);
   color: var(--text-secondary);
+}
+
+/* Prompt list (shown before / during an audit) */
+.prompt-list { display: flex; flex-direction: column; gap: 6px; padding: 16px; }
+.prompt-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: var(--bg-base);
+  border: 1px solid var(--border-color);
+  font-size: var(--font-sm);
+}
+.prompt-num {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--bg-surface);
+  color: var(--text-muted);
+  font-weight: 700;
+  font-size: var(--font-xs);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.prompt-text {
+  flex: 1;
+  color: var(--text-primary);
+  line-height: 1.45;
+}
+.prompt-intent {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(91, 141, 239, 0.12);
+  color: #3B5EAF;
+}
+
+/* Prompt Intelligence (post-audit rich view) */
+.pi-filter { display: flex; align-items: center; }
+.pi-select {
+  padding: 4px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font-size: var(--font-xs);
+  font-weight: 600;
+}
+.pi-groups { display: flex; flex-direction: column; gap: 12px; padding: 16px; }
+.pi-group {
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-base);
+  overflow: hidden;
+}
+.pi-group-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  cursor: pointer;
+  background: var(--bg-surface);
+  user-select: none;
+}
+.pi-group-header:hover { background: rgba(0,0,0,0.02); }
+.pi-chevron { color: var(--text-muted); transition: transform 0.2s; flex-shrink: 0; }
+.pi-chevron.open { transform: rotate(90deg); }
+.pi-intent-name {
+  font-size: var(--font-xs);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-primary);
+}
+.pi-group-stats {
+  font-size: var(--font-xs);
+  color: var(--text-muted);
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+.pi-vis-bar-wrap {
+  flex: 0 0 80px;
+  height: 4px;
+  background: var(--border-color);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-left: 8px;
+}
+.pi-vis-bar {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.5s ease;
+}
+
+.pi-group-body { display: flex; flex-direction: column; padding: 4px 0; }
+.pi-prompt {
+  padding: 12px 14px;
+  border-top: 1px solid var(--border-color);
+}
+.pi-prompt:first-child { border-top: none; }
+.pi-prompt-text {
+  font-size: var(--font-sm);
+  color: var(--text-primary);
+  font-weight: 500;
+  line-height: 1.45;
+  margin-bottom: 8px;
+}
+.pi-prompt-meta {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-size: var(--font-xs);
+  color: var(--text-muted);
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+.pi-stat { display: inline-flex; align-items: center; gap: 4px; }
+.pi-stat strong { font-weight: 700; color: var(--text-primary); }
+.pi-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--border-color);
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 800;
+  margin-left: 2px;
+  cursor: help;
+}
+.pi-dot.hit  { background: var(--color-success, #10B981); color: #fff; }
+.pi-dot.fail { background: var(--color-danger, #DC2626); color: #fff; opacity: 0.7; }
+
+.pi-competitors {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: var(--font-xs);
+}
+.pi-comp-label { color: var(--text-muted); font-weight: 600; margin-right: 2px; }
+.pi-comp-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  font-weight: 500;
+}
+.pi-comp-count {
+  color: var(--text-muted);
+  margin-left: 4px;
+  font-weight: 600;
+}
+
+.pi-responses { margin-top: 10px; }
+.pi-responses-toggle {
+  font-size: var(--font-xs);
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px 0;
+}
+.pi-responses-toggle:hover { color: var(--text-primary); }
+.pi-response {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+}
+.pi-response-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.pi-response-provider { font-weight: 700; font-size: var(--font-sm); color: var(--text-primary); }
+.pi-response-text {
+  margin: 0;
+  font-size: var(--font-xs);
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 260px;
+  overflow-y: auto;
+  color: var(--text-secondary);
+  font-family: inherit;
+}
+
+/* Competitors leaderboard */
+.comp-leaderboard { display: flex; flex-direction: column; padding: 16px 16px 0; gap: 6px; }
+.comp-row {
+  display: grid;
+  grid-template-columns: 24px 1fr 1fr auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  background: var(--bg-base);
+  border: 1px solid var(--border-color);
+  font-size: var(--font-sm);
+}
+.comp-rank {
+  font-family: 'DM Serif Display', Georgia, serif;
+  font-size: var(--font-md);
+  color: var(--text-muted);
+  text-align: center;
+}
+.comp-name { font-weight: 700; color: var(--text-primary); }
+.comp-bar-wrap {
+  height: 6px;
+  background: var(--border-color);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.comp-bar {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #5B8DEF, #A78BFA);
+  border-radius: 3px;
+  transition: width 0.5s ease;
+}
+.comp-coverage { font-size: var(--font-xs); color: var(--text-muted); white-space: nowrap; }
+.comp-avg-rank {
+  font-size: var(--font-xs);
+  font-weight: 700;
+  color: var(--text-primary);
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--bg-surface);
+}
+
+/* Live ticker (during a running audit) */
+.live-pulse {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-success, #34D399);
+  margin-left: 8px;
+  animation: live-pulse-kf 1.3s ease-in-out infinite;
+  vertical-align: middle;
+}
+@keyframes live-pulse-kf {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(52,211,153,0.6); }
+  50%      { opacity: 0.6; box-shadow: 0 0 0 6px rgba(52,211,153,0); }
+}
+.live-list { display: flex; flex-direction: column; gap: 6px; padding: 16px; }
+.live-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: var(--bg-base);
+  border: 1px solid var(--border-color);
+  border-left: 3px solid var(--text-muted);
+  font-size: var(--font-sm);
+  animation: live-row-in 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.live-row.live-hit  { border-left-color: var(--color-success, #34D399); }
+.live-row.live-fail { border-left-color: var(--color-danger, #DC2626); opacity: 0.7; }
+.live-provider {
+  flex-shrink: 0;
+  font-weight: 700;
+  color: var(--text-primary);
+  width: 76px;
+}
+.live-prompt {
+  flex: 1;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@keyframes live-row-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 /* Recommendations */
