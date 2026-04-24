@@ -14,12 +14,18 @@ class LLMRankingResultSerializer(serializers.ModelSerializer):
             "response_text", "is_mentioned", "mention_rank",
             "sentiment", "sentiment_display", "confidence_score",
             "mention_context", "query_succeeded", "error_message",
+            "run_id", "is_linked", "competitors_mentioned",
+            "primary_recommendation", "citations",
+            "extraction_model", "extraction_version",
         ]
         read_only_fields = fields
 
 
 class LLMRankingAuditSerializer(serializers.ModelSerializer):
     status_display = serializers.CharField(source="get_status_display", read_only=True)
+    extraction_method_display = serializers.CharField(
+        source="get_extraction_method_display", read_only=True
+    )
     results = LLMRankingResultSerializer(many=True, read_only=True)
 
     class Meta:
@@ -28,13 +34,17 @@ class LLMRankingAuditSerializer(serializers.ModelSerializer):
             "id", "status", "status_display",
             "business_name", "business_description", "industry", "location", "keywords",
             "prompts", "overall_score", "mention_rate", "avg_mention_rank",
+            "mention_rate_ci_lower", "mention_rate_ci_upper",
+            "runs_per_query", "extraction_method", "extraction_method_display",
             "providers_queried", "queries_completed", "total_queries",
             "started_at", "completed_at", "created_at",
             "results",
         ]
         read_only_fields = [
             "id", "status", "status_display", "overall_score", "mention_rate",
-            "avg_mention_rank", "providers_queried", "queries_completed", "total_queries",
+            "avg_mention_rank", "mention_rate_ci_lower", "mention_rate_ci_upper",
+            "extraction_method", "extraction_method_display",
+            "providers_queried", "queries_completed", "total_queries",
             "started_at", "completed_at", "created_at",
             "results",
         ]
@@ -50,6 +60,7 @@ class LLMRankingAuditListSerializer(serializers.ModelSerializer):
             "id", "status", "status_display",
             "business_name", "industry", "location",
             "overall_score", "mention_rate", "avg_mention_rank",
+            "mention_rate_ci_lower", "mention_rate_ci_upper",
             "providers_queried", "queries_completed", "total_queries",
             "started_at", "completed_at", "created_at",
         ]

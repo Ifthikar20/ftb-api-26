@@ -180,6 +180,8 @@ class LLMRankingProviderBreakdownView(TenantScopedAPIView):
             website_id=website_id,
         )
 
+        from apps.llm_ranking.services.ranking_service import wilson_ci
+
         breakdown = {}
         for result in audit.results.all():
             p = result.provider
@@ -191,6 +193,8 @@ class LLMRankingProviderBreakdownView(TenantScopedAPIView):
                     "succeeded": 0,
                     "mentioned": 0,
                     "mention_rate": 0.0,
+                    "mention_rate_ci_lower": 0.0,
+                    "mention_rate_ci_upper": 0.0,
                     "avg_rank": None,
                     "sentiments": {"positive": 0, "neutral": 0, "negative": 0},
                 }
@@ -203,12 +207,15 @@ class LLMRankingProviderBreakdownView(TenantScopedAPIView):
                 if result.sentiment in entry["sentiments"]:
                     entry["sentiments"][result.sentiment] += 1
 
-        # Compute derived fields
+        # Compute derived fields: point estimate + 95% Wilson CI
         for entry in breakdown.values():
             if entry["succeeded"]:
                 entry["mention_rate"] = round(
                     entry["mentioned"] / entry["succeeded"] * 100, 1
                 )
+                ci_low, ci_high = wilson_ci(entry["mentioned"], entry["succeeded"])
+                entry["mention_rate_ci_lower"] = round(ci_low * 100, 1)
+                entry["mention_rate_ci_upper"] = round(ci_high * 100, 1)
             ranks = [
                 r.mention_rank
                 for r in audit.results.filter(
