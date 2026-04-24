@@ -387,3 +387,60 @@ class TestHaikuExtractionService:
                 response_text="x", brand_name="Acme SaaS", keywords=[],
             )
         assert result["sentiment"] == "not_mentioned"
+
+
+# ── Prompt library ────────────────────────────────────────────────────────────
+
+class TestPromptLibrary:
+    def test_generate_returns_dict_list_with_intents(self):
+        from apps.llm_ranking.services.prompt_library import PromptLibrary
+        prompts = PromptLibrary.generate(industry="SaaS analytics")
+        assert len(prompts) > 0
+        for p in prompts:
+            assert set(p.keys()) == {"text", "intent"}
+            assert isinstance(p["text"], str) and p["text"]
+            assert isinstance(p["intent"], str) and p["intent"]
+
+    def test_mix_includes_multiple_intents(self):
+        from apps.llm_ranking.services.prompt_library import PromptLibrary
+        prompts = PromptLibrary.generate(industry="CRM", max_prompts=10)
+        intents = {p["intent"] for p in prompts}
+        # With 10 prompts we should cover at least 4 distinct intents.
+        assert len(intents) >= 4
+
+    def test_location_adds_local_intent(self):
+        from apps.llm_ranking.services.prompt_library import PromptLibrary
+        local = PromptLibrary.generate(industry="law firm", location="Dallas, TX", max_prompts=10)
+        assert any(p["intent"] == "local" for p in local)
+        for p in local:
+            if p["intent"] == "local":
+                assert "Dallas, TX" in p["text"]
+
+    def test_no_location_omits_local_intent(self):
+        from apps.llm_ranking.services.prompt_library import PromptLibrary
+        prompts = PromptLibrary.generate(industry="analytics", max_prompts=10)
+        assert all(p["intent"] != "local" for p in prompts)
+
+    def test_max_prompts_is_respected(self):
+        from apps.llm_ranking.services.prompt_library import PromptLibrary
+        prompts = PromptLibrary.generate(industry="x", max_prompts=3)
+        assert len(prompts) == 3
+
+    def test_generate_texts_returns_unique_strings(self):
+        from apps.llm_ranking.services.prompt_library import PromptLibrary
+        texts = PromptLibrary.generate_texts(industry="x", max_prompts=10)
+        assert len(texts) == len(set(texts))
+        assert all(isinstance(t, str) and t for t in texts)
+
+    def test_intents_for_tags_generated_prompts(self):
+        from apps.llm_ranking.services.prompt_library import PromptLibrary
+        texts = PromptLibrary.generate_texts(industry="design tools", max_prompts=6)
+        intents = PromptLibrary.intents_for(texts)
+        assert len(intents) == len(texts)
+        # Generated prompts should map to real intents, not "custom".
+        assert any(i != "custom" for i in intents)
+
+    def test_intents_for_returns_custom_for_unknown_text(self):
+        from apps.llm_ranking.services.prompt_library import PromptLibrary
+        intents = PromptLibrary.intents_for(["Should I buy a kayak this weekend?"])
+        assert intents == ["custom"]

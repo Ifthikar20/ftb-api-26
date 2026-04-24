@@ -32,20 +32,9 @@ def wilson_ci(successes: int, n: int, z: float = 1.96) -> tuple[float, float]:
 # Providers and human labels
 PROVIDERS = ["claude", "gpt4", "gemini", "perplexity"]
 
-# Default prompt templates. {industry}, {use_case}, {location} are interpolated.
-DEFAULT_PROMPT_TEMPLATES = [
-    "What are the best {industry} tools available right now?",
-    "Can you recommend a {industry} platform that helps with {use_case}?",
-    "I'm looking for {industry} software. What are the top options?",
-    "Which {industry} solutions do most companies use?",
-    "If I need to {use_case}, what tools should I consider?",
-    "What are the leading {industry} products recommended by experts?",
-]
-
-LOCATION_PROMPT_TEMPLATES = [
-    "What are the best {industry} tools in {location}?",
-    "Can you recommend a {industry} platform for businesses in {location}?",
-]
+# Deterministic prompt templates live in apps.llm_ranking.services.prompt_library
+# so callers can consume intent-tagged variants in the UI without duplicating
+# the catalogue.
 
 # System instruction to encourage numbered lists for accurate rank extraction
 SYSTEM_INSTRUCTION = (
@@ -65,21 +54,23 @@ class LLMRankingService:
                          location: str = "") -> list[str]:
         """
         Generate discovery prompts from business context.
-        Uses Claude to produce additional natural-language variants.
-        """
-        use_case = use_case or (keywords[0] if keywords else industry)
-        base_prompts = [
-            t.format(industry=industry or "software", use_case=use_case,
-                     location=location or "the US")
-            for t in DEFAULT_PROMPT_TEMPLATES
-        ]
 
-        # Add location-specific prompts
-        if location:
-            base_prompts += [
-                t.format(industry=industry or "software", location=location)
-                for t in LOCATION_PROMPT_TEMPLATES
-            ]
+        Uses the intent-balanced PromptLibrary for the deterministic base set,
+        then asks Claude for additional natural-language variants to cover
+        phrasings the library can't anticipate.
+        """
+        from apps.llm_ranking.services.prompt_library import PromptLibrary
+
+        use_case = use_case or (keywords[0] if keywords else industry)
+
+        # Library returns an intent-balanced set (recommendation, comparison,
+        # use-case, alternatives, category, local, persona, review).
+        base_prompts = PromptLibrary.generate_texts(
+            industry=industry or "software",
+            use_case=use_case,
+            location=location,
+            max_prompts=10,
+        )
 
         # Use Claude to generate additional natural variants
         try:

@@ -55,20 +55,23 @@
               <circle cx="50" cy="50" r="42" class="ring-fill" :style="ringFillStyle(latestAudit.overall_score)" />
             </svg>
             <div class="score-center">
-              <span class="score-num">{{ latestAudit.overall_score ?? '—' }}</span>
+              <span class="score-num">{{ isAuditComplete ? latestAudit.overall_score : '—' }}</span>
               <span class="score-denom">/100</span>
             </div>
           </div>
           <div class="score-meta">
             <div class="card-title">AI Visibility Score</div>
             <p class="text-sm text-muted" style="margin-top:4px;margin-bottom:12px">
-              How prominently LLMs mention your business
+              {{ isAuditComplete
+                ? 'How prominently LLMs mention your business'
+                : 'Score will appear once the audit finishes running.' }}
             </p>
             <div class="flex gap-8" style="margin-bottom:8px">
-              <span class="badge" :class="mentionBadge(latestAudit.mention_rate)">
+              <span v-if="isAuditComplete" class="badge" :class="mentionBadge(latestAudit.mention_rate)">
                 {{ Math.round(latestAudit.mention_rate || 0) }}% mention rate
               </span>
-              <span class="badge badge-neutral">{{ (latestAudit.providers_queried || []).length }} provider{{ (latestAudit.providers_queried || []).length !== 1 ? 's' : '' }}</span>
+              <span v-else class="badge badge-neutral">Running across {{ (latestAudit.providers_queried || []).length }} provider{{ (latestAudit.providers_queried || []).length !== 1 ? 's' : '' }}</span>
+              <span v-if="isAuditComplete" class="badge badge-neutral">{{ (latestAudit.providers_queried || []).length }} provider{{ (latestAudit.providers_queried || []).length !== 1 ? 's' : '' }}</span>
               <span v-if="latestAudit.location" class="badge badge-neutral">{{ latestAudit.location }}</span>
             </div>
             <!-- Progress bar for running audits -->
@@ -141,6 +144,60 @@
               <div v-if="p.avg_rank" class="text-xs text-muted" style="margin-top:4px">Avg rank #{{ p.avg_rank }}</div>
               <div class="text-xs" style="margin-top:2px;color:var(--text-muted)">{{ p.succeeded }}/{{ p.total_prompts }} queries OK</div>
             </template>
+          </div>
+        </div>
+      </div>
+
+      <!-- Prompts for this audit (always visible once we have prompts) -->
+      <div v-if="latestAudit && (latestAudit.prompts || []).length" class="card" style="margin-bottom:24px">
+        <div class="card-header" style="cursor:pointer" @click="showPrompts = !showPrompts">
+          <h3 class="card-title">
+            Questions we're asking
+            <span class="text-xs text-muted" style="font-weight:500">
+              ({{ latestAudit.prompts.length }} prompt{{ latestAudit.prompts.length === 1 ? '' : 's' }} × {{ (latestAudit.providers_queried || []).length }} LLM{{ (latestAudit.providers_queried || []).length === 1 ? '' : 's' }})
+            </span>
+          </h3>
+          <span class="text-xs text-muted">{{ showPrompts ? 'Hide' : 'Show' }}</span>
+        </div>
+        <div v-if="showPrompts" class="prompt-list">
+          <p class="text-sm text-muted" style="margin:0 0 12px;line-height:1.5">
+            Each of these buyer-style questions will be sent to every selected LLM. We then scan the response for your business name and extract the rank, sentiment, and any competitors that got mentioned alongside you.
+          </p>
+          <div
+            v-for="(p, i) in latestAudit.prompts"
+            :key="i"
+            class="prompt-row"
+          >
+            <span class="prompt-num">{{ i + 1 }}</span>
+            <span class="prompt-text">{{ p }}</span>
+            <span class="prompt-intent">{{ promptIntents[i] || 'custom' }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Live query ticker (running audits only) -->
+      <div v-if="isAuditRunning && liveResults.length" class="card" style="margin-bottom:24px">
+        <div class="card-header">
+          <h3 class="card-title">
+            Live results
+            <span class="live-pulse"></span>
+          </h3>
+          <span class="text-xs text-muted">{{ liveResults.length }} response{{ liveResults.length === 1 ? '' : 's' }} so far</span>
+        </div>
+        <div class="live-list">
+          <div
+            v-for="r in liveResults.slice(0, 10)"
+            :key="r.id"
+            class="live-row"
+            :class="{ 'live-hit': r.is_mentioned, 'live-fail': !r.query_succeeded }"
+          >
+            <span class="live-provider">{{ providerLabel(r.provider) }}</span>
+            <span class="live-prompt">{{ r.prompt }}</span>
+            <span v-if="!r.query_succeeded" class="badge badge-danger">API error</span>
+            <span v-else-if="r.is_mentioned" class="badge badge-success">
+              Ranked #{{ r.mention_rank || '—' }}
+            </span>
+            <span v-else class="badge badge-neutral">Not mentioned</span>
           </div>
         </div>
       </div>
@@ -430,7 +487,31 @@ const recommendations = ref([])
 const auditDetail = ref(null)
 const showFindings = ref(true)
 const showMethodology = ref(false)
+const showPrompts = ref(true)
 const confirmDeleteId = ref(null)
+
+// Intent tags for each prompt — derived from the prompt text via the backend
+// library keywords. Purely cosmetic; falls back to "custom" on miss.
+const INTENT_PATTERNS = [
+  { intent: 'recommendation', keywords: ['best', 'recommend', 'most companies', 'leading', 'top options'] },
+  { intent: 'comparison',     keywords: ['compare', 'side-by-side', 'pros and cons'] },
+  { intent: 'alternatives',   keywords: ['alternative', 'up-and-coming', 'newer', 'indie'] },
+  { intent: 'use_case',       keywords: ['i need to', 'helps with', 'platform for'] },
+  { intent: 'category',       keywords: ['new to', 'categories of'] },
+  { intent: 'local',          keywords: ['in dallas', 'in new york', 'businesses in', ' in '] },
+  { intent: 'persona',        keywords: ['startup', 'mid-market', 'enterprise teams'] },
+  { intent: 'review',         keywords: ['users say', 'reputation', 'reviewers'] },
+]
+function classifyIntent(text) {
+  const lower = text.toLowerCase()
+  for (const { intent, keywords } of INTENT_PATTERNS) {
+    if (keywords.some(k => lower.includes(k))) return intent
+  }
+  return 'custom'
+}
+const promptIntents = computed(() =>
+  (latestAudit.value?.prompts || []).map(classifyIntent)
+)
 let pollTimer = null
 
 const PROVIDER_META = {
@@ -462,6 +543,18 @@ const latestAudit = computed(() => {
     if (selected) return selected
   }
   return audits.value.find(a => a.status === 'completed') || audits.value[0] || null
+})
+
+const isAuditComplete = computed(() => latestAudit.value?.status === 'completed')
+const isAuditRunning = computed(() => {
+  const s = latestAudit.value?.status
+  return s === 'running' || s === 'pending'
+})
+
+// Live per-query results: sorted newest-first for the running ticker
+const liveResults = computed(() => {
+  const list = auditDetail.value?.results || []
+  return [...list].reverse()
 })
 
 // Score factor breakdown (must sum to ~overall_score)
@@ -706,6 +799,8 @@ async function submitAudit() {
     const audit = data?.data || data
     audits.value.unshift(audit)
     selectedAuditId.value = audit.id
+    // Show the prompts panel immediately so the user sees what's being asked
+    auditDetail.value = audit
     showRunForm.value = false
     toast.success('Audit queued. Results will appear once complete.')
     // Start polling for results
@@ -778,6 +873,16 @@ function startPolling() {
       audits.value = newAudits
       if (audits.value.length && audits.value[0].status === 'completed' && !latestBreakdown.value.length) {
         await selectAudit(audits.value[0])
+      }
+      // During a running audit, fetch partial results so the live ticker
+      // updates as each LLM finishes — without blocking on /breakdown/ or
+      // /recommendations/ which require a completed audit.
+      const selected = audits.value.find(a => a.id === selectedAuditId.value)
+      if (selected && (selected.status === 'running' || selected.status === 'pending')) {
+        try {
+          const dRes = await llmRankingApi.getAudit(websiteId, selected.id)
+          auditDetail.value = dRes.data?.data || dRes.data || null
+        } catch (_) { /* ignore partial fetch errors */ }
       }
       if (anyCompleted) {
         await fetchHistory()
@@ -1140,6 +1245,96 @@ onBeforeUnmount(stopPolling)
   overflow-y: auto;
   border: 1px solid var(--border-color);
   color: var(--text-secondary);
+}
+
+/* Prompt list (shown before / during an audit) */
+.prompt-list { display: flex; flex-direction: column; gap: 6px; padding: 16px; }
+.prompt-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: var(--bg-base);
+  border: 1px solid var(--border-color);
+  font-size: var(--font-sm);
+}
+.prompt-num {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--bg-surface);
+  color: var(--text-muted);
+  font-weight: 700;
+  font-size: var(--font-xs);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.prompt-text {
+  flex: 1;
+  color: var(--text-primary);
+  line-height: 1.45;
+}
+.prompt-intent {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(91, 141, 239, 0.12);
+  color: #3B5EAF;
+}
+
+/* Live ticker (during a running audit) */
+.live-pulse {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-success, #34D399);
+  margin-left: 8px;
+  animation: live-pulse-kf 1.3s ease-in-out infinite;
+  vertical-align: middle;
+}
+@keyframes live-pulse-kf {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(52,211,153,0.6); }
+  50%      { opacity: 0.6; box-shadow: 0 0 0 6px rgba(52,211,153,0); }
+}
+.live-list { display: flex; flex-direction: column; gap: 6px; padding: 16px; }
+.live-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: var(--bg-base);
+  border: 1px solid var(--border-color);
+  border-left: 3px solid var(--text-muted);
+  font-size: var(--font-sm);
+  animation: live-row-in 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.live-row.live-hit  { border-left-color: var(--color-success, #34D399); }
+.live-row.live-fail { border-left-color: var(--color-danger, #DC2626); opacity: 0.7; }
+.live-provider {
+  flex-shrink: 0;
+  font-weight: 700;
+  color: var(--text-primary);
+  width: 76px;
+}
+.live-prompt {
+  flex: 1;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@keyframes live-row-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 /* Recommendations */
