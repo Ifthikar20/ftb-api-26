@@ -45,6 +45,7 @@ class LLMRankingAuditListView(TenantScopedListAPIView):
                 keywords=data["keywords"],
                 use_case=data["use_case"],
                 location=data.get("location", ""),
+                themes=data.get("themes") or None,
             )
 
         # Use selected providers or default to all

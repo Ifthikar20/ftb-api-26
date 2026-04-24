@@ -198,11 +198,17 @@ class PromptLibrary:
         use_case: str = "",
         location: str = "",
         max_prompts: int = DEFAULT_MAX,
+        themes: list | None = None,
     ) -> list[dict]:
-        """Return a list of {"text": str, "intent": str} dicts."""
+        """Return a list of {"text": str, "intent": str} dicts.
+
+        `themes` (optional) restricts sampling to a subset of intents.
+        Empty / None means use the default INTENT_PRIORITY mix.
+        """
         industry_norm = (industry or "software").strip()
         use_case_norm = (use_case or industry_norm).strip()
         location_norm = (location or "").strip()
+        allowed = {t for t in (themes or []) if t in VALID_INTENTS} or None
 
         templates = cls._resolved_templates(industry_norm)
         buckets = _bucket_by_intent(templates)
@@ -211,6 +217,8 @@ class PromptLibrary:
         seen_texts: set = set()
 
         for intent, take_n in INTENT_PRIORITY:
+            if allowed is not None and intent not in allowed:
+                continue
             # Skip `local` unless a location is provided — filling without
             # location yields broken prompts.
             if intent == "local" and not location_norm:
@@ -247,6 +255,7 @@ class PromptLibrary:
         use_case: str = "",
         location: str = "",
         max_prompts: int = DEFAULT_MAX,
+        themes: list | None = None,
     ) -> list[str]:
         return [
             p["text"] for p in cls.generate(
@@ -254,6 +263,7 @@ class PromptLibrary:
                 use_case=use_case,
                 location=location,
                 max_prompts=max_prompts,
+                themes=themes,
             )
         ]
 

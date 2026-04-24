@@ -51,13 +51,18 @@ class LLMRankingService:
     @staticmethod
     def generate_prompts(*, business_name: str, industry: str, description: str,
                          keywords: list, use_case: str = "",
-                         location: str = "") -> list[str]:
+                         location: str = "",
+                         themes: list | None = None) -> list[str]:
         """
         Generate discovery prompts from business context.
 
         Uses the intent-balanced PromptLibrary for the deterministic base set,
         then asks Claude for additional natural-language variants to cover
         phrasings the library can't anticipate.
+
+        `themes` (optional) restricts the library mix to specific intents —
+        e.g. ["recommendation", "comparison", "persona"]. Empty/None means
+        all intents.
         """
         from apps.llm_ranking.services.prompt_library import PromptLibrary
 
@@ -70,6 +75,7 @@ class LLMRankingService:
             use_case=use_case,
             location=location,
             max_prompts=10,
+            themes=themes,
         )
 
         # Use Claude to generate additional natural variants

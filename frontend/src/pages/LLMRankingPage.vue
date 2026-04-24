@@ -1,23 +1,46 @@
 <template>
   <div class="llm-ranking-page fade-in">
-    <div class="page-header">
-      <div>
-        <h1 class="page-title">LLM Ranking</h1>
-        <p class="page-subtitle">
-          See how AI tools like Claude, GPT-4, Gemini, and Perplexity rank your business
-          when users ask them to find a service like yours.
-        </p>
+    <!-- Top filter bar (dashboard-style) -->
+    <div class="lr-topbar">
+      <div class="lr-topbar-left">
+        <h1 class="page-title" style="margin:0">LLM Ranking</h1>
+        <span v-if="latestAudit" class="lr-pill">
+          <span class="lr-pill-dot" :class="auditStatusBadge(latestAudit.status)"></span>
+          {{ latestAudit.business_name || 'audit' }}
+        </span>
+        <span v-if="latestAudit?.location" class="lr-pill lr-pill-ghost">{{ latestAudit.location }}</span>
+        <span v-if="(latestAudit?.providers_queried || []).length"
+              class="lr-pill lr-pill-ghost">
+          {{ (latestAudit.providers_queried || []).length }} model{{ (latestAudit.providers_queried || []).length === 1 ? '' : 's' }}
+        </span>
       </div>
-      <button class="btn btn-primary btn-sm" @click="openRunAudit" :disabled="running">
-        {{ running ? 'Running audit...' : 'Run New Audit' }}
-      </button>
+      <div class="lr-topbar-right">
+        <button class="btn btn-primary btn-sm" @click="openRunAudit" :disabled="running">
+          {{ running ? 'Running...' : 'Run New Audit' }}
+        </button>
+      </div>
     </div>
 
     <div v-if="loading" class="loading-state">Loading LLM ranking data...</div>
 
     <template v-else>
+      <!-- Empty state: onboarding wizard when no audits exist -->
+      <div v-if="!audits.length" class="card lr-onboarding">
+        <div class="lr-onb-eyebrow">FIRST AUDIT</div>
+        <h2 class="lr-onb-title">Track how AI mentions your business</h2>
+        <p class="lr-onb-sub">
+          Tell us about your business and we'll generate buyer-style prompts that match how
+          real people ask AI assistants for tools like yours. We'll send those prompts to
+          Claude, GPT-4, Gemini, and Perplexity, and report where you show up — and where
+          competitors get listed instead.
+        </p>
+        <button class="btn btn-primary btn-lg" @click="openRunAudit">
+          Set up your first audit
+        </button>
+      </div>
+
       <!-- How Scoring Works -->
-      <div v-if="!latestAudit || latestAudit.status !== 'completed'" class="card methodology-card" style="margin-bottom:24px">
+      <div v-if="audits.length && (!latestAudit || latestAudit.status !== 'completed')" class="card methodology-card" style="margin-bottom:24px">
         <div class="card-header">
           <h3 class="card-title">How LLM Ranking Works</h3>
         </div>
@@ -260,31 +283,6 @@
         </div>
       </div>
 
-      <!-- Competitors mentioned alongside you -->
-      <div v-if="isAuditComplete && competitorLeaderboard.length" class="card" style="margin-bottom:24px">
-        <div class="card-header">
-          <h3 class="card-title">Competitors mentioned alongside you</h3>
-          <span class="text-xs text-muted">
-            {{ competitorLeaderboard.length }} brand{{ competitorLeaderboard.length === 1 ? '' : 's' }} detected across {{ uniquePromptCount }} prompt{{ uniquePromptCount === 1 ? '' : 's' }}
-          </span>
-        </div>
-        <div class="comp-leaderboard">
-          <div v-for="(c, i) in competitorLeaderboard" :key="c.name" class="comp-row">
-            <span class="comp-rank">{{ i + 1 }}</span>
-            <span class="comp-name">{{ c.name }}</span>
-            <span class="comp-bar-wrap">
-              <span class="comp-bar" :style="{ width: (c.promptCount / uniquePromptCount * 100) + '%' }"></span>
-            </span>
-            <span class="comp-coverage">{{ c.promptCount }}/{{ uniquePromptCount }} prompts</span>
-            <span v-if="c.avgRank" class="comp-avg-rank">avg #{{ c.avgRank }}</span>
-          </div>
-        </div>
-        <p class="text-xs text-muted" style="padding:0 16px 16px">
-          These are the brands most frequently listed alongside you in AI answers.
-          Your real competitive set in AI — not just the ones you entered.
-        </p>
-      </div>
-
       <!-- Live query ticker (running audits only) -->
       <div v-if="isAuditRunning && liveResults.length" class="card" style="margin-bottom:24px">
         <div class="card-header">
@@ -312,32 +310,52 @@
         </div>
       </div>
 
-      <!-- AI Visibility Trends -->
-      <div v-if="history.length >= 1" class="card" style="margin-bottom:24px">
-        <div class="card-header">
-          <h3 class="card-title">AI Visibility Trends</h3>
-          <span class="text-xs text-muted">{{ history.length }} completed audit{{ history.length !== 1 ? 's' : '' }}</span>
+      <!-- Overview row: trends (left) + competitors leaderboard (right) -->
+      <div v-if="history.length || (isAuditComplete && competitorLeaderboard.length)"
+           class="lr-grid-2" style="margin-bottom:24px">
+        <!-- AI Visibility Trends -->
+        <div v-if="history.length >= 1" class="card lr-grid-main">
+          <div class="card-header">
+            <h3 class="card-title">AI Visibility Trends</h3>
+            <span class="text-xs text-muted">{{ history.length }} completed audit{{ history.length !== 1 ? 's' : '' }}</span>
+          </div>
+          <div v-if="history.length === 1" class="empty-state" style="padding:24px">
+            <p class="empty-state-desc">
+              Run at least one more audit to see how your AI visibility changes over time.
+            </p>
+          </div>
+          <div v-else class="trends-grid trends-grid-stacked">
+            <div class="trend-block">
+              <div class="trend-label">Overall Score & Mention Rate</div>
+              <div class="trend-chart-wrap"><Line :data="overallTrendData" :options="overallTrendOptions" /></div>
+            </div>
+            <div class="trend-block">
+              <div class="trend-label">Per-LLM Mention Rate</div>
+              <div class="trend-chart-wrap"><Line :data="providerTrendData" :options="providerTrendOptions" /></div>
+            </div>
+          </div>
         </div>
 
-        <div v-if="history.length === 1" class="empty-state" style="padding:24px">
-          <p class="empty-state-desc">
-            Run at least one more audit to see how your AI visibility changes over time.
+        <!-- Competitors mentioned alongside you (right column) -->
+        <div v-if="isAuditComplete && competitorLeaderboard.length" class="card lr-grid-side">
+          <div class="card-header">
+            <h3 class="card-title">Competitors</h3>
+            <span class="text-xs text-muted">{{ competitorLeaderboard.length }} detected</span>
+          </div>
+          <div class="comp-leaderboard">
+            <div v-for="(c, i) in competitorLeaderboard" :key="c.name" class="comp-row">
+              <span class="comp-rank">{{ i + 1 }}</span>
+              <span class="comp-name">{{ c.name }}</span>
+              <span class="comp-bar-wrap">
+                <span class="comp-bar" :style="{ width: (c.promptCount / uniquePromptCount * 100) + '%' }"></span>
+              </span>
+              <span class="comp-coverage">{{ c.promptCount }}/{{ uniquePromptCount }}</span>
+              <span v-if="c.avgRank" class="comp-avg-rank">#{{ c.avgRank }}</span>
+            </div>
+          </div>
+          <p class="text-xs text-muted" style="padding:0 16px 16px">
+            Brands LLMs list alongside you. Your real competitive set in AI search.
           </p>
-        </div>
-
-        <div v-else class="trends-grid">
-          <div class="trend-block">
-            <div class="trend-label">Overall Score & Mention Rate</div>
-            <div class="trend-chart-wrap">
-              <Line :data="overallTrendData" :options="overallTrendOptions" />
-            </div>
-          </div>
-          <div class="trend-block">
-            <div class="trend-label">Per-LLM Mention Rate</div>
-            <div class="trend-chart-wrap">
-              <Line :data="providerTrendData" :options="providerTrendOptions" />
-            </div>
-          </div>
         </div>
       </div>
 
@@ -525,33 +543,76 @@
     </template>
 
     <!-- Run Audit Modal -->
-    <BaseModal v-model="showRunForm" title="Run LLM Ranking Audit">
+    <BaseModal v-model="showRunForm" title="Set up your audit">
+      <p class="text-sm text-muted" style="margin:-4px 0 16px;line-height:1.5">
+        We'll generate buyer-style prompts from your description and the themes you select,
+        then ask each LLM the same questions and measure where you appear.
+      </p>
+
       <div class="form-group">
         <label class="form-label">Business Name</label>
         <input v-model="auditForm.business_name" class="form-input" placeholder="e.g. Acme Corp" />
       </div>
-      <div class="form-group" style="margin-top:12px">
-        <label class="form-label">Industry / Category</label>
-        <input v-model="auditForm.industry" class="form-input" placeholder="e.g. SaaS, e-commerce, marketing agency" />
+      <div class="form-row-2">
+        <div class="form-group" style="margin-top:12px">
+          <label class="form-label">Industry / Category</label>
+          <input v-model="auditForm.industry" class="form-input" placeholder="e.g. SaaS analytics" />
+        </div>
+        <div class="form-group" style="margin-top:12px">
+          <label class="form-label">Location <span class="text-muted">(optional)</span></label>
+          <input v-model="auditForm.location" class="form-input" placeholder="e.g. New York, US" />
+        </div>
       </div>
+
       <div class="form-group" style="margin-top:12px">
-        <label class="form-label">Location (optional)</label>
-        <input v-model="auditForm.location" class="form-input" placeholder="e.g. New York, US" />
+        <label class="form-label">
+          Description
+          <span class="text-muted text-xs">Who you serve and what makes you different</span>
+        </label>
+        <textarea
+          v-model="auditForm.description"
+          class="form-input"
+          rows="3"
+          placeholder="We help mid-market analytics teams ship dashboards 5x faster than building in-house. Our buyers compare us with Looker, Mixpanel, and Hex."
+        ></textarea>
       </div>
-      <div class="form-group" style="margin-top:12px">
-        <label class="form-label">Custom Prompts (optional, one per line)</label>
-        <textarea v-model="customPromptsText" class="form-input" rows="3" placeholder="Best SaaS tools for startups"></textarea>
-        <p class="text-xs text-muted" style="margin-top:4px">Leave blank to use auto-generated prompts.</p>
-      </div>
-      <div class="form-group" style="margin-top:12px">
-        <label class="form-label">Providers</label>
-        <div class="provider-checks">
-          <label v-for="p in availableProviders" :key="p.value" class="check-label">
-            <input type="checkbox" :value="p.value" v-model="auditForm.providers" />
-            {{ p.label }}
+
+      <div class="form-group" style="margin-top:14px">
+        <label class="form-label">What kinds of questions do your buyers ask?</label>
+        <div class="theme-grid">
+          <label
+            v-for="t in promptThemes"
+            :key="t.id"
+            class="theme-chip"
+            :class="{ active: auditForm.themes.includes(t.id) }"
+          >
+            <input type="checkbox" :value="t.id" v-model="auditForm.themes" />
+            <span class="theme-chip-title">{{ t.label }}</span>
+            <span class="theme-chip-desc">{{ t.example }}</span>
           </label>
         </div>
       </div>
+
+      <details class="run-modal-advanced" style="margin-top:16px">
+        <summary class="text-xs text-muted" style="cursor:pointer;padding:4px 0">Advanced — providers and custom prompts</summary>
+
+        <div class="form-group" style="margin-top:8px">
+          <label class="form-label">Providers</label>
+          <div class="provider-checks">
+            <label v-for="p in availableProviders" :key="p.value" class="check-label">
+              <input type="checkbox" :value="p.value" v-model="auditForm.providers" />
+              {{ p.label }}
+            </label>
+          </div>
+        </div>
+
+        <div class="form-group" style="margin-top:12px">
+          <label class="form-label">Custom prompts (one per line, replaces themes)</label>
+          <textarea v-model="customPromptsText" class="form-input" rows="3" placeholder="Best SaaS tools for startups"></textarea>
+          <p class="text-xs text-muted" style="margin-top:4px">Leave blank to use auto-generated prompts.</p>
+        </div>
+      </details>
+
       <p v-if="auditError" class="form-error" style="margin-top:8px">{{ auditError }}</p>
       <template #footer>
         <button class="btn btn-secondary" @click="showRunForm = false">Cancel</button>
@@ -564,7 +625,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, shallowRef, computed, onMounted, onBeforeUnmount, markRaw } from 'vue'
 import { useRoute } from 'vue-router'
 import { useToast } from '@/composables/useToast'
 import llmRankingApi from '@/api/llm_ranking'
@@ -585,16 +646,16 @@ const route = useRoute()
 const websiteId = route.params.websiteId
 const toast = useToast()
 
-const audits = ref([])
-const history = ref([])
+const audits = shallowRef([])
+const history = shallowRef([])
 const loading = ref(true)
 const running = ref(false)
 const showRunForm = ref(false)
 const auditError = ref('')
 const selectedAuditId = ref(null)
-const latestBreakdown = ref([])
-const recommendations = ref([])
-const auditDetail = ref(null)
+const latestBreakdown = shallowRef([])
+const recommendations = shallowRef([])
+const auditDetail = shallowRef(null)
 const showFindings = ref(true)
 const showMethodology = ref(false)
 const showPrompts = ref(true)
@@ -636,15 +697,37 @@ const auditForm = ref({
   business_name: '',
   industry: '',
   location: '',
+  description: '',
+  themes: ['recommendation', 'comparison', 'use_case', 'persona'],
   providers: ['claude', 'gpt4', 'gemini', 'perplexity'],
 })
 
-const availableProviders = [
+const availableProviders = Object.freeze([
   { value: 'claude', label: 'Claude (Anthropic)' },
   { value: 'gpt4', label: 'GPT-4 (OpenAI)' },
   { value: 'gemini', label: 'Gemini (Google)' },
   { value: 'perplexity', label: 'Perplexity' },
-]
+])
+
+// Theme chips shown in the Run Audit modal — drive prompt generation.
+const promptThemes = Object.freeze([
+  { id: 'recommendation', label: 'Recommendation',
+    example: '"What are the best ___ tools right now?"' },
+  { id: 'comparison',     label: 'Comparison',
+    example: '"Compare the top 5 ___ platforms"' },
+  { id: 'alternatives',   label: 'Alternatives',
+    example: '"Good alternatives to the market leader in ___?"' },
+  { id: 'use_case',       label: 'Use cases',
+    example: '"I need to do X. What ___ tool should I use?"' },
+  { id: 'persona',        label: 'Persona / fit',
+    example: '"Best ___ for a 20-person engineering team"' },
+  { id: 'review',         label: 'Reviews & reputation',
+    example: '"What do users say about the top ___?"' },
+  { id: 'local',          label: 'Local',
+    example: '"Best ___ in {your location}"' },
+  { id: 'category',       label: 'Category overview',
+    example: '"What main ___ tools should I know about?"' },
+])
 
 const latestAudit = computed(() => {
   // Prefer the selected audit, fallback to first completed, then first overall
@@ -887,7 +970,7 @@ const overallTrendData = computed(() => ({
   ],
 }))
 
-const overallTrendOptions = {
+const overallTrendOptions = markRaw({
   responsive: true,
   maintainAspectRatio: false,
   interaction: { mode: 'index', intersect: false },
@@ -903,7 +986,7 @@ const overallTrendOptions = {
     x: { grid: { display: false }, border: { display: false }, ticks: { maxTicksLimit: 10, padding: 8 } },
     y: { grid: { color: 'rgba(138, 138, 154, 0.08)', drawTicks: false }, border: { display: false }, ticks: { padding: 10 }, beginAtZero: true, max: 100 },
   },
-}
+})
 
 // Build per-provider datasets: one line per provider across all audits
 const providerTrendDatasets = computed(() => {
@@ -936,7 +1019,7 @@ const providerTrendData = computed(() => ({
   datasets: providerTrendDatasets.value,
 }))
 
-const providerTrendOptions = {
+const providerTrendOptions = markRaw({
   responsive: true,
   maintainAspectRatio: false,
   interaction: { mode: 'index', intersect: false },
@@ -962,7 +1045,7 @@ const providerTrendOptions = {
       title: { display: true, text: 'Mention rate', color: '#8a8a9a', font: { size: 11 } },
     },
   },
-}
+})
 
 const auditProgressPct = computed(() => {
   const a = latestAudit.value
@@ -1034,7 +1117,14 @@ function auditStatusBadge(status) {
 function openRunAudit() {
   auditError.value = ''
   customPromptsText.value = ''
-  auditForm.value = { business_name: '', industry: '', location: '', providers: ['claude', 'gpt4', 'gemini', 'perplexity'] }
+  auditForm.value = {
+    business_name: '',
+    industry: '',
+    location: '',
+    description: '',
+    themes: ['recommendation', 'comparison', 'use_case', 'persona'],
+    providers: ['claude', 'gpt4', 'gemini', 'perplexity'],
+  }
   showRunForm.value = true
 }
 
@@ -1042,21 +1132,27 @@ async function submitAudit() {
   if (!auditForm.value.business_name) { auditError.value = 'Business name is required.'; return }
   if (!auditForm.value.industry) { auditError.value = 'Industry is required.'; return }
   if (!auditForm.value.providers.length) { auditError.value = 'Select at least one provider.'; return }
+  if (!customPromptsText.value.trim() && !(auditForm.value.themes || []).length) {
+    auditError.value = 'Pick at least one theme or paste custom prompts.'
+    return
+  }
   running.value = true
   auditError.value = ''
   try {
     const payload = {
       business_name: auditForm.value.business_name,
+      business_description: auditForm.value.description || '',
       industry: auditForm.value.industry,
       location: auditForm.value.location,
       providers: auditForm.value.providers,
+      themes: auditForm.value.themes || [],
     }
     if (customPromptsText.value.trim()) {
       payload.custom_prompts = customPromptsText.value.split('\n').map(s => s.trim()).filter(Boolean)
     }
     const { data } = await llmRankingApi.runAudit(websiteId, payload)
     const audit = data?.data || data
-    audits.value.unshift(audit)
+    audits.value = [audit, ...audits.value]
     selectedAuditId.value = audit.id
     // Show the prompts panel immediately so the user sees what's being asked
     auditDetail.value = audit
@@ -1206,6 +1302,121 @@ onBeforeUnmount(stopPolling)
 
 <style scoped>
 .loading-state { text-align: center; padding: 80px 20px; font-size: var(--font-md); color: var(--text-muted); }
+
+/* Top filter bar */
+.lr-topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 0 18px;
+  margin-bottom: 18px;
+  border-bottom: 1px solid var(--border-color);
+}
+.lr-topbar-left { display: flex; align-items: center; gap: 10px; flex: 1; flex-wrap: wrap; }
+.lr-topbar-right { display: flex; align-items: center; gap: 8px; }
+.lr-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-base);
+  font-size: var(--font-xs);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.lr-pill-ghost { background: transparent; color: var(--text-muted); font-weight: 500; }
+.lr-pill-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+.lr-pill-dot.badge-success { background: var(--color-success, #10B981); }
+.lr-pill-dot.badge-warning { background: var(--color-warning, #F59E0B); }
+.lr-pill-dot.badge-danger  { background: var(--color-danger,  #DC2626); }
+.lr-pill-dot.badge-neutral { background: var(--text-muted); }
+
+/* Onboarding empty state */
+.lr-onboarding {
+  text-align: center;
+  padding: 56px 32px;
+}
+.lr-onb-eyebrow {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.15em;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+}
+.lr-onb-title {
+  font-size: clamp(1.6rem, 3vw, 2.2rem);
+  font-weight: 800;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+  margin: 0 0 12px;
+  line-height: 1.15;
+}
+.lr-onb-sub {
+  max-width: 620px;
+  margin: 0 auto 28px;
+  font-size: var(--font-sm);
+  color: var(--text-secondary);
+  line-height: 1.55;
+}
+
+/* 2-col grid (overview row) */
+.lr-grid-2 {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 16px;
+}
+.lr-grid-2 > .card { margin-bottom: 0 !important; }
+@media (max-width: 1100px) {
+  .lr-grid-2 { grid-template-columns: 1fr; }
+}
+.trends-grid-stacked {
+  grid-template-columns: 1fr !important;
+}
+
+/* Run-audit modal extras */
+.form-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 600px) { .form-row-2 { grid-template-columns: 1fr; } }
+.theme-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+@media (max-width: 600px) { .theme-grid { grid-template-columns: 1fr; } }
+.theme-chip {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  border: 1.5px solid var(--border-color);
+  cursor: pointer;
+  transition: all 0.15s;
+  background: var(--bg-base);
+  user-select: none;
+}
+.theme-chip:hover { border-color: var(--text-muted); }
+.theme-chip.active {
+  border-color: var(--brand-accent, #4F46E5);
+  background: rgba(79, 70, 229, 0.04);
+}
+.theme-chip input { display: none; }
+.theme-chip-title {
+  font-size: var(--font-sm);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.theme-chip-desc {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+}
 
 /* Score summary */
 .score-main { display: flex; align-items: center; gap: 32px; }

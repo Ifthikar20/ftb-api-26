@@ -93,3 +93,14 @@ class RunAuditSerializer(serializers.Serializer):
         required=False,
         default=list,
     )
+    # Intent themes (recommendation, comparison, ...) used to filter the
+    # PromptLibrary mix when generating prompts.
+    themes = serializers.ListField(
+        child=serializers.ChoiceField(choices=[
+            "recommendation", "comparison", "alternatives", "use_case",
+            "category", "persona", "review", "local",
+        ]),
+        required=False,
+        default=list,
+        max_length=8,
+    )
