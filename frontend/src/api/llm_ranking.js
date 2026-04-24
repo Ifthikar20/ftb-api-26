@@ -8,4 +8,8 @@ export default {
     breakdown: (wid, aid) => api.get(`/llm-ranking/${wid}/audits/${aid}/breakdown/`),
     recommendations: (wid, aid) => api.get(`/llm-ranking/${wid}/audits/${aid}/recommendations/`),
     history: (wid, params) => api.get(`/llm-ranking/${wid}/history/`, { params }),
+    // Schedule endpoints
+    getSchedule: (wid) => api.get(`/llm-ranking/${wid}/schedule/`),
+    saveSchedule: (wid, data) => api.post(`/llm-ranking/${wid}/schedule/`, data),
+    deleteSchedule: (wid) => api.delete(`/llm-ranking/${wid}/schedule/`),
 }

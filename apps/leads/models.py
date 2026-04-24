@@ -105,8 +105,11 @@ class EmailCampaign(TimestampMixin):
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="created_campaigns"
     )
+    name = models.CharField(max_length=200, blank=True, help_text="Internal campaign name")
     subject = models.CharField(max_length=500)
     body = models.TextField()  # HTML content
+    from_name = models.CharField(max_length=200, blank=True, help_text="Sender display name")
+    from_email = models.CharField(max_length=254, blank=True, help_text="Sender email address")
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_DRAFT, db_index=True)
     segment = models.ForeignKey(
         "LeadSegment", null=True, blank=True, on_delete=models.SET_NULL, related_name="campaigns"

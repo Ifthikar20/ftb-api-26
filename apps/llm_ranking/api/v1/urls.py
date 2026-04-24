@@ -8,4 +8,5 @@ urlpatterns = [
     path("<uuid:website_id>/audits/<uuid:audit_id>/breakdown/", views.LLMRankingProviderBreakdownView.as_view(), name="llm-ranking-breakdown"),
     path("<uuid:website_id>/audits/<uuid:audit_id>/recommendations/", views.LLMRankingRecommendationsView.as_view(), name="llm-ranking-recommendations"),
     path("<uuid:website_id>/history/", views.LLMRankingHistoryView.as_view(), name="llm-ranking-history"),
+    path("<uuid:website_id>/schedule/", views.LLMRankingScheduleView.as_view(), name="llm-ranking-schedule"),
 ]

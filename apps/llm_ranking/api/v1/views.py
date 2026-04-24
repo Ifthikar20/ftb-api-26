@@ -1,18 +1,27 @@
 import logging
+from datetime import timedelta
 
-from django.db.models import Avg, Count, Q
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.response import Response
 
 from apps.llm_ranking.api.v1.serializers import (
+    CreateScheduleSerializer,
     LLMRankingAuditListSerializer,
     LLMRankingAuditSerializer,
+    LLMRankingScheduleSerializer,
     RunAuditSerializer,
 )
-from apps.llm_ranking.models import LLMRankingAudit, LLMRankingResult
+from apps.llm_ranking.models import LLMRankingAudit, LLMRankingSchedule
 from core.views import TenantScopedAPIView, TenantScopedListAPIView
 
 logger = logging.getLogger("apps")
+
+FREQUENCY_DELTAS = {
+    "weekly": timedelta(weeks=1),
+    "biweekly": timedelta(weeks=2),
+    "monthly": timedelta(days=30),
+}
 
 
 class LLMRankingAuditListView(TenantScopedListAPIView):
@@ -227,3 +236,56 @@ class LLMRankingProviderBreakdownView(TenantScopedAPIView):
                 entry["avg_rank"] = round(sum(ranks) / len(ranks), 1)
 
         return Response(list(breakdown.values()))
+
+
+class LLMRankingScheduleView(TenantScopedAPIView):
+    """
+    GET    — retrieve the current schedule for this website (or 404).
+    POST   — create or update the schedule.
+    DELETE — delete (disable) the schedule.
+    """
+
+    def get(self, request, website_id):
+        self.get_website(website_id)
+        try:
+            schedule = LLMRankingSchedule.objects.get(website_id=website_id)
+        except LLMRankingSchedule.DoesNotExist:
+            return Response({"schedule": None})
+        return Response({"schedule": LLMRankingScheduleSerializer(schedule).data})
+
+    def post(self, request, website_id):
+        website = self.get_website(website_id)
+        serializer = CreateScheduleSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        delta = FREQUENCY_DELTAS.get(data["frequency"], timedelta(weeks=1))
+        now = timezone.now()
+
+        schedule, created = LLMRankingSchedule.objects.update_or_create(
+            website=website,
+            defaults={
+                "created_by": request.user,
+                "is_enabled": data["is_enabled"],
+                "frequency": data["frequency"],
+                "business_name": data["business_name"],
+                "business_description": data.get("business_description", ""),
+                "industry": data["industry"],
+                "location": data.get("location", ""),
+                "keywords": data.get("keywords", []),
+                "providers": data.get("providers", []),
+                "next_run_at": now + delta,
+            },
+        )
+
+        return Response(
+            {"schedule": LLMRankingScheduleSerializer(schedule).data},
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )
+
+    def delete(self, request, website_id):
+        self.get_website(website_id)
+        deleted, _ = LLMRankingSchedule.objects.filter(website_id=website_id).delete()
+        if not deleted:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        return Response(status=status.HTTP_204_NO_CONTENT)

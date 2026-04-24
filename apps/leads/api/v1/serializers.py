@@ -58,7 +58,8 @@ class EmailCampaignSerializer(serializers.ModelSerializer):
     class Meta:
         model = EmailCampaign
         fields = [
-            "id", "subject", "body", "status", "segment", "canva_design_url",
+            "id", "name", "subject", "body", "from_name", "from_email",
+            "status", "segment", "canva_design_url",
             "is_ab_test", "subject_b", "body_b", "ab_split_ratio",
             "sent_at", "recipient_count", "open_count", "click_count",
             "open_rate", "click_rate", "mailchimp_campaign_id",
