@@ -74,10 +74,11 @@
                :style="{ transform: `translateX(${trackOffset}px)` }">
             <div v-for="(f, i) in features" :key="f.title"
                  class="carousel-card" :class="[f.tint, { expanded: activeCard === i, 'is-playing': activeCard === i }]"
-                 :style="{ animationDelay: `${i * 100}ms` }"
+                 :style="{ '--card-stagger': i * 80 + 'ms' }"
                  @click="activeCard = activeCard === i ? -1 : i"
-                 @mouseenter="pauseAutoAdvance"
-                 @mouseleave="resumeAutoAdvance">
+                 @mousemove="onCardMouseMove($event, i)"
+                 @mouseenter="onCardMouseEnter(i)"
+                 @mouseleave="onCardMouseLeave($event, i)">
               <span class="card-num">{{ String(i + 1).padStart(2, '0') }}</span>
 
               <!-- Per-tool animated visual -->
@@ -85,7 +86,7 @@
                 <!-- Analytics: line chart with drawing animation -->
                 <div v-if="f.visual === 'chart'" class="viz viz-chart">
                   <div class="viz-stat">
-                    <div class="viz-stat-value">{{ f.metric.value }}</div>
+                    <div class="viz-stat-value">{{ metricFor(f, i) }}</div>
                     <div class="viz-stat-meta">
                       <span class="viz-stat-label">{{ f.metric.label }}</span>
                       <span class="viz-stat-delta up">{{ f.metric.delta }}</span>
@@ -107,7 +108,7 @@
                 <!-- Heatmaps: pulsing radial hotspots -->
                 <div v-else-if="f.visual === 'heatmap'" class="viz viz-heatmap">
                   <div class="viz-stat">
-                    <div class="viz-stat-value">{{ f.metric.value }}</div>
+                    <div class="viz-stat-value">{{ metricFor(f, i) }}</div>
                     <div class="viz-stat-meta">
                       <span class="viz-stat-label">{{ f.metric.label }}</span>
                       <span class="viz-stat-delta">{{ f.metric.delta }}</span>
@@ -134,7 +135,7 @@
                 <!-- Keywords: animated rank bars -->
                 <div v-else-if="f.visual === 'keywords'" class="viz viz-keywords">
                   <div class="viz-stat">
-                    <div class="viz-stat-value">{{ f.metric.value }}</div>
+                    <div class="viz-stat-value">{{ metricFor(f, i) }}</div>
                     <div class="viz-stat-meta">
                       <span class="viz-stat-label">{{ f.metric.label }}</span>
                       <span class="viz-stat-delta up">{{ f.metric.delta }}</span>
@@ -165,7 +166,7 @@
                 <!-- Lead ID: stacked company chips sliding in -->
                 <div v-else-if="f.visual === 'leads'" class="viz viz-leads">
                   <div class="viz-stat">
-                    <div class="viz-stat-value">{{ f.metric.value }}</div>
+                    <div class="viz-stat-value">{{ metricFor(f, i) }}</div>
                     <div class="viz-stat-meta">
                       <span class="viz-stat-label">{{ f.metric.label }}</span>
                       <span class="viz-stat-delta up">{{ f.metric.delta }}</span>
@@ -280,7 +281,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 
 const scrolled = ref(false)
 const activeCard = ref(0)
@@ -334,8 +335,96 @@ function startFeatureAutoAdvance() {
 function stopFeatureAutoAdvance() {
   if (featureTimer) { clearInterval(featureTimer); featureTimer = null }
 }
-function pauseAutoAdvance() { stopFeatureAutoAdvance() }
-function resumeAutoAdvance() { startFeatureAutoAdvance() }
+
+// ── Framer-style mouse tilt + parallax ──
+// We write transforms to CSS vars on the card element, throttled by rAF.
+// CSS handles the spring smoothing via transition + cubic-bezier.
+const TILT_MAX = 6        // max degrees
+const PARALLAX_MAX = 6    // max px shift for inner content
+const tiltRaf = new Map()
+
+function onCardMouseEnter(i) {
+  stopFeatureAutoAdvance()
+  activeCard.value = i
+}
+
+function onCardMouseLeave(ev, i) {
+  startFeatureAutoAdvance()
+  const card = ev.currentTarget
+  if (tiltRaf.has(i)) { cancelAnimationFrame(tiltRaf.get(i)); tiltRaf.delete(i) }
+  card.style.setProperty('--tx', '0deg')
+  card.style.setProperty('--ty', '0deg')
+  card.style.setProperty('--px', '0px')
+  card.style.setProperty('--py', '0px')
+  card.style.setProperty('--gx', '50%')
+  card.style.setProperty('--gy', '50%')
+}
+
+function onCardMouseMove(ev, i) {
+  const card = ev.currentTarget
+  if (tiltRaf.has(i)) cancelAnimationFrame(tiltRaf.get(i))
+  // rAF the read+write so we don't fight the browser
+  tiltRaf.set(i, requestAnimationFrame(() => {
+    const rect = card.getBoundingClientRect()
+    const x = (ev.clientX - rect.left) / rect.width  // 0..1
+    const y = (ev.clientY - rect.top)  / rect.height // 0..1
+    const tx = (y - 0.5) * -2 * TILT_MAX  // tilt UP when mouse is at top
+    const ty = (x - 0.5) *  2 * TILT_MAX  // tilt RIGHT when mouse is at right
+    const px = (x - 0.5) * PARALLAX_MAX
+    const py = (y - 0.5) * PARALLAX_MAX
+    card.style.setProperty('--tx', tx.toFixed(2) + 'deg')
+    card.style.setProperty('--ty', ty.toFixed(2) + 'deg')
+    card.style.setProperty('--px', px.toFixed(2) + 'px')
+    card.style.setProperty('--py', py.toFixed(2) + 'px')
+    card.style.setProperty('--gx', (x * 100).toFixed(1) + '%')
+    card.style.setProperty('--gy', (y * 100).toFixed(1) + '%')
+  }))
+}
+
+// ── Count-up animation for the active card's headline number ──
+// Stored as a map { cardIndex: displayString } so non-active cards
+// keep their final value (we only count the active card up).
+const animatedMetrics = ref({})
+let countUpRaf = null
+
+function formatLikeOriginal(n, original) {
+  const s = String(original)
+  if (/[,]/.test(s)) return Math.round(n).toLocaleString()
+  return String(Math.round(n))
+}
+
+function startCountUp(targetCardIdx) {
+  if (countUpRaf) cancelAnimationFrame(countUpRaf)
+  if (targetCardIdx < 0) return
+  const target = features[targetCardIdx]?.metric?.value
+  if (!target) return
+  const cleaned = String(target).replace(/[^\d.]/g, '')
+  const final = parseFloat(cleaned) || 0
+  const startTs = performance.now()
+  const duration = 900
+  const tick = (now) => {
+    const t = Math.min(1, (now - startTs) / duration)
+    // ease-out cubic — matches Framer's default "easeOut"
+    const eased = 1 - Math.pow(1 - t, 3)
+    const current = final * eased
+    animatedMetrics.value = {
+      ...animatedMetrics.value,
+      [targetCardIdx]: formatLikeOriginal(current, target),
+    }
+    if (t < 1) countUpRaf = requestAnimationFrame(tick)
+    else {
+      animatedMetrics.value = { ...animatedMetrics.value, [targetCardIdx]: target }
+      countUpRaf = null
+    }
+  }
+  countUpRaf = requestAnimationFrame(tick)
+}
+
+function metricFor(card, i) {
+  return animatedMetrics.value[i] ?? card.metric.value
+}
+
+watch(activeCard, (idx) => startCountUp(idx))
 
 function scrollCarousel(dir) {
   const maxOffset = -(features.length - visibleCards) * cardStep
@@ -748,36 +837,108 @@ em { color: #5B8DEF; font-style: italic; }
 }
 
 /* Individual card */
+/* ── Framer-style card: 3D tilt, spring entrance, layered shadow ── */
 .carousel-card {
+  --tx: 0deg;
+  --ty: 0deg;
+  --px: 0px;
+  --py: 0px;
+  --gx: 50%;
+  --gy: 50%;
   flex: 0 0 260px; min-height: 320px;
-  border-radius: 16px; padding: 24px 20px;
+  border-radius: 18px; padding: 24px 20px;
   cursor: pointer; position: relative;
   display: flex; flex-direction: column;
-  transition: flex 0.45s cubic-bezier(0.22, 1, 0.36, 1),
-              transform 0.3s cubic-bezier(0.22, 1, 0.36, 1),
-              box-shadow 0.3s ease;
   overflow: hidden;
-  animation: card-entrance 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+  transform-style: preserve-3d;
+  perspective: 800px;
+  /* Two-layer shadow: tight near + soft far. Driven by --shadow-* in active state. */
+  box-shadow:
+    0 1px 3px rgba(19,23,24,0.06),
+    0 8px 24px rgba(19,23,24,0.05);
+  /* Spring-eased motion (Framer's classic overshoot curve). The transform
+     is driven by mouse-move CSS vars so we only animate when settling. */
+  transform:
+    perspective(900px)
+    rotateX(var(--tx))
+    rotateY(var(--ty))
+    translateZ(0)
+    scale(var(--card-scale, 1));
+  transition:
+    flex 0.5s cubic-bezier(0.34, 1.56, 0.64, 1),
+    transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow 0.45s cubic-bezier(0.22, 1, 0.36, 1),
+    --card-scale 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
+  /* Stagger-in on first paint */
+  animation: card-spring-in 0.85s cubic-bezier(0.34, 1.56, 0.64, 1) var(--card-stagger, 0ms) both;
+  will-change: transform, box-shadow;
 }
-@keyframes card-entrance {
-  from {
-    opacity: 0;
-    transform: translateY(20px) scale(0.96);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
+
+/* Radial glow that follows the cursor — only visible on the active card. */
+.carousel-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: radial-gradient(
+    320px circle at var(--gx) var(--gy),
+    rgba(255,255,255,0.55),
+    rgba(255,255,255,0) 65%
+  );
+  opacity: 0;
+  transition: opacity 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+  z-index: 1;
 }
+.carousel-card.is-playing::before { opacity: 1; }
+
+/* Inner content above the glow layer */
+.carousel-card > * { position: relative; z-index: 2; }
+
+@keyframes card-spring-in {
+  0%   { opacity: 0; transform: perspective(900px) translateY(28px) scale(0.92) rotateX(8deg); }
+  60%  { opacity: 1; transform: perspective(900px) translateY(-4px) scale(1.02) rotateX(-1deg); }
+  100% { opacity: 1; transform: perspective(900px) translateY(0)    scale(1)    rotateX(0deg); }
+}
+
 .carousel-card:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+  --card-scale: 1.02;
+  box-shadow:
+    0 1px 3px rgba(19,23,24,0.08),
+    0 18px 38px rgba(19,23,24,0.10);
 }
-.carousel-card.expanded {
+
+.carousel-card.expanded,
+.carousel-card.is-playing {
   flex: 0 0 420px;
   min-height: 360px;
-  box-shadow: 0 18px 48px rgba(0,0,0,0.14);
-  transform: translateY(-4px);
+  --card-scale: 1.04;
+  box-shadow:
+    0 1px 3px rgba(19,23,24,0.10),
+    0 24px 56px rgba(19,23,24,0.16),
+    0 0 0 1px rgba(255,255,255,0.5) inset;
+}
+
+/* Inner-content parallax — chart/visual shifts opposite to tilt */
+.carousel-card .card-visual,
+.carousel-card .card-title {
+  transform: translate3d(var(--px), var(--py), 0);
+  transition: transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.carousel-card .card-num {
+  transform: translate3d(calc(var(--px) * 0.6), calc(var(--py) * 0.6), 0);
+  transition: transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .carousel-card,
+  .carousel-card .card-visual,
+  .carousel-card .card-title,
+  .carousel-card .card-num {
+    animation: none !important;
+    transition: opacity 0.3s ease, flex 0.3s ease;
+    transform: none !important;
+  }
 }
 
 /* ── Per-tool animated visuals ── */
@@ -799,6 +960,23 @@ em { color: #5B8DEF; font-style: italic; }
   color: #131718;
   line-height: 1;
   letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  display: inline-block;
+}
+.is-playing .viz-stat-value {
+  animation: stat-pop-in 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+@keyframes stat-pop-in {
+  0%   { opacity: 0; transform: translateY(8px) scale(0.92); filter: blur(2px); }
+  60%  { opacity: 1; transform: translateY(-1px) scale(1.04); filter: blur(0); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+.is-playing .viz-stat-meta {
+  animation: stat-meta-fade 0.6s cubic-bezier(0.22, 1, 0.36, 1) 0.15s both;
+}
+@keyframes stat-meta-fade {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 .viz-stat-meta {
   display: flex;
