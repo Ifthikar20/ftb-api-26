@@ -45,6 +45,95 @@
       </div>
     </section>
 
+    <!-- ═══ Trusted by row ═══ -->
+    <section class="trusted-by anim" data-anim="fade-up">
+      <p class="trusted-by-label">Trusted by</p>
+      <div class="trusted-logos">
+        <div v-for="logo in trustedLogos" :key="logo" class="trusted-logo-slot">{{ logo }}</div>
+      </div>
+    </section>
+
+    <!-- ═══ Turn AI traffic into revenue — Bear-style feature blocks ═══ -->
+    <section class="bear-revenue" id="revenue">
+      <div class="wrap">
+        <div class="bear-intro anim" data-anim="fade-up">
+          <h2 class="bear-headline">Turn AI traffic into revenue.</h2>
+          <p class="bear-sub">
+            FetchBot offers the tools to convert traffic from AI Agents into customers.
+          </p>
+        </div>
+
+        <div v-for="(block, i) in bearBlocks" :key="block.eyebrow"
+             class="bear-block anim" data-anim="fade-up" :data-delay="i * 80">
+          <div class="bear-text">
+            <div class="bear-eyebrow">{{ block.eyebrow }}</div>
+            <h3 class="bear-block-title">{{ block.title }}</h3>
+            <p class="bear-block-desc">{{ block.desc }}</p>
+          </div>
+
+          <div class="bear-visual">
+            <!-- Placeholder painterly background. Swap for a real oil-painting
+                 asset when you have one; the overlay card stays as-is. -->
+            <div class="painterly-bg" :class="'painterly-' + block.scene">
+              <span class="painterly-tag">Painterly placeholder</span>
+            </div>
+
+            <!-- Floating UI mockup per block -->
+            <div class="bear-overlay" v-if="block.scene === 'floral'">
+              <div class="bear-overlay-header">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/>
+                  <path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/>
+                </svg>
+                <span><strong>New leads</strong> &nbsp;(23)</span>
+              </div>
+              <div v-for="lead in block.leads" :key="lead.name" class="bear-lead-row">
+                <span class="bear-avatar" :style="{ background: lead.bg }">{{ lead.initials }}</span>
+                <div class="bear-lead-meta">
+                  <div class="bear-lead-name">{{ lead.name }}</div>
+                  <div class="bear-lead-role">{{ lead.role }}</div>
+                </div>
+                <span class="bear-arrow">→</span>
+              </div>
+            </div>
+
+            <div class="bear-overlay" v-else-if="block.scene === 'mountain'">
+              <div class="bear-overlay-header">
+                <span class="bear-star">✦</span>
+                <strong>Blog Agent</strong>
+              </div>
+              <div class="bear-agent-progress">
+                <div class="bear-agent-bar"><span :style="{ width: '62%' }"></span></div>
+              </div>
+              <div v-for="step in block.steps" :key="step.label" class="bear-step-row">
+                <span class="bear-step-label">{{ step.label }}</span>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0F766E" stroke-width="2.5">
+                  <polyline points="20 6 9 17 4 12"/>
+                </svg>
+              </div>
+            </div>
+
+            <div class="bear-overlay" v-else-if="block.scene === 'meadow'">
+              <div v-for="src in block.sources" :key="src.host" class="bear-source-row">
+                <div class="bear-source-accent" :style="{ background: src.accent }"></div>
+                <div class="bear-source-meta">
+                  <div class="bear-source-host">{{ src.host }}</div>
+                  <div class="bear-source-url">{{ src.url }}</div>
+                  <div class="bear-source-cites">{{ src.cites }}</div>
+                </div>
+                <button class="bear-outreach-btn">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M4 4h16c1 0 2 1 2 2v12c0 1-1 2-2 2H4c-1 0-2-1-2-2V6c0-1 1-2 2-2z"/><polyline points="22,6 12,13 2,6"/>
+                  </svg>
+                  Outreach
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- ═══ Features — Travel Lab Carousel ═══ -->
     <section class="features-section" id="features">
       <div class="feat-full anim" data-anim="fade-up">
@@ -565,6 +654,54 @@ const steps = [
   { title: 'Watch Insights Flow', desc: 'Real-time analytics and AI insights appear immediately.' },
 ]
 
+// ── "Trusted by" row — placeholder text slots. Replace with real logos
+// (<img> or inline SVG) when you have partner brand assets. ──
+const trustedLogos = [
+  'BLE', 'PEERSPACE', 'MEDAL', 'GROWW', 'FLOW', 'PARTNER',
+]
+
+// ── Bear-style feature blocks — content lifted from usebear.ai, reworded
+// for our product. Each block ships with its own overlay card rendered as
+// real HTML so it reads as a live mockup, not a static image. ──
+const bearBlocks = [
+  {
+    eyebrow: 'LEAD GENERATION',
+    title: 'Turn AI Traffic Into Leads',
+    desc: 'FetchBot helps you identify users coming from ChatGPT and other AI sources — so you can convert their high-intent visits.',
+    scene: 'floral',
+    leads: [
+      { name: 'Rick Deckard',   role: 'CEO, Polarbear AI',          initials: 'RD', bg: '#4B5563' },
+      { name: 'Niander Wallace', role: 'CEO, Wallace Corporation',  initials: 'NW', bg: '#334155' },
+      { name: 'Alina Ward',     role: 'Head of Marketing, Leno',    initials: 'AW', bg: '#0F172A' },
+      { name: 'Kevin Nguyen',   role: 'CEO, Tyrell Corp',           initials: 'KN', bg: '#475569' },
+    ],
+  },
+  {
+    eyebrow: 'CONTENT OPTIMIZATION',
+    title: 'Create Content that AI Agents Crawl',
+    desc: 'Generate structured, AI-ready content designed to be easily ingested, cited, and recommended by LLMs.',
+    scene: 'mountain',
+    steps: [
+      { label: 'Found 49 URLs to analyze for brand voice  ·  16m 33s' },
+      { label: 'Scraping existing blogs (20%)              ·  16m 33s' },
+      { label: 'Fetching competitors (30%)                 ·  17m 7s'  },
+      { label: 'Querying knowledge base (35%)              ·  17m 8s'  },
+      { label: 'Analyzing brand voice (40%)                ·  17m 9s'  },
+    ],
+  },
+  {
+    eyebrow: 'OUTREACH WORKFLOW',
+    title: 'Automate PR',
+    desc: 'Find the third-party and UGC sources cited by LLMs and get mentioned on them automatically.',
+    scene: 'meadow',
+    sources: [
+      { host: 'Forbes',   url: 'forbes.com/business/thth7a...',      cites: '254 citations', accent: '#D97706' },
+      { host: 'Reddit',   url: 'reddit.com/r/aeo/why-is...',          cites: '312 citations', accent: '#DC2626' },
+      { host: 'LinkedIn', url: 'linkedin.com/pulse/how...',           cites: '133 mentions',  accent: '#2563EB' },
+    ],
+  },
+]
+
 const plans = [
   {
     name: 'Starter',
@@ -733,6 +870,313 @@ em { color: #5B8DEF; font-style: italic; }
 .btn-ghost:hover { border-color: #131718; }
 
 /* ═══ Features Carousel — Travel Lab Style ═══ */
+/* ─────────────────────────────────────────────────────────────────
+   Trusted by row
+   ───────────────────────────────────────────────────────────────── */
+.trusted-by {
+  padding: 48px 32px 32px;
+  background: #FAF9F7;
+  text-align: center;
+}
+.trusted-by-label {
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  color: rgba(15, 23, 42, 0.45);
+  margin: 0 0 20px;
+}
+.trusted-logos {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(24px, 5vw, 64px);
+  flex-wrap: wrap;
+}
+.trusted-logo-slot {
+  font-family: 'DM Serif Display', Georgia, serif;
+  font-weight: 400;
+  font-size: clamp(20px, 2.5vw, 28px);
+  color: rgba(15, 23, 42, 0.55);
+  letter-spacing: -0.02em;
+  transition: color 0.2s ease;
+}
+.trusted-logo-slot:hover { color: rgba(15, 23, 42, 0.85); }
+
+/* ─────────────────────────────────────────────────────────────────
+   Bear-style "Turn AI traffic into revenue" section
+   ───────────────────────────────────────────────────────────────── */
+.bear-revenue {
+  background: #FAF9F7;
+  padding: 80px 0 96px;
+}
+.bear-intro {
+  text-align: center;
+  max-width: 720px;
+  margin: 0 auto 56px;
+}
+.bear-headline {
+  font-family: 'DM Serif Display', Georgia, serif;
+  font-weight: 400;
+  font-size: clamp(2rem, 4.5vw, 3.4rem);
+  letter-spacing: -0.03em;
+  color: #0F172A;
+  line-height: 1.1;
+  margin: 0 0 14px;
+}
+.bear-sub {
+  font-size: clamp(14px, 1.5vw, 17px);
+  color: rgba(15, 23, 42, 0.65);
+  line-height: 1.55;
+  margin: 0;
+}
+
+.bear-block {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  align-items: stretch;
+  background: #FFFFFF;
+  border-radius: 20px;
+  overflow: hidden;
+  margin-bottom: 24px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03), 0 12px 32px rgba(15, 23, 42, 0.04);
+  border: 1px solid rgba(15, 23, 42, 0.05);
+}
+.bear-block:last-child { margin-bottom: 0; }
+@media (max-width: 860px) {
+  .bear-block { grid-template-columns: 1fr; }
+}
+
+.bear-text {
+  padding: 56px 56px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 360px;
+}
+.bear-eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: rgba(15, 23, 42, 0.5);
+  margin-bottom: 20px;
+}
+.bear-block-title {
+  font-family: 'DM Serif Display', Georgia, serif;
+  font-weight: 400;
+  font-size: clamp(22px, 2.2vw, 30px);
+  letter-spacing: -0.025em;
+  color: #0F172A;
+  line-height: 1.2;
+  margin: 0 0 14px;
+}
+.bear-block-desc {
+  font-size: 14px;
+  color: rgba(15, 23, 42, 0.65);
+  line-height: 1.6;
+  margin: 0;
+  max-width: 440px;
+}
+.bear-visual {
+  position: relative;
+  min-height: 360px;
+  overflow: hidden;
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   Painterly background placeholders (pure CSS — swap for real oil
+   painting assets when available). Each scene uses layered radial
+   gradients to approximate an impressionist oil-paint surface, with
+   a subtle noise/grain filter for texture.
+   ───────────────────────────────────────────────────────────────── */
+.painterly-bg {
+  position: absolute;
+  inset: 0;
+  filter: saturate(1.05);
+}
+.painterly-bg::after {
+  /* Grain layer — tiny SVG noise to fake the painterly texture. */
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' seed='5'/><feColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.35 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  opacity: 0.22;
+  mix-blend-mode: overlay;
+  pointer-events: none;
+}
+.painterly-tag {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  padding: 3px 8px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(15, 23, 42, 0.55);
+  background: rgba(255, 255, 255, 0.8);
+  border-radius: 999px;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  backdrop-filter: blur(4px);
+  z-index: 2;
+}
+
+/* Floral — pink + green impressionist */
+.painterly-floral {
+  background:
+    radial-gradient(ellipse 60% 40% at 20% 30%, rgba(245,200,200,0.9) 0%, transparent 60%),
+    radial-gradient(circle at 75% 20%, rgba(221,110,127,0.55) 0%, transparent 35%),
+    radial-gradient(circle at 15% 85%, rgba(180,205,170,0.8) 0%, transparent 45%),
+    radial-gradient(ellipse at 60% 70%, rgba(155,180,190,0.85) 0%, transparent 55%),
+    radial-gradient(circle at 90% 90%, rgba(239,143,164,0.5) 0%, transparent 40%),
+    linear-gradient(160deg, #DCE5DD 0%, #C9D5D0 50%, #B9C7C5 100%);
+}
+/* Mountain — blue + white + pine */
+.painterly-mountain {
+  background:
+    radial-gradient(ellipse 80% 50% at 50% 25%, rgba(240,244,246,0.85) 0%, transparent 60%),
+    radial-gradient(ellipse 40% 30% at 25% 40%, rgba(169,189,204,0.85) 0%, transparent 55%),
+    radial-gradient(ellipse 60% 40% at 80% 50%, rgba(120,155,155,0.7) 0%, transparent 50%),
+    radial-gradient(ellipse 70% 40% at 50% 85%, rgba(112,125,120,0.85) 0%, transparent 55%),
+    radial-gradient(circle at 70% 80%, rgba(85,120,105,0.6) 0%, transparent 40%),
+    linear-gradient(175deg, #C8D5D8 0%, #AFBEC1 55%, #8F9A99 100%);
+}
+/* Meadow — warm gold + green */
+.painterly-meadow {
+  background:
+    radial-gradient(ellipse 80% 50% at 50% 25%, rgba(210,210,210,0.8) 0%, transparent 55%),
+    radial-gradient(ellipse 70% 30% at 40% 55%, rgba(212,199,175,0.85) 0%, transparent 60%),
+    radial-gradient(ellipse 90% 40% at 60% 80%, rgba(178,168,130,0.9) 0%, transparent 60%),
+    radial-gradient(circle at 80% 90%, rgba(100,90,65,0.6) 0%, transparent 40%),
+    linear-gradient(175deg, #D5D8D4 0%, #C2B996 55%, #A59A72 100%);
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   Floating overlay cards (real HTML mockups on top of painterly bg)
+   ───────────────────────────────────────────────────────────────── */
+.bear-overlay {
+  position: absolute;
+  background: #FFFFFF;
+  border-radius: 14px;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  box-shadow:
+    0 1px 3px rgba(15, 23, 42, 0.06),
+    0 12px 28px rgba(15, 23, 42, 0.10);
+  padding: 16px;
+  z-index: 3;
+  top: 50%;
+  left: 8%;
+  transform: translateY(-50%);
+  min-width: 300px;
+  max-width: 88%;
+  backdrop-filter: blur(6px);
+}
+.bear-overlay-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #0F172A;
+  padding-bottom: 10px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+}
+.bear-lead-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  font-size: 12px;
+}
+.bear-avatar {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff;
+  font-weight: 700;
+  font-size: 10px;
+  flex-shrink: 0;
+  letter-spacing: 0.02em;
+}
+.bear-lead-meta { flex: 1; min-width: 0; }
+.bear-lead-name { font-weight: 600; color: #0F172A; font-size: 13px; line-height: 1.2; }
+.bear-lead-role { font-size: 11px; color: rgba(15, 23, 42, 0.55); margin-top: 2px; }
+.bear-arrow {
+  color: rgba(15, 23, 42, 0.35);
+  font-size: 14px;
+  padding-left: 6px;
+}
+
+.bear-agent-progress { margin: 4px 0 14px; }
+.bear-agent-bar {
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(15, 23, 42, 0.08);
+  overflow: hidden;
+}
+.bear-agent-bar span {
+  display: block;
+  height: 100%;
+  background: #0F172A;
+  border-radius: 2px;
+  animation: bear-bar-grow 1.4s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+@keyframes bear-bar-grow {
+  from { width: 0 !important; }
+}
+.bear-step-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  font-size: 11.5px;
+  color: rgba(15, 23, 42, 0.75);
+  border-top: 1px solid rgba(15, 23, 42, 0.04);
+  font-variant-numeric: tabular-nums;
+}
+.bear-step-row:first-of-type { border-top: none; }
+.bear-step-label { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bear-star { color: #7C3AED; font-size: 14px; }
+
+.bear-source-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid rgba(15, 23, 42, 0.06);
+  font-size: 12px;
+}
+.bear-source-row:first-of-type { border-top: none; padding-top: 0; }
+.bear-source-accent {
+  width: 2px;
+  align-self: stretch;
+  border-radius: 1px;
+  flex-shrink: 0;
+}
+.bear-source-meta { flex: 1; min-width: 0; }
+.bear-source-host { font-weight: 700; color: #0F172A; font-size: 12px; }
+.bear-source-url { font-size: 10.5px; color: rgba(15, 23, 42, 0.55); margin: 1px 0; font-family: 'SF Mono', monospace; }
+.bear-source-cites { font-size: 10.5px; color: rgba(15, 23, 42, 0.55); }
+.bear-outreach-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: #FFFFFF;
+  color: #0F172A;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  flex-shrink: 0;
+}
+.bear-outreach-btn:hover {
+  background: #F8FAFC;
+  border-color: rgba(15, 23, 42, 0.2);
+}
+
 .features-section { padding: 64px 0 80px; background: #FAF9F7; }
 .feat-full { background: transparent; border-radius: 0; margin: 0; padding: 48px 32px 40px; overflow: visible; }
 
