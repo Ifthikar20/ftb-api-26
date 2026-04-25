@@ -64,10 +64,6 @@
           <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 10a1.5 1.5 0 0 1-1.5 1.5H5L2 14.5V3.5A1.5 1.5 0 0 1 3.5 2h9A1.5 1.5 0 0 1 14 3.5z"/><path d="M5 6h6M5 8.5h4"/></svg></span>
           <span v-if="!appStore.sidebarCollapsed" class="nav-text">Messaging</span>
         </router-link>
-        <router-link :to="voiceAgentRoute" class="nav-link" exact-active-class="active" style="--nav-color: #10b981">
-          <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 1.5h2.5a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1H4L2 9V2.5a1 1 0 0 1 1-1z"/><path d="M10.5 8.5H13a1 1 0 0 1 1 1V13L11.5 11H10.5a1 1 0 0 1-1-1V9.5a1 1 0 0 1 1-1z"/><path d="M8 5.5v2M8 10v.5"/></svg></span>
-          <span v-if="!appStore.sidebarCollapsed" class="nav-text">Voice Agent</span>
-        </router-link>
         <router-link :to="llmRankingRoute" class="nav-link" exact-active-class="active" style="--nav-color: #ec4899">
           <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 4v4l3 2"/><path d="M5 2l6 0" stroke-linecap="round"/></svg></span>
           <span v-if="!appStore.sidebarCollapsed" class="nav-text">LLM Ranking</span>
@@ -288,7 +284,6 @@ const searchPages = [
   { name: 'agents', label: 'Agents', description: 'AI agents for automation tasks', category: 'Intelligence', routeFn: () => agentsRoute.value, icon: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="6" r="3"/><path d="M3 14c0-3 2.2-5 5-5s5 2 5 5"/><path d="M12 4l2-2M4 4L2 2" stroke-linecap="round"/></svg>' },
   { name: 'campaigns', label: 'Campaigns', description: 'Email campaigns and outreach', category: 'Intelligence', routeFn: () => campaignsRoute.value, icon: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 3h12c.6 0 1 .4 1 1v8c0 .6-.4 1-1 1H2c-.6 0-1-.4-1-1V4c0-.6.4-1 1-1z"/><polyline points="14,4 8,9 2,4"/></svg>' },
   { name: 'messaging', label: 'Messaging', description: 'AI DM automation, inbox, and conversations', category: 'Intelligence', routeFn: () => messagingRoute.value, icon: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 10a1.5 1.5 0 0 1-1.5 1.5H5L2 14.5V3.5A1.5 1.5 0 0 1 3.5 2h9A1.5 1.5 0 0 1 14 3.5z"/><path d="M5 6h6M5 8.5h4"/></svg>' },
-  { name: 'voice-agent', label: 'Voice Agent', description: 'AI phone agent, call logs, appointments, and callbacks', category: 'Intelligence', routeFn: () => voiceAgentRoute.value, icon: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 1.5h2.5a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1H4L2 9V2.5a1 1 0 0 1 1-1z"/><path d="M10.5 8.5H13a1 1 0 0 1 1 1V13L11.5 11H10.5a1 1 0 0 1-1-1V9.5a1 1 0 0 1 1-1z"/></svg>' },
   { name: 'llm-ranking', label: 'LLM Ranking', description: 'AI visibility scoring across LLMs', category: 'Intelligence', routeFn: () => llmRankingRoute.value, icon: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 4v4l3 2"/></svg>' },
   { name: 'billing', label: 'Billing', description: 'Subscription plans and payment', category: 'Account', route: '/billing', icon: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="3" width="14" height="10" rx="2"/><line x1="1" y1="7" x2="15" y2="7"/></svg>' },
   { name: 'settings', label: 'Settings', description: 'Account settings and preferences', category: 'Account', route: '/settings', icon: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="2.5"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.3 3.3l1.4 1.4M11.3 11.3l1.4 1.4M12.7 3.3l-1.4 1.4M4.7 11.3l-1.4 1.4"/></svg>' },
@@ -443,7 +438,6 @@ const keywordsRoute = computed(() => websiteId.value ? `/keywords/${websiteId.va
 const agentsRoute = computed(() => websiteId.value ? `/agents/${websiteId.value}` : '/websites')
 const campaignsRoute = computed(() => websiteId.value ? `/campaigns/${websiteId.value}` : '/websites')
 const messagingRoute = computed(() => websiteId.value ? `/messaging/${websiteId.value}` : '/websites')
-const voiceAgentRoute = computed(() => websiteId.value ? `/voice-agent/${websiteId.value}` : '/websites')
 const llmRankingRoute = computed(() => websiteId.value ? `/llm-ranking/${websiteId.value}` : '/websites')
 
 

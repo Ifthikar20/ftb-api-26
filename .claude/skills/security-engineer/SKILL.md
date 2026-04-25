@@ -10,7 +10,7 @@ description: Defensive security engineering for the FTB API Django backend, Cele
 FTB API is a multi-tenant Django + DRF platform with Celery workers and a Vue 3 SPA.
 
 - **Backend** (`config/`, `apps/`): tenanted apps including `accounts`, `billing`,
-  `leads`, `social_leads`, `voice_agent`, `llm_ranking`, `websites`,
+  `leads`, `social_leads`, `llm_ranking`, `websites`,
   `competitors`, `compliance`, `notifications`.
 - **Settings**: `config/settings/` (split per environment).
 - **Async**: `config/celery.py` + tasks per app.
@@ -41,8 +41,8 @@ FTB API is a multi-tenant Django + DRF platform with Celery workers and a Vue 3 
    - Verify webhook signatures (Stripe/etc.), enforce idempotency keys,
      never trust client-supplied amounts, log every state transition.
 
-5. **Voice + LLM apps** (`apps/voice_agent`, `apps/llm_ranking`)
-   - Treat transcripts and model output as untrusted input.
+5. **LLM apps** (`apps/llm_ranking`)
+   - Treat model output as untrusted input.
    - Allowlist tool calls and outbound domains; sandbox prompts;
      redact PII before sending to third-party LLMs where possible.
 

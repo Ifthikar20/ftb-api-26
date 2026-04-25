@@ -15,7 +15,7 @@ app.autodiscover_tasks()
 #   default      — analytics, leads, pixel, accounts (fast, in-process work)
 #   integrations — HubSpot, Semrush, Google Ads, OAuth token refresh
 #   webhooks     — outbound webhook delivery (user-controlled URLs, slow, isolated)
-#   ai           — LLM ranking, voice agent
+#   ai           — LLM ranking, keyword scans, platform trends
 app.conf.task_default_queue = "default"
 app.conf.task_routes = {
     # webhooks
@@ -25,7 +25,6 @@ app.conf.task_routes = {
     "apps.competitors.tasks.*": {"queue": "integrations"},
     # AI / LLM
     "apps.llm_ranking.tasks.*": {"queue": "ai"},
-    "apps.voice_agent.tasks.*": {"queue": "ai"},
     # Analytics scan + trend tasks (hit external APIs, can be slow)
     "apps.analytics.tasks.execute_keyword_scan": {"queue": "ai"},
     "apps.analytics.tasks.fetch_platform_trends": {"queue": "ai"},
@@ -68,19 +67,6 @@ app.conf.beat_schedule = {
     "rotate-encryption-keys": {
         "task": "core.tasks.check_encryption_key_rotation",
         "schedule": crontab(minute=0, hour=0, day_of_month=1),
-    },
-    # ── Voice Agent ──
-    "voice-check-due-reminders": {
-        "task": "apps.voice_agent.tasks.check_due_reminders",
-        "schedule": crontab(minute="*/5"),
-    },
-    "voice-queue-health-check": {
-        "task": "apps.voice_agent.tasks.queue_health_check",
-        "schedule": crontab(minute="*/2"),
-    },
-    "voice-reconcile-monthly-usage": {
-        "task": "apps.voice_agent.tasks.reconcile_monthly_usage",
-        "schedule": crontab(minute=30, hour=3),  # 3:30 AM daily
     },
     # ── Keyword Intelligence ──
     "keyword-auto-scan-dispatcher": {

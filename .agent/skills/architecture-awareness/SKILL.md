@@ -25,7 +25,7 @@ Both files are the source of truth. You **must** read both before and update bot
 Read: apps/leads/ARCHITECTURE.md
 Read: apps/leads/.todo.md
 Check: Dependencies section — leads depends on analytics, websites, accounts, core
-Check: Depended on by — voice_agent, agents, social_leads use leads
+Check: Depended on by — agents, social_leads use leads
 Check: .todo.md — is this work already tracked? Is it in progress?
 ```
 
@@ -120,7 +120,6 @@ Bullet list of important architectural choices and their rationale.
 | `llm_ranking` | `apps/llm_ranking/ARCHITECTURE.md` | `apps/llm_ranking/.todo.md` |
 | `notifications` | `apps/notifications/ARCHITECTURE.md` | `apps/notifications/.todo.md` |
 | `social_leads` | `apps/social_leads/ARCHITECTURE.md` | `apps/social_leads/.todo.md` |
-| `voice_agent` | `apps/voice_agent/ARCHITECTURE.md` | `apps/voice_agent/.todo.md` |
 | `websites` | `apps/websites/ARCHITECTURE.md` | `apps/websites/.todo.md` |
 
 ## Cross-App Changes

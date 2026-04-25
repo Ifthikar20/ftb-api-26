@@ -137,7 +137,6 @@ const categories = [
   { key: 'ads',          label: 'Ads & Social',     icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>' },
   { key: 'payments',     label: 'Payments',         icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="14" x="2" y="5" rx="2"/><path d="M2 10h20"/></svg>' },
   { key: 'seo',          label: 'SEO & Search',     icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>' },
-  { key: 'voice',        label: 'Voice & Calls',    icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72"/></svg>' },
   { key: 'automation',   label: 'Automation',       icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.5 1.5"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.5-1.5"/></svg>' },
 ]
 
@@ -158,7 +157,7 @@ const integrations = [
   { slug: 'telegram', name: 'Telegram', category: 'Messaging', categoryKey: 'messaging', status: 'active', usedIn: 'Settings → Integrations', shortDesc: 'Instant push notifications for growth milestones and hot leads on mobile.', logo: 'https://cdn.simpleicons.org/telegram/26A5E4', tagColor: '#26A5E4', tagBg: '#26A5E410' },
 
   // CRM & Email
-  { slug: 'sendgrid', name: 'SendGrid', category: 'CRM & Email', categoryKey: 'crm', status: 'active', usedIn: 'Campaigns → Email, Voice Agent', shortDesc: 'Transactional and campaign email delivery powered by SendGrid\'s API.', logo: '/images/integrations/sendgrid.svg', tagColor: '#F22F46', tagBg: '#F22F4610' },
+  { slug: 'sendgrid', name: 'SendGrid', category: 'CRM & Email', categoryKey: 'crm', status: 'active', usedIn: 'Campaigns → Email', shortDesc: 'Transactional and campaign email delivery powered by SendGrid\'s API.', logo: '/images/integrations/sendgrid.svg', tagColor: '#F22F46', tagBg: '#F22F4610' },
   { slug: 'mailchimp', name: 'Mailchimp', category: 'CRM & Email', categoryKey: 'crm', status: 'active', usedIn: 'Campaigns → Audience Sync', shortDesc: 'Sync lead segments to Mailchimp audiences for targeted email campaigns.', logo: 'https://cdn.simpleicons.org/mailchimp/FFE01B', tagColor: '#FFE01B', tagBg: '#FFE01B15' },
   { slug: 'hubspot', name: 'HubSpot', category: 'CRM & Email', categoryKey: 'crm', status: 'needs-key', usedIn: 'Leads → CRM Sync', shortDesc: 'Bidirectional lead, deal, and contact sync with HubSpot CRM.', logo: 'https://cdn.simpleicons.org/hubspot/FF7A59', tagColor: '#FF7A59', tagBg: '#FF7A5910' },
 
@@ -176,12 +175,6 @@ const integrations = [
   { slug: 'google-search-console', name: 'Google Search Console', category: 'SEO & Search', categoryKey: 'seo', status: 'needs-key', usedIn: 'Keywords → Rankings (planned)', shortDesc: 'Pull real Google ranking data, impressions, and CTR.', logo: 'https://cdn.simpleicons.org/googlesearchconsole/458CF5', tagColor: '#458CF5', tagBg: '#458CF510' },
   { slug: 'dataforseo', name: 'DataForSEO', category: 'SEO & Search', categoryKey: 'seo', status: 'active', usedIn: 'Keywords → Position Tracking', shortDesc: 'Real Google SERP rankings, search volume, CPC, and keyword difficulty data.', logo: 'https://cdn.simpleicons.org/googleanalytics/E37400', tagColor: '#27ae60', tagBg: '#27ae6010' },
   { slug: 'semrush', name: 'Semrush', category: 'SEO & Search', categoryKey: 'seo', status: 'needs-key', usedIn: 'Keywords (planned)', shortDesc: 'Compete analysis, keyword rankings, backlink data from Semrush.', logo: 'https://cdn.simpleicons.org/semrush/FF622D', tagColor: '#FF622D', tagBg: '#FF622D10' },
-
-  // Voice & Calls
-  { slug: 'retell-ai', name: 'Retell.ai', category: 'Voice & Calls', categoryKey: 'voice', status: 'active', usedIn: 'Voice Agent → Managed', shortDesc: 'Power AI voice agents with ultra-realistic conversations for outbound calls.', logo: '/images/integrations/retell.svg', tagColor: '#8b5cf6', tagBg: '#8b5cf610' },
-  { slug: 'telnyx', name: 'Telnyx', category: 'Voice & Calls', categoryKey: 'voice', status: 'active', usedIn: 'Voice Agent → Phone Numbers', shortDesc: 'Buy, verify, and manage phone numbers for AI voice agent campaigns.', logo: '/images/integrations/telnyx.svg', tagColor: '#00c04b', tagBg: '#00c04b10' },
-  { slug: 'livekit', name: 'LiveKit', category: 'Voice & Calls', categoryKey: 'voice', status: 'active', usedIn: 'Voice Agent → Browser Calling', shortDesc: 'Real-time voice and video infrastructure for browser-based calling.', logo: 'https://cdn.simpleicons.org/webrtc/333333', tagColor: '#333333', tagBg: '#33333310' },
-  { slug: 'deepgram', name: 'Deepgram', category: 'Voice & Calls', categoryKey: 'voice', status: 'needs-key', usedIn: 'Voice Agent → STT', shortDesc: 'Speech-to-text transcription for voice agent conversations.', logo: '/images/integrations/deepgram.svg', tagColor: '#13ef93', tagBg: '#13ef9310' },
 
   // Automation
   { slug: 'google-oauth', name: 'Google OAuth', category: 'Automation', categoryKey: 'automation', status: 'active', usedIn: 'Login, Google Drive Export', shortDesc: 'Secure login and data export to Google Sheets and Google Drive.', logo: 'https://cdn.simpleicons.org/google/4285F4', tagColor: '#4285f4', tagBg: '#4285f410' },

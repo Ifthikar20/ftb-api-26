@@ -14,12 +14,11 @@ The frontend is a Vue 3 SPA in `frontend/` talking to the FTB Django API.
 - **Layout**: `frontend/src/{api, components, composables, layouts, pages,
   router, stores}`.
 - **Backend it talks to**: multi-tenant DRF API. Domains include leads,
-  competitors, billing, voice agent, LLM ranking, analytics dashboards,
-  notifications.
+  competitors, billing, LLM ranking, analytics dashboards, notifications.
 
 The app is data-heavy (charts, tables, pipelines) and tenant-scoped, so test
 strategy must cover: auth + tenant context, table/chart rendering with real-ish
-data, long-running async flows (voice agent), and form validation tied
+data, long-running async flows (LLM ranking audits), and form validation tied
 to DRF serializer errors.
 
 ## Test strategy for this codebase

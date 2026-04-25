@@ -67,4 +67,4 @@ Visitor (analytics app)
 ## Dependencies
 
 - **Depends on:** `analytics` (Visitor model), `websites`, `accounts`, `core`
-- **Depended on by:** `voice_agent` (call-to-lead promotion), `agents` (lead summary tool), `social_leads` (social lead → FetchBot lead)
+- **Depended on by:** `agents` (lead summary tool), `social_leads` (social lead → FetchBot lead)

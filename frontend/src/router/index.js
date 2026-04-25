@@ -90,7 +90,6 @@ const routes = [
     protect('/agents/:websiteId', 'agents', () => import('@/pages/AgentsPage.vue'), true),
     protect('/campaigns/:websiteId', 'campaigns', () => import('@/pages/CampaignsPage.vue'), true),
     protect('/messaging/:websiteId', 'messaging', () => import('@/pages/MessagingPage.vue'), true),
-    protect('/voice-agent/:websiteId', 'voice-agent', () => import('@/pages/VoiceAgentPage.vue'), true),
     protect('/llm-ranking/:websiteId', 'llm-ranking', () => import('@/pages/LLMRankingPage.vue'), true),
     protect('/onboarding/:websiteId', 'onboarding', () => import('@/pages/OnboardingPage.vue'), true),
     protect('/app-onboarding', 'app-onboarding', () => import('@/pages/AppOnboardingPage.vue')),
@@ -180,7 +179,7 @@ router.beforeEach(async (to, from, next) => {
     }
 
     // Guard: project-specific pages require an active project
-    const projectPages = ['analytics', 'leads', 'heatmap', 'keywords', 'agents', 'campaigns', 'messaging', 'llm-ranking', 'voice-agent', 'website-detail']
+    const projectPages = ['analytics', 'leads', 'heatmap', 'keywords', 'agents', 'campaigns', 'messaging', 'llm-ranking', 'website-detail']
     if (projectPages.includes(to.name) && auth.isAuthenticated) {
         const app = useAppStore()
         if (!app.activeWebsite) {

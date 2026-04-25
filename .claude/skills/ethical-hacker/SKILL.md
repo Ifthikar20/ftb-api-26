@@ -12,7 +12,7 @@ FTB API is a multi-tenant marketing/lead-intelligence platform.
 - **Backend**: Django + DRF in `config/` with domain apps in `apps/`:
   `accounts` (auth, tenants, users), `billing` (payments, subscriptions),
   `leads` + `social_leads` (PII-heavy lead data), `competitors`,
-  `llm_ranking`, `voice_agent` (telephony/LLM), `notifications`, `websites`,
+  `llm_ranking`, `notifications`, `websites`,
   `compliance`, `analytics`, `agents`.
 - **Async**: Celery (`config/celery.py`).
 - **Frontend**: Vue 3 SPA in `frontend/` calling the API via `axios`.
@@ -21,9 +21,8 @@ High-value targets in this codebase:
 1. `apps/accounts` - authentication, password reset, session/JWT, tenant isolation.
 2. `apps/billing` - payment webhooks, price tampering, signature verification, idempotency.
 3. `apps/leads` and `apps/social_leads` - IDOR across tenants, PII exposure, mass-assignment in serializers.
-4. `apps/voice_agent` - prompt injection from caller transcripts, SSRF via tool calls, webhook auth.
-5. `apps/llm_ranking` - prompt injection, untrusted output rendered to users.
-6. `apps/websites` and `apps/competitors` - SSRF when crawling external URLs (must block RFC1918, link-local, metadata IPs).
+4. `apps/llm_ranking` - prompt injection, untrusted output rendered to users.
+5. `apps/websites` and `apps/competitors` - SSRF when crawling external URLs (must block RFC1918, link-local, metadata IPs).
 7. `config/settings` - `DEBUG`, `ALLOWED_HOSTS`, `SECRET_KEY` handling, CORS, CSRF trusted origins.
 
 ## Review playbook

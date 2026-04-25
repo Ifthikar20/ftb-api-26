@@ -7,7 +7,7 @@ description: Logging strategy expert for FTB API. Use before every commit to sca
 
 ## Project context
 
-- **Backend**: Django + DRF, Celery, multi-tenant. Apps in `apps/` (`accounts`, `billing`, `leads`, `social_leads`, `voice_agent`, `llm_ranking`, `websites`, `competitors`, `compliance`, `notifications`, `analytics`, `agents`).
+- **Backend**: Django + DRF, Celery, multi-tenant. Apps in `apps/` (`accounts`, `billing`, `leads`, `social_leads`, `llm_ranking`, `websites`, `competitors`, `compliance`, `notifications`, `analytics`, `agents`).
 - **Frontend**: Vue 3 SPA in `frontend/` using axios.
 - Logs must be structured, tenant-tagged, and never contain secrets or full PII.
 
@@ -49,7 +49,6 @@ For each changed file, flag missing logs at these points.
 - `apps/accounts`: login success / failure, password reset request and completion, MFA events, tenant switch, role change.
 - `apps/billing`: webhook received (with signature verification result), plan change, invoice paid / failed, refund, dunning step.
 - `apps/leads`, `apps/social_leads`: create, status change, export, delete (PII). Log IDs only, never the lead body.
-- `apps/voice_agent`: session start/end, tool call invoked, transcript chunk count (not content).
 - `apps/llm_ranking`: model called, token usage, cost, output validation result.
 - `apps/websites`, `apps/competitors`: outbound fetch decision (allowed/blocked by SSRF guard), HTTP status, byte count.
 - `apps/compliance`: every consent change and data export/delete request.

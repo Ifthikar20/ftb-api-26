@@ -31,11 +31,11 @@ class SocialLeadSerializer(serializers.ModelSerializer):
             "id", "platform", "platform_display", "full_name",
             "first_name", "last_name", "email", "phone",
             "company", "job_title", "linkedin_profile",
-            "form_data", "is_processed", "voice_call_queued",
+            "form_data", "is_processed",
             "lead", "created_at", "updated_at",
         ]
         read_only_fields = [
             "id", "platform", "platform_display", "full_name",
-            "is_processed", "voice_call_queued", "lead",
+            "is_processed", "lead",
             "created_at", "updated_at",
         ]

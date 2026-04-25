@@ -61,13 +61,6 @@ pytz==2024.*
 beautifulsoup4==4.*
 pytrends==4.*
 
-# Voice Agent (self-hosted pipeline — install only if using LiveKit backend)
-# livekit-agents>=0.12
-# livekit-plugins-deepgram>=0.6
-# livekit-plugins-openai>=0.10
-# livekit-plugins-silero>=0.7
-# livekit-api>=0.7
-
 # Production
 gunicorn==23.*
 whitenoise==6.7.*
