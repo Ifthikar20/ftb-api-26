@@ -301,7 +301,8 @@ let cycleTimer = null
 let featureTimer = null
 const featureDwellMs = 4200
 
-const leadColors = ['#131718', '#C65A2F', '#4A7FB0', '#5E6B73']
+// Restrained, ink-leaning avatar palette — no brights.
+const leadColors = ['#0F172A', '#475569', '#334155', '#64748B']
 
 // ── Chart path helpers ──
 const CHART_W = 220
@@ -732,17 +733,20 @@ em { color: #5B8DEF; font-style: italic; }
 .btn-ghost:hover { border-color: #131718; }
 
 /* ═══ Features Carousel — Travel Lab Style ═══ */
-.features-section { padding: 64px 0 80px; }
-.feat-full { background: #FFF6C6; border-radius: 24px; margin: 0 32px; padding: 48px 0 40px; overflow: hidden; }
+.features-section { padding: 64px 0 80px; background: #FAF9F7; }
+.feat-full { background: transparent; border-radius: 0; margin: 0; padding: 48px 32px 40px; overflow: visible; }
 
 .feat-header { display: flex; align-items: baseline; gap: 40px; margin-bottom: 36px; flex-wrap: wrap; }
 .feat-headline {
   font-family: 'DM Serif Display', Georgia, serif;
   font-size: clamp(1.8rem, 3.5vw, 3rem);
-  font-weight: 400; text-transform: uppercase;
-  letter-spacing: -0.02em;
+  font-weight: 400;
+  letter-spacing: -0.025em;
+  color: #0F172A;
   display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap;
-  line-height: 1.2;
+  line-height: 1.15;
+  /* Drop the all-caps treatment — Bear lets the serif type do the work. */
+  text-transform: none;
 }
 
 /* ── Framer-style word cycler ── */
@@ -759,17 +763,17 @@ em { color: #5B8DEF; font-style: italic; }
   display: inline-block;
   position: absolute;
   left: 0; bottom: 0;
-  color: #5B8DEF;
+  color: #0F172A;
   font-style: italic;
   white-space: nowrap;
   line-height: 1.2;
 }
 .feat-word-glow {
-  position: absolute; bottom: -4px; left: 0; right: 0;
-  height: 3px; background: #5B8DEF;
-  border-radius: 2px;
-  box-shadow: 0 0 12px rgba(91, 141, 239, 0.5), 0 0 24px rgba(91, 141, 239, 0.2);
-  animation: glow-pulse 2.8s ease-in-out infinite;
+  position: absolute; bottom: -2px; left: 0; right: 0;
+  height: 2px; background: #0F172A;
+  border-radius: 1px;
+  /* Soft, no glow pulse — we're going for refined, not loud. */
+  opacity: 0.5;
 }
 @keyframes glow-pulse {
   0%, 100% { opacity: 0.6; }
@@ -811,16 +815,16 @@ em { color: #5B8DEF; font-style: italic; }
   position: relative;
 }
 .feat-tab.active {
-  color: #5B8DEF;
+  color: #0F172A;
   text-decoration: none;
 }
 .feat-tab.active::after {
   content: '';
   position: absolute;
   bottom: -4px; left: 0; right: 0;
-  height: 2px;
-  background: #5B8DEF;
-  border-radius: 1px;
+  height: 1px;
+  background: #0F172A;
+  border-radius: 0;
   animation: tab-slide-in 0.3s cubic-bezier(0.22, 1, 0.36, 1);
 }
 @keyframes tab-slide-in {
@@ -874,7 +878,8 @@ em { color: #5B8DEF; font-style: italic; }
   will-change: transform, box-shadow;
 }
 
-/* Radial glow that follows the cursor — only visible on the active card. */
+/* Subtle cursor spotlight — much softer than before so it doesn't compete
+   with the content. Only visible on the active card. */
 .carousel-card::before {
   content: '';
   position: absolute;
@@ -883,8 +888,8 @@ em { color: #5B8DEF; font-style: italic; }
   pointer-events: none;
   background: radial-gradient(
     320px circle at var(--gx) var(--gy),
-    rgba(255,255,255,0.55),
-    rgba(255,255,255,0) 65%
+    rgba(15, 23, 42, 0.04),
+    rgba(15, 23, 42, 0) 60%
   );
   opacity: 0;
   transition: opacity 0.4s cubic-bezier(0.22, 1, 0.36, 1);
@@ -902,21 +907,23 @@ em { color: #5B8DEF; font-style: italic; }
 }
 
 .carousel-card:hover {
-  --card-scale: 1.02;
+  --card-scale: 1.015;
+  border-color: rgba(15, 23, 42, 0.12);
   box-shadow:
-    0 1px 3px rgba(19,23,24,0.08),
-    0 18px 38px rgba(19,23,24,0.10);
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    0 12px 28px rgba(15, 23, 42, 0.06);
 }
 
 .carousel-card.expanded,
 .carousel-card.is-playing {
   flex: 0 0 420px;
   min-height: 360px;
-  --card-scale: 1.04;
+  --card-scale: 1.025;
+  background: #ffffff;
+  border-color: rgba(15, 23, 42, 0.16);
   box-shadow:
-    0 1px 3px rgba(19,23,24,0.10),
-    0 24px 56px rgba(19,23,24,0.16),
-    0 0 0 1px rgba(255,255,255,0.5) inset;
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    0 16px 40px rgba(15, 23, 42, 0.08);
 }
 
 /* Inner-content parallax — chart/visual shifts opposite to tilt */
@@ -986,15 +993,16 @@ em { color: #5B8DEF; font-style: italic; }
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
-.viz-stat-label { color: #131718; opacity: 0.6; font-weight: 600; }
+.viz-stat-label { color: rgba(15, 23, 42, 0.5); font-weight: 500; letter-spacing: 0.04em; }
 .viz-stat-delta {
   padding: 2px 6px;
   border-radius: 4px;
-  background: rgba(19,23,24,0.08);
-  color: #131718;
-  font-weight: 700;
+  background: rgba(15, 23, 42, 0.05);
+  color: rgba(15, 23, 42, 0.65);
+  font-weight: 600;
 }
-.viz-stat-delta.up { background: rgba(24,110,58,0.14); color: #186E3A; }
+/* Up-delta uses ink rather than green so the palette stays restrained. */
+.viz-stat-delta.up { background: rgba(15, 23, 42, 0.06); color: #0F172A; }
 
 /* Chart (Analytics) */
 .viz-chart { padding-right: 4px; }
@@ -1048,7 +1056,9 @@ em { color: #5B8DEF; font-style: italic; }
   position: absolute;
   border-radius: 50%;
   transform: translate(-50%, -50%) scale(0.4);
-  background: radial-gradient(circle, rgba(220,82,48,0.9) 0%, rgba(245,166,35,0.5) 45%, rgba(245,166,35,0) 75%);
+  /* Calm ink-based heatmap — no fluorescent red/orange. The pulse still
+     reads as activity but doesn't fight the rest of the page. */
+  background: radial-gradient(circle, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42, 0.18) 45%, rgba(15, 23, 42, 0) 75%);
   filter: blur(2px);
   opacity: 0;
   pointer-events: none;
@@ -1141,9 +1151,9 @@ em { color: #5B8DEF; font-style: italic; }
   align-items: center;
   gap: 2px;
   font-size: 10px;
-  font-weight: 700;
-  color: #186E3A;
-  background: rgba(24,110,58,0.12);
+  font-weight: 600;
+  color: rgba(15, 23, 42, 0.65);
+  background: rgba(15, 23, 42, 0.05);
   padding: 2px 5px;
   border-radius: 4px;
 }
@@ -1156,8 +1166,8 @@ em { color: #5B8DEF; font-style: italic; }
   gap: 10px;
   padding: 8px 10px;
   border-radius: 10px;
-  background: rgba(255,255,255,0.55);
-  border: 1px solid rgba(19,23,24,0.06);
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.06);
   opacity: 0;
   transform: translateY(8px);
 }
@@ -1169,7 +1179,7 @@ em { color: #5B8DEF; font-style: italic; }
 }
 .lead-avatar {
   width: 26px; height: 26px;
-  border-radius: 50%;
+  border-radius: 6px;
   display: flex; align-items: center; justify-content: center;
   color: #fff;
   font-weight: 700;
@@ -1177,53 +1187,73 @@ em { color: #5B8DEF; font-style: italic; }
   flex-shrink: 0;
 }
 .lead-meta { flex: 1; min-width: 0; }
-.lead-name { font-size: 12px; font-weight: 700; color: #131718; line-height: 1.2; }
-.lead-domain { font-size: 10px; color: #131718; opacity: 0.55; }
+.lead-name { font-size: 12px; font-weight: 600; color: #0F172A; line-height: 1.2; }
+.lead-domain { font-size: 10px; color: rgba(15, 23, 42, 0.5); }
 .lead-score {
   font-size: 11px;
-  font-weight: 800;
-  padding: 3px 7px;
+  font-weight: 700;
+  padding: 3px 8px;
   border-radius: 999px;
-  background: rgba(19,23,24,0.08);
-  color: #131718;
+  background: rgba(15, 23, 42, 0.05);
+  color: #0F172A;
+  font-variant-numeric: tabular-nums;
 }
+/* Hot leads: an ink-coloured pill with a faint outline pulse, not a
+   neon-orange shout. */
 .lead-score.hot {
-  background: #DC5230;
+  background: #0F172A;
   color: #fff;
-  box-shadow: 0 0 0 0 rgba(220,82,48,0.7);
+  box-shadow: 0 0 0 0 rgba(15, 23, 42, 0.25);
 }
 .is-playing .lead-score.hot {
   animation: lead-hot-pulse 1.8s ease-in-out 0.8s infinite;
 }
 @keyframes lead-hot-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(220,82,48,0.6); }
-  50%      { box-shadow: 0 0 0 6px rgba(220,82,48,0); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(15, 23, 42, 0.30); }
+  50%      { box-shadow: 0 0 0 5px rgba(15, 23, 42, 0); }
 }
 
 /* Card tints — Travel Lab branding */
-.carousel-card.tint-peach   { background: #FEC29F; }
-.carousel-card.tint-blue    { background: #D1E6F6; }
-.carousel-card.tint-yellow  { background: #FFF6C6; border: 1px solid rgba(0,0,0,0.06); }
-.carousel-card.tint-pink    { background: #FFDAE4; }
+/* Card surface: Bear-style neutral. All four cards share the same calm
+   warm-white background; the only differentiator between cards is the
+   active state (subtle border + shadow) and the visual content inside.
+   No saturated tints. */
+.carousel-card.tint-peach,
+.carousel-card.tint-blue,
+.carousel-card.tint-yellow,
+.carousel-card.tint-pink {
+  background: #FBFAF8;                                /* warm off-white */
+  border: 1px solid rgba(15, 23, 42, 0.06);
+}
 
 /* Card inner elements */
 .card-num {
-  font-family: 'DM Serif Display', Georgia, serif;
-  font-size: 2.2rem; font-weight: 400;
-  color: #131718; line-height: 1;
-  margin-bottom: 16px;
+  /* Bear-style monospace numeric label, not the loud serif. Smaller,
+     muted, uppercase, lots of letter-spacing. */
+  font-family: 'SF Mono', 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  color: rgba(15, 23, 42, 0.4);
+  line-height: 1;
+  margin-bottom: 18px;
 }
 .card-visual { margin-bottom: auto; }
 .card-icon {
-  color: #131718; opacity: 0.7;
+  color: rgba(15, 23, 42, 0.5);
   transition: transform 0.3s ease;
 }
 .carousel-card:hover .card-icon {
-  transform: scale(1.1);
+  transform: scale(1.05);
 }
 .card-title {
-  font-size: 18px; font-weight: 800;
-  color: #131718; letter-spacing: -0.01em;
+  /* Lighter weight, tighter tracking — Bear's serif headline pattern. */
+  font-family: 'DM Serif Display', Georgia, serif;
+  font-size: 22px;
+  font-weight: 400;
+  color: #0F172A;
+  letter-spacing: -0.025em;
+  line-height: 1.15;
   margin-top: auto;
 }
 
@@ -1243,8 +1273,8 @@ em { color: #5B8DEF; font-style: italic; }
   margin-top: 10px;
 }
 .card-arrow { display: flex; justify-content: flex-end; margin-bottom: 8px; }
-.card-desc { font-size: 12px; color: #131718; opacity: 0.75; line-height: 1.5; margin-bottom: 10px; }
-.card-replaces { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #131718; opacity: 0.4; }
+.card-desc { font-size: 13px; color: #475569; line-height: 1.55; margin-bottom: 10px; font-weight: 400; }
+.card-replaces { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; color: rgba(15, 23, 42, 0.45); }
 
 /* Carousel nav */
 .carousel-nav { display: flex; align-items: center; gap: 16px; margin-top: 28px; }
