@@ -1,5 +1,7 @@
 from rest_framework import status
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from apps.competitors.api.v1.serializers import CompetitorChangeSerializer, CompetitorSerializer
 from apps.competitors.models import Competitor
@@ -62,3 +64,30 @@ class CompetitorChangesView(TenantScopedAPIView):
             competitor__website_id=website_id
         ).order_by("-detected_at")[:50]
         return Response(CompetitorChangeSerializer(changes, many=True).data)
+
+
+class CompetitorSuggestView(APIView):
+    """
+    POST — return real LLM-generated competitor suggestions for use during
+    onboarding (before the website exists in the DB).
+
+    Body:
+      { name, industry, url, description }
+    Response:
+      { suggested: [{ name, domain, reason }] }
+
+    Returns an empty list when ANTHROPIC_API_KEY is unset or the model
+    response can't be parsed; the UI must render an empty state in that
+    case rather than fall back to seed data.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        data = request.data or {}
+        suggested = DiscoveryService.suggest(
+            name=str(data.get("name") or "")[:200],
+            industry=str(data.get("industry") or "")[:200],
+            url=str(data.get("url") or "")[:500],
+            description=str(data.get("description") or "")[:2000],
+        )
+        return Response({"suggested": suggested})
