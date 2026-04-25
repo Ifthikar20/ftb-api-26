@@ -543,10 +543,14 @@ class LLMRankingService:
         audit.providers_queried = providers_succeeded
         audit.extraction_method = LLMRankingAudit.EXTRACTION_LLM
         audit.completed_at = timezone.now()
+        # Calculate duration
+        if audit.started_at:
+            audit.duration_seconds = (audit.completed_at - audit.started_at).total_seconds()
         audit.save(update_fields=[
             "status", "overall_score", "mention_rate", "avg_mention_rank",
             "mention_rate_ci_lower", "mention_rate_ci_upper",
-            "providers_queried", "extraction_method", "completed_at", "updated_at",
+            "providers_queried", "extraction_method", "completed_at",
+            "duration_seconds", "updated_at",
         ])
 
         logger.info(

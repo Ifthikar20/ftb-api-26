@@ -55,6 +55,8 @@ class LLMRankingAudit(TimestampMixin):
     started_at = models.DateTimeField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
     error_message = models.TextField(blank=True)
+    # Duration of the audit run in seconds
+    duration_seconds = models.FloatField(null=True, blank=True)
     # Statistics: number of replicates per (prompt, provider) — N=1 is the current default
     runs_per_query = models.IntegerField(default=1)
     # 95% Wilson CI on the overall mention_rate (percent 0-100)
@@ -70,6 +72,20 @@ class LLMRankingAudit(TimestampMixin):
     extraction_method = models.CharField(
         max_length=20, choices=EXTRACTION_CHOICES, default=EXTRACTION_HEURISTIC
     )
+    # Schedule: frequency for recurring audit jobs
+    SCHEDULE_NONE = ""
+    SCHEDULE_DAILY = "daily"
+    SCHEDULE_WEEKLY = "weekly"
+    SCHEDULE_MONTHLY = "monthly"
+    SCHEDULE_CHOICES = [
+        (SCHEDULE_NONE, "One-time"),
+        (SCHEDULE_DAILY, "Daily"),
+        (SCHEDULE_WEEKLY, "Weekly"),
+        (SCHEDULE_MONTHLY, "Monthly"),
+    ]
+    schedule_frequency = models.CharField(
+        max_length=20, choices=SCHEDULE_CHOICES, default=SCHEDULE_NONE, blank=True
+    )
 
     class Meta:
         db_table = "llm_ranking_audit"
@@ -77,6 +93,23 @@ class LLMRankingAudit(TimestampMixin):
 
     def __str__(self):
         return f"LLMRankingAudit({self.website.name}, score={self.overall_score}, {self.status})"
+
+    @property
+    def duration_display(self):
+        """Human-readable duration string."""
+        if self.duration_seconds is None:
+            if self.started_at and not self.completed_at:
+                from django.utils import timezone
+                secs = (timezone.now() - self.started_at).total_seconds()
+            else:
+                return "—"
+        else:
+            secs = self.duration_seconds
+        if secs < 60:
+            return f"{int(secs)}s"
+        mins = int(secs // 60)
+        remaining_secs = int(secs % 60)
+        return f"{mins}m {remaining_secs}s"
 
 
 class LLMRankingResult(TimestampMixin):
