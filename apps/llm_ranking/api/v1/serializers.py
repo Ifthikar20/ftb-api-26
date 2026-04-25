@@ -6,11 +6,13 @@ from apps.llm_ranking.models import LLMRankingAudit, LLMRankingResult, LLMRankin
 class LLMRankingResultSerializer(serializers.ModelSerializer):
     provider_display = serializers.CharField(source="get_provider_display", read_only=True)
     sentiment_display = serializers.CharField(source="get_sentiment_display", read_only=True)
+    prompt_type = serializers.SerializerMethodField()
+    prompt_type_display = serializers.SerializerMethodField()
 
     class Meta:
         model = LLMRankingResult
         fields = [
-            "id", "provider", "provider_display", "prompt",
+            "id", "provider", "provider_display", "prompt", "prompt_type", "prompt_type_display",
             "response_text", "is_mentioned", "mention_rank",
             "sentiment", "sentiment_display", "confidence_score",
             "mention_context", "query_succeeded", "error_message",
@@ -19,6 +21,18 @@ class LLMRankingResultSerializer(serializers.ModelSerializer):
             "extraction_model", "extraction_version",
         ]
         read_only_fields = fields
+
+    def get_prompt_type(self, obj):
+        try:
+            return obj.prompt_type or "custom"
+        except Exception:
+            return "custom"
+
+    def get_prompt_type_display(self, obj):
+        try:
+            return obj.get_prompt_type_display()
+        except Exception:
+            return "Custom"
 
 
 class LLMRankingAuditSerializer(serializers.ModelSerializer):

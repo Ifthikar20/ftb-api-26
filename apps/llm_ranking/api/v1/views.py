@@ -1,6 +1,8 @@
 import logging
 from datetime import timedelta
 
+from django.conf import settings
+from django.db.models import Avg, Count, Q
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
@@ -14,7 +16,7 @@ from apps.llm_ranking.api.v1.serializers import (
     LLMRankingScheduleSerializer,
     RunAuditSerializer,
 )
-from apps.llm_ranking.models import LLMRankingAudit, LLMRankingSchedule
+from apps.llm_ranking.models import LLMRankingAudit, LLMRankingResult, LLMRankingSchedule
 from core.views import TenantScopedAPIView, TenantScopedListAPIView
 
 logger = logging.getLogger("apps")
@@ -66,7 +68,8 @@ class LLMRankingAuditListView(TenantScopedListAPIView):
 
         # Generate or use supplied prompts
         if data["custom_prompts"]:
-            prompts = data["custom_prompts"]
+            # Tag custom prompts with "custom" type
+            prompts = [{"text": p, "type": "custom"} for p in data["custom_prompts"]]
         else:
             prompts = LLMRankingService.generate_prompts(
                 business_name=business_name,
@@ -258,6 +261,338 @@ class LLMRankingRecommendationsView(TenantScopedAPIView):
         from apps.llm_ranking.services.ranking_service import LLMRankingService
         recs = LLMRankingService.generate_recommendations(audit=audit)
         return Response({"recommendations": recs, "overall_score": audit.overall_score})
+
+
+class LLMRankingPromptResultsView(TenantScopedAPIView):
+    """
+    GET — prompt-level aggregation for an audit.
+
+    Query params:
+      ?provider=claude   — filter to show only results from one LLM
+      ?type=recommendation — filter by prompt type
+
+    Groups LLMRankingResult rows by prompt text and returns per-provider
+    metrics for each prompt.
+    """
+
+    def get(self, request, website_id, audit_id):
+        from collections import OrderedDict
+
+        self.get_website(website_id)
+        audit = self.get_tenant_object(
+            LLMRankingAudit.objects.prefetch_related("results"),
+            id=audit_id,
+            website_id=website_id,
+        )
+
+        # Optional filters
+        filter_provider = request.query_params.get("provider", "").strip()
+        filter_type = request.query_params.get("type", "").strip()
+
+        # Build prompt type lookup from the audit's stored prompts
+        prompt_type_map = {}
+        for p in (audit.prompts or []):
+            if isinstance(p, dict):
+                prompt_type_map[p.get("text", "").strip().lower()] = p.get("type", "custom")
+
+        # Group results by prompt text (preserving order)
+        prompt_groups = OrderedDict()
+        results_qs = audit.results.all().order_by("id")
+        if filter_provider:
+            results_qs = results_qs.filter(provider=filter_provider)
+
+        for result in results_qs:
+            key = result.prompt.strip()
+            ptype = getattr(result, 'prompt_type', '') or prompt_type_map.get(key.lower(), "custom")
+
+            # Filter by prompt type if requested
+            if filter_type and ptype != filter_type:
+                continue
+
+            if key not in prompt_groups:
+                prompt_groups[key] = {
+                    "prompt": key,
+                    "prompt_type": ptype,
+                    "providers": {},
+                    "total_providers": 0,
+                    "mentioned_count": 0,
+                    "succeeded_count": 0,
+                }
+            group = prompt_groups[key]
+            group["total_providers"] += 1
+            if result.query_succeeded:
+                group["succeeded_count"] += 1
+            if result.is_mentioned:
+                group["mentioned_count"] += 1
+
+            group["providers"][result.provider] = {
+                "provider": result.provider,
+                "provider_display": result.get_provider_display(),
+                "mentioned": result.is_mentioned,
+                "rank": result.mention_rank,
+                "sentiment": result.sentiment,
+                "sentiment_display": result.get_sentiment_display(),
+                "confidence": result.confidence_score,
+                "context": result.mention_context[:200] if result.mention_context else "",
+                "is_linked": result.is_linked,
+                "primary_recommendation": result.primary_recommendation,
+                "competitors_mentioned": result.competitors_mentioned,
+                "succeeded": result.query_succeeded,
+                "error": result.error_message if not result.query_succeeded else "",
+            }
+
+        # Compute derived fields
+        prompts_list = []
+        for idx, (prompt_text, group) in enumerate(prompt_groups.items(), start=1):
+            succeeded = group["succeeded_count"]
+            mentioned = group["mentioned_count"]
+            visibility = round(mentioned / succeeded * 100, 1) if succeeded else 0.0
+
+            # Determine status
+            expected = 1 if filter_provider else len(audit.providers_queried or [])
+            if group["total_providers"] == 0:
+                prompt_status = "pending"
+            elif all(not p["succeeded"] for p in group["providers"].values()):
+                prompt_status = "failed"
+            elif group["total_providers"] < expected:
+                prompt_status = "partial"
+            else:
+                prompt_status = "completed"
+
+            prompts_list.append({
+                "index": idx,
+                "prompt": prompt_text,
+                "prompt_type": group["prompt_type"],
+                "avg_visibility": visibility,
+                "mentioned_count": mentioned,
+                "total_providers": succeeded,
+                "providers": group["providers"],
+                "status": prompt_status,
+            })
+
+        return Response({
+            "audit_id": str(audit.id),
+            "business_name": audit.business_name,
+            "total_prompts": len(prompts_list),
+            "providers_queried": audit.providers_queried,
+            "filter_provider": filter_provider or None,
+            "filter_type": filter_type or None,
+            "prompts": prompts_list,
+        })
+
+
+class LLMRankingProviderDetailView(TenantScopedAPIView):
+    """
+    GET — detailed per-model report for a single provider in an audit.
+
+    Returns every prompt result for the specified provider, plus aggregate
+    metrics: visibility %, avg rank, sentiment breakdown, top competitors,
+    and response quality stats.
+
+    URL: .../audits/<audit_id>/providers/<provider>/
+    """
+
+    def get(self, request, website_id, audit_id, provider):
+        from apps.llm_ranking.services.ranking_service import wilson_ci
+
+        self.get_website(website_id)
+        audit = self.get_tenant_object(
+            LLMRankingAudit.objects.prefetch_related("results"),
+            id=audit_id,
+            website_id=website_id,
+        )
+
+        results = list(
+            audit.results.filter(provider=provider).order_by("id")
+        )
+        if not results:
+            return Response(
+                {"error": f"No results found for provider '{provider}'."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Build prompt type lookup
+        prompt_type_map = {}
+        for p in (audit.prompts or []):
+            if isinstance(p, dict):
+                prompt_type_map[p.get("text", "").strip().lower()] = p.get("type", "custom")
+
+        # Aggregate metrics
+        succeeded = [r for r in results if r.query_succeeded]
+        mentioned = [r for r in succeeded if r.is_mentioned]
+        mention_rate = round(len(mentioned) / len(succeeded) * 100, 1) if succeeded else 0.0
+
+        ci_low, ci_high = wilson_ci(len(mentioned), len(succeeded))
+
+        ranks = [r.mention_rank for r in mentioned if r.mention_rank is not None]
+        avg_rank = round(sum(ranks) / len(ranks), 1) if ranks else None
+
+        # Sentiment breakdown
+        sentiments = {"positive": 0, "neutral": 0, "negative": 0, "not_mentioned": 0}
+        for r in succeeded:
+            s = r.sentiment
+            if s in sentiments:
+                sentiments[s] += 1
+
+        # Top competitors across all responses for this provider
+        comp_counts = {}
+        for r in succeeded:
+            for c in (r.competitors_mentioned or []):
+                if isinstance(c, dict):
+                    name = (c.get("name") or "").strip()
+                    if name:
+                        comp_counts[name] = comp_counts.get(name, 0) + 1
+        top_competitors = sorted(
+            [{"name": k, "mentions": v} for k, v in comp_counts.items()],
+            key=lambda x: x["mentions"], reverse=True,
+        )[:10]
+
+        # Per-prompt details
+        prompt_details = []
+        for idx, r in enumerate(results, start=1):
+            prompt_details.append({
+                "index": idx,
+                "prompt": r.prompt,
+                "prompt_type": getattr(r, 'prompt_type', '') or prompt_type_map.get(r.prompt.strip().lower(), "custom"),
+                "succeeded": r.query_succeeded,
+                "mentioned": r.is_mentioned,
+                "rank": r.mention_rank,
+                "sentiment": r.sentiment,
+                "sentiment_display": r.get_sentiment_display(),
+                "confidence": r.confidence_score,
+                "context": r.mention_context[:300] if r.mention_context else "",
+                "is_linked": r.is_linked,
+                "primary_recommendation": r.primary_recommendation,
+                "competitors_mentioned": r.competitors_mentioned,
+                "citations": r.citations,
+                "response_length": len(r.response_text) if r.response_text else 0,
+                "error": r.error_message if not r.query_succeeded else "",
+            })
+
+        # Provider display name
+        provider_display = results[0].get_provider_display() if results else provider
+
+        return Response({
+            "audit_id": str(audit.id),
+            "business_name": audit.business_name,
+            "provider": provider,
+            "provider_display": provider_display,
+            "summary": {
+                "total_prompts": len(results),
+                "succeeded": len(succeeded),
+                "failed": len(results) - len(succeeded),
+                "mentioned": len(mentioned),
+                "mention_rate": mention_rate,
+                "mention_rate_ci": [round(ci_low * 100, 1), round(ci_high * 100, 1)],
+                "avg_rank": avg_rank,
+                "sentiments": sentiments,
+                "avg_confidence": round(
+                    sum(r.confidence_score for r in succeeded) / len(succeeded), 1
+                ) if succeeded else 0,
+                "linked_count": sum(1 for r in mentioned if r.is_linked),
+                "avg_response_length": round(
+                    sum(len(r.response_text) for r in succeeded) / len(succeeded)
+                ) if succeeded else 0,
+            },
+            "top_competitors": top_competitors,
+            "prompts": prompt_details,
+        })
+
+
+class LLMRankingUsageView(TenantScopedAPIView):
+    """
+    GET — AI usage metrics for LLM ranking audits.
+
+    Returns token consumption, costs, and call counts for the llm_ranking
+    module, optionally filtered by website. Uses the existing AITokenUsage
+    tracking infrastructure.
+
+    Query params:
+      ?days=30     — look-back period (default 30)
+    """
+
+    def get(self, request, website_id):
+        self.get_website(website_id)
+        days = int(request.query_params.get("days", 30))
+
+        try:
+            from apps.accounts.models import AITokenUsage
+        except ImportError:
+            return Response({"error": "Usage tracking not available."}, status=500)
+
+        cutoff = timezone.now() - timedelta(days=days)
+        qs = AITokenUsage.objects.filter(
+            module="llm_ranking",
+            created_at__gte=cutoff,
+        )
+        # Filter by website if the tracking records have a website FK
+        if hasattr(AITokenUsage, "website"):
+            qs = qs.filter(
+                Q(website_id=website_id) | Q(website__isnull=True)
+            )
+
+        # Overall totals
+        from django.db.models import Sum
+        from django.db.models.functions import TruncDate
+
+        totals = qs.aggregate(
+            total_calls=Count("id"),
+            total_input=Sum("input_tokens"),
+            total_output=Sum("output_tokens"),
+            total_tokens=Sum("total_tokens"),
+            total_cost=Sum("estimated_cost_usd"),
+        )
+
+        # Per-model breakdown
+        by_model = list(
+            qs.values("model_name").annotate(
+                calls=Count("id"),
+                input_tokens=Sum("input_tokens"),
+                output_tokens=Sum("output_tokens"),
+                tokens=Sum("total_tokens"),
+                cost=Sum("estimated_cost_usd"),
+            ).order_by("-tokens")
+        )
+
+        # Daily trend
+        daily = list(
+            qs.annotate(day=TruncDate("created_at"))
+            .values("day")
+            .annotate(
+                calls=Count("id"),
+                tokens=Sum("total_tokens"),
+                cost=Sum("estimated_cost_usd"),
+            )
+            .order_by("day")
+        )
+
+        # Audit-level usage: count audits and prompts
+        audit_stats = LLMRankingAudit.objects.filter(
+            website_id=website_id,
+            created_at__gte=cutoff,
+        ).aggregate(
+            total_audits=Count("id"),
+            completed_audits=Count("id", filter=Q(status="completed")),
+            total_queries=Sum("total_queries"),
+        )
+
+        return Response({
+            "period_days": days,
+            "totals": {
+                "calls": totals["total_calls"] or 0,
+                "input_tokens": totals["total_input"] or 0,
+                "output_tokens": totals["total_output"] or 0,
+                "total_tokens": totals["total_tokens"] or 0,
+                "estimated_cost_usd": round(float(totals["total_cost"] or 0), 4),
+            },
+            "audit_stats": {
+                "total_audits": audit_stats["total_audits"] or 0,
+                "completed_audits": audit_stats["completed_audits"] or 0,
+                "total_queries_run": audit_stats["total_queries"] or 0,
+            },
+            "by_model": by_model,
+            "daily": daily,
+        })
 
 
 class LLMRankingHistoryView(TenantScopedAPIView):

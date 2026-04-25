@@ -52,31 +52,31 @@ class LLMRankingService:
     def generate_prompts(*, business_name: str, industry: str, description: str,
                          keywords: list, use_case: str = "",
                          location: str = "",
-                         themes: list | None = None) -> list[str]:
+                         themes: list | None = None) -> list[dict]:
         """
         Generate discovery prompts from business context.
+
+        Returns a list of dicts: [{"text": str, "type": str}, ...]
+        where type is the intent tag (recommendation, comparison, etc.).
 
         Uses the intent-balanced PromptLibrary for the deterministic base set,
         then asks Claude for additional natural-language variants to cover
         phrasings the library can't anticipate.
-
-        `themes` (optional) restricts the library mix to specific intents —
-        e.g. ["recommendation", "comparison", "persona"]. Empty/None means
-        all intents.
         """
         from apps.llm_ranking.services.prompt_library import PromptLibrary
 
         use_case = use_case or (keywords[0] if keywords else industry)
 
-        # Library returns an intent-balanced set (recommendation, comparison,
-        # use-case, alternatives, category, local, persona, review).
-        base_prompts = PromptLibrary.generate_texts(
+        # Library returns intent-tagged dicts: {"text": ..., "intent": ...}
+        base_items = PromptLibrary.generate(
             industry=industry or "software",
             use_case=use_case,
             location=location,
             max_prompts=10,
             themes=themes,
         )
+        # Normalise to {"text": str, "type": str}
+        result_items = [{"text": p["text"], "type": p["intent"]} for p in base_items]
 
         # Use Claude to generate additional natural variants
         try:
@@ -114,19 +114,21 @@ class LLMRankingService:
             match = _re.search(r"\[.*\]", text, _re.DOTALL)
             if match:
                 ai_prompts = json.loads(match.group())
-                base_prompts += [p for p in ai_prompts if isinstance(p, str)]
+                for p in ai_prompts:
+                    if isinstance(p, str):
+                        result_items.append({"text": p.strip(), "type": "custom"})
         except Exception as e:
             logger.warning("Prompt generation via Claude failed: %s", e)
 
         # Deduplicate while preserving order
         seen = set()
-        result = []
-        for p in base_prompts:
-            key = p.strip().lower()
+        deduped = []
+        for item in result_items:
+            key = item["text"].strip().lower()
             if key not in seen:
                 seen.add(key)
-                result.append(p.strip())
-        return result[:10]  # cap at 10 prompts per audit
+                deduped.append(item)
+        return deduped[:10]  # cap at 10 prompts per audit
 
     # ── Per-provider query methods ─────────────────────────────────────────
 
@@ -453,7 +455,15 @@ class LLMRankingService:
         selected_providers = [p for p in selected_providers if p in provider_map]
 
         # Calculate total queries and set progress tracking
-        total = len(selected_providers) * len(audit.prompts)
+        # Prompts may be structured [{"text": ..., "type": ...}] or flat ["..."]
+        prompt_items = []
+        for p in audit.prompts:
+            if isinstance(p, dict):
+                prompt_items.append({"text": p.get("text", ""), "type": p.get("type", "custom")})
+            else:
+                prompt_items.append({"text": str(p), "type": "custom"})
+
+        total = len(selected_providers) * len(prompt_items)
         audit.status = LLMRankingAudit.STATUS_RUNNING
         audit.total_queries = total
         audit.queries_completed = 0
@@ -471,9 +481,11 @@ class LLMRankingService:
             if not query_fn:
                 continue
 
-            for prompt in audit.prompts:
+            for prompt_item in prompt_items:
+                prompt_text = prompt_item["text"]
+                prompt_type = prompt_item["type"]
                 try:
-                    succeeded, response_text, error = query_fn(prompt)
+                    succeeded, response_text, error = query_fn(prompt_text)
                 except Exception as exc:
                     succeeded, response_text, error = False, "", str(exc)
                     logger.warning("Provider %s threw for audit %s: %s", provider, audit_id, exc)
@@ -505,7 +517,8 @@ class LLMRankingService:
                 result = LLMRankingResult.objects.create(
                     audit=audit,
                     provider=provider,
-                    prompt=prompt,
+                    prompt=prompt_text,
+                    prompt_type=prompt_type,
                     response_text=response_text,
                     is_mentioned=analysis["is_mentioned"],
                     mention_rank=analysis["mention_rank"],

@@ -767,7 +767,214 @@
           </div>
         </div>
       </div>
+
+      <!-- ═══ Prompt Results Table ═════════════════════════════════════════ -->
+      <div v-if="audits.length && isAuditComplete && promptResultsData" class="card" style="margin-top:16px">
+        <div class="card-header" style="flex-wrap:wrap;gap:8px">
+          <h3 class="card-title">Prompt Results</h3>
+          <div class="pr-filters">
+            <select v-model="promptFilterProvider" class="pr-select" @change="loadPromptResults">
+              <option value="">All Models</option>
+              <option v-for="p in (latestAudit?.providers_queried || [])" :key="p" :value="p">{{ providerLabel(p) }}</option>
+            </select>
+            <select v-model="promptFilterType" class="pr-select" @change="loadPromptResults">
+              <option value="">All Types</option>
+              <option value="recommendation">Recommendation</option>
+              <option value="comparison">Comparison</option>
+              <option value="use_case">Use Case</option>
+              <option value="persona">Persona</option>
+              <option value="custom">Custom</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="pr-table-wrap">
+          <table class="pr-table">
+            <thead>
+              <tr>
+                <th style="width:36px">#</th>
+                <th>Prompt</th>
+                <th style="width:90px">Type</th>
+                <th style="width:80px">Visibility</th>
+                <th style="width:160px">Providers</th>
+                <th style="width:72px">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="p in promptResultsData.prompts" :key="p.index" class="pr-row">
+                <td class="pr-num">{{ p.index }}</td>
+                <td class="pr-prompt">{{ p.prompt }}</td>
+                <td>
+                  <span class="badge badge-neutral" style="font-size:10px;text-transform:capitalize">{{ p.prompt_type }}</span>
+                </td>
+                <td>
+                  <div class="pr-vis-wrap">
+                    <div class="pr-vis-bar">
+                      <div class="pr-vis-fill" :class="visTier(p.avg_visibility)" :style="{ width: p.avg_visibility + '%' }"></div>
+                    </div>
+                    <span class="pr-vis-pct" :class="visTier(p.avg_visibility)">{{ p.avg_visibility }}%</span>
+                  </div>
+                </td>
+                <td>
+                  <div class="pr-providers">
+                    <span
+                      v-for="prov in Object.values(p.providers)"
+                      :key="prov.provider"
+                      class="pr-prov-pill"
+                      :class="{ mentioned: prov.mentioned, failed: !prov.succeeded }"
+                      :title="`${prov.provider_display}: ${prov.mentioned ? 'Mentioned (rank #' + (prov.rank || '—') + ', ' + prov.sentiment + ')' : 'Not mentioned'}`"
+                      @click="openProviderDetail(prov.provider)"
+                    >{{ providerInitial(prov.provider) }}</span>
+                  </div>
+                </td>
+                <td>
+                  <span class="badge" :class="promptStatusBadge(p.status)" style="font-size:10px">{{ p.status }}</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ═══ Usage Meter ═════════════════════════════════════════════════ -->
+      <div v-if="audits.length && usageData" class="card" style="margin-top:16px">
+        <div class="card-header">
+          <h3 class="card-title">Usage</h3>
+          <select v-model="usageDays" class="pr-select" @change="loadUsage" style="margin-left:auto">
+            <option :value="7">Last 7 days</option>
+            <option :value="30">Last 30 days</option>
+            <option :value="90">Last 90 days</option>
+          </select>
+        </div>
+
+        <div class="usage-grid">
+          <div class="usage-stat">
+            <div class="usage-val">{{ usageData.totals.calls }}</div>
+            <div class="usage-label">API Calls</div>
+          </div>
+          <div class="usage-stat">
+            <div class="usage-val">{{ formatTokens(usageData.totals.total_tokens) }}</div>
+            <div class="usage-label">Tokens Used</div>
+          </div>
+          <div class="usage-stat">
+            <div class="usage-val">${{ usageData.totals.estimated_cost_usd.toFixed(2) }}</div>
+            <div class="usage-label">Estimated Cost</div>
+          </div>
+          <div class="usage-stat">
+            <div class="usage-val">{{ usageData.audit_stats.total_audits }}</div>
+            <div class="usage-label">Audits Run</div>
+          </div>
+        </div>
+
+        <!-- Per-model breakdown -->
+        <div v-if="usageData.by_model.length" class="usage-models">
+          <div class="usage-model-header">
+            <span>Model</span><span>Calls</span><span>Tokens</span><span>Cost</span>
+          </div>
+          <div v-for="m in usageData.by_model" :key="m.model_name" class="usage-model-row">
+            <span class="usage-model-name">{{ m.model_name }}</span>
+            <span>{{ m.calls }}</span>
+            <span>{{ formatTokens(m.tokens) }}</span>
+            <span>${{ Number(m.cost || 0).toFixed(4) }}</span>
+          </div>
+        </div>
+
+        <div v-else class="text-xs text-muted" style="padding:12px 16px">
+          No API usage recorded yet. Run an audit to see usage data.
+        </div>
+      </div>
     </template>
+
+      <!-- ═══ Provider Detail Modal ═══════════════════════════════════════ -->
+      <BaseModal v-model="showProviderDetail" :title="providerDetailData?.provider_display + ' — Detailed Report'" :wide="true">
+        <div v-if="providerDetailLoading" class="loading-state" style="padding:24px">Loading...</div>
+        <div v-else-if="providerDetailData" class="pd-content">
+          <!-- Summary stats -->
+          <div class="pd-stats">
+            <div class="pd-stat">
+              <div class="pd-stat-val" :class="visTier(providerDetailData.summary.mention_rate)">
+                {{ providerDetailData.summary.mention_rate }}%
+              </div>
+              <div class="pd-stat-label">Visibility</div>
+            </div>
+            <div class="pd-stat">
+              <div class="pd-stat-val">{{ providerDetailData.summary.avg_rank ?? '—' }}</div>
+              <div class="pd-stat-label">Avg Rank</div>
+            </div>
+            <div class="pd-stat">
+              <div class="pd-stat-val">{{ providerDetailData.summary.mentioned }}/{{ providerDetailData.summary.total_prompts }}</div>
+              <div class="pd-stat-label">Mentioned</div>
+            </div>
+            <div class="pd-stat">
+              <div class="pd-stat-val">{{ providerDetailData.summary.avg_confidence }}%</div>
+              <div class="pd-stat-label">Confidence</div>
+            </div>
+          </div>
+
+          <!-- Sentiment breakdown -->
+          <div class="pd-section">
+            <h4 class="pd-section-title">Sentiment</h4>
+            <div class="pd-sentiment-bar">
+              <div class="pd-sent-seg positive" :style="{ width: sentPct(providerDetailData, 'positive') + '%' }"
+                   :title="'Positive: ' + providerDetailData.summary.sentiments.positive">
+                {{ providerDetailData.summary.sentiments.positive }}
+              </div>
+              <div class="pd-sent-seg neutral" :style="{ width: sentPct(providerDetailData, 'neutral') + '%' }"
+                   :title="'Neutral: ' + providerDetailData.summary.sentiments.neutral">
+                {{ providerDetailData.summary.sentiments.neutral }}
+              </div>
+              <div class="pd-sent-seg negative" :style="{ width: sentPct(providerDetailData, 'negative') + '%' }"
+                   :title="'Negative: ' + providerDetailData.summary.sentiments.negative">
+                {{ providerDetailData.summary.sentiments.negative }}
+              </div>
+            </div>
+          </div>
+
+          <!-- Top Competitors -->
+          <div v-if="providerDetailData.top_competitors.length" class="pd-section">
+            <h4 class="pd-section-title">Top Competitors Mentioned</h4>
+            <div class="pd-comp-list">
+              <div v-for="c in providerDetailData.top_competitors.slice(0, 5)" :key="c.name" class="pd-comp">
+                <span class="pd-comp-name">{{ c.name }}</span>
+                <span class="pd-comp-count">{{ c.mentions }}×</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Per-prompt results -->
+          <div class="pd-section">
+            <h4 class="pd-section-title">Per-Prompt Results</h4>
+            <table class="pr-table">
+              <thead>
+                <tr>
+                  <th style="width:28px">#</th>
+                  <th>Prompt</th>
+                  <th style="width:72px">Mentioned</th>
+                  <th style="width:48px">Rank</th>
+                  <th style="width:72px">Sentiment</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="pr in providerDetailData.prompts" :key="pr.index" class="pr-row">
+                  <td class="pr-num">{{ pr.index }}</td>
+                  <td class="pr-prompt" style="font-size:12px">{{ pr.prompt }}</td>
+                  <td>
+                    <span v-if="!pr.succeeded" class="badge badge-danger" style="font-size:10px">Error</span>
+                    <span v-else-if="pr.mentioned" class="badge badge-success" style="font-size:10px">Yes</span>
+                    <span v-else class="badge badge-neutral" style="font-size:10px">No</span>
+                  </td>
+                  <td class="text-center">{{ pr.rank ?? '—' }}</td>
+                  <td>
+                    <span class="badge" :class="sentimentBadge(pr.sentiment)" style="font-size:10px;text-transform:capitalize">
+                      {{ pr.sentiment_display }}
+                    </span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </BaseModal>
 
     <!-- Run Audit Modal -->
     <BaseModal v-model="showRunForm" title="" :wide="true">
@@ -1190,6 +1397,87 @@ const expandedAuditId = ref(null)
 const confirmDeleteId = ref(null)
 const historyData = ref([])
 const runningAuditId = ref(null)
+
+// ── Prompt Results ──
+const promptResultsData = shallowRef(null)
+const promptFilterProvider = ref('')
+const promptFilterType = ref('')
+
+// ── Provider Detail ──
+const showProviderDetail = ref(false)
+const providerDetailData = shallowRef(null)
+const providerDetailLoading = ref(false)
+
+// ── Usage Meter ──
+const usageData = shallowRef(null)
+const usageDays = ref(30)
+
+async function loadPromptResults() {
+  const audit = latestAudit.value
+  if (!audit || audit.status !== 'completed') return
+  try {
+    const params = {}
+    if (promptFilterProvider.value) params.provider = promptFilterProvider.value
+    if (promptFilterType.value) params.type = promptFilterType.value
+    const { data } = await llmRankingApi.promptResults(websiteId, audit.id, params)
+    promptResultsData.value = data?.data || data
+  } catch (e) {
+    console.warn('Failed to load prompt results:', e)
+  }
+}
+
+async function openProviderDetail(provider) {
+  const audit = latestAudit.value
+  if (!audit || audit.status !== 'completed') return
+  showProviderDetail.value = true
+  providerDetailLoading.value = true
+  providerDetailData.value = null
+  try {
+    const { data } = await llmRankingApi.providerDetail(websiteId, audit.id, provider)
+    providerDetailData.value = data?.data || data
+  } catch (e) {
+    console.warn('Failed to load provider detail:', e)
+    toast.error('Failed to load provider report')
+  } finally {
+    providerDetailLoading.value = false
+  }
+}
+
+async function loadUsage() {
+  try {
+    const { data } = await llmRankingApi.usage(websiteId, { days: usageDays.value })
+    usageData.value = data?.data || data
+  } catch (e) {
+    console.warn('Failed to load usage:', e)
+  }
+}
+
+function visTier(pct) {
+  if (pct >= 60) return 'vis-high'
+  if (pct >= 30) return 'vis-mid'
+  return 'vis-low'
+}
+
+function promptStatusBadge(st) {
+  if (st === 'completed') return 'badge-success'
+  if (st === 'failed') return 'badge-danger'
+  if (st === 'partial') return 'badge-warning'
+  return 'badge-neutral'
+}
+
+function sentPct(detail, type) {
+  const s = detail.summary.sentiments
+  const total = (s.positive || 0) + (s.neutral || 0) + (s.negative || 0)
+  if (!total) return 0
+  return Math.round((s[type] || 0) / total * 100)
+}
+
+function formatTokens(n) {
+  if (!n) return '0'
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M'
+  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K'
+  return String(n)
+}
 
 async function executeAuditJob(audit) {
   if (runningAuditId.value) return
@@ -2793,8 +3081,84 @@ function onDocClick(ev) {
   openFilter.value = null
 }
 
+// ── Schedule Functions ─────────────────────────────────────────────────────
+
+function formatRelative(dt) {
+  if (!dt) return '—'
+  const d = new Date(dt)
+  const now = new Date()
+  const diffMs = d - now
+  if (diffMs < 0) return 'any moment now'
+  const diffDays = Math.ceil(diffMs / 86400000)
+  if (diffDays <= 1) return 'tomorrow'
+  if (diffDays <= 7) return `in ${diffDays} days`
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+}
+
+async function fetchSchedule() {
+  try {
+    const { data } = await llmRankingApi.getSchedule(websiteId)
+    schedule.value = data?.data?.schedule || data?.schedule || null
+    if (schedule.value) {
+      scheduleForm.value = {
+        business_name: schedule.value.business_name || '',
+        industry: schedule.value.industry || '',
+        location: schedule.value.location || '',
+        frequency: schedule.value.frequency || 'weekly',
+        providers: schedule.value.providers?.length ? schedule.value.providers : ['claude', 'gpt4', 'gemini', 'perplexity'],
+      }
+    }
+  } catch (e) {
+    console.error('Schedule fetch error', e)
+  }
+}
+
+async function saveSchedule() {
+  if (!scheduleForm.value.business_name) { scheduleError.value = 'Business name is required.'; return }
+  if (!scheduleForm.value.industry) { scheduleError.value = 'Industry is required.'; return }
+  savingSchedule.value = true
+  scheduleError.value = ''
+  try {
+    const { data } = await llmRankingApi.saveSchedule(websiteId, {
+      ...scheduleForm.value,
+      is_enabled: true,
+    })
+    schedule.value = data?.data?.schedule || data?.schedule || null
+    showScheduleModal.value = false
+    toast.success('Schedule saved! Audits will run automatically.')
+  } catch (err) {
+    scheduleError.value = err.displayMessage || 'Failed to save schedule.'
+  } finally {
+    savingSchedule.value = false
+  }
+}
+
+async function disableSchedule() {
+  try {
+    await llmRankingApi.deleteSchedule(websiteId)
+    schedule.value = null
+    toast.success('Schedule disabled.')
+  } catch (err) {
+    toast.error(err.displayMessage || 'Failed to disable schedule.')
+  }
+}
+
+async function deleteSchedule() {
+  try {
+    await llmRankingApi.deleteSchedule(websiteId)
+    schedule.value = null
+    showScheduleModal.value = false
+    toast.success('Schedule removed.')
+  } catch (err) {
+    toast.error(err.displayMessage || 'Failed to remove schedule.')
+  }
+}
+
 onMounted(() => {
-  fetchData()
+  Promise.all([fetchData(), fetchHistory(), fetchSchedule()]).then(() => {
+    loadPromptResults()
+    loadUsage()
+  })
   document.addEventListener('click', onDocClick)
 })
 onBeforeUnmount(() => {
@@ -4044,23 +4408,6 @@ onBeforeUnmount(() => {
   flex-shrink: 0;
 }
 
-function formatRelative(dt) {
-  if (!dt) return '—'
-  const d = new Date(dt)
-  const now = new Date()
-  const diffMs = d - now
-  if (diffMs < 0) return 'any moment now'
-  const diffDays = Math.ceil(diffMs / 86400000)
-  if (diffDays <= 1) return 'tomorrow'
-  if (diffDays <= 7) return `in ${diffDays} days`
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
-}
-
-function scorePillClass(score) {
-  if (score == null) return 'pill-neutral'
-  return score >= 70 ? 'pill-green' : score >= 40 ? 'pill-yellow' : 'pill-red'
-}
-
 .pl-fanout {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -4106,121 +4453,6 @@ function scorePillClass(score) {
   font-size: 12px;
 }
 
-// ── Schedule Functions ─────────────────────────────────────────────────────
-
-async function fetchSchedule() {
-  try {
-    const { data } = await llmRankingApi.getSchedule(websiteId)
-    schedule.value = data?.data?.schedule || data?.schedule || null
-    if (schedule.value) {
-      scheduleForm.value = {
-        business_name: schedule.value.business_name || '',
-        industry: schedule.value.industry || '',
-        location: schedule.value.location || '',
-        frequency: schedule.value.frequency || 'weekly',
-        providers: schedule.value.providers?.length ? schedule.value.providers : ['claude', 'gpt4', 'gemini', 'perplexity'],
-      }
-    }
-  } catch (e) {
-    console.error('Schedule fetch error', e)
-  }
-}
-
-async function saveSchedule() {
-  if (!scheduleForm.value.business_name) { scheduleError.value = 'Business name is required.'; return }
-  if (!scheduleForm.value.industry) { scheduleError.value = 'Industry is required.'; return }
-  savingSchedule.value = true
-  scheduleError.value = ''
-  try {
-    const { data } = await llmRankingApi.saveSchedule(websiteId, {
-      ...scheduleForm.value,
-      is_enabled: true,
-    })
-    schedule.value = data?.data?.schedule || data?.schedule || null
-    showScheduleModal.value = false
-    toast.success('Schedule saved! Audits will run automatically.')
-  } catch (err) {
-    scheduleError.value = err.displayMessage || 'Failed to save schedule.'
-  } finally {
-    savingSchedule.value = false
-  }
-}
-
-async function disableSchedule() {
-  try {
-    await llmRankingApi.deleteSchedule(websiteId)
-    schedule.value = null
-    toast.success('Schedule disabled.')
-  } catch (err) {
-    toast.error(err.displayMessage || 'Failed to disable schedule.')
-  }
-}
-
-async function deleteSchedule() {
-  try {
-    await llmRankingApi.deleteSchedule(websiteId)
-    schedule.value = null
-    showScheduleModal.value = false
-    toast.success('Schedule removed.')
-  } catch (err) {
-    toast.error(err.displayMessage || 'Failed to remove schedule.')
-  }
-}
-
-// ── History ────────────────────────────────────────────────────────────────
-
-async function fetchHistory() {
-  try {
-    const { data } = await llmRankingApi.history(websiteId)
-    historyData.value = data?.data || data || []
-  } catch (e) {
-    console.error('History fetch error', e)
-  }
-}
-
-// Auto-polling for running audits
-function startPolling() {
-  stopPolling()
-  pollTimer = setInterval(async () => {
-    const hasRunning = audits.value.some(a => a.status === 'pending' || a.status === 'running')
-    if (!hasRunning) {
-      stopPolling()
-      return
-    }
-    try {
-      const { data } = await llmRankingApi.listAudits(websiteId)
-      const newAudits = data?.data?.results || data?.results || data || []
-      let anyCompleted = false
-      for (const newA of newAudits) {
-        const oldA = audits.value.find(a => a.id === newA.id)
-        if (oldA && (oldA.status === 'pending' || oldA.status === 'running') && newA.status === 'completed') {
-          toast.success(`Audit for "${newA.business_name}" completed! Score: ${newA.overall_score}/100`)
-          anyCompleted = true
-        }
-      }
-      audits.value = newAudits
-      if (audits.value.length && audits.value[0].status === 'completed' && !latestBreakdown.value.length) {
-        await selectAudit(audits.value[0])
-        await fetchHistory()
-      }
-      // During a running audit, fetch partial results so the live ticker
-      // updates as each LLM finishes — without blocking on /breakdown/ or
-      // /recommendations/ which require a completed audit.
-      const selected = audits.value.find(a => a.id === selectedAuditId.value)
-      if (selected && (selected.status === 'running' || selected.status === 'pending')) {
-        try {
-          const dRes = await llmRankingApi.getAudit(websiteId, selected.id)
-          auditDetail.value = dRes.data?.data || dRes.data || null
-        } catch (_) { /* ignore partial fetch errors */ }
-      }
-      if (anyCompleted) {
-        await fetchHistory()
-      }
-    } catch (e) {
-      console.error('Poll error', e)
-    }
-  }, 5000)
-}
 .audit-log-row:hover { background: var(--bg-surface); }
 .audit-log-row.log-info { border-left-color: var(--text-muted); }
 .audit-log-row.log-hit  { border-left-color: var(--color-success, #10B981); }
@@ -4233,44 +4465,6 @@ function startPolling() {
   font-weight: 500;
 }
 
-async function fetchData() {
-  loading.value = true
-  try {
-    const [listRes] = await Promise.all([
-      llmRankingApi.listAudits(websiteId),
-      fetchHistory(),
-    ])
-    const { data } = listRes
-    audits.value = data?.data?.results || data?.results || data || []
-    if (audits.value.length) {
-      // Auto-select the first completed audit so its findings load
-      const firstCompleted = audits.value.find(a => a.status === 'completed')
-      if (firstCompleted) {
-        selectedAuditId.value = firstCompleted.id
-        await selectAudit(firstCompleted)
-      } else {
-        selectedAuditId.value = audits.value[0].id
-      }
-      // Start polling if any audits are running
-      if (audits.value.some(a => a.status === 'pending' || a.status === 'running')) {
-        startPolling()
-      }
-    }
-  } catch (e) {
-    console.error('LLM ranking fetch error', e)
-    audits.value = []
-  } finally {
-    loading.value = false
-  }
-}
-
-onMounted(async () => {
-  await Promise.all([fetchData(), fetchHistory(), fetchSchedule()])
-})
-onBeforeUnmount(stopPolling)
-</script>
-
-<style scoped>
 .loading-state { text-align: center; padding: 80px 20px; font-size: var(--font-md); color: var(--text-muted); }
 
 /* Header actions */
@@ -5037,4 +5231,98 @@ onBeforeUnmount(stopPolling)
 /* Modal extras */
 .provider-checks { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 4px; }
 .check-label { display: flex; align-items: center; gap: 6px; font-size: var(--font-sm); color: var(--text-secondary); cursor: pointer; }
+
+/* ═══ Prompt Results Table ═══ */
+.pr-filters { display: flex; gap: 8px; margin-left: auto; }
+.pr-select {
+  font-size: 12px; padding: 4px 8px; border-radius: 6px;
+  border: 1px solid var(--border-color); background: #fff;
+  color: var(--text-primary); cursor: pointer;
+}
+.pr-table-wrap { overflow-x: auto; }
+.pr-table { width: 100%; border-collapse: collapse; }
+.pr-table th {
+  text-align: left; font-size: 10px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.05em;
+  color: var(--text-muted); padding: 8px 12px;
+  border-bottom: 1px solid var(--border-color);
+}
+.pr-row { border-bottom: 1px solid rgba(0,0,0,0.04); transition: background 0.15s; }
+.pr-row:hover { background: rgba(0,0,0,0.015); }
+.pr-row td { padding: 10px 12px; font-size: 13px; vertical-align: middle; }
+.pr-num { font-weight: 600; color: var(--text-muted); font-size: 11px; }
+.pr-prompt { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pr-vis-wrap { display: flex; align-items: center; gap: 6px; }
+.pr-vis-bar { width: 48px; height: 5px; background: rgba(0,0,0,0.06); border-radius: 3px; overflow: hidden; }
+.pr-vis-fill { height: 100%; border-radius: 3px; transition: width 0.4s ease; }
+.pr-vis-fill.vis-high { background: linear-gradient(90deg, #10B981, #34D399); }
+.pr-vis-fill.vis-mid  { background: linear-gradient(90deg, #F59E0B, #FBBF24); }
+.pr-vis-fill.vis-low  { background: linear-gradient(90deg, #EF4444, #F87171); }
+.pr-vis-pct { font-size: 11px; font-weight: 700; }
+.pr-vis-pct.vis-high { color: #059669; }
+.pr-vis-pct.vis-mid  { color: #D97706; }
+.pr-vis-pct.vis-low  { color: #DC2626; }
+.pr-providers { display: flex; gap: 3px; flex-wrap: wrap; }
+.pr-prov-pill {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: 4px; font-size: 10px;
+  font-weight: 700; cursor: pointer; transition: all 0.15s;
+  background: rgba(0,0,0,0.06); color: var(--text-muted);
+}
+.pr-prov-pill.mentioned { background: #D1FAE5; color: #059669; }
+.pr-prov-pill.failed { background: #FEE2E2; color: #DC2626; }
+.pr-prov-pill:hover { transform: scale(1.15); box-shadow: 0 2px 8px rgba(0,0,0,0.12); }
+
+/* ═══ Usage Meter ═══ */
+.usage-grid {
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  gap: 16px; padding: 16px;
+}
+.usage-stat { text-align: center; }
+.usage-val { font-size: 22px; font-weight: 700; color: var(--text-primary); }
+.usage-label { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+.usage-models { padding: 0 16px 16px; }
+.usage-model-header {
+  display: grid; grid-template-columns: 2fr 1fr 1fr 1fr;
+  font-size: 10px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.05em; color: var(--text-muted);
+  padding: 6px 0; border-bottom: 1px solid var(--border-color);
+}
+.usage-model-row {
+  display: grid; grid-template-columns: 2fr 1fr 1fr 1fr;
+  font-size: 12px; padding: 8px 0;
+  border-bottom: 1px solid rgba(0,0,0,0.03);
+}
+.usage-model-name { font-weight: 600; color: var(--text-primary); font-family: 'SF Mono', monospace; font-size: 11px; }
+
+/* ═══ Provider Detail Modal ═══ */
+.pd-content { padding: 0 4px; }
+.pd-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+.pd-stat { text-align: center; padding: 12px; border-radius: 8px; background: rgba(0,0,0,0.02); }
+.pd-stat-val { font-size: 24px; font-weight: 700; }
+.pd-stat-val.vis-high { color: #059669; }
+.pd-stat-val.vis-mid { color: #D97706; }
+.pd-stat-val.vis-low { color: #DC2626; }
+.pd-stat-label { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+.pd-section { margin-bottom: 20px; }
+.pd-section-title { font-size: 13px; font-weight: 600; color: var(--text-primary); margin-bottom: 8px; }
+.pd-sentiment-bar {
+  display: flex; height: 24px; border-radius: 6px; overflow: hidden;
+  background: rgba(0,0,0,0.04); font-size: 11px; font-weight: 600;
+}
+.pd-sent-seg {
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; min-width: 24px; transition: width 0.3s ease;
+}
+.pd-sent-seg.positive { background: #10B981; }
+.pd-sent-seg.neutral  { background: #F59E0B; }
+.pd-sent-seg.negative { background: #EF4444; }
+.pd-comp-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.pd-comp {
+  display: flex; align-items: center; gap: 4px; padding: 4px 10px;
+  border-radius: 6px; background: rgba(0,0,0,0.04); font-size: 12px;
+}
+.pd-comp-name { font-weight: 600; }
+.pd-comp-count { color: var(--text-muted); font-size: 11px; }
+.text-center { text-align: center; }
 </style>

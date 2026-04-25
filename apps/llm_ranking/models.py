@@ -186,6 +186,21 @@ class LLMRankingResult(TimestampMixin):
     # Which model + prompt version was used to extract structured data
     extraction_model = models.CharField(max_length=100, blank=True)
     extraction_version = models.CharField(max_length=20, blank=True)
+    # The intent type of the prompt (recommendation, comparison, persona, etc.)
+    PROMPT_TYPE_CHOICES = [
+        ("recommendation", "Recommendation"),
+        ("comparison", "Comparison"),
+        ("use_case", "Use Case"),
+        ("alternatives", "Alternatives"),
+        ("category", "Category"),
+        ("persona", "Persona"),
+        ("review", "Review"),
+        ("local", "Local"),
+        ("custom", "Custom"),
+    ]
+    prompt_type = models.CharField(
+        max_length=30, choices=PROMPT_TYPE_CHOICES, default="custom", blank=True
+    )
 
     class Meta:
         db_table = "llm_ranking_result"

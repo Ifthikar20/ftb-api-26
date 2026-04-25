@@ -204,6 +204,32 @@
                   </div>
                 </div>
 
+                <!-- LLM Ranking: provider visibility bars -->
+                <div v-else-if="f.visual === 'llm'" class="viz viz-llm">
+                  <div class="viz-stat">
+                    <div class="viz-stat-value">{{ metricFor(f, i) }}</div>
+                    <div class="viz-stat-meta">
+                      <span class="viz-stat-label">{{ f.metric.label }}</span>
+                      <span class="viz-stat-delta up">{{ f.metric.delta }}</span>
+                    </div>
+                  </div>
+                  <div class="llm-list">
+                    <div
+                      v-for="(p, pi) in f.providers"
+                      :key="p.name"
+                      class="llm-row"
+                      :style="{ animationDelay: (0.15 + pi * 0.12) + 's' }"
+                    >
+                      <span class="llm-icon">{{ p.icon }}</span>
+                      <span class="llm-name">{{ p.name }}</span>
+                      <span class="llm-bar">
+                        <span class="llm-bar-fill" :class="p.tier" :style="{ width: p.score + '%', animationDelay: (0.25 + pi * 0.12) + 's' }"></span>
+                      </span>
+                      <span class="llm-score">{{ p.score }}%</span>
+                    </div>
+                  </div>
+                </div>
+
                 <!-- Fallback: icon -->
                 <div v-else class="card-icon" v-html="f.icon"></div>
               </div>
@@ -546,6 +572,22 @@ const features = [
       { name: 'Northwind Ltd',  domain: 'northwind.co',  score: 67, hot: false },
     ],
     icon: '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="12" cy="7" r="4"/><path d="M5.5 21c0-3.5 3-6 6.5-6s6.5 2.5 6.5 6"/></svg>'
+  },
+  {
+    title: 'LLM Ranking',
+    desc: 'Audit your AI visibility across ChatGPT, Claude, Gemini & more — see if LLMs recommend your brand.',
+    replaces: 'Nothing like it exists',
+    tint: 'tint-violet',
+    visual: 'llm',
+    scene: 'aurora',
+    metric: { value: '72', label: 'AI Visibility Score', delta: '+12 pts' },
+    providers: [
+      { name: 'ChatGPT',    icon: '🟢', score: 85, tier: 'tier-high' },
+      { name: 'Claude',     icon: '🟣', score: 72, tier: 'tier-high' },
+      { name: 'Gemini',     icon: '🔵', score: 58, tier: 'tier-mid' },
+      { name: 'Perplexity', icon: '🟠', score: 41, tier: 'tier-low' },
+    ],
+    icon: '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>'
   },
 ]
 
@@ -1265,10 +1307,65 @@ em { color: #F97316; font-style: italic; }
   50%      { box-shadow: 0 0 0 5px rgba(249, 115, 22, 0); }
 }
 
+/* ── LLM Ranking visual ── */
+.viz-llm { display: flex; flex-direction: column; gap: 8px; }
+.llm-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.llm-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  opacity: 0;
+  transform: translateX(-12px);
+  animation: kw-slide-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+.llm-icon {
+  font-size: 12px;
+  width: 18px;
+  text-align: center;
+  flex-shrink: 0;
+}
+.llm-name {
+  font-size: 11px;
+  font-weight: 600;
+  color: #0F172A;
+  width: 72px;
+  flex-shrink: 0;
+}
+.llm-bar {
+  flex: 1;
+  height: 6px;
+  background: rgba(0, 0, 0, 0.06);
+  border-radius: 3px;
+  overflow: hidden;
+  min-width: 0;
+}
+.llm-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  width: 0;
+  animation: kw-bar-grow 0.7s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+.llm-bar-fill.tier-high { background: linear-gradient(90deg, #10B981, #34D399); }
+.llm-bar-fill.tier-mid  { background: linear-gradient(90deg, #F59E0B, #FBBF24); }
+.llm-bar-fill.tier-low  { background: linear-gradient(90deg, #EF4444, #F87171); }
+.llm-score {
+  font-size: 11px;
+  font-weight: 700;
+  color: #475569;
+  width: 32px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
 .carousel-card.tint-peach,
 .carousel-card.tint-blue,
 .carousel-card.tint-yellow,
-.carousel-card.tint-pink {
+.carousel-card.tint-pink,
+.carousel-card.tint-violet {
   background: #FFFFFF;
   border: 1px solid rgba(255, 255, 255, 0.7);
   box-shadow:
