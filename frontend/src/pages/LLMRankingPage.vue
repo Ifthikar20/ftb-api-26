@@ -1227,6 +1227,17 @@ function brandColor(name) {
 const kpiBrandVisibility = computed(() => {
   const a = latestAudit.value
   if (!a) return { value: 0, basis: 0 }
+  // When a platform filter is set, recompute against just that provider's
+  // responses; otherwise fall back to the audit-level mention_rate.
+  if (filters.value.platform && filters.value.platform !== 'all') {
+    const results = platformFilteredResults.value.filter(r => r.query_succeeded)
+    if (!results.length) return { value: 0, basis: 0 }
+    const mentioned = results.filter(r => r.is_mentioned).length
+    return {
+      value: Math.round(mentioned / results.length * 100),
+      basis: results.length,
+    }
+  }
   return {
     value: Math.round(a.mention_rate || 0),
     basis: a.queries_completed || a.total_queries || 0,
@@ -1234,7 +1245,23 @@ const kpiBrandVisibility = computed(() => {
 })
 
 const kpiCitationShare = computed(() => {
-  // Prefer the history record for the latest audit (precomputed server-side).
+  // When a platform filter is active, derive from the filtered results so
+  // the KPI matches the filter. Otherwise prefer the precomputed history.
+  if (filters.value.platform && filters.value.platform !== 'all') {
+    const results = platformFilteredResults.value
+    let self = 0
+    let total = 0
+    for (const r of results) {
+      if (!r.query_succeeded) continue
+      if (r.is_mentioned) { self++; total++ }
+      total += (r.competitors_mentioned || []).length
+    }
+    return {
+      value: total ? Math.round(self / total * 1000) / 10 : 0,
+      self, total,
+    }
+  }
+
   const aid = latestAudit.value?.id
   const fromHistory = (history.value || []).find(h => h.id === aid)
   if (fromHistory && fromHistory.citation_total > 0) {
@@ -1254,7 +1281,7 @@ const kpiCitationShare = computed(() => {
     total += (r.competitors_mentioned || []).length
   }
   return {
-    value: total ? Math.round(self / total * 100 * 10) / 10 : 0,
+    value: total ? Math.round(self / total * 1000) / 10 : 0,
     self,
     total,
   }
@@ -1303,8 +1330,31 @@ const kpiClosestCompetitor = computed(() => {
 
 // ── Competitor Visibility chart (multi-line) ───────────────────────────────
 
+// History scoped to the active filter range. Time-range is applied as a
+// last-N-audits cutoff since we don't have hourly audits yet (Phase 2).
+const filteredHistory = computed(() => {
+  const all = history.value || []
+  const range = filters.value.timeRange
+  if (range === 'all') return all
+  // Treat each historical audit as roughly one daily run for the purpose of
+  // the time-range filter. Take the trailing N audits.
+  const days = ({ '24h': 1, '7d': 7, '30d': 30, '90d': 90 })[range] || 7
+  return all.slice(-days)
+})
+
+// "Brand mentions" considered for the active platform filter. When the
+// filter is 'all', all results count. When a specific provider is chosen,
+// only results from that provider are aggregated. Used by Citation Share
+// and Top Sources to make the platform filter actually do work.
+const platformFilteredResults = computed(() => {
+  const results = auditDetail.value?.results || []
+  const p = filters.value.platform
+  if (!p || p === 'all') return results
+  return results.filter(r => r.provider === p)
+})
+
 const competitorVisibilityData = computed(() => {
-  const audits = history.value || []
+  const audits = filteredHistory.value
   const labels = audits.map(h => shortDate(h.completed_at))
   if (!audits.length) return { labels: [], datasets: [] }
 
@@ -1390,7 +1440,7 @@ const competitorVisibilityOptions = markRaw({
 // ── Citation Share trend ───────────────────────────────────────────────────
 
 const citationShareData = computed(() => {
-  const audits = history.value || []
+  const audits = filteredHistory.value
   return {
     labels: audits.map(h => shortDate(h.completed_at)),
     datasets: [{
@@ -1450,10 +1500,17 @@ function hostFromUrl(url) {
 }
 
 const topSources = computed(() => {
-  const results = auditDetail.value?.results || []
+  // Honour both the platform filter (which provider's responses to look at)
+  // and the topic filter (limit to results whose prompt has the given intent).
+  const results = platformFilteredResults.value
+  const topic = filters.value.topic
   const counts = new Map()
   for (const r of results) {
     if (!r.query_succeeded) continue
+    if (topic && topic !== 'all') {
+      const intent = promptIntentByText.value[r.prompt] || 'custom'
+      if (intent !== topic) continue
+    }
     for (const url of (r.citations || [])) {
       const host = hostFromUrl(url)
       if (!host) continue
