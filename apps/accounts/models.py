@@ -174,7 +174,6 @@ class AITokenUsage(TimestampMixin):
 
     MODULE_CHOICES = [
         ("lead_finder", "AI Lead Finder"),
-        ("agents", "AI Agents"),
         ("messaging", "AI Messaging"),
         ("llm_ranking", "LLM Ranking"),
         ("seo_keywords", "SEO Keywords"),

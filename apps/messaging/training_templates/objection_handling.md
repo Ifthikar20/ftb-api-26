@@ -8,7 +8,7 @@
   → "Understood. Would it help to start with the Starter plan at $49/mo? It covers the core features and you can upgrade anytime. We also have annual plans that save 20%."
 
 - **"Your competitor is cheaper."**
-  → "Good point — they usually are for one specific feature. But when you add up what you'd need from them to match what we offer (analytics + lead scoring + AI agents + heatmaps), it ends up costing more. Want me to break down the comparison?"
+  → "Good point — they usually are for one specific feature. But when you add up what you'd need from them to match what we offer (analytics + lead scoring + LLM ranking + heatmaps), it ends up costing more. Want me to break down the comparison?"
 
 ## Interest but Hesitation
 - **"I need to think about it."**

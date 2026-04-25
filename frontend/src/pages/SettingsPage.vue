@@ -199,7 +199,6 @@ const usagePeriod = ref('30')
 
 const moduleLabels = {
   lead_finder: 'AI Lead Finder',
-  agents: 'AI Agents',
   messaging: 'AI Messaging',
   llm_ranking: 'LLM Ranking',
   seo_keywords: 'SEO Keywords',
@@ -399,7 +398,6 @@ async function saveNotifPrefs() {
 }
 
 .module-dot.lead_finder { background: #22c55e; }
-.module-dot.agents { background: #14b8a6; }
 .module-dot.messaging { background: #8b5cf6; }
 .module-dot.llm_ranking { background: #ec4899; }
 .module-dot.seo_keywords { background: #eab308; }

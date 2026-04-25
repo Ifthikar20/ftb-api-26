@@ -30,7 +30,6 @@ class Migration(migrations.Migration):
                     models.CharField(
                         choices=[
                             ("lead_finder", "AI Lead Finder"),
-                            ("agents", "AI Agents"),
                             ("messaging", "AI Messaging"),
                             ("llm_ranking", "LLM Ranking"),
                             ("seo_keywords", "SEO Keywords"),

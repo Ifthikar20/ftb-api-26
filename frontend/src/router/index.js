@@ -87,7 +87,6 @@ const routes = [
 
     protect('/heatmap/:websiteId', 'heatmap', () => import('@/pages/HeatmapPage.vue'), true),
     protect('/keywords/:websiteId', 'keywords', () => import('@/pages/KeywordsPage.vue'), true),
-    protect('/agents/:websiteId', 'agents', () => import('@/pages/AgentsPage.vue'), true),
     protect('/campaigns/:websiteId', 'campaigns', () => import('@/pages/CampaignsPage.vue'), true),
     protect('/messaging/:websiteId', 'messaging', () => import('@/pages/MessagingPage.vue'), true),
     protect('/llm-ranking/:websiteId', 'llm-ranking', () => import('@/pages/LLMRankingPage.vue'), true),
@@ -179,7 +178,7 @@ router.beforeEach(async (to, from, next) => {
     }
 
     // Guard: project-specific pages require an active project
-    const projectPages = ['analytics', 'leads', 'heatmap', 'keywords', 'agents', 'campaigns', 'messaging', 'llm-ranking', 'website-detail']
+    const projectPages = ['analytics', 'leads', 'heatmap', 'keywords', 'campaigns', 'messaging', 'llm-ranking', 'website-detail']
     if (projectPages.includes(to.name) && auth.isAuthenticated) {
         const app = useAppStore()
         if (!app.activeWebsite) {

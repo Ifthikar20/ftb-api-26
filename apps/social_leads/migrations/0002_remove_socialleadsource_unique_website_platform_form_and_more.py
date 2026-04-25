@@ -50,13 +50,6 @@ class Migration(migrations.Migration):
             ),
         ),
         migrations.AlterField(
-            model_name="sociallead",
-            name="voice_call_queued",
-            field=models.BooleanField(
-                default=False, help_text="Whether an outbound voice call has been queued."
-            ),
-        ),
-        migrations.AlterField(
             model_name="socialleadsource",
             name="access_token",
             field=models.TextField(blank=True, help_text="OAuth access token"),

@@ -56,7 +56,6 @@ LOCAL_APPS = [
 
     "apps.notifications",
     "apps.billing",
-    "apps.agents",
     "apps.llm_ranking",
     "apps.compliance",
     "apps.social_leads",

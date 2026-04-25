@@ -62,4 +62,4 @@ Event Source (any app)
 ## Dependencies
 
 - **Depends on:** `accounts`, `core` (encryption)
-- **Depended on by:** `analytics` (keyword alerts), `billing` (trial ending), `agents` (agent completion)
+- **Depended on by:** `analytics` (keyword alerts), `billing` (trial ending)
