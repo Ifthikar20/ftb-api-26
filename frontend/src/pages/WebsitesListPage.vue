@@ -195,47 +195,24 @@
             </div>
           </div>
 
-          <!-- GSC connected state -->
-          <div v-if="topicSource === 'gsc' && gscConnected" class="gsc-connected-panel">
-            <div class="gsc-connected-header">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-success, #34D399)" stroke-width="2.5">
-                <polyline points="20 6 9 17 4 12"/>
-              </svg>
-              <span>Connected to Google as <strong>{{ gscAccountEmail }}</strong></span>
-              <button class="gsc-disconnect" @click="disconnectGsc">Disconnect</button>
-            </div>
-            <label class="form-label" style="margin-top: 12px">Select the property to track</label>
-            <div class="gsc-property-list">
-              <label v-for="p in gscProperties" :key="p" class="gsc-property-row" :class="{ selected: gscSelectedProperty === p }">
-                <input type="radio" :value="p" v-model="gscSelectedProperty" />
-                <span class="gsc-property-label">{{ p }}</span>
-              </label>
-            </div>
+          <!-- GSC informational note (no fake OAuth) -->
+          <div v-if="topicSource === 'gsc'" class="gsc-info-panel">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;color:var(--text-muted)">
+              <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
+            </svg>
+            <span>
+              Google Search Console is connected from <strong>Settings &rarr; Integrations</strong> after you finish setting up the project. We'll save your topic-source choice and prompt you to authorise GSC there.
+            </span>
           </div>
 
           <button
-            v-if="topicSource === 'gsc' && !gscConnected"
             class="btn btn-primary btn-wizard-continue"
-            @click="connectGsc"
-            :disabled="connectingGsc"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px">
-              <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/>
-              <path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/>
-            </svg>
-            {{ connectingGsc ? 'Connecting...' : 'Connect Google Search Console' }}
-          </button>
-
-          <button
-            v-else
-            class="btn btn-primary btn-wizard-continue"
-            :disabled="topicSource === 'gsc' && !gscSelectedProperty"
             @click="wizardStep = 4"
           >
             Continue
           </button>
 
-          <p class="wizard-helper">You can switch methods or add GSC data anytime from settings.</p>
+          <p class="wizard-helper">You can switch methods anytime from settings.</p>
 
           <div class="wizard-dots">
             <span class="dot" :class="{ active: wizardStep >= 1 }"></span>
@@ -347,6 +324,7 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useAppStore } from '@/stores/app'
 import websitesApi from '@/api/websites'
+import competitorsApi from '@/api/competitors'
 
 import { useRouter } from 'vue-router'
 
@@ -374,12 +352,10 @@ const newCompetitorInput = ref('')
 const detectingCompetitors = ref(false)
 
 // Step 3: Topic Source
-const topicSource = ref('gsc')
-const gscConnected = ref(false)
-const connectingGsc = ref(false)
-const gscAccountEmail = ref('')
-const gscProperties = ref([])
-const gscSelectedProperty = ref('')
+const topicSource = ref('ai')
+// GSC OAuth flow lives in Settings -> Integrations once a real handler
+// exists in the integrations app; the wizard only captures the user's
+// preferred topic-discovery method.
 
 const COMPETITOR_COLORS = ['#111', '#1A1A1A', '#0F766E', '#0EA5E9', '#F59E0B', '#7C3AED', '#DC2626']
 
@@ -405,16 +381,26 @@ async function goToCompetitors() {
   if (competitors.value.length) return
   detectingCompetitors.value = true
   try {
-    // Stubbed detection — replace with API call to competitor discovery service.
-    await new Promise(r => setTimeout(r, 700))
-    const seed = [
-      'lyst.com', 'stylight.com', 'lovethesales.com',
-      'shopdropapp.com', 'slickdeals.net', 'fashionphile.com', 'farfetch.com',
-    ]
-    competitors.value = seed.map((domain, i) => ({
-      domain,
+    // Real LLM-based suggestion — POSTs to /api/v1/competitors/suggest/.
+    // Returns an empty list if Claude can't produce parseable JSON or if
+    // ANTHROPIC_API_KEY isn't configured. The UI must render an empty
+    // state in that case rather than fall back to seed data.
+    const { data } = await competitorsApi.suggest({
+      name: newSite.name,
+      industry: newSite.industry,
+      url: newSite.url,
+      description: '',
+    })
+    const suggested = data?.data?.suggested || data?.suggested || []
+    competitors.value = suggested.map((entry, i) => ({
+      domain: entry.domain,
+      name: entry.name || entry.domain,
+      reason: entry.reason || '',
       color: COMPETITOR_COLORS[i % COMPETITOR_COLORS.length],
     }))
+  } catch (err) {
+    console.error('Competitor suggest failed', err)
+    competitors.value = []
   } finally {
     detectingCompetitors.value = false
   }
@@ -439,31 +425,6 @@ function removeCompetitor(i) {
   competitors.value.splice(i, 1)
 }
 
-async function connectGsc() {
-  connectingGsc.value = true
-  try {
-    // Stubbed OAuth — replace with real OAuth redirect to /integrations/gsc/auth/start.
-    await new Promise(r => setTimeout(r, 800))
-    gscAccountEmail.value = 'you@gmail.com'
-    const primary = `sc-domain:${displayDomain.value || 'outfi.ai'}`
-    gscProperties.value = [
-      primary,
-      'https://www.' + (displayDomain.value || 'outfi.ai') + '/',
-      'sc-domain:outfi.ai',
-    ].filter((v, i, a) => a.indexOf(v) === i)
-    gscSelectedProperty.value = primary
-    gscConnected.value = true
-  } finally {
-    connectingGsc.value = false
-  }
-}
-
-function disconnectGsc() {
-  gscConnected.value = false
-  gscAccountEmail.value = ''
-  gscProperties.value = []
-  gscSelectedProperty.value = ''
-}
 
 const platforms = [
   { id: 'shopify', name: 'Shopify', desc: 'E-commerce on Shopify', color: '#96bf48', icon: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg>' },
@@ -564,11 +525,7 @@ function openWizard() {
   competitors.value = []
   newCompetitorInput.value = ''
   detectingCompetitors.value = false
-  topicSource.value = 'gsc'
-  gscConnected.value = false
-  gscAccountEmail.value = ''
-  gscProperties.value = []
-  gscSelectedProperty.value = ''
+  topicSource.value = 'ai'
   showAddModal.value = true
 }
 </script>
@@ -896,57 +853,18 @@ function openWizard() {
   font-weight: 600;
 }
 
-/* GSC connected panel */
-.gsc-connected-panel {
-  border: 1px solid var(--border-color);
-  border-radius: 12px;
-  padding: 16px;
-  background: var(--bg-surface);
+/* GSC informational note (real OAuth flow lives in Settings -> Integrations) */
+.gsc-info-panel {
   display: flex;
-  flex-direction: column;
-}
-.gsc-connected-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  color: var(--text-primary);
-}
-.gsc-disconnect {
-  margin-left: auto;
-  background: transparent;
-  border: none;
-  color: var(--text-muted);
-  font-size: 12px;
-  cursor: pointer;
-  text-decoration: underline;
-}
-.gsc-property-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-top: 6px;
-}
-.gsc-property-row {
-  display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
-  padding: 10px 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
   border: 1px solid var(--border-color);
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.15s;
-  background: var(--bg-base, #fff);
-}
-.gsc-property-row:hover { border-color: var(--text-muted); }
-.gsc-property-row.selected {
-  border-color: var(--brand-accent, #4F46E5);
-  background: rgba(79, 70, 229, 0.04);
-}
-.gsc-property-label {
-  font-family: 'SF Mono', 'Fira Code', monospace;
+  background: var(--bg-surface);
   font-size: 13px;
-  color: var(--text-primary);
+  color: var(--text-secondary);
+  line-height: 1.5;
 }
 
 .platform-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }

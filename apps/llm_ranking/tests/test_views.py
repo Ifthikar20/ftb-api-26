@@ -288,3 +288,134 @@ class TestLLMRankingHistoryView:
         assert providers["gpt4"]["mentioned"] == 1
         assert providers["gpt4"]["mention_rate"] == 50.0
         assert providers["gpt4"]["avg_rank"] == 2.0
+
+    def test_history_aggregates_competitors_per_audit(self, auth_client):
+        """The history endpoint should aggregate competitors_mentioned across
+        results and return per-audit competitor visibility."""
+        from apps.llm_ranking.models import LLMRankingResult
+
+        client, user, website = auth_client
+        audit = LLMRankingAuditFactory(
+            website=website, created_by=user,
+            status=LLMRankingAudit.STATUS_COMPLETED, overall_score=70,
+        )
+        # 4 successful queries; competitor "Mixpanel" appears in 3, "Heap" in 1.
+        for _ in range(3):
+            LLMRankingResultFactory(
+                audit=audit,
+                provider=LLMRankingResult.PROVIDER_CLAUDE,
+                query_succeeded=True, is_mentioned=True, mention_rank=1,
+                competitors_mentioned=[
+                    {"name": "Mixpanel", "position": 2, "linked": False},
+                ],
+            )
+        LLMRankingResultFactory(
+            audit=audit,
+            provider=LLMRankingResult.PROVIDER_CLAUDE,
+            query_succeeded=True, is_mentioned=False, mention_rank=None,
+            competitors_mentioned=[
+                {"name": "Heap", "position": 1, "linked": False},
+                {"name": "Mixpanel", "position": 3, "linked": True},
+            ],
+        )
+
+        response = client.get(f"/api/v1/llm-ranking/{website.id}/history/")
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert len(data) == 1
+
+        competitors = {c["name"]: c for c in data[0]["competitors"]}
+        # Mixpanel appeared in all 4 prompts: visibility = 100%
+        assert competitors["Mixpanel"]["mention_count"] == 4
+        assert competitors["Mixpanel"]["visibility"] == 100.0
+        # Heap appeared in 1 of 4 prompts: visibility = 25%
+        assert competitors["Heap"]["mention_count"] == 1
+        assert competitors["Heap"]["visibility"] == 25.0
+        # Sorted by mention_count desc
+        assert data[0]["competitors"][0]["name"] == "Mixpanel"
+
+    def test_history_computes_citation_share(self, auth_client):
+        """citation_share = self mentions / (self + competitor mentions)."""
+        from apps.llm_ranking.models import LLMRankingResult
+
+        client, user, website = auth_client
+        audit = LLMRankingAuditFactory(
+            website=website, created_by=user,
+            status=LLMRankingAudit.STATUS_COMPLETED, overall_score=70,
+        )
+        # 2 prompts where we're mentioned, with 0 and 1 competitors respectively.
+        LLMRankingResultFactory(
+            audit=audit, provider=LLMRankingResult.PROVIDER_CLAUDE,
+            query_succeeded=True, is_mentioned=True, mention_rank=1,
+            competitors_mentioned=[],
+        )
+        LLMRankingResultFactory(
+            audit=audit, provider=LLMRankingResult.PROVIDER_CLAUDE,
+            query_succeeded=True, is_mentioned=True, mention_rank=2,
+            competitors_mentioned=[
+                {"name": "Mixpanel", "position": 1},
+            ],
+        )
+        # 1 prompt where we're not mentioned but competitor is.
+        LLMRankingResultFactory(
+            audit=audit, provider=LLMRankingResult.PROVIDER_CLAUDE,
+            query_succeeded=True, is_mentioned=False, mention_rank=None,
+            competitors_mentioned=[
+                {"name": "Heap", "position": 1},
+                {"name": "Amplitude", "position": 2},
+            ],
+        )
+        # Failed query — must be excluded.
+        LLMRankingResultFactory(
+            audit=audit, provider=LLMRankingResult.PROVIDER_CLAUDE,
+            query_succeeded=False, is_mentioned=False, mention_rank=None,
+            competitors_mentioned=[],
+        )
+
+        response = client.get(f"/api/v1/llm-ranking/{website.id}/history/")
+        data = response.json()["data"]
+        # self_mentions=2, total brand mentions = 2 + 1 + 2 = 5 -> 40%
+        assert data[0]["citation_self"] == 2
+        assert data[0]["citation_total"] == 5
+        assert data[0]["citation_share"] == 40.0
+
+    def test_history_returns_zero_citation_share_when_no_brands_mentioned(self, auth_client):
+        from apps.llm_ranking.models import LLMRankingResult
+        client, user, website = auth_client
+        audit = LLMRankingAuditFactory(
+            website=website, created_by=user,
+            status=LLMRankingAudit.STATUS_COMPLETED, overall_score=10,
+        )
+        LLMRankingResultFactory(
+            audit=audit, provider=LLMRankingResult.PROVIDER_CLAUDE,
+            query_succeeded=True, is_mentioned=False, mention_rank=None,
+            competitors_mentioned=[],
+        )
+        response = client.get(f"/api/v1/llm-ranking/{website.id}/history/")
+        data = response.json()["data"]
+        assert data[0]["citation_share"] == 0.0
+        assert data[0]["competitors"] == []
+
+    def test_history_dedupes_competitor_within_a_response(self, auth_client):
+        """If a single response lists the same competitor twice, it should
+        only count once toward that prompt's visibility (avoid double-count
+        when LLMs accidentally repeat names)."""
+        from apps.llm_ranking.models import LLMRankingResult
+        client, user, website = auth_client
+        audit = LLMRankingAuditFactory(
+            website=website, created_by=user,
+            status=LLMRankingAudit.STATUS_COMPLETED, overall_score=50,
+        )
+        LLMRankingResultFactory(
+            audit=audit, provider=LLMRankingResult.PROVIDER_CLAUDE,
+            query_succeeded=True, is_mentioned=False, mention_rank=None,
+            competitors_mentioned=[
+                {"name": "Mixpanel", "position": 1},
+                {"name": "Mixpanel", "position": 5},   # duplicate within same response
+            ],
+        )
+        response = client.get(f"/api/v1/llm-ranking/{website.id}/history/")
+        data = response.json()["data"]
+        comp = next(c for c in data[0]["competitors"] if c["name"] == "Mixpanel")
+        assert comp["mention_count"] == 1
+        assert comp["visibility"] == 100.0  # 1 of 1 prompts

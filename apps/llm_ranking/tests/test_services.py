@@ -445,6 +445,32 @@ class TestPromptLibrary:
         intents = PromptLibrary.intents_for(["Should I buy a kayak this weekend?"])
         assert intents == ["custom"]
 
+    def test_themes_filter_restricts_intents(self):
+        from apps.llm_ranking.services.prompt_library import PromptLibrary
+        prompts = PromptLibrary.generate(
+            industry="SaaS analytics", max_prompts=10,
+            themes=["recommendation", "comparison"],
+        )
+        intents = {p["intent"] for p in prompts}
+        assert intents <= {"recommendation", "comparison"}
+        assert len(prompts) > 0
+
+    def test_empty_themes_falls_back_to_default_mix(self):
+        from apps.llm_ranking.services.prompt_library import PromptLibrary
+        prompts = PromptLibrary.generate(industry="x", max_prompts=10, themes=[])
+        intents = {p["intent"] for p in prompts}
+        # Empty -> not restricted, so multi-intent coverage as before.
+        assert len(intents) >= 4
+
+    def test_unknown_theme_is_silently_dropped(self):
+        from apps.llm_ranking.services.prompt_library import PromptLibrary
+        prompts = PromptLibrary.generate(
+            industry="x", max_prompts=5,
+            themes=["recommendation", "made_up_intent"],
+        )
+        intents = {p["intent"] for p in prompts}
+        assert intents == {"recommendation"}
+
 
 # ── Prompt pack JSON loader ───────────────────────────────────────────────────
 

@@ -3,6 +3,9 @@ from django.urls import path
 from . import views
 
 urlpatterns = [
+    path("provider-health/", views.LLMRankingProviderHealthView.as_view(), name="llm-ranking-provider-health"),
+    path("scan-domain/", views.ScanDomainView.as_view(), name="llm-ranking-scan-domain"),
+    path("suggest-context/", views.SuggestAuditContextView.as_view(), name="llm-ranking-suggest-context"),
     path("<uuid:website_id>/audits/", views.LLMRankingAuditListView.as_view(), name="llm-ranking-list"),
     path("<uuid:website_id>/preview-prompts/", views.LLMRankingPreviewPromptsView.as_view(), name="llm-ranking-preview-prompts"),
     path("<uuid:website_id>/audits/<uuid:audit_id>/", views.LLMRankingAuditDetailView.as_view(), name="llm-ranking-detail"),

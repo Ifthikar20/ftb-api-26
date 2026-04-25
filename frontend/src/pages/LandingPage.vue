@@ -25,10 +25,8 @@
     <section class="hero">
       <div class="wrap">
         <h1 class="hero-h anim" data-anim="fade-up">
-          <span class="tw-line" ref="twLine1"></span><br/>
-          <span class="tw-line" ref="twLine2"></span><br/>
-          <em><span class="tw-line" ref="twLine3"></span></em>
-          <span class="tw-cursor" :class="{ 'tw-cursor--done': twDone }">|</span>
+          Marketing intelligence,<br/>
+          <em>simplified.</em>
         </h1>
         <p class="hero-p anim" data-anim="fade-up" data-delay="60">
           Track visitors, score leads, audit your site, and grow<br class="hide-m"/>
@@ -36,11 +34,26 @@
         </p>
         <p class="hero-beta-note anim" data-anim="fade-up" data-delay="90">
           <span class="brand-beta">BETA</span>
-          We're in private beta. New sign-ups are paused — existing users can sign in.
+          <span class="beta-text">We're in private beta. New sign-ups are paused — existing users can sign in.</span>
         </p>
         <div class="hero-ctas anim" data-anim="fade-up" data-delay="120">
           <router-link to="/login" class="btn-primary">Sign In</router-link>
           <a href="#features" class="btn-ghost">Learn More</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ Dashboard Preview — video bg with floating dashboard ═══ -->
+    <section class="dash-preview anim" data-anim="fade-up">
+      <div class="dash-preview-inner">
+        <!-- Background video — plays silently, edges visible around dashboard -->
+        <video class="dash-video" autoplay muted loop playsinline>
+          <source src="/videos/background-vid.mp4" type="video/mp4" />
+        </video>
+        <div class="dash-video-overlay"></div>
+        <!-- Dashboard mockup floating on top -->
+        <div class="dash-mockup">
+          <img src="/images/hero-dashboard.png" alt="FetchBot Dashboard" class="dash-img" />
         </div>
       </div>
     </section>
@@ -53,12 +66,12 @@
           <h2 class="feat-headline">
             OUR TOOLS FOR
             <span class="feat-word-cycler">
-              <TransitionGroup name="word-cycle">
+              <Transition name="word-cycle" mode="out-in">
                 <span class="feat-word" :key="categories[activeCat]">
                   {{ categories[activeCat] }}
                   <span class="feat-word-glow"></span>
                 </span>
-              </TransitionGroup>
+              </Transition>
             </span>
           </h2>
           <div class="feat-tabs">
@@ -74,10 +87,11 @@
                :style="{ transform: `translateX(${trackOffset}px)` }">
             <div v-for="(f, i) in features" :key="f.title"
                  class="carousel-card" :class="[f.tint, { expanded: activeCard === i, 'is-playing': activeCard === i }]"
-                 :style="{ animationDelay: `${i * 100}ms` }"
+                 :style="{ '--card-stagger': i * 80 + 'ms' }"
                  @click="activeCard = activeCard === i ? -1 : i"
-                 @mouseenter="pauseAutoAdvance"
-                 @mouseleave="resumeAutoAdvance">
+                 @mousemove="onCardMouseMove($event, i)"
+                 @mouseenter="onCardMouseEnter(i)"
+                 @mouseleave="onCardMouseLeave($event, i)">
               <span class="card-num">{{ String(i + 1).padStart(2, '0') }}</span>
 
               <!-- Per-tool animated visual -->
@@ -85,7 +99,7 @@
                 <!-- Analytics: line chart with drawing animation -->
                 <div v-if="f.visual === 'chart'" class="viz viz-chart">
                   <div class="viz-stat">
-                    <div class="viz-stat-value">{{ f.metric.value }}</div>
+                    <div class="viz-stat-value">{{ metricFor(f, i) }}</div>
                     <div class="viz-stat-meta">
                       <span class="viz-stat-label">{{ f.metric.label }}</span>
                       <span class="viz-stat-delta up">{{ f.metric.delta }}</span>
@@ -94,20 +108,20 @@
                   <svg class="chart-svg" viewBox="0 0 220 70" preserveAspectRatio="none">
                     <defs>
                       <linearGradient :id="'g-' + i" x1="0" x2="0" y1="0" y2="1">
-                        <stop offset="0%" stop-color="#131718" stop-opacity="0.35"/>
-                        <stop offset="100%" stop-color="#131718" stop-opacity="0"/>
+                        <stop offset="0%" stop-color="#F97316" stop-opacity="0.30"/>
+                        <stop offset="100%" stop-color="#F97316" stop-opacity="0"/>
                       </linearGradient>
                     </defs>
                     <path class="chart-area" :d="buildAreaPath(f.chart)" :fill="'url(#g-' + i + ')'" />
-                    <path class="chart-line" :d="buildLinePath(f.chart)" fill="none" stroke="#131718" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
-                    <circle class="chart-pulse" :cx="220" :cy="lastY(f.chart)" r="3" fill="#131718"/>
+                    <path class="chart-line" :d="buildLinePath(f.chart)" fill="none" stroke="#F97316" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+                    <circle class="chart-pulse" :cx="220" :cy="lastY(f.chart)" r="3" fill="#F97316"/>
                   </svg>
                 </div>
 
                 <!-- Heatmaps: pulsing radial hotspots -->
                 <div v-else-if="f.visual === 'heatmap'" class="viz viz-heatmap">
                   <div class="viz-stat">
-                    <div class="viz-stat-value">{{ f.metric.value }}</div>
+                    <div class="viz-stat-value">{{ metricFor(f, i) }}</div>
                     <div class="viz-stat-meta">
                       <span class="viz-stat-label">{{ f.metric.label }}</span>
                       <span class="viz-stat-delta">{{ f.metric.delta }}</span>
@@ -134,7 +148,7 @@
                 <!-- Keywords: animated rank bars -->
                 <div v-else-if="f.visual === 'keywords'" class="viz viz-keywords">
                   <div class="viz-stat">
-                    <div class="viz-stat-value">{{ f.metric.value }}</div>
+                    <div class="viz-stat-value">{{ metricFor(f, i) }}</div>
                     <div class="viz-stat-meta">
                       <span class="viz-stat-label">{{ f.metric.label }}</span>
                       <span class="viz-stat-delta up">{{ f.metric.delta }}</span>
@@ -165,7 +179,7 @@
                 <!-- Lead ID: stacked company chips sliding in -->
                 <div v-else-if="f.visual === 'leads'" class="viz viz-leads">
                   <div class="viz-stat">
-                    <div class="viz-stat-value">{{ f.metric.value }}</div>
+                    <div class="viz-stat-value">{{ metricFor(f, i) }}</div>
                     <div class="viz-stat-meta">
                       <span class="viz-stat-label">{{ f.metric.label }}</span>
                       <span class="viz-stat-delta up">{{ f.metric.delta }}</span>
@@ -260,9 +274,15 @@
     <!-- ═══ Final CTA ═══ -->
     <section class="final-cta anim" data-anim="fade-up">
       <div class="wrap cta-inner">
-        <h2>Ready to grow <em>smarter?</em></h2>
-        <p>FetchBot is in private beta. Existing users — sign in below.</p>
-        <router-link to="/login" class="btn-primary">Sign In</router-link>
+        <video class="cta-video" autoplay muted loop playsinline>
+          <source src="/videos/background-vid.mp4" type="video/mp4" />
+        </video>
+        <div class="cta-video-overlay"></div>
+        <div class="cta-content">
+          <h2>Ready to grow <em>smarter?</em></h2>
+          <p>FetchBot is in private beta. Existing users — sign in below.</p>
+          <router-link to="/login" class="btn-primary cta-btn-white">Sign In</router-link>
+        </div>
       </div>
     </section>
 
@@ -280,7 +300,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 
 const scrolled = ref(false)
 const activeCard = ref(0)
@@ -288,11 +308,7 @@ const activeCat = ref(0)
 const trackOffset = ref(0)
 const trackRef = ref(null)
 
-/* Typewriter refs */
-const twLine1 = ref(null)
-const twLine2 = ref(null)
-const twLine3 = ref(null)
-const twDone = ref(false)
+
 
 const cardStep = 280
 const visibleCards = 4
@@ -300,7 +316,8 @@ let cycleTimer = null
 let featureTimer = null
 const featureDwellMs = 4200
 
-const leadColors = ['#131718', '#C65A2F', '#4A7FB0', '#5E6B73']
+// Restrained, ink-leaning avatar palette — no brights.
+const leadColors = ['#0F172A', '#475569', '#334155', '#64748B']
 
 // ── Chart path helpers ──
 const CHART_W = 220
@@ -334,8 +351,96 @@ function startFeatureAutoAdvance() {
 function stopFeatureAutoAdvance() {
   if (featureTimer) { clearInterval(featureTimer); featureTimer = null }
 }
-function pauseAutoAdvance() { stopFeatureAutoAdvance() }
-function resumeAutoAdvance() { startFeatureAutoAdvance() }
+
+// ── Framer-style mouse tilt + parallax ──
+// We write transforms to CSS vars on the card element, throttled by rAF.
+// CSS handles the spring smoothing via transition + cubic-bezier.
+const TILT_MAX = 6        // max degrees
+const PARALLAX_MAX = 6    // max px shift for inner content
+const tiltRaf = new Map()
+
+function onCardMouseEnter(i) {
+  stopFeatureAutoAdvance()
+  activeCard.value = i
+}
+
+function onCardMouseLeave(ev, i) {
+  startFeatureAutoAdvance()
+  const card = ev.currentTarget
+  if (tiltRaf.has(i)) { cancelAnimationFrame(tiltRaf.get(i)); tiltRaf.delete(i) }
+  card.style.setProperty('--tx', '0deg')
+  card.style.setProperty('--ty', '0deg')
+  card.style.setProperty('--px', '0px')
+  card.style.setProperty('--py', '0px')
+  card.style.setProperty('--gx', '50%')
+  card.style.setProperty('--gy', '50%')
+}
+
+function onCardMouseMove(ev, i) {
+  const card = ev.currentTarget
+  if (tiltRaf.has(i)) cancelAnimationFrame(tiltRaf.get(i))
+  // rAF the read+write so we don't fight the browser
+  tiltRaf.set(i, requestAnimationFrame(() => {
+    const rect = card.getBoundingClientRect()
+    const x = (ev.clientX - rect.left) / rect.width  // 0..1
+    const y = (ev.clientY - rect.top)  / rect.height // 0..1
+    const tx = (y - 0.5) * -2 * TILT_MAX  // tilt UP when mouse is at top
+    const ty = (x - 0.5) *  2 * TILT_MAX  // tilt RIGHT when mouse is at right
+    const px = (x - 0.5) * PARALLAX_MAX
+    const py = (y - 0.5) * PARALLAX_MAX
+    card.style.setProperty('--tx', tx.toFixed(2) + 'deg')
+    card.style.setProperty('--ty', ty.toFixed(2) + 'deg')
+    card.style.setProperty('--px', px.toFixed(2) + 'px')
+    card.style.setProperty('--py', py.toFixed(2) + 'px')
+    card.style.setProperty('--gx', (x * 100).toFixed(1) + '%')
+    card.style.setProperty('--gy', (y * 100).toFixed(1) + '%')
+  }))
+}
+
+// ── Count-up animation for the active card's headline number ──
+// Stored as a map { cardIndex: displayString } so non-active cards
+// keep their final value (we only count the active card up).
+const animatedMetrics = ref({})
+let countUpRaf = null
+
+function formatLikeOriginal(n, original) {
+  const s = String(original)
+  if (/[,]/.test(s)) return Math.round(n).toLocaleString()
+  return String(Math.round(n))
+}
+
+function startCountUp(targetCardIdx) {
+  if (countUpRaf) cancelAnimationFrame(countUpRaf)
+  if (targetCardIdx < 0) return
+  const target = features[targetCardIdx]?.metric?.value
+  if (!target) return
+  const cleaned = String(target).replace(/[^\d.]/g, '')
+  const final = parseFloat(cleaned) || 0
+  const startTs = performance.now()
+  const duration = 900
+  const tick = (now) => {
+    const t = Math.min(1, (now - startTs) / duration)
+    // ease-out cubic — matches Framer's default "easeOut"
+    const eased = 1 - Math.pow(1 - t, 3)
+    const current = final * eased
+    animatedMetrics.value = {
+      ...animatedMetrics.value,
+      [targetCardIdx]: formatLikeOriginal(current, target),
+    }
+    if (t < 1) countUpRaf = requestAnimationFrame(tick)
+    else {
+      animatedMetrics.value = { ...animatedMetrics.value, [targetCardIdx]: target }
+      countUpRaf = null
+    }
+  }
+  countUpRaf = requestAnimationFrame(tick)
+}
+
+function metricFor(card, i) {
+  return animatedMetrics.value[i] ?? card.metric.value
+}
+
+watch(activeCard, (idx) => startCountUp(idx))
 
 function scrollCarousel(dir) {
   const maxOffset = -(features.length - visibleCards) * cardStep
@@ -353,34 +458,6 @@ function resetCycle() {
   startCycle()
 }
 
-/* Typewriter engine */
-function typeWriter(el, text, speed = 65) {
-  return new Promise(resolve => {
-    let idx = 0
-    function tick() {
-      if (!el) { resolve(); return }
-      if (idx <= text.length) {
-        el.textContent = text.slice(0, idx)
-        idx++
-        setTimeout(tick, speed)
-      } else {
-        resolve()
-      }
-    }
-    tick()
-  })
-}
-
-async function runTypewriter() {
-  await new Promise(r => setTimeout(r, 400)) // initial pause
-  await typeWriter(twLine1.value, 'MARKETING', 80)
-  await new Promise(r => setTimeout(r, 200))
-  await typeWriter(twLine2.value, 'INTELLIGENCE,', 70)
-  await new Promise(r => setTimeout(r, 200))
-  await typeWriter(twLine3.value, 'SIMPLIFIED.', 70)
-  await new Promise(r => setTimeout(r, 400))
-  twDone.value = true
-}
 
 onMounted(() => {
   const onScroll = () => { scrolled.value = window.scrollY > 40 }
@@ -398,7 +475,6 @@ onMounted(() => {
 
   document.querySelectorAll('.anim').forEach(el => obs.observe(el))
   startCycle()
-  runTypewriter()
   startFeatureAutoAdvance()
 
   onUnmounted(() => {
@@ -418,6 +494,7 @@ const features = [
     replaces: 'Replaces Mixpanel',
     tint: 'tint-peach',
     visual: 'chart',
+    scene: 'floral',
     metric: { value: '2,847', label: 'Visitors today', delta: '+18%' },
     chart: [12, 28, 22, 40, 34, 56, 48, 70, 64, 82, 74, 96],
     icon: '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M3 20V10l4-4 4 4 4-4 4 4v10" stroke-linejoin="round"/></svg>'
@@ -428,6 +505,7 @@ const features = [
     replaces: 'Replaces Hotjar',
     tint: 'tint-blue',
     visual: 'heatmap',
+    scene: 'mountain',
     metric: { value: '4,132', label: 'Clicks tracked', delta: '12 hotspots' },
     hotspots: [
       { x: 22, y: 30, size: 42, delay: 0,    intensity: 0.9 },
@@ -444,6 +522,7 @@ const features = [
     replaces: 'Replaces Semrush',
     tint: 'tint-yellow',
     visual: 'keywords',
+    scene: 'meadow',
     metric: { value: '87', label: 'Tracked keywords', delta: '+4 new #1s' },
     keywords: [
       { term: 'ai analytics', rank: 3, prev: 7,  score: 92 },
@@ -459,6 +538,7 @@ const features = [
     replaces: 'Replaces Clearbit',
     tint: 'tint-peach',
     visual: 'leads',
+    scene: 'floral',
     metric: { value: '23', label: 'Companies today', delta: '4 hot leads' },
     leads: [
       { name: 'Acme Corp',      domain: 'acme.com',    score: 94, hot: true },
@@ -474,6 +554,10 @@ const steps = [
   { title: 'Install the Pixel', desc: 'Copy one line of JavaScript into your site header — takes 30 seconds.' },
   { title: 'Watch Insights Flow', desc: 'Real-time analytics and AI insights appear immediately.' },
 ]
+
+
+
+
 
 const plans = [
   {
@@ -539,7 +623,7 @@ const plans = [
   -webkit-font-smoothing: antialiased;
 }
 .wrap { max-width: 1200px; margin: 0 auto; padding: 0 32px; }
-em { color: #5B8DEF; font-style: italic; }
+em { color: #F97316; font-style: italic; }
 .hide-m {}
 
 /* ── Nav ── */
@@ -559,26 +643,31 @@ em { color: #5B8DEF; font-style: italic; }
 .brand-beta {
   display: inline-block;
   background: #131718;
-  color: #fcd34d;
+  color: #FFFFFF;
   font-family: -apple-system, BlinkMacSystemFont, sans-serif;
   font-weight: 800;
-  font-size: 10px;
+  font-size: 9px;
   letter-spacing: 0.1em;
-  padding: 3px 8px;
+  padding: 2px 7px;
   border-radius: 999px;
   vertical-align: middle;
+  background: #F97316;
 }
 .hero-beta-note {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-  font-size: 14px;
-  color: #475569;
-  background: #fffbeb;
-  border: 1px solid #fde68a;
-  padding: 8px 14px;
-  border-radius: 999px;
-  margin: 18px 0 8px;
+  gap: 8px;
+  font-size: 11px;
+  color: rgba(15, 23, 42, 0.5);
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 14px 0 4px;
+}
+.beta-text {
+  font-size: 11px;
+  color: rgba(15, 23, 42, 0.45);
+  font-weight: 400;
 }
 .nav-links { display: flex; gap: 32px; }
 .nav-links a { font-size: 13px; font-weight: 500; color: #6e6a65; text-decoration: none; transition: color 0.2s; }
@@ -595,37 +684,31 @@ em { color: #5B8DEF; font-style: italic; }
 .nav-cta:hover { background: #2a2d2e; transform: translateY(-1px); }
 
 /* ── Hero ── */
-.hero { padding: 160px 0 80px; }
+.hero { padding: 160px 0 80px; text-align: center; }
+.hero .wrap { display: flex; flex-direction: column; align-items: center; }
 .hero-h {
   font-family: 'DM Serif Display', Georgia, serif;
-  font-weight: 400; font-size: clamp(2.8rem, 6vw, 5.5rem);
-  line-height: 1.05; letter-spacing: -0.03em;
-  text-transform: uppercase;
+  font-weight: 400;
+  font-size: clamp(2.6rem, 5.5vw, 4.5rem);
+  line-height: 1.12;
+  letter-spacing: -0.03em;
+  color: #0F172A;
   margin-bottom: 24px;
-  min-height: 3.3em; /* prevent layout shift during typewriter */
+  animation: hero-float 6s ease-in-out infinite;
+}
+@keyframes hero-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+.hero-h em {
+  font-style: italic;
+  color: #F97316;
 }
 
-/* Typewriter cursor */
-.tw-line {
-  display: inline;
+.hero-p {
+  font-size: 17px; color: #475569; line-height: 1.65; max-width: 520px;
+  margin-bottom: 20px; text-align: center;
 }
-.tw-cursor {
-  display: inline-block;
-  font-weight: 300;
-  color: #5B8DEF;
-  animation: tw-blink 0.6s step-end infinite;
-  margin-left: 2px;
-}
-.tw-cursor--done {
-  animation: tw-blink 1.2s step-end infinite;
-  opacity: 0.5;
-}
-@keyframes tw-blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0; }
-}
-
-.hero-p { font-size: 16px; color: #6e6a65; line-height: 1.7; max-width: 480px; margin-bottom: 32px; }
 .hero-ctas { display: flex; gap: 12px; }
 .btn-primary {
   padding: 14px 32px; background: #131718; color: #fff;
@@ -642,18 +725,87 @@ em { color: #5B8DEF; font-style: italic; }
 }
 .btn-ghost:hover { border-color: #131718; }
 
+/* ═══ Dashboard Preview — video background with floating mockup ═══ */
+.dash-preview {
+  padding: 0 32px 80px;
+  background: #FFFFFF;
+}
+.dash-preview-inner {
+  position: relative;
+  max-width: 1200px;
+  margin: 0 auto;
+  border-radius: 24px;
+  overflow: hidden;
+  aspect-ratio: 16 / 10;
+  box-shadow:
+    0 2px 4px rgba(15, 23, 42, 0.04),
+    0 24px 64px rgba(15, 23, 42, 0.10);
+}
+.dash-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 0;
+}
+.dash-video-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: rgba(250, 249, 247, 0.15);
+  pointer-events: none;
+}
+.dash-mockup {
+  position: absolute;
+  z-index: 2;
+  top: 5%;
+  left: 5%;
+  right: 5%;
+  bottom: 5%;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow:
+    0 2px 8px rgba(15, 23, 42, 0.08),
+    0 16px 48px rgba(15, 23, 42, 0.12);
+  background: #FFFFFF;
+}
+.dash-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top left;
+  display: block;
+}
+
+@media (max-width: 768px) {
+  .dash-preview { padding: 0 16px 48px; }
+  .dash-preview-inner { aspect-ratio: 4 / 3; border-radius: 16px; }
+  .dash-mockup { top: 4%; left: 4%; right: 4%; bottom: 4%; border-radius: 10px; }
+}
+
 /* ═══ Features Carousel — Travel Lab Style ═══ */
-.features-section { padding: 64px 0 80px; }
-.feat-full { background: #FFF6C6; border-radius: 24px; margin: 0 32px; padding: 48px 0 40px; overflow: hidden; }
+
+
+/* Features section — clean gray background */
+.features-section {
+  padding: 64px 0 80px;
+  position: relative;
+  overflow: hidden;
+  background: #F5F5F5;
+}
+.feat-full { background: transparent; border-radius: 0; margin: 0; padding: 48px 32px 40px; overflow: visible; position: relative; z-index: 1; }
 
 .feat-header { display: flex; align-items: baseline; gap: 40px; margin-bottom: 36px; flex-wrap: wrap; }
 .feat-headline {
   font-family: 'DM Serif Display', Georgia, serif;
   font-size: clamp(1.8rem, 3.5vw, 3rem);
-  font-weight: 400; text-transform: uppercase;
-  letter-spacing: -0.02em;
+  font-weight: 400;
+  letter-spacing: -0.025em;
+  color: #0F172A;
   display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap;
-  line-height: 1.2;
+  line-height: 1.15;
+  text-transform: none;
 }
 
 /* ── Framer-style word cycler ── */
@@ -670,34 +822,32 @@ em { color: #5B8DEF; font-style: italic; }
   display: inline-block;
   position: absolute;
   left: 0; bottom: 0;
-  color: #5B8DEF;
+  color: #0F172A;
   font-style: italic;
   white-space: nowrap;
   line-height: 1.2;
 }
 .feat-word-glow {
-  position: absolute; bottom: -4px; left: 0; right: 0;
-  height: 3px; background: #5B8DEF;
-  border-radius: 2px;
-  box-shadow: 0 0 12px rgba(91, 141, 239, 0.5), 0 0 24px rgba(91, 141, 239, 0.2);
-  animation: glow-pulse 2.8s ease-in-out infinite;
+  position: absolute; bottom: -2px; left: 0; right: 0;
+  height: 2px; background: #0F172A;
+  border-radius: 1px;
+  opacity: 0.5;
 }
 @keyframes glow-pulse {
   0%, 100% { opacity: 0.6; }
   50% { opacity: 1; }
 }
 
-/* Word cycle transition — slide up with blur */
+/* Word cycle transition — smooth slide-up, no flicker */
 .word-cycle-enter-active {
-  transition: all 0.55s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: all 0.4s cubic-bezier(0.22, 1, 0.36, 1);
 }
 .word-cycle-leave-active {
-  transition: all 0.35s cubic-bezier(0.55, 0, 1, 0.45);
-  position: absolute;
+  transition: all 0.25s cubic-bezier(0.55, 0, 1, 0.45);
 }
 .word-cycle-enter-from {
-  opacity: 0; transform: translateY(100%) scale(0.9);
-  filter: blur(6px);
+  opacity: 0; transform: translateY(60%) scale(0.95);
+  filter: blur(4px);
 }
 .word-cycle-enter-to {
   opacity: 1; transform: translateY(0) scale(1);
@@ -708,8 +858,8 @@ em { color: #5B8DEF; font-style: italic; }
   filter: blur(0);
 }
 .word-cycle-leave-to {
-  opacity: 0; transform: translateY(-80%) scale(0.9);
-  filter: blur(6px);
+  opacity: 0; transform: translateY(-50%) scale(0.95);
+  filter: blur(4px);
 }
 
 .feat-tabs { display: flex; gap: 24px; }
@@ -722,16 +872,16 @@ em { color: #5B8DEF; font-style: italic; }
   position: relative;
 }
 .feat-tab.active {
-  color: #5B8DEF;
+  color: #0F172A;
   text-decoration: none;
 }
 .feat-tab.active::after {
   content: '';
   position: absolute;
   bottom: -4px; left: 0; right: 0;
-  height: 2px;
-  background: #5B8DEF;
-  border-radius: 1px;
+  height: 1px;
+  background: #0F172A;
+  border-radius: 0;
   animation: tab-slide-in 0.3s cubic-bezier(0.22, 1, 0.36, 1);
 }
 @keyframes tab-slide-in {
@@ -748,36 +898,111 @@ em { color: #5B8DEF; font-style: italic; }
 }
 
 /* Individual card */
+/* ── Framer-style card: 3D tilt, spring entrance, layered shadow ── */
 .carousel-card {
+  --tx: 0deg;
+  --ty: 0deg;
+  --px: 0px;
+  --py: 0px;
+  --gx: 50%;
+  --gy: 50%;
   flex: 0 0 260px; min-height: 320px;
-  border-radius: 16px; padding: 24px 20px;
+  border-radius: 18px; padding: 24px 20px;
   cursor: pointer; position: relative;
   display: flex; flex-direction: column;
-  transition: flex 0.45s cubic-bezier(0.22, 1, 0.36, 1),
-              transform 0.3s cubic-bezier(0.22, 1, 0.36, 1),
-              box-shadow 0.3s ease;
   overflow: hidden;
-  animation: card-entrance 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+  transform-style: preserve-3d;
+  perspective: 800px;
+  /* Two-layer shadow: tight near + soft far. Driven by --shadow-* in active state. */
+  box-shadow:
+    0 1px 3px rgba(19,23,24,0.06),
+    0 8px 24px rgba(19,23,24,0.05);
+  /* Spring-eased motion (Framer's classic overshoot curve). The transform
+     is driven by mouse-move CSS vars so we only animate when settling. */
+  transform:
+    perspective(900px)
+    rotateX(var(--tx))
+    rotateY(var(--ty))
+    translateZ(0)
+    scale(var(--card-scale, 1));
+  transition:
+    flex 0.5s cubic-bezier(0.34, 1.56, 0.64, 1),
+    transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow 0.45s cubic-bezier(0.22, 1, 0.36, 1),
+    --card-scale 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
+  /* Stagger-in on first paint */
+  animation: card-spring-in 0.85s cubic-bezier(0.34, 1.56, 0.64, 1) var(--card-stagger, 0ms) both;
+  will-change: transform, box-shadow;
 }
-@keyframes card-entrance {
-  from {
-    opacity: 0;
-    transform: translateY(20px) scale(0.96);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
+
+/* Subtle cursor spotlight — much softer than before so it doesn't compete
+   with the content. Only visible on the active card. */
+.carousel-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: radial-gradient(
+    320px circle at var(--gx) var(--gy),
+    rgba(15, 23, 42, 0.04),
+    rgba(15, 23, 42, 0) 60%
+  );
+  opacity: 0;
+  transition: opacity 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+  z-index: 1;
 }
+.carousel-card.is-playing::before { opacity: 1; }
+
+/* Inner content above the glow layer */
+.carousel-card > * { position: relative; z-index: 2; }
+
+@keyframes card-spring-in {
+  0%   { opacity: 0; transform: perspective(900px) translateY(28px) scale(0.92) rotateX(8deg); }
+  60%  { opacity: 1; transform: perspective(900px) translateY(-4px) scale(1.02) rotateX(-1deg); }
+  100% { opacity: 1; transform: perspective(900px) translateY(0)    scale(1)    rotateX(0deg); }
+}
+
 .carousel-card:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+  --card-scale: 1.015;
+  border-color: rgba(15, 23, 42, 0.12);
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    0 12px 28px rgba(15, 23, 42, 0.06);
 }
-.carousel-card.expanded {
+
+.carousel-card.expanded,
+.carousel-card.is-playing {
   flex: 0 0 420px;
   min-height: 360px;
-  box-shadow: 0 18px 48px rgba(0,0,0,0.14);
-  transform: translateY(-4px);
+  --card-scale: 1.025;
+  background: #ffffff;
+  border-color: rgba(15, 23, 42, 0.16);
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    0 16px 40px rgba(15, 23, 42, 0.08);
+}
+
+/* Inner-content parallax — chart/visual shifts opposite to tilt */
+.carousel-card .card-visual,
+.carousel-card .card-title {
+  transform: translate3d(var(--px), var(--py), 0);
+  transition: transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.carousel-card .card-num {
+  transform: translate3d(calc(var(--px) * 0.6), calc(var(--py) * 0.6), 0);
+  transition: transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .carousel-card,
+  .carousel-card .card-visual,
+  .carousel-card .card-title,
+  .carousel-card .card-num {
+    animation: none !important;
+    transition: opacity 0.3s ease, flex 0.3s ease;
+    transform: none !important;
+  }
 }
 
 /* ── Per-tool animated visuals ── */
@@ -799,6 +1024,23 @@ em { color: #5B8DEF; font-style: italic; }
   color: #131718;
   line-height: 1;
   letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  display: inline-block;
+}
+.is-playing .viz-stat-value {
+  animation: stat-pop-in 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+@keyframes stat-pop-in {
+  0%   { opacity: 0; transform: translateY(8px) scale(0.92); filter: blur(2px); }
+  60%  { opacity: 1; transform: translateY(-1px) scale(1.04); filter: blur(0); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+.is-playing .viz-stat-meta {
+  animation: stat-meta-fade 0.6s cubic-bezier(0.22, 1, 0.36, 1) 0.15s both;
+}
+@keyframes stat-meta-fade {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 .viz-stat-meta {
   display: flex;
@@ -808,15 +1050,15 @@ em { color: #5B8DEF; font-style: italic; }
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
-.viz-stat-label { color: #131718; opacity: 0.6; font-weight: 600; }
+.viz-stat-label { color: rgba(15, 23, 42, 0.5); font-weight: 500; letter-spacing: 0.04em; }
 .viz-stat-delta {
   padding: 2px 6px;
   border-radius: 4px;
-  background: rgba(19,23,24,0.08);
-  color: #131718;
-  font-weight: 700;
+  background: rgba(249, 115, 22, 0.08);
+  color: rgba(15, 23, 42, 0.65);
+  font-weight: 600;
 }
-.viz-stat-delta.up { background: rgba(24,110,58,0.14); color: #186E3A; }
+.viz-stat-delta.up { background: rgba(249, 115, 22, 0.12); color: #EA580C; }
 
 /* Chart (Analytics) */
 .viz-chart { padding-right: 4px; }
@@ -870,7 +1112,7 @@ em { color: #5B8DEF; font-style: italic; }
   position: absolute;
   border-radius: 50%;
   transform: translate(-50%, -50%) scale(0.4);
-  background: radial-gradient(circle, rgba(220,82,48,0.9) 0%, rgba(245,166,35,0.5) 45%, rgba(245,166,35,0) 75%);
+  background: radial-gradient(circle, rgba(249, 115, 22, 0.55) 0%, rgba(249, 115, 22, 0.22) 45%, rgba(249, 115, 22, 0) 75%);
   filter: blur(2px);
   opacity: 0;
   pointer-events: none;
@@ -947,7 +1189,7 @@ em { color: #5B8DEF; font-style: italic; }
 .kw-bar-fill {
   display: block;
   height: 100%;
-  background: #131718;
+  background: linear-gradient(90deg, #F97316 0%, #FB923C 100%);
   border-radius: 2px;
   transform: scaleX(0);
   transform-origin: left center;
@@ -963,9 +1205,9 @@ em { color: #5B8DEF; font-style: italic; }
   align-items: center;
   gap: 2px;
   font-size: 10px;
-  font-weight: 700;
-  color: #186E3A;
-  background: rgba(24,110,58,0.12);
+  font-weight: 600;
+  color: rgba(15, 23, 42, 0.65);
+  background: rgba(15, 23, 42, 0.05);
   padding: 2px 5px;
   border-radius: 4px;
 }
@@ -978,8 +1220,8 @@ em { color: #5B8DEF; font-style: italic; }
   gap: 10px;
   padding: 8px 10px;
   border-radius: 10px;
-  background: rgba(255,255,255,0.55);
-  border: 1px solid rgba(19,23,24,0.06);
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.06);
   opacity: 0;
   transform: translateY(8px);
 }
@@ -991,7 +1233,7 @@ em { color: #5B8DEF; font-style: italic; }
 }
 .lead-avatar {
   width: 26px; height: 26px;
-  border-radius: 50%;
+  border-radius: 6px;
   display: flex; align-items: center; justify-content: center;
   color: #fff;
   font-weight: 700;
@@ -999,53 +1241,69 @@ em { color: #5B8DEF; font-style: italic; }
   flex-shrink: 0;
 }
 .lead-meta { flex: 1; min-width: 0; }
-.lead-name { font-size: 12px; font-weight: 700; color: #131718; line-height: 1.2; }
-.lead-domain { font-size: 10px; color: #131718; opacity: 0.55; }
+.lead-name { font-size: 12px; font-weight: 600; color: #0F172A; line-height: 1.2; }
+.lead-domain { font-size: 10px; color: rgba(15, 23, 42, 0.5); }
 .lead-score {
   font-size: 11px;
-  font-weight: 800;
-  padding: 3px 7px;
+  font-weight: 700;
+  padding: 3px 8px;
   border-radius: 999px;
-  background: rgba(19,23,24,0.08);
-  color: #131718;
+  background: rgba(15, 23, 42, 0.05);
+  color: #0F172A;
+  font-variant-numeric: tabular-nums;
 }
 .lead-score.hot {
-  background: #DC5230;
+  background: #F97316;
   color: #fff;
-  box-shadow: 0 0 0 0 rgba(220,82,48,0.7);
+  box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.30);
 }
 .is-playing .lead-score.hot {
   animation: lead-hot-pulse 1.8s ease-in-out 0.8s infinite;
 }
 @keyframes lead-hot-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(220,82,48,0.6); }
-  50%      { box-shadow: 0 0 0 6px rgba(220,82,48,0); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.30); }
+  50%      { box-shadow: 0 0 0 5px rgba(249, 115, 22, 0); }
 }
 
-/* Card tints — Travel Lab branding */
-.carousel-card.tint-peach   { background: #FEC29F; }
-.carousel-card.tint-blue    { background: #D1E6F6; }
-.carousel-card.tint-yellow  { background: #FFF6C6; border: 1px solid rgba(0,0,0,0.06); }
-.carousel-card.tint-pink    { background: #FFDAE4; }
+.carousel-card.tint-peach,
+.carousel-card.tint-blue,
+.carousel-card.tint-yellow,
+.carousel-card.tint-pink {
+  background: #FFFFFF;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  box-shadow:
+    0 1px 3px rgba(19,23,24,0.06),
+    0 8px 24px rgba(19,23,24,0.08);
+}
 
 /* Card inner elements */
 .card-num {
-  font-family: 'DM Serif Display', Georgia, serif;
-  font-size: 2.2rem; font-weight: 400;
-  color: #131718; line-height: 1;
-  margin-bottom: 16px;
+  /* Bear-style monospace numeric label, not the loud serif. Smaller,
+     muted, uppercase, lots of letter-spacing. */
+  font-family: 'SF Mono', 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  color: rgba(15, 23, 42, 0.4);
+  line-height: 1;
+  margin-bottom: 18px;
 }
 .card-visual { margin-bottom: auto; }
 .card-icon {
-  color: #131718; opacity: 0.7;
+  color: rgba(15, 23, 42, 0.5);
   transition: transform 0.3s ease;
 }
 .carousel-card:hover .card-icon {
-  transform: scale(1.1);
+  transform: scale(1.05);
 }
 .card-title {
-  font-size: 18px; font-weight: 800;
-  color: #131718; letter-spacing: -0.01em;
+  /* Lighter weight, tighter tracking — Bear's serif headline pattern. */
+  font-family: 'DM Serif Display', Georgia, serif;
+  font-size: 22px;
+  font-weight: 400;
+  color: #0F172A;
+  letter-spacing: -0.025em;
+  line-height: 1.15;
   margin-top: auto;
 }
 
@@ -1065,8 +1323,8 @@ em { color: #5B8DEF; font-style: italic; }
   margin-top: 10px;
 }
 .card-arrow { display: flex; justify-content: flex-end; margin-bottom: 8px; }
-.card-desc { font-size: 12px; color: #131718; opacity: 0.75; line-height: 1.5; margin-bottom: 10px; }
-.card-replaces { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #131718; opacity: 0.4; }
+.card-desc { font-size: 13px; color: #475569; line-height: 1.55; margin-bottom: 10px; font-weight: 400; }
+.card-replaces { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; color: rgba(15, 23, 42, 0.45); }
 
 /* Carousel nav */
 .carousel-nav { display: flex; align-items: center; gap: 16px; margin-top: 28px; }
@@ -1117,10 +1375,10 @@ em { color: #5B8DEF; font-style: italic; }
   position: relative; transition: all 0.3s;
 }
 .price-card:hover { transform: translateY(-3px); box-shadow: 0 8px 28px rgba(0,0,0,0.05); }
-.price-card.featured { border-color: #5B8DEF; box-shadow: 0 4px 20px rgba(91,141,239,0.1); }
+.price-card.featured { border-color: #F97316; box-shadow: 0 4px 20px rgba(249,115,22,0.1); }
 .pop {
   position: absolute; top: -11px; left: 50%; transform: translateX(-50%);
-  padding: 3px 14px; background: #5B8DEF; color: #fff;
+  padding: 3px 14px; background: #F97316; color: #fff;
   border-radius: 999px; font-size: 10px; font-weight: 700;
   text-transform: uppercase; letter-spacing: 0.04em;
 }
@@ -1136,23 +1394,59 @@ em { color: #5B8DEF; font-style: italic; }
   text-decoration: none; border: 1.5px solid rgba(0,0,0,0.1);
   color: #131718; transition: all 0.25s;
 }
-.price-btn:hover { border-color: #5B8DEF; color: #5B8DEF; }
+.price-btn:hover { border-color: #F97316; color: #F97316; }
 .price-btn.dark { background: #131718; border-color: #131718; color: #fff; }
 .price-btn.dark:hover { background: #2a2d2e; transform: translateY(-1px); }
 
 /* ── Final CTA ── */
 .final-cta { padding: 48px 0 80px; }
 .cta-inner {
-  text-align: center; background: #D1E6F6;
+  position: relative;
+  text-align: center;
   border: none; border-radius: 24px;
+  padding: 0;
+  overflow: hidden;
+  min-height: 340px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.cta-video {
+  position: absolute;
+  inset: 0;
+  width: 100%; height: 100%;
+  object-fit: cover;
+  z-index: 0;
+}
+.cta-video-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(2px);
+  pointer-events: none;
+}
+.cta-content {
+  position: relative;
+  z-index: 2;
   padding: 72px 40px;
 }
 .cta-inner h2 {
   font-family: 'DM Serif Display', Georgia, serif;
-  font-weight: 400; font-size: clamp(1.6rem, 3vw, 2.2rem);
+  font-weight: 400; font-size: clamp(1.6rem, 3vw, 2.4rem);
   margin-bottom: 10px;
+  color: #FFFFFF;
 }
-.cta-inner p { font-size: 15px; color: #6e6a65; margin-bottom: 28px; }
+.cta-inner h2 em { color: #FB923C; }
+.cta-inner p { font-size: 15px; color: rgba(255,255,255,0.7); margin-bottom: 28px; }
+.cta-btn-white {
+  background: #FFFFFF !important;
+  color: #0F172A !important;
+}
+.cta-btn-white:hover {
+  background: #F8FAFC !important;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+}
 
 /* ── Footer ── */
 .footer { padding: 24px 0; border-top: 1px solid rgba(0,0,0,0.06); }
