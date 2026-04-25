@@ -228,19 +228,40 @@
         </div>
       </div>
 
-      <!-- System Status: which LLMs are configured + (when running/recent) the audit log -->
-      <div v-if="audits.length || providerHealth.providers.length" class="lr-grid-2 lr-status-grid" style="margin-bottom:24px">
-        <!-- LLM provider health card -->
-        <div class="card lr-status-card">
-          <div class="card-header">
-            <h3 class="card-title">
-              LLM Systems
-              <span class="text-xs text-muted">
-                · {{ providerHealth.configured_count }}/{{ providerHealth.total }} configured
-              </span>
-            </h3>
+      <!-- LLM Systems: compact dropdown -->
+      <div v-if="audits.length || providerHealth.providers.length" class="lr-systems-bar" style="margin-bottom:24px">
+        <div class="card lr-systems-dropdown" @click="showSystemsDropdown = !showSystemsDropdown" style="cursor:pointer">
+          <div class="lr-systems-header">
+            <div class="lr-systems-left">
+              <h3 class="card-title" style="margin:0;font-size:14px">
+                LLM Systems
+                <span class="text-xs text-muted" style="font-weight:500">
+                  · {{ providerHealth.configured_count }}/{{ providerHealth.total }} configured
+                </span>
+              </h3>
+              <div class="lr-systems-pills">
+                <span
+                  v-for="p in providerHealth.providers.filter(p => p.configured)"
+                  :key="p.key"
+                  class="lr-sys-pill lr-sys-on"
+                >
+                  <span class="provider-status-dot" style="width:6px;height:6px"></span>
+                  {{ p.name.split('(')[0].trim() }}
+                </span>
+                <span
+                  v-if="providerHealth.providers.filter(p => !p.configured).length"
+                  class="lr-sys-pill lr-sys-off"
+                >
+                  +{{ providerHealth.providers.filter(p => !p.configured).length }} unconfigured
+                </span>
+              </div>
+            </div>
+            <svg class="lr-systems-chevron" :class="{ open: showSystemsDropdown }" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M4 6l4 4 4-4"/>
+            </svg>
           </div>
-          <div class="provider-status-list">
+          <!-- Expanded list -->
+          <div v-if="showSystemsDropdown" class="lr-systems-list" @click.stop>
             <div
               v-for="p in providerHealth.providers"
               :key="p.key"
@@ -254,217 +275,237 @@
                 {{ p.configured ? 'Enabled' : 'API key missing' }}
               </span>
             </div>
-            <div v-if="!providerHealth.providers.length" class="text-xs text-muted" style="padding:8px 16px">
-              Loading provider status...
-            </div>
-          </div>
-          <p v-if="providerHealth.configured_count < providerHealth.total" class="text-xs text-muted" style="padding:0 16px 14px;line-height:1.5">
-            Disabled providers won't be queried; configure their API keys in settings to include them.
-          </p>
-        </div>
-
-        <!-- Component-level pipeline diagram -->
-        <div class="card lr-pipeline-card">
-          <div class="card-header">
-            <h3 class="card-title">Pipeline</h3>
-            <span class="text-xs text-muted">How a prompt flows through the system</span>
-          </div>
-          <div class="pipeline-diagram">
-            <div class="pl-node pl-node-prompts" :class="{ active: pipelineState.prompts }">
-              <div class="pl-node-label">Prompts</div>
-              <div class="pl-node-value">{{ pipelinePromptCount }}</div>
-              <div class="pl-node-sub">from {{ pipelinePackName }}</div>
-            </div>
-            <span class="pl-arrow"></span>
-            <div class="pl-fanout">
-              <div
-                v-for="p in providerHealth.providers"
-                :key="p.key"
-                class="pl-node pl-node-llm"
-                :class="{ active: pipelineLlmState(p.key), disabled: !p.configured }"
-              >
-                <span class="pl-node-dot" :class="pipelineLlmDotClass(p.key)"></span>
-                <span class="pl-node-llm-name">{{ p.name.split(' ')[0] }}</span>
-              </div>
-            </div>
-            <span class="pl-arrow"></span>
-            <div class="pl-node pl-node-extract" :class="{ active: pipelineState.extract }">
-              <div class="pl-node-label">Haiku Extract</div>
-              <div class="pl-node-sub">JSON · brand + competitors</div>
-            </div>
-            <span class="pl-arrow"></span>
-            <div class="pl-node pl-node-score" :class="{ active: pipelineState.score }">
-              <div class="pl-node-label">Score</div>
-              <div class="pl-node-value">{{ isAuditComplete ? latestAudit.overall_score : '—' }}</div>
-              <div class="pl-node-sub">/100</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Audit Log timeline (running OR latest completed) -->
-      <div v-if="auditLogEvents.length" class="card" style="margin-bottom:24px">
-        <div class="card-header" style="cursor:pointer" @click="showAuditLog = !showAuditLog">
-          <h3 class="card-title">
-            Audit Log
-            <span v-if="isAuditRunning" class="live-pulse"></span>
-            <span class="text-xs text-muted" style="font-weight:500">
-              · {{ auditLogEvents.length }} event{{ auditLogEvents.length === 1 ? '' : 's' }}
-            </span>
-          </h3>
-          <span class="text-xs text-muted">{{ showAuditLog ? 'Hide' : 'Show' }}</span>
-        </div>
-        <div v-if="showAuditLog" class="audit-log-list">
-          <div
-            v-for="(ev, i) in auditLogEvents"
-            :key="i"
-            class="audit-log-row"
-            :class="'log-' + ev.kind"
-          >
-            <span class="audit-log-time">{{ ev.time }}</span>
-            <span class="audit-log-tag">{{ ev.tag }}</span>
-            <span class="audit-log-msg">{{ ev.message }}</span>
-            <span v-if="ev.detail" class="audit-log-detail">{{ ev.detail }}</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- How Scoring Works -->
-      <div v-if="audits.length && (!latestAudit || latestAudit.status !== 'completed')" class="card methodology-card" style="margin-bottom:24px">
-        <div class="card-header">
-          <h3 class="card-title">How LLM Ranking Works</h3>
-        </div>
-        <div class="methodology-content">
-          <p class="text-sm text-muted" style="margin-bottom:16px;line-height:1.6">
-            We ask leading AI assistants natural questions about your industry and analyze their responses
-            to measure how visible your business is in AI-generated answers. The audit scores three factors:
-          </p>
-          <div class="method-grid">
-            <div class="method-item">
-              <div class="method-weight">40 pts</div>
-              <div class="method-title">Mention Rate</div>
-              <div class="method-desc">How often your business appears in AI responses across all prompts</div>
-            </div>
-            <div class="method-item">
-              <div class="method-weight">35 pts</div>
-              <div class="method-title">Rank Position</div>
-              <div class="method-desc">Where you appear in ranked lists — #1 scores highest, lower positions score less</div>
-            </div>
-            <div class="method-item">
-              <div class="method-weight">25 pts</div>
-              <div class="method-title">Sentiment + Coverage</div>
-              <div class="method-desc">Whether mentions are positive/neutral and how many providers include you</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Score Summary (latest completed audit) -->
-      <div v-if="latestAudit" class="card" style="margin-bottom:24px">
-        <div class="score-main">
-          <div class="score-ring-wrap">
-            <svg viewBox="0 0 100 100" class="score-ring-svg">
-              <circle cx="50" cy="50" r="42" class="ring-track" />
-              <circle cx="50" cy="50" r="42" class="ring-fill" :style="ringFillStyle(latestAudit.overall_score)" />
-            </svg>
-            <div class="score-center">
-              <span class="score-num">{{ isAuditComplete ? latestAudit.overall_score : '—' }}</span>
-              <span class="score-denom">/100</span>
-            </div>
-          </div>
-          <div class="score-meta">
-            <div class="card-title">AI Visibility Score</div>
-            <p class="text-sm text-muted" style="margin-top:4px;margin-bottom:12px">
-              {{ isAuditComplete
-                ? 'How prominently LLMs mention your business'
-                : 'Score will appear once the audit finishes running.' }}
+            <p v-if="providerHealth.configured_count < providerHealth.total" class="text-xs text-muted" style="padding:8px 16px 4px;line-height:1.5">
+              Disabled providers won't be queried; configure their API keys in settings to include them.
             </p>
-            <div class="flex gap-8" style="margin-bottom:8px">
-              <span v-if="isAuditComplete" class="badge" :class="mentionBadge(latestAudit.mention_rate)">
-                {{ Math.round(latestAudit.mention_rate || 0) }}% mention rate
-              </span>
-              <span v-else class="badge badge-neutral">Running across {{ (latestAudit.providers_queried || []).length }} provider{{ (latestAudit.providers_queried || []).length !== 1 ? 's' : '' }}</span>
-              <span v-if="isAuditComplete" class="badge badge-neutral">{{ (latestAudit.providers_queried || []).length }} provider{{ (latestAudit.providers_queried || []).length !== 1 ? 's' : '' }}</span>
-              <span v-if="latestAudit.location" class="badge badge-neutral">{{ latestAudit.location }}</span>
-            </div>
-            <!-- Progress bar for running audits -->
-            <div v-if="latestAudit.status === 'running' || latestAudit.status === 'pending'" class="audit-progress-card">
-              <div class="progress-header">
-                <span class="pulse-dot"></span>
-                <span class="progress-label">{{ latestAudit.status === 'pending' ? 'Queued — waiting to start...' : 'Audit in progress' }}</span>
-                <span class="progress-pct">{{ auditProgressPct }}%</span>
-              </div>
-              <div class="progress-bar-track">
-                <div class="progress-bar-fill" :style="{ width: auditProgressPct + '%' }"></div>
-              </div>
-              <div class="progress-details">
-                <span>{{ latestAudit.queries_completed || 0 }} / {{ latestAudit.total_queries || '?' }} queries</span>
-                <span v-if="auditETA">ETA: {{ auditETA }}</span>
-                <span v-else-if="latestAudit.status === 'running'">Calculating ETA...</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Visual Score Breakdown -->
-        <div v-if="latestAudit.status === 'completed'" class="score-factors" style="margin-top:20px">
-          <h4 class="text-sm font-semibold" style="margin-bottom:12px;color:var(--text-primary)">Score Breakdown</h4>
-          <div class="factor-row">
-            <span class="factor-label">Mention Rate (40pts)</span>
-            <div class="factor-bar-wrap">
-              <div class="factor-bar" :style="{ width: mentionPts + '%', background: mentionPts > 25 ? 'var(--color-success)' : mentionPts > 10 ? 'var(--color-warning)' : 'var(--color-danger)' }"></div>
-            </div>
-            <span class="factor-value">{{ mentionPts }}/40</span>
-          </div>
-          <div class="factor-row">
-            <span class="factor-label">Rank Position (35pts)</span>
-            <div class="factor-bar-wrap">
-              <div class="factor-bar" :style="{ width: rankPts / 35 * 100 + '%', background: rankPts > 20 ? 'var(--color-success)' : rankPts > 10 ? 'var(--color-warning)' : 'var(--color-danger)' }"></div>
-            </div>
-            <span class="factor-value">{{ rankPts }}/35</span>
-          </div>
-          <div class="factor-row">
-            <span class="factor-label">Sentiment + Coverage (25pts)</span>
-            <div class="factor-bar-wrap">
-              <div class="factor-bar" :style="{ width: sentimentPts / 25 * 100 + '%', background: sentimentPts > 15 ? 'var(--color-success)' : sentimentPts > 8 ? 'var(--color-warning)' : 'var(--color-danger)' }"></div>
-            </div>
-            <span class="factor-value">{{ sentimentPts }}/25</span>
-          </div>
-          <div class="factor-total">
-            <span>Total Score</span>
-            <span class="font-semibold">{{ latestAudit.overall_score }}/100</span>
-          </div>
-        </div>
-
-        <!-- Provider Breakdown -->
-        <div v-if="latestBreakdown.length" class="provider-grid" style="margin-top:20px">
-          <div
-            v-for="p in latestBreakdown"
-            :key="p.provider"
-            class="provider-card"
-            :class="{ 'provider-mentioned': p.mentioned > 0, 'provider-failed': p.succeeded === 0 }"
-          >
-            <div class="provider-icon">{{ providerInitial(p.provider) }}</div>
-            <div class="provider-name">{{ p.provider_display || providerLabel(p.provider) }}</div>
-            <template v-if="p.succeeded === 0">
-              <span class="badge badge-danger">Not configured</span>
-              <div class="text-xs text-muted" style="margin-top:4px">API key missing</div>
-            </template>
-            <template v-else>
-              <span class="badge" :class="p.mentioned > 0 ? 'badge-success' : 'badge-neutral'">
-                {{ p.mention_rate }}% mentioned
-              </span>
-              <div v-if="p.avg_rank" class="text-xs text-muted" style="margin-top:4px">Avg rank #{{ p.avg_rank }}</div>
-              <div class="text-xs" style="margin-top:2px;color:var(--text-muted)">{{ p.succeeded }}/{{ p.total_prompts }} queries OK</div>
-            </template>
           </div>
         </div>
       </div>
 
-      <!-- ═══ Charts Section ═══ -->
-      <div v-if="latestBreakdown.length || historyData.length" class="charts-row" style="margin-bottom:24px">
-        <!-- Provider Comparison Bar Chart -->
-        <div v-if="latestBreakdown.length" class="card chart-card">
+      <!-- AI Visibility Score — compact widget bar -->
+      <div v-if="latestAudit" class="card lr-score-widget" style="margin-bottom:24px">
+        <div class="lr-score-bar" @click="showScoreDetail = !showScoreDetail" style="cursor:pointer">
+          <!-- Mini score ring -->
+          <div class="lr-score-mini-ring">
+            <svg viewBox="0 0 36 36" class="lr-mini-svg">
+              <circle cx="18" cy="18" r="15" fill="none" stroke="var(--border-color)" stroke-width="3"/>
+              <circle cx="18" cy="18" r="15" fill="none" 
+                :stroke="isAuditComplete ? scoreColor(latestAudit.overall_score) : 'var(--text-muted)'" 
+                stroke-width="3" stroke-linecap="round"
+                :stroke-dasharray="94.2" 
+                :stroke-dashoffset="isAuditComplete ? 94.2 - (94.2 * (latestAudit.overall_score || 0) / 100) : 94.2"
+                transform="rotate(-90 18 18)"
+                style="transition: stroke-dashoffset 0.8s ease"/>
+            </svg>
+            <span class="lr-mini-num">{{ isAuditComplete ? latestAudit.overall_score : '—' }}</span>
+          </div>
+
+          <!-- Score info -->
+          <div class="lr-score-info">
+            <div class="lr-score-title">AI Visibility Score</div>
+            <div class="lr-score-sub">
+              <template v-if="isAuditComplete">
+                <span class="badge" :class="mentionBadge(latestAudit.mention_rate)" style="margin-right:6px">
+                  {{ Math.round(latestAudit.mention_rate || 0) }}% mention rate
+                </span>
+                <span class="text-xs text-muted">
+                  {{ (latestAudit.providers_queried || []).length }} providers · {{ latestAudit.total_queries || 0 }} queries
+                </span>
+              </template>
+              <template v-else>
+                <span class="badge badge-neutral">{{ latestAudit.status === 'pending' ? 'Queued' : 'Running' }}</span>
+                <span v-if="latestAudit.status === 'running'" class="text-xs text-muted" style="margin-left:6px">
+                  {{ latestAudit.queries_completed || 0 }}/{{ latestAudit.total_queries || '?' }} queries · {{ auditProgressPct }}%
+                </span>
+              </template>
+            </div>
+          </div>
+
+          <!-- Progress bar for running audits -->
+          <div v-if="latestAudit.status === 'running' || latestAudit.status === 'pending'" class="lr-score-progress">
+            <div class="progress-bar-track" style="height:4px;border-radius:4px">
+              <div class="progress-bar-fill" :style="{ width: auditProgressPct + '%' }" style="height:4px;border-radius:4px"></div>
+            </div>
+          </div>
+
+          <!-- Expand chevron -->
+          <svg class="lr-systems-chevron" :class="{ open: showScoreDetail }" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M4 6l4 4 4-4"/>
+          </svg>
+        </div>
+
+        <!-- Expandable detail: Score Breakdown + Provider grid -->
+        <div v-if="showScoreDetail" class="lr-score-detail">
+          <!-- Score Breakdown bars -->
+          <div v-if="latestAudit.status === 'completed'" class="score-factors" style="padding:16px 20px 8px">
+            <div class="factor-row">
+              <span class="factor-label">Mention Rate (40pts)</span>
+              <div class="factor-bar-wrap">
+                <div class="factor-bar" :style="{ width: mentionPts + '%', background: mentionPts > 25 ? 'var(--color-success)' : mentionPts > 10 ? 'var(--color-warning)' : 'var(--color-danger)' }"></div>
+              </div>
+              <span class="factor-value">{{ mentionPts }}/40</span>
+            </div>
+            <div class="factor-row">
+              <span class="factor-label">Rank Position (35pts)</span>
+              <div class="factor-bar-wrap">
+                <div class="factor-bar" :style="{ width: rankPts / 35 * 100 + '%', background: rankPts > 20 ? 'var(--color-success)' : rankPts > 10 ? 'var(--color-warning)' : 'var(--color-danger)' }"></div>
+              </div>
+              <span class="factor-value">{{ rankPts }}/35</span>
+            </div>
+            <div class="factor-row">
+              <span class="factor-label">Sentiment + Coverage (25pts)</span>
+              <div class="factor-bar-wrap">
+                <div class="factor-bar" :style="{ width: sentimentPts / 25 * 100 + '%', background: sentimentPts > 15 ? 'var(--color-success)' : sentimentPts > 8 ? 'var(--color-warning)' : 'var(--color-danger)' }"></div>
+              </div>
+              <span class="factor-value">{{ sentimentPts }}/25</span>
+            </div>
+          </div>
+
+          <!-- Provider Breakdown grid -->
+          <div v-if="latestBreakdown.length" class="provider-grid" style="padding:12px 20px 16px">
+            <div
+              v-for="p in latestBreakdown"
+              :key="p.provider"
+              class="provider-card"
+              :class="{ 'provider-mentioned': p.mentioned > 0, 'provider-failed': p.succeeded === 0 }"
+            >
+              <div class="provider-icon">{{ providerInitial(p.provider) }}</div>
+              <div class="provider-name">{{ p.provider_display || providerLabel(p.provider) }}</div>
+              <template v-if="p.succeeded === 0">
+                <span class="badge badge-danger">Not configured</span>
+              </template>
+              <template v-else>
+                <span class="badge" :class="p.mentioned > 0 ? 'badge-success' : 'badge-neutral'">
+                  {{ p.mention_rate }}% mentioned
+                </span>
+                <div v-if="p.avg_rank" class="text-xs text-muted" style="margin-top:4px">Avg rank #{{ p.avg_rank }}</div>
+                <div class="text-xs" style="margin-top:2px;color:var(--text-muted)">{{ p.succeeded }}/{{ p.total_prompts }} queries OK</div>
+              </template>
+            </div>
+          </div>
+        </div>
+      </div>
+
+
+      <!-- Prompts Table (rich view — matching reference design) -->
+      <div v-if="isAuditComplete && intentGroups.length" class="card" style="margin-bottom:24px">
+        <div class="card-header" style="border-bottom:1px solid var(--border-color, #E5E7EB)">
+          <h3 class="card-title" style="font-size:1.1rem;font-weight:700">Prompts</h3>
+          <div class="pt-header-right">
+            <div class="pi-filter">
+              <select v-model="providerFilter" class="pi-select">
+                <option value="">All Providers</option>
+                <option v-for="p in availableProviderFilters" :key="p" :value="p">{{ providerLabel(p) }}</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Table header -->
+        <div class="pt-table">
+          <div class="pt-thead">
+            <span class="pt-th pt-th-topic">Topic</span>
+            <span class="pt-th pt-th-count">Prompts</span>
+            <span class="pt-th pt-th-vis">Avg Visibility</span>
+            <span class="pt-th pt-th-perf">Top Performers</span>
+            <span class="pt-th pt-th-status">Status</span>
+          </div>
+
+          <!-- Topic group rows -->
+          <template v-for="group in intentGroups" :key="group.intent">
+            <!-- Topic header row (clickable) -->
+            <div class="pt-topic-row" @click="toggleIntent(group.intent)">
+              <span class="pt-td pt-td-topic">
+                <svg class="pi-chevron" :class="{ open: !collapsedIntents.has(group.intent) }"
+                     width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M5 4l5 4-5 4"/>
+                </svg>
+                <span class="pt-topic-name">{{ formatIntent(group.intent) }}</span>
+              </span>
+              <span class="pt-td pt-td-count">{{ group.prompts.length }}</span>
+              <span class="pt-td pt-td-vis">
+                <span :style="{ color: visibilityColor(group.avgVisibility) }">{{ group.avgVisibility }}%</span>
+                <svg v-if="group.avgVisibility > 0" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-left:3px">
+                  <path d="M2 7L5 3L8 7" :stroke="group.avgVisibility >= 50 ? '#10b981' : '#f59e0b'"/>
+                </svg>
+              </span>
+              <span class="pt-td pt-td-perf">
+                <span
+                  v-for="d in group.providerSummary"
+                  :key="d.provider"
+                  class="pt-perf-icon"
+                  :class="{ 'is-hit': d.hitRate > 50, 'is-partial': d.hitRate > 0 && d.hitRate <= 50, 'is-miss': d.hitRate === 0 }"
+                  :title="providerLabel(d.provider) + ': ' + d.hitRate + '% hit rate'"
+                >{{ providerInitial(d.provider) }}</span>
+              </span>
+              <span class="pt-td pt-td-status">
+                <span class="pt-see-link">See →</span>
+              </span>
+            </div>
+
+            <!-- Expanded prompt rows -->
+            <template v-if="!collapsedIntents.has(group.intent)">
+              <div v-for="p in group.prompts" :key="p.text" class="pt-prompt-row">
+                <span class="pt-td pt-td-topic pt-td-prompt-text">{{ p.text }}</span>
+                <span class="pt-td pt-td-count"></span>
+                <span class="pt-td pt-td-vis">
+                  <strong :style="{ color: visibilityColor(p.visibility) }">{{ p.visibility }}%</strong>
+                  <svg v-if="p.visibility > 0" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke-width="1.5" style="margin-left:3px">
+                    <path d="M2 7L5 3L8 7" :stroke="p.visibility >= 50 ? '#10b981' : '#f59e0b'"/>
+                  </svg>
+                </span>
+                <span class="pt-td pt-td-perf">
+                  <span
+                    v-for="d in p.providerDots"
+                    :key="d.provider"
+                    class="pt-perf-icon"
+                    :class="{ 'is-hit': d.mentioned, 'is-miss': !d.mentioned && d.succeeded, 'is-fail': !d.succeeded }"
+                    :title="providerLabel(d.provider) + ': ' + providerDotTitle(d)"
+                  >{{ providerInitial(d.provider) }}</span>
+                </span>
+                <span class="pt-td pt-td-status">
+                  <span class="pt-status-pill" :class="p.visibility > 0 ? 'is-ran' : 'is-miss'">
+                    {{ p.visibility > 0 ? 'Prompt Ran' : 'No Mention' }}
+                  </span>
+                </span>
+              </div>
+            </template>
+          </template>
+        </div>
+      </div>
+
+      <!-- Live query ticker (running audits only) -->
+      <div v-if="isAuditRunning && liveResults.length" class="card" style="margin-bottom:24px">
+        <div class="card-header">
+          <h3 class="card-title">
+            Live results
+            <span class="live-pulse"></span>
+          </h3>
+          <span class="text-xs text-muted">{{ liveResults.length }} response{{ liveResults.length === 1 ? '' : 's' }} so far</span>
+        </div>
+        <div class="live-list">
+          <div
+            v-for="r in liveResults.slice(0, 10)"
+            :key="r.id"
+            class="live-row"
+            :class="{ 'live-hit': r.is_mentioned, 'live-fail': !r.query_succeeded }"
+          >
+            <span class="live-provider">{{ providerLabel(r.provider) }}</span>
+            <span class="live-prompt">{{ r.prompt }}</span>
+            <span v-if="!r.query_succeeded" class="badge badge-danger">API error</span>
+            <span v-else-if="r.is_mentioned" class="badge badge-success">
+              Ranked #{{ r.mention_rank || '—' }}
+            </span>
+            <span v-else class="badge badge-neutral">Not mentioned</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Overview row: trends (left) + competitors leaderboard (right) -->
+      <div v-if="history.length || (isAuditComplete && competitorLeaderboard.length)"
+           class="lr-grid-2" style="margin-bottom:24px">
+        <!-- AI Visibility Trends -->
+        <div v-if="history.length >= 1" class="card lr-grid-main">
           <div class="card-header">
             <h3 class="card-title">Provider Comparison</h3>
             <span class="text-xs text-muted">Mention rate across LLMs</span>
@@ -614,10 +655,11 @@
         </div>
       </div>
 
-      <!-- Audit History -->
+      <!-- Audit Jobs -->
       <div class="card">
         <div class="card-header">
-          <h3 class="card-title">Audit History</h3>
+          <h3 class="card-title">Audit Jobs</h3>
+          <span class="text-xs text-muted">{{ audits.length }} run{{ audits.length !== 1 ? 's' : '' }}</span>
         </div>
 
         <div v-if="audits.length === 0" class="empty-state">
@@ -625,50 +667,105 @@
           <p class="empty-state-desc">Run your first audit to see how LLMs rank your business.</p>
         </div>
 
-        <table v-else class="data-table">
-          <thead>
-            <tr>
-              <th>Date</th>
-              <th>Business</th>
-              <th>Score</th>
-              <th>Mention Rate</th>
-              <th>Status</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="audit in audits"
-              :key="audit.id"
-              class="audit-row"
-              :class="{ 'row-selected': selectedAuditId === audit.id }"
-              @click="selectAudit(audit)"
+        <div v-else class="lr-audit-jobs">
+          <div v-for="audit in audits" :key="audit.id" class="lr-job-block">
+            <!-- Job header row (clickable) -->
+            <div
+              class="lr-job-header"
+              :class="{ 'is-active': expandedAuditId === audit.id, 'row-selected': selectedAuditId === audit.id }"
+              @click="toggleAuditExpand(audit)"
             >
-              <td class="text-sm">{{ formatDate(audit.created_at) }}</td>
-              <td class="font-semibold">{{ audit.business_name }}</td>
-              <td>
+              <svg class="lr-job-chevron" :class="{ open: expandedAuditId === audit.id }" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M5 4l5 4-5 4"/>
+              </svg>
+              <span class="lr-job-date">{{ formatDate(audit.created_at) }}</span>
+              <span class="lr-job-name">{{ audit.business_name }}</span>
+              <span class="lr-job-score">
                 <span class="score-pill" :class="scorePillClass(audit.overall_score)">
                   {{ audit.overall_score ?? '—' }}
                 </span>
-              </td>
-              <td class="text-sm">{{ Math.round(audit.mention_rate || 0) }}%</td>
-              <td><span class="badge" :class="auditStatusBadge(audit.status)">{{ audit.status }}</span></td>
-              <td>
-                <!-- Inline delete confirmation -->
-                <div v-if="confirmDeleteId === audit.id" class="flex gap-8 items-center">
-                  <span class="text-xs" style="color:var(--color-danger)">Delete?</span>
+              </span>
+              <span class="lr-job-mention">{{ Math.round(audit.mention_rate || 0) }}%</span>
+              <span class="lr-job-queries">{{ audit.total_queries || '—' }} queries</span>
+              <span class="lr-job-status">
+                <button
+                  v-if="audit.status === 'pending' || audit.status === 'failed'"
+                  class="btn btn-sm lr-run-btn"
+                  :disabled="runningAuditId === audit.id"
+                  @click.stop="executeAuditJob(audit)"
+                >
+                  <template v-if="runningAuditId === audit.id">
+                    <span class="pulse-dot" style="width:6px;height:6px;display:inline-block;margin-right:4px"></span>
+                    Running…
+                  </template>
+                  <template v-else>▶ Run</template>
+                </button>
+                <span v-else-if="audit.status === 'running'" class="badge badge-warning">
+                  <span class="pulse-dot" style="width:5px;height:5px;display:inline-block;margin-right:3px"></span>
+                  running
+                </span>
+                <span v-else class="badge" :class="auditStatusBadge(audit.status)">{{ audit.status }}</span>
+              </span>
+              <span class="lr-job-actions">
+                <div v-if="confirmDeleteId === audit.id" class="flex gap-8 items-center" @click.stop>
                   <button class="btn btn-danger btn-sm" @click.stop="confirmDelete(audit)">Yes</button>
                   <button class="btn btn-secondary btn-sm" @click.stop="confirmDeleteId = null">No</button>
                 </div>
-                <button
-                  v-else
-                  class="btn btn-ghost btn-sm delete-btn"
-                  @click.stop="confirmDeleteId = audit.id"
-                >Delete</button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+                <button v-else class="btn btn-ghost btn-sm delete-btn" @click.stop="confirmDeleteId = audit.id">×</button>
+              </span>
+            </div>
+
+            <!-- Expanded prompt jobs -->
+            <div v-if="expandedAuditId === audit.id" class="lr-job-detail">
+              <div v-if="!audit.prompts || !audit.prompts.length" class="text-xs text-muted" style="padding:12px 16px">
+                <template v-if="audit.status === 'pending'">
+                  <span class="pulse-dot" style="margin-right:6px"></span>
+                  Queued — prompts will appear when the job starts running.
+                </template>
+                <template v-else-if="audit.status === 'running'">
+                  <span class="pulse-dot" style="margin-right:6px"></span>
+                  Running {{ audit.queries_completed || 0 }}/{{ audit.total_queries || '?' }} queries...
+                </template>
+                <template v-else>No prompt data available for this audit.</template>
+              </div>
+              <div v-else class="lr-prompt-jobs">
+                <div class="lr-prompt-header">
+                  <span class="lr-ph-num">#</span>
+                  <span class="lr-ph-prompt">Prompt</span>
+                  <span class="lr-ph-type">Type</span>
+                  <span class="lr-ph-providers">Providers</span>
+                  <span class="lr-ph-result">Result</span>
+                </div>
+                <div
+                  v-for="(prompt, pi) in audit.prompts"
+                  :key="pi"
+                  class="lr-prompt-row"
+                >
+                  <span class="lr-pr-num">{{ pi + 1 }}</span>
+                  <span class="lr-pr-prompt">{{ prompt }}</span>
+                  <span class="lr-pr-type">
+                    <span class="badge badge-neutral" style="font-size:10px">{{ promptIntents[pi] || 'custom' }}</span>
+                  </span>
+                  <span class="lr-pr-providers">
+                    <span
+                      v-for="prov in (audit.providers_queried || [])"
+                      :key="prov"
+                      class="lr-pr-dot"
+                      :title="providerLabel(prov)"
+                    >{{ providerInitial(prov) }}</span>
+                  </span>
+                  <span class="lr-pr-result">
+                    <span v-if="audit.status === 'completed'" class="badge" :class="getPromptMentioned(audit, pi) ? 'badge-success' : 'badge-neutral'" style="font-size:10px">
+                      {{ getPromptMentioned(audit, pi) ? 'Mentioned' : 'No mention' }}
+                    </span>
+                    <span v-else-if="audit.status === 'running'" class="pulse-dot" style="width:6px;height:6px"></span>
+                    <span v-else class="text-xs text-muted">—</span>
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </template>
 
@@ -1087,8 +1184,81 @@ const showFindings = ref(true)
 const showMethodology = ref(false)
 const showPrompts = ref(true)
 const showAuditLog = ref(true)
+const showSystemsDropdown = ref(false)
+const showScoreDetail = ref(false)
+const expandedAuditId = ref(null)
 const confirmDeleteId = ref(null)
 const historyData = ref([])
+const runningAuditId = ref(null)
+
+async function executeAuditJob(audit) {
+  if (runningAuditId.value) return
+  runningAuditId.value = audit.id
+  // Optimistically set status to running
+  audit.status = 'running'
+  toast.info(`Running audit for "${audit.business_name}"…`)
+  try {
+    const { data } = await llmRankingApi.executeAudit(websiteId, audit.id)
+    const result = data?.data || data
+    // Update the audit in the list with results
+    const idx = audits.value.findIndex(a => a.id === audit.id)
+    if (idx >= 0) {
+      audits.value[idx] = { ...audits.value[idx], ...result }
+    }
+    toast.success(`Audit completed! Score: ${result.overall_score}/100`)
+    // Auto-select and expand
+    await selectAudit(audits.value[idx] || result)
+    expandedAuditId.value = audit.id
+  } catch (err) {
+    audit.status = 'failed'
+    audit.error_message = err.displayMessage || err.message || 'Audit failed'
+    toast.error(err.displayMessage || 'Audit execution failed. Check API keys.')
+  } finally {
+    runningAuditId.value = null
+  }
+}
+
+function toggleAuditExpand(audit) {
+  if (expandedAuditId.value === audit.id) {
+    expandedAuditId.value = null
+  } else {
+    expandedAuditId.value = audit.id
+    selectAudit(audit)
+  }
+}
+
+function getPromptMentioned(audit, promptIndex) {
+  // Check if this prompt got a mention in any provider's results
+  if (!auditDetail.value || !auditDetail.value.results) return false
+  const prompt = (audit.prompts || [])[promptIndex]
+  if (!prompt) return false
+  return auditDetail.value.results.some(r =>
+    r.prompt === prompt && r.is_mentioned
+  )
+}
+
+// Intent tags for each prompt — derived from the prompt text via the backend
+// library keywords. Purely cosmetic; falls back to "custom" on miss.
+const INTENT_PATTERNS = [
+  { intent: 'recommendation', keywords: ['best', 'recommend', 'most companies', 'leading', 'top options'] },
+  { intent: 'comparison',     keywords: ['compare', 'side-by-side', 'pros and cons'] },
+  { intent: 'alternatives',   keywords: ['alternative', 'up-and-coming', 'newer', 'indie'] },
+  { intent: 'use_case',       keywords: ['i need to', 'helps with', 'platform for'] },
+  { intent: 'category',       keywords: ['new to', 'categories of'] },
+  { intent: 'local',          keywords: ['in dallas', 'in new york', 'businesses in', ' in '] },
+  { intent: 'persona',        keywords: ['startup', 'mid-market', 'enterprise teams'] },
+  { intent: 'review',         keywords: ['users say', 'reputation', 'reviewers'] },
+]
+function classifyIntent(text) {
+  const lower = text.toLowerCase()
+  for (const { intent, keywords } of INTENT_PATTERNS) {
+    if (keywords.some(k => lower.includes(k))) return intent
+  }
+  return 'custom'
+}
+const promptIntents = computed(() =>
+  (latestAudit.value?.prompts || []).map(classifyIntent)
+)
 let pollTimer = null
 
 // Schedule state
@@ -2371,6 +2541,13 @@ function mentionBadge(rate) {
   return pct >= 60 ? 'badge-success' : pct >= 30 ? 'badge-warning' : 'badge-neutral'
 }
 
+function scoreColor(score) {
+  if (!score && score !== 0) return 'var(--text-muted)'
+  if (score >= 70) return '#10B981'
+  if (score >= 40) return '#F59E0B'
+  return '#EF4444'
+}
+
 function providerLabel(p) {
   return {
     claude: 'Claude', gpt4: 'GPT-4', gemini: 'Gemini', perplexity: 'Perplexity',
@@ -3532,6 +3709,285 @@ onBeforeUnmount(() => {
 .provider-status-row.is-off .provider-status-state {
   background: var(--bg-surface);
   color: var(--text-muted);
+}
+
+/* Audit Jobs — expandable rows */
+.lr-audit-jobs {
+  display: flex;
+  flex-direction: column;
+}
+.lr-job-block {
+  border-top: 1px solid var(--border-color);
+}
+.lr-job-block:first-child {
+  border-top: none;
+}
+.lr-job-header {
+  display: grid;
+  grid-template-columns: 16px 100px 1fr 50px 60px 80px 80px 32px;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  cursor: pointer;
+  transition: background 0.15s;
+  font-size: 13px;
+}
+.lr-job-header:hover {
+  background: rgba(0,0,0,0.015);
+}
+.lr-job-header.is-active {
+  background: rgba(79, 70, 229, 0.03);
+}
+.lr-job-chevron {
+  transition: transform 0.2s ease;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.lr-job-chevron.open {
+  transform: rotate(90deg);
+}
+.lr-job-date {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.lr-job-name {
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lr-job-score {
+  text-align: center;
+}
+.lr-job-mention {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: center;
+}
+.lr-job-queries {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: center;
+}
+.lr-job-duration {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-align: center;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+}
+.lr-job-status {
+  text-align: center;
+}
+.lr-run-btn {
+  font-size: 11px;
+  padding: 3px 10px;
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+.lr-run-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #059669, #047857);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(16, 185, 129, 0.3);
+}
+.lr-run-btn:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+.lr-job-actions {
+  text-align: right;
+}
+.lr-job-detail {
+  background: rgba(0,0,0,0.01);
+  border-top: 1px solid var(--border-color);
+}
+
+/* Prompt job table inside expanded audit */
+.lr-prompt-jobs {
+  font-size: 12px;
+}
+.lr-prompt-header {
+  display: grid;
+  grid-template-columns: 30px 1fr 80px 100px 90px;
+  gap: 8px;
+  padding: 8px 16px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-color);
+}
+.lr-prompt-row {
+  display: grid;
+  grid-template-columns: 30px 1fr 80px 100px 90px;
+  gap: 8px;
+  padding: 8px 16px;
+  align-items: center;
+  border-bottom: 1px solid rgba(0,0,0,0.03);
+  transition: background 0.15s;
+}
+.lr-prompt-row:hover {
+  background: rgba(0,0,0,0.015);
+}
+.lr-prompt-row:last-child {
+  border-bottom: none;
+}
+.lr-pr-num {
+  font-weight: 600;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.lr-pr-prompt {
+  color: var(--text-primary);
+  line-height: 1.4;
+}
+.lr-pr-type {
+  text-align: center;
+}
+.lr-pr-providers {
+  display: flex;
+  gap: 3px;
+  flex-wrap: wrap;
+}
+.lr-pr-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  font-size: 8px;
+  font-weight: 800;
+  color: var(--text-muted);
+}
+.lr-pr-result {
+  text-align: center;
+}
+
+/* AI Visibility Score — compact widget */
+.lr-score-widget {
+  padding: 0;
+  overflow: hidden;
+}
+.lr-score-bar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 18px;
+}
+.lr-score-mini-ring {
+  position: relative;
+  width: 42px;
+  height: 42px;
+  flex-shrink: 0;
+}
+.lr-mini-svg {
+  width: 42px;
+  height: 42px;
+}
+.lr-mini-num {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+}
+.lr-score-info {
+  flex: 1;
+  min-width: 0;
+}
+.lr-score-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 3px;
+}
+.lr-score-sub {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.lr-score-progress {
+  width: 120px;
+  flex-shrink: 0;
+}
+.lr-score-detail {
+  border-top: 1px solid var(--border-color);
+}
+
+/* LLM Systems compact dropdown */
+.lr-systems-dropdown {
+  padding: 0;
+  overflow: hidden;
+}
+.lr-systems-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  gap: 12px;
+}
+.lr-systems-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.lr-systems-pills {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.lr-sys-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 100px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+.lr-sys-pill.lr-sys-on {
+  background: rgba(16, 185, 129, 0.08);
+  color: #059669;
+  border: 1px solid rgba(16, 185, 129, 0.15);
+}
+.lr-sys-pill.lr-sys-on .provider-status-dot {
+  background: #10B981;
+}
+.lr-sys-pill.lr-sys-off {
+  background: rgba(107, 114, 128, 0.06);
+  color: var(--text-muted);
+  border: 1px solid var(--border-color);
+}
+.lr-systems-chevron {
+  color: var(--text-muted);
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+}
+.lr-systems-chevron.open {
+  transform: rotate(180deg);
+}
+.lr-systems-list {
+  border-top: 1px solid var(--border-color);
+  padding: 8px 0;
 }
 
 /* Pipeline diagram */

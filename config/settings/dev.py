@@ -31,3 +31,7 @@ except ImportError:
 
 # Simpler logging in dev
 LOGGING["loggers"]["django"]["level"] = "INFO"  # noqa: F405
+
+# Run Celery tasks synchronously in dev (no Redis/worker needed)
+CELERY_TASK_ALWAYS_EAGER = True
+CELERY_TASK_EAGER_PROPAGATES = True

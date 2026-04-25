@@ -78,8 +78,27 @@ class LLMRankingAuditListView(TenantScopedListAPIView):
                 themes=data.get("themes") or None,
             )
 
-        # Use selected providers or default to all
-        selected_providers = data.get("providers") or ["claude", "gpt4", "gemini", "perplexity"]
+        # Use selected providers or default to all configured
+        if data.get("providers"):
+            selected_providers = data["providers"]
+        else:
+            # Auto-detect configured providers
+            all_providers = {
+                "claude": "ANTHROPIC_API_KEY",
+                "gpt4": "OPENAI_API_KEY",
+                "gemini": "GEMINI_API_KEY",
+                "perplexity": "PERPLEXITY_API_KEY",
+                "meta_llama": "META_API_KEY",
+                "mistral": "MISTRAL_API_KEY",
+                "cohere": "COHERE_API_KEY",
+                "deepseek": "DEEPSEEK_API_KEY",
+                "grok": "XAI_API_KEY",
+                "amazon_nova": "AWS_BEDROCK_KEY",
+            }
+            selected_providers = [
+                key for key, setting in all_providers.items()
+                if getattr(settings, setting, "")
+            ] or ["claude", "gpt4"]  # fallback to at least two
 
         audit = LLMRankingAudit.objects.create(
             website=website,
@@ -93,9 +112,12 @@ class LLMRankingAuditListView(TenantScopedListAPIView):
             providers_queried=selected_providers,
         )
 
-        # Queue async task
-        from apps.llm_ranking.tasks import run_llm_ranking_audit
-        run_llm_ranking_audit.delay(audit_id=str(audit.id))
+        # Dispatch: in production use Celery, in dev the user triggers
+        # the run manually via the "Run" button (retry endpoint) because
+        # background threads can't reliably open new DB connections.
+        if not getattr(settings, "CELERY_TASK_ALWAYS_EAGER", False):
+            from apps.llm_ranking.tasks import run_llm_ranking_audit
+            run_llm_ranking_audit.delay(audit_id=str(audit.id))
 
         return Response(
             LLMRankingAuditListSerializer(audit).data,
@@ -161,6 +183,59 @@ class LLMRankingAuditDetailView(TenantScopedAPIView):
         audit = self._get_audit(website_id, audit_id)
         audit.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class LLMRankingAuditRunView(TenantScopedAPIView):
+    """
+    POST — Run (or re-run) a pending/failed audit synchronously.
+    Returns the updated audit when complete.
+    """
+
+    def post(self, request, website_id, audit_id):
+        self.get_website(website_id)
+        audit = self.get_tenant_object(
+            LLMRankingAudit, id=audit_id, website_id=website_id,
+        )
+        if audit.status == LLMRankingAudit.STATUS_COMPLETED:
+            return Response(
+                {"error": "Audit already completed."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if audit.status == LLMRankingAudit.STATUS_RUNNING:
+            return Response(
+                {"error": "Audit is already running."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Reset to pending and clear old results for re-runs
+        if audit.status == LLMRankingAudit.STATUS_FAILED:
+            audit.results.all().delete()
+            audit.status = LLMRankingAudit.STATUS_PENDING
+            audit.overall_score = 0
+            audit.mention_rate = 0.0
+            audit.queries_completed = 0
+            audit.total_queries = 0
+            audit.error_message = ""
+            audit.save()
+
+        # Run synchronously in the request thread
+        from apps.llm_ranking.services.ranking_service import LLMRankingService
+        try:
+            LLMRankingService.run_audit(audit_id=str(audit.id))
+        except Exception as exc:
+            logger.error("LLM ranking audit %s failed: %s", audit.id, exc)
+            LLMRankingAudit.objects.filter(id=audit.id).update(
+                status=LLMRankingAudit.STATUS_FAILED,
+                error_message=str(exc),
+            )
+            return Response(
+                {"error": f"Audit failed: {exc}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        # Refresh and return
+        audit.refresh_from_db()
+        return Response(LLMRankingAuditListSerializer(audit).data)
 
 
 class LLMRankingRecommendationsView(TenantScopedAPIView):

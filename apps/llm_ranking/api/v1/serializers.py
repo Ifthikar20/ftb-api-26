@@ -51,7 +51,7 @@ class LLMRankingAuditSerializer(serializers.ModelSerializer):
 
 
 class LLMRankingAuditListSerializer(serializers.ModelSerializer):
-    """Lightweight serializer for list view — omits per-result details."""
+    """Lightweight serializer for list view — includes prompts for expandable rows."""
     status_display = serializers.CharField(source="get_status_display", read_only=True)
 
     class Meta:
@@ -62,6 +62,7 @@ class LLMRankingAuditListSerializer(serializers.ModelSerializer):
             "overall_score", "mention_rate", "avg_mention_rank",
             "mention_rate_ci_lower", "mention_rate_ci_upper",
             "providers_queried", "queries_completed", "total_queries",
+            "prompts",
             "started_at", "completed_at", "created_at",
         ]
         read_only_fields = fields
@@ -94,9 +95,13 @@ class RunAuditSerializer(serializers.Serializer):
         default=list,
         max_length=10,
     )
-    # Which providers to query (defaults to all)
+    # Which providers to query (defaults to all configured)
     providers = serializers.ListField(
-        child=serializers.ChoiceField(choices=["claude", "gpt4", "gemini", "perplexity"]),
+        child=serializers.ChoiceField(choices=[
+            "claude", "gpt4", "gemini", "perplexity",
+            "meta_llama", "mistral", "cohere", "deepseek",
+            "grok", "amazon_nova",
+        ]),
         required=False,
         default=list,
     )
