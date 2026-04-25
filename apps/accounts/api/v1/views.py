@@ -237,6 +237,58 @@ class MeExportView(APIView):
         return Response(data)
 
 
+class SessionView(APIView):
+    """
+    Post-login bootstrap. Returns the minimum the frontend needs to decide
+    where to route the user: onboarding, paywall, or app.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from apps.websites.models import Website
+        from core.utils.constants import SubscriptionStatus
+
+        user = request.user
+
+        websites = list(Website.objects.filter(user=user, is_active=True).only(
+            "id", "name", "url", "onboarding_completed"
+        ))
+        needs_onboarding = not websites or any(not w.onboarding_completed for w in websites)
+        incomplete = next((w for w in websites if not w.onboarding_completed), None)
+
+        sub = getattr(user, "subscription", None)
+        if sub is None:
+            is_paying = False
+        elif sub.status == SubscriptionStatus.ACTIVE:
+            is_paying = True
+        elif sub.status == SubscriptionStatus.TRIALING and sub.stripe_subscription_id:
+            is_paying = True
+        else:
+            is_paying = False
+
+        if needs_onboarding:
+            next_route = "onboarding"
+        elif not is_paying:
+            next_route = "paywall"
+        else:
+            next_route = "app"
+
+        return Response({
+            "user": UserProfileSerializer(user).data,
+            "onboarding": {
+                "needs_onboarding": needs_onboarding,
+                "first_incomplete_website_id": str(incomplete.id) if incomplete else None,
+                "websites_count": len(websites),
+            },
+            "subscription": {
+                "status": sub.status if sub else None,
+                "plan": sub.plan if sub else None,
+                "is_paying": is_paying,
+            },
+            "next_route": next_route,
+        })
+
+
 class AIUsageView(APIView):
     """Return AI token usage summary for the authenticated user."""
     permission_classes = [IsAuthenticated]

@@ -2,13 +2,15 @@ import api from './client'
 
 export default {
     listAudits: (wid, params) => api.get(`/llm-ranking/${wid}/audits/`, { params }),
+    previewPrompts: (wid, params) => api.get(`/llm-ranking/${wid}/preview-prompts/`, { params }),
     runAudit: (wid, data) => api.post(`/llm-ranking/${wid}/audits/`, data),
     getAudit: (wid, aid) => api.get(`/llm-ranking/${wid}/audits/${aid}/`),
     deleteAudit: (wid, aid) => api.delete(`/llm-ranking/${wid}/audits/${aid}/`),
     breakdown: (wid, aid) => api.get(`/llm-ranking/${wid}/audits/${aid}/breakdown/`),
     recommendations: (wid, aid) => api.get(`/llm-ranking/${wid}/audits/${aid}/recommendations/`),
     history: (wid, params) => api.get(`/llm-ranking/${wid}/history/`, { params }),
-    providerHealth: () => api.get(`/llm-ranking/provider-health/`),
-    scanDomain: (url) => api.post(`/llm-ranking/scan-domain/`, { url }),
-    suggestContext: (data) => api.post(`/llm-ranking/suggest-context/`, data),
+    // Schedule endpoints
+    getSchedule: (wid) => api.get(`/llm-ranking/${wid}/schedule/`),
+    saveSchedule: (wid, data) => api.post(`/llm-ranking/${wid}/schedule/`, data),
+    deleteSchedule: (wid) => api.delete(`/llm-ranking/${wid}/schedule/`),
 }

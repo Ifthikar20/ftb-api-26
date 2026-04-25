@@ -72,8 +72,16 @@ onMounted(async () => {
   if (autoToken) {
     authStore.accessToken = autoToken
     try {
-      await authStore.fetchMe()
-      router.replace('/dashboard')
+      const session = await authStore.fetchSession()
+      const next = session?.next_route
+      if (next === 'onboarding') {
+        const wid = session?.onboarding?.first_incomplete_website_id
+        router.replace(wid ? `/onboarding/${wid}` : '/app-onboarding')
+      } else if (next === 'paywall') {
+        router.replace('/paywall')
+      } else {
+        router.replace('/dashboard')
+      }
     } catch {
       authStore.accessToken = null
     }
@@ -85,7 +93,18 @@ async function handleLogin() {
   error.value = ''
   try {
     await authStore.login(email.value, password.value)
-    router.push(route.query.redirect || '/dashboard')
+    const session = await authStore.fetchSession()
+    const next = session?.next_route
+    if (route.query.redirect) {
+      router.push(route.query.redirect)
+    } else if (next === 'onboarding') {
+      const wid = session?.onboarding?.first_incomplete_website_id
+      router.push(wid ? `/onboarding/${wid}` : '/app-onboarding')
+    } else if (next === 'paywall') {
+      router.push('/paywall')
+    } else {
+      router.push('/dashboard')
+    }
   } catch (e) {
     error.value = e.response?.data?.error?.message || e.message || 'Login failed.'
   } finally {

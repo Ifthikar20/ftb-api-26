@@ -207,3 +207,132 @@ class DashboardView(APIView):
             'quick_actions': quick_actions,
             'integrations': integrations,
         })
+
+
+class OnboardingAssistView(APIView):
+    """AI-assisted onboarding: generate description and topic suggestions from URL."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        import re
+
+        import requests as http_requests
+
+        website = WebsiteService.get_for_user(user=request.user, website_id=pk)
+        action = request.data.get("action", "describe")
+        result = {}
+
+        if action == "describe":
+            # Attempt to scrape meta description and title from the URL
+            description = request.data.get("current_description", "")
+            if not description:
+                try:
+                    resp = http_requests.get(
+                        website.url,
+                        timeout=8,
+                        headers={"User-Agent": "FetchBot/1.0"},
+                        allow_redirects=True,
+                    )
+                    html = resp.text[:20000]
+                    # Extract meta description
+                    meta_match = re.search(
+                        r'<meta[^>]+name=["\']description["\'][^>]+content=["\']([^"\']+)',
+                        html, re.IGNORECASE,
+                    )
+                    title_match = re.search(r'<title>([^<]+)</title>', html, re.IGNORECASE)
+                    parts = []
+                    if title_match:
+                        parts.append(title_match.group(1).strip())
+                    if meta_match:
+                        parts.append(meta_match.group(1).strip())
+                    description = ". ".join(parts) if parts else f"{website.name} — {website.url}"
+                except Exception:
+                    description = f"{website.name} is a business at {website.url}."
+
+            result["description"] = description
+
+        elif action == "topics":
+            # Generate topic suggestions based on business description and industry
+            desc = request.data.get("description", website.description or "")
+            industry = request.data.get("industry", website.industry or "")
+
+            # Heuristic-based topic generation from description keywords
+            base_topics = []
+            desc_lower = (desc + " " + industry).lower()
+
+            topic_map = {
+                "saas": ["SaaS Solutions", "Cloud-Based Tools", "B2B Software"],
+                "security": ["Cybersecurity Solutions", "Security Testing Tools", "Vulnerability Assessment"],
+                "marketing": ["Digital Marketing Tools", "Marketing Automation", "Growth Analytics"],
+                "e-commerce": ["E-Commerce Platforms", "Online Retail Solutions", "Shopping Tools"],
+                "ecommerce": ["E-Commerce Platforms", "Online Retail Solutions", "Shopping Tools"],
+                "ai": ["AI-Powered Tools", "Machine Learning Solutions", "Intelligent Automation"],
+                "analytics": ["Data Analytics Platforms", "Business Intelligence", "Performance Tracking"],
+                "health": ["Health & Wellness Tech", "Healthcare Solutions", "Medical Technology"],
+                "finance": ["Financial Technology", "Payment Solutions", "Fintech Platforms"],
+                "education": ["EdTech Solutions", "Online Learning Platforms", "Educational Tools"],
+                "design": ["Design Tools", "Creative Platforms", "UI/UX Solutions"],
+                "real estate": ["Real Estate Technology", "Property Management", "PropTech Solutions"],
+                "food": ["Food & Beverage Tech", "Restaurant Solutions", "FoodTech"],
+                "travel": ["Travel Technology", "Booking Platforms", "Hospitality Solutions"],
+                "legal": ["Legal Technology", "LegalTech Solutions", "Law Practice Tools"],
+                "hr": ["HR Technology", "People Management", "Talent Solutions"],
+                "construction": ["Construction Technology", "ConTech Solutions", "Project Management"],
+                "logistics": ["Logistics Solutions", "Supply Chain Tech", "Shipping & Delivery"],
+                "gaming": ["Gaming Technology", "Game Development Tools", "Interactive Entertainment"],
+                "social": ["Social Media Tools", "Community Platforms", "Social Commerce"],
+                "consulting": ["Business Consulting", "Management Advisory", "Strategy Consulting"],
+                "automation": ["Business Automation", "Workflow Automation", "Process Optimization"],
+                "crm": ["CRM Solutions", "Customer Management", "Sales Enablement"],
+                "seo": ["SEO Tools", "Search Optimization", "Content Strategy"],
+                "content": ["Content Marketing", "Content Management", "Digital Publishing"],
+                "video": ["Video Technology", "Streaming Solutions", "Video Production"],
+                "testing": ["Software Testing", "QA Automation", "Quality Assurance"],
+                "devops": ["DevOps Tools", "CI/CD Platforms", "Infrastructure Management"],
+                "cloud": ["Cloud Services", "Infrastructure as a Service", "Cloud Management"],
+            }
+
+            for keyword, topics in topic_map.items():
+                if keyword in desc_lower:
+                    base_topics.extend(topics)
+
+            # Always add some generic industry topics
+            if industry:
+                base_topics.extend([
+                    f"Best {industry} Tools",
+                    f"Top {industry} Solutions",
+                    f"{industry} Recommendations",
+                ])
+
+            # Deduplicate and limit
+            seen = set()
+            unique_topics = []
+            for t in base_topics:
+                if t.lower() not in seen:
+                    seen.add(t.lower())
+                    unique_topics.append(t)
+
+            # If we have very few, add generics
+            generic_fallbacks = [
+                "Industry-Leading Solutions",
+                "Top Recommended Tools",
+                "Best in Class Services",
+                "Expert-Recommended Platforms",
+                "Innovative Business Solutions",
+            ]
+            while len(unique_topics) < 5:
+                fallback = generic_fallbacks.pop(0)
+                if fallback.lower() not in seen:
+                    unique_topics.append(fallback)
+                    seen.add(fallback.lower())
+
+            result["topics"] = unique_topics[:10]
+
+        elif action == "competitors":
+            # Try to discover competitors automatically
+            from apps.competitors.services.discovery_service import DiscoveryService
+            discovered = DiscoveryService.auto_detect(website=website)
+            result["competitors"] = discovered
+
+        return Response(result)
+

@@ -43,7 +43,9 @@
       "Bash(npx vue-tsc:*)",
       "Bash(npx eslint:*)",
       "Bash(python:*)",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(docker compose *)",
+      "Bash(xargs cat *)"
     ]
   }
 }

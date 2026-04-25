@@ -1,24 +1,35 @@
 <template>
   <div class="llm-ranking-page fade-in">
-    <!-- Top filter bar (dashboard-style) -->
-    <div class="lr-topbar">
-      <div class="lr-topbar-left">
-        <h1 class="page-title" style="margin:0">LLM Ranking</h1>
-        <span v-if="latestAudit" class="lr-pill">
-          <span class="lr-pill-dot" :class="auditStatusBadge(latestAudit.status)"></span>
-          {{ latestAudit.business_name || 'audit' }}
-        </span>
-        <span v-if="latestAudit?.location" class="lr-pill lr-pill-ghost">{{ latestAudit.location }}</span>
-        <span v-if="(latestAudit?.providers_queried || []).length"
-              class="lr-pill lr-pill-ghost">
-          {{ (latestAudit.providers_queried || []).length }} model{{ (latestAudit.providers_queried || []).length === 1 ? '' : 's' }}
-        </span>
+    <FirstRunLLMRanking
+      v-if="showFirstRun"
+      :website="activeWebsite"
+      @audit-started="handleAuditStarted"
+    />
+    <template v-else>
+    <div class="page-header">
+      <div>
+        <h1 class="page-title">LLM Ranking</h1>
+        <p class="page-subtitle">
+          See how AI tools like Claude, GPT-4, Gemini, and Perplexity rank your business
+          when users ask them to find a service like yours.
+        </p>
       </div>
-      <div class="lr-topbar-right">
+      <div class="header-actions">
+        <button class="btn btn-secondary btn-sm" @click="showScheduleModal = true">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-right:4px"><circle cx="8" cy="8" r="6"/><path d="M8 4v4l3 2"/></svg>
+          {{ schedule ? 'Edit Schedule' : 'Schedule' }}
+        </button>
         <button class="btn btn-primary btn-sm" @click="openRunAudit" :disabled="running">
-          {{ running ? 'Running...' : 'Run New Audit' }}
+          {{ running ? 'Running audit...' : 'Run New Audit' }}
         </button>
       </div>
+    </div>
+
+    <!-- Schedule banner -->
+    <div v-if="schedule && schedule.is_enabled" class="schedule-banner">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 4v4l3 2"/></svg>
+      <span>Auto-audit runs <strong>{{ schedule.frequency_display }}</strong> — next run {{ formatRelative(schedule.next_run_at) }}</span>
+      <button class="btn btn-ghost btn-xs" @click="disableSchedule">Disable</button>
     </div>
 
     <div v-if="loading" class="loading-state">Loading LLM ranking data...</div>
@@ -450,189 +461,27 @@
         </div>
       </div>
 
-      <!-- Prompts list — visible whenever an audit has prompts, regardless of state -->
-      <div v-if="latestAudit && (latestAudit.prompts || []).length" class="card" style="margin-bottom:24px">
-        <div class="card-header" style="cursor:pointer" @click="showPrompts = !showPrompts">
-          <h3 class="card-title">
-            Questions we're asking
-            <span class="text-xs text-muted" style="font-weight:500">
-              ({{ latestAudit.prompts.length }} prompt{{ latestAudit.prompts.length === 1 ? '' : 's' }} × {{ (latestAudit.providers_queried || []).length }} LLM{{ (latestAudit.providers_queried || []).length === 1 ? '' : 's' }})
-            </span>
-          </h3>
-          <span class="text-xs text-muted">{{ showPrompts ? 'Hide' : 'Show' }}</span>
-        </div>
-        <div v-if="showPrompts" class="prompt-list">
-          <p class="text-sm text-muted" style="margin:0 0 12px;line-height:1.5">
-            Each of these buyer-style questions will be sent to every selected LLM. We then scan the response for your business name and extract the rank, sentiment, and any competitors that got mentioned alongside you.
-          </p>
-          <div
-            v-for="(p, i) in latestAudit.prompts"
-            :key="i"
-            class="prompt-row"
-          >
-            <span class="prompt-num">{{ i + 1 }}</span>
-            <span class="prompt-text">{{ p }}</span>
-            <span class="prompt-intent">{{ promptIntents[i] || 'custom' }}</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Prompts Table (rich view — matching reference design) -->
-      <div v-if="isAuditComplete && intentGroups.length" class="card" style="margin-bottom:24px">
-        <div class="card-header" style="border-bottom:1px solid var(--border-color, #E5E7EB)">
-          <h3 class="card-title" style="font-size:1.1rem;font-weight:700">Prompts</h3>
-          <div class="pt-header-right">
-            <div class="pi-filter">
-              <select v-model="providerFilter" class="pi-select">
-                <option value="">All Providers</option>
-                <option v-for="p in availableProviderFilters" :key="p" :value="p">{{ providerLabel(p) }}</option>
-              </select>
-            </div>
-          </div>
-        </div>
-
-        <!-- Table header -->
-        <div class="pt-table">
-          <div class="pt-thead">
-            <span class="pt-th pt-th-topic">Topic</span>
-            <span class="pt-th pt-th-count">Prompts</span>
-            <span class="pt-th pt-th-vis">Avg Visibility</span>
-            <span class="pt-th pt-th-perf">Top Performers</span>
-            <span class="pt-th pt-th-status">Status</span>
-          </div>
-
-          <!-- Topic group rows -->
-          <template v-for="group in intentGroups" :key="group.intent">
-            <!-- Topic header row (clickable) -->
-            <div class="pt-topic-row" @click="toggleIntent(group.intent)">
-              <span class="pt-td pt-td-topic">
-                <svg class="pi-chevron" :class="{ open: !collapsedIntents.has(group.intent) }"
-                     width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M5 4l5 4-5 4"/>
-                </svg>
-                <span class="pt-topic-name">{{ formatIntent(group.intent) }}</span>
-              </span>
-              <span class="pt-td pt-td-count">{{ group.prompts.length }}</span>
-              <span class="pt-td pt-td-vis">
-                <span :style="{ color: visibilityColor(group.avgVisibility) }">{{ group.avgVisibility }}%</span>
-                <svg v-if="group.avgVisibility > 0" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-left:3px">
-                  <path d="M2 7L5 3L8 7" :stroke="group.avgVisibility >= 50 ? '#10b981' : '#f59e0b'"/>
-                </svg>
-              </span>
-              <span class="pt-td pt-td-perf">
-                <span
-                  v-for="d in group.providerSummary"
-                  :key="d.provider"
-                  class="pt-perf-icon"
-                  :class="{ 'is-hit': d.hitRate > 50, 'is-partial': d.hitRate > 0 && d.hitRate <= 50, 'is-miss': d.hitRate === 0 }"
-                  :title="providerLabel(d.provider) + ': ' + d.hitRate + '% hit rate'"
-                >{{ providerInitial(d.provider) }}</span>
-              </span>
-              <span class="pt-td pt-td-status">
-                <span class="pt-see-link">See →</span>
-              </span>
-            </div>
-
-            <!-- Expanded prompt rows -->
-            <template v-if="!collapsedIntents.has(group.intent)">
-              <div v-for="p in group.prompts" :key="p.text" class="pt-prompt-row">
-                <span class="pt-td pt-td-topic pt-td-prompt-text">{{ p.text }}</span>
-                <span class="pt-td pt-td-count"></span>
-                <span class="pt-td pt-td-vis">
-                  <strong :style="{ color: visibilityColor(p.visibility) }">{{ p.visibility }}%</strong>
-                  <svg v-if="p.visibility > 0" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke-width="1.5" style="margin-left:3px">
-                    <path d="M2 7L5 3L8 7" :stroke="p.visibility >= 50 ? '#10b981' : '#f59e0b'"/>
-                  </svg>
-                </span>
-                <span class="pt-td pt-td-perf">
-                  <span
-                    v-for="d in p.providerDots"
-                    :key="d.provider"
-                    class="pt-perf-icon"
-                    :class="{ 'is-hit': d.mentioned, 'is-miss': !d.mentioned && d.succeeded, 'is-fail': !d.succeeded }"
-                    :title="providerLabel(d.provider) + ': ' + providerDotTitle(d)"
-                  >{{ providerInitial(d.provider) }}</span>
-                </span>
-                <span class="pt-td pt-td-status">
-                  <span class="pt-status-pill" :class="p.visibility > 0 ? 'is-ran' : 'is-miss'">
-                    {{ p.visibility > 0 ? 'Prompt Ran' : 'No Mention' }}
-                  </span>
-                </span>
-              </div>
-            </template>
-          </template>
-        </div>
-      </div>
-
-      <!-- Live query ticker (running audits only) -->
-      <div v-if="isAuditRunning && liveResults.length" class="card" style="margin-bottom:24px">
-        <div class="card-header">
-          <h3 class="card-title">
-            Live results
-            <span class="live-pulse"></span>
-          </h3>
-          <span class="text-xs text-muted">{{ liveResults.length }} response{{ liveResults.length === 1 ? '' : 's' }} so far</span>
-        </div>
-        <div class="live-list">
-          <div
-            v-for="r in liveResults.slice(0, 10)"
-            :key="r.id"
-            class="live-row"
-            :class="{ 'live-hit': r.is_mentioned, 'live-fail': !r.query_succeeded }"
-          >
-            <span class="live-provider">{{ providerLabel(r.provider) }}</span>
-            <span class="live-prompt">{{ r.prompt }}</span>
-            <span v-if="!r.query_succeeded" class="badge badge-danger">API error</span>
-            <span v-else-if="r.is_mentioned" class="badge badge-success">
-              Ranked #{{ r.mention_rank || '—' }}
-            </span>
-            <span v-else class="badge badge-neutral">Not mentioned</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Overview row: trends (left) + competitors leaderboard (right) -->
-      <div v-if="history.length || (isAuditComplete && competitorLeaderboard.length)"
-           class="lr-grid-2" style="margin-bottom:24px">
-        <!-- AI Visibility Trends -->
-        <div v-if="history.length >= 1" class="card lr-grid-main">
+      <!-- ═══ Charts Section ═══ -->
+      <div v-if="latestBreakdown.length || historyData.length" class="charts-row" style="margin-bottom:24px">
+        <!-- Provider Comparison Bar Chart -->
+        <div v-if="latestBreakdown.length" class="card chart-card">
           <div class="card-header">
-            <h3 class="card-title">AI Visibility Trends</h3>
-            <span class="text-xs text-muted">{{ history.length }} completed audit{{ history.length !== 1 ? 's' : '' }}</span>
+            <h3 class="card-title">Provider Comparison</h3>
+            <span class="text-xs text-muted">Mention rate across LLMs</span>
           </div>
-          <div v-if="history.length === 1" class="empty-state" style="padding:24px">
-            <p class="empty-state-desc">
-              Run at least one more audit to see how your AI visibility changes over time.
-            </p>
-          </div>
-          <div v-else class="trends-grid trends-grid-stacked">
-            <div class="trend-block">
-              <div class="trend-label">Overall Score & Mention Rate</div>
-              <div class="trend-chart-wrap"><Line :data="overallTrendData" :options="overallTrendOptions" /></div>
-            </div>
-            <div class="trend-block">
-              <div class="trend-label">Per-LLM Mention Rate</div>
-              <div class="trend-chart-wrap"><Line :data="providerTrendData" :options="providerTrendOptions" /></div>
-            </div>
+          <div class="chart-wrap">
+            <Bar :data="providerChartData" :options="providerChartOptions" />
           </div>
         </div>
 
-        <!-- Competitors mentioned alongside you (right column) -->
-        <div v-if="isAuditComplete && competitorLeaderboard.length" class="card lr-grid-side">
+        <!-- Trend Line Chart -->
+        <div v-if="historyData.length >= 2" class="card chart-card">
           <div class="card-header">
-            <h3 class="card-title">Competitors</h3>
-            <span class="text-xs text-muted">{{ competitorLeaderboard.length }} detected</span>
+            <h3 class="card-title">Score Trend</h3>
+            <span class="text-xs text-muted">AI visibility over time</span>
           </div>
-          <div class="comp-leaderboard">
-            <div v-for="(c, i) in competitorLeaderboard" :key="c.name" class="comp-row">
-              <span class="comp-rank">{{ i + 1 }}</span>
-              <span class="comp-name">{{ c.name }}</span>
-              <span class="comp-bar-wrap">
-                <span class="comp-bar" :style="{ width: (c.promptCount / uniquePromptCount * 100) + '%' }"></span>
-              </span>
-              <span class="comp-coverage">{{ c.promptCount }}/{{ uniquePromptCount }}</span>
-              <span v-if="c.avgRank" class="comp-avg-rank">#{{ c.avgRank }}</span>
-            </div>
+          <div class="chart-wrap">
+            <Line :data="trendChartData" :options="trendChartOptions" />
           </div>
           <p class="text-xs text-muted" style="padding:0 16px 16px">
             Brands LLMs list alongside you. Your real competitive set in AI search.
@@ -1145,6 +994,51 @@
         </div>
       </div>
     </BaseModal>
+
+    <!-- Schedule Modal -->
+    <BaseModal v-model="showScheduleModal" title="Schedule Periodic Audits">
+      <p class="text-sm text-muted" style="margin-bottom:16px;line-height:1.5">
+        Automatically run LLM ranking audits on a schedule so you can track visibility trends without manual effort.
+      </p>
+      <div class="form-group">
+        <label class="form-label">Business Name</label>
+        <input v-model="scheduleForm.business_name" class="form-input" placeholder="e.g. Acme Corp" />
+      </div>
+      <div class="form-group" style="margin-top:12px">
+        <label class="form-label">Industry</label>
+        <input v-model="scheduleForm.industry" class="form-input" placeholder="e.g. SaaS, marketing" />
+      </div>
+      <div class="form-group" style="margin-top:12px">
+        <label class="form-label">Location (optional)</label>
+        <input v-model="scheduleForm.location" class="form-input" placeholder="e.g. US, Europe" />
+      </div>
+      <div class="form-group" style="margin-top:12px">
+        <label class="form-label">Frequency</label>
+        <select v-model="scheduleForm.frequency" class="form-input">
+          <option value="weekly">Weekly</option>
+          <option value="biweekly">Every 2 Weeks</option>
+          <option value="monthly">Monthly</option>
+        </select>
+      </div>
+      <div class="form-group" style="margin-top:12px">
+        <label class="form-label">Providers</label>
+        <div class="provider-checks">
+          <label v-for="p in availableProviders" :key="p.value" class="check-label">
+            <input type="checkbox" :value="p.value" v-model="scheduleForm.providers" />
+            {{ p.label }}
+          </label>
+        </div>
+      </div>
+      <p v-if="scheduleError" class="form-error" style="margin-top:8px">{{ scheduleError }}</p>
+      <template #footer>
+        <button v-if="schedule" class="btn btn-danger" @click="deleteSchedule" style="margin-right:auto">Remove Schedule</button>
+        <button class="btn btn-secondary" @click="showScheduleModal = false">Cancel</button>
+        <button class="btn btn-primary" @click="saveSchedule" :disabled="savingSchedule">
+          {{ savingSchedule ? 'Saving...' : 'Save Schedule' }}
+        </button>
+      </template>
+    </BaseModal>
+    </template>
   </div>
 </template>
 
@@ -1152,23 +1046,31 @@
 import { ref, shallowRef, computed, onMounted, onBeforeUnmount, markRaw } from 'vue'
 import { useRoute } from 'vue-router'
 import { useToast } from '@/composables/useToast'
+import { useAppStore } from '@/stores/app'
 import llmRankingApi from '@/api/llm_ranking'
 import BaseModal from '@/components/ui/BaseModal.vue'
-import { Line } from 'vue-chartjs'
+import FirstRunLLMRanking from '@/components/llm_ranking/FirstRunLLMRanking.vue'
+import { Line, Bar } from 'vue-chartjs'
 import {
   Chart as ChartJS,
   CategoryScale, LinearScale, PointElement, LineElement,
-  Filler, Tooltip, Legend,
+  BarElement, Filler, Tooltip, Legend,
 } from 'chart.js'
 
 ChartJS.register(
   CategoryScale, LinearScale, PointElement, LineElement,
-  Filler, Tooltip, Legend,
+  BarElement, Filler, Tooltip, Legend,
 )
+
+ChartJS.defaults.color = '#8a8a9a'
+ChartJS.defaults.font.family = "'Inter', 'SF Pro Display', system-ui, sans-serif"
+ChartJS.defaults.font.size = 11
 
 const route = useRoute()
 const websiteId = route.params.websiteId
 const toast = useToast()
+const appStore = useAppStore()
+const activeWebsite = computed(() => appStore.activeWebsite)
 
 const audits = shallowRef([])
 const history = shallowRef([])
@@ -1186,43 +1088,21 @@ const showMethodology = ref(false)
 const showPrompts = ref(true)
 const showAuditLog = ref(true)
 const confirmDeleteId = ref(null)
-
-// Intent tags for each prompt — derived from the prompt text via the backend
-// library keywords. Purely cosmetic; falls back to "custom" on miss.
-const INTENT_PATTERNS = [
-  { intent: 'recommendation', keywords: ['best', 'recommend', 'most companies', 'leading', 'top options'] },
-  { intent: 'comparison',     keywords: ['compare', 'side-by-side', 'pros and cons'] },
-  { intent: 'alternatives',   keywords: ['alternative', 'up-and-coming', 'newer', 'indie'] },
-  { intent: 'use_case',       keywords: ['i need to', 'helps with', 'platform for'] },
-  { intent: 'category',       keywords: ['new to', 'categories of'] },
-  { intent: 'local',          keywords: ['in dallas', 'in new york', 'businesses in', ' in '] },
-  { intent: 'persona',        keywords: ['startup', 'mid-market', 'enterprise teams'] },
-  { intent: 'review',         keywords: ['users say', 'reputation', 'reviewers'] },
-]
-function classifyIntent(text) {
-  const lower = text.toLowerCase()
-  for (const { intent, keywords } of INTENT_PATTERNS) {
-    if (keywords.some(k => lower.includes(k))) return intent
-  }
-  return 'custom'
-}
-const promptIntents = computed(() =>
-  (latestAudit.value?.prompts || []).map(classifyIntent)
-)
+const historyData = ref([])
 let pollTimer = null
 
-const PROVIDER_META = {
-  claude:     { label: 'Claude',       color: '#A78BFA' },
-  gpt4:       { label: 'GPT-4',        color: '#34D399' },
-  gemini:     { label: 'Gemini',       color: '#5B8DEF' },
-  perplexity: { label: 'Perplexity',   color: '#F59E0B' },
-  meta_llama: { label: 'Meta Llama',   color: '#3B82F6' },
-  mistral:    { label: 'Mistral AI',   color: '#F97316' },
-  cohere:     { label: 'Cohere',       color: '#14B8A6' },
-  deepseek:   { label: 'DeepSeek',     color: '#6366F1' },
-  grok:       { label: 'Grok',         color: '#EF4444' },
-  amazon_nova:{ label: 'Amazon Nova',  color: '#EC4899' },
-}
+// Schedule state
+const schedule = ref(null)
+const showScheduleModal = ref(false)
+const savingSchedule = ref(false)
+const scheduleError = ref('')
+const scheduleForm = ref({
+  business_name: '',
+  industry: '',
+  location: '',
+  frequency: 'weekly',
+  providers: ['claude', 'gpt4', 'gemini', 'perplexity'],
+})
 
 const customPromptsText = ref('')
 const auditForm = ref({
@@ -1270,19 +1150,24 @@ async function scanDomain() {
       auditForm.value.description = data.description || auditForm.value.description
       auditForm.value.industry = data.industry || auditForm.value.industry
 
-      // Auto-populate real topics from LLM
-      if (data.topics && data.topics.length) {
-        wizardTopics.value = data.topics
-        auditForm.value.selectedTopics = [...data.topics] // pre-select all
-      } else {
-        // Fallback: generate topics locally
-        wizardTopics.value = generateLocalTopics(
-          auditForm.value.business_name,
-          auditForm.value.description,
-          auditForm.value.industry
-        )
-        auditForm.value.selectedTopics = [...wizardTopics.value]
-      }
+// First-run gate: user lands here before ever running an audit.
+const showFirstRun = computed(() => !loading.value && audits.value.length === 0)
+
+function handleAuditStarted(audit) {
+  // The new audit record is now live — add it to the list, select it, and
+  // begin polling. This swaps the view out of first-run into the dashboard.
+  if (audit?.id) {
+    audits.value.unshift(audit)
+    selectedAuditId.value = audit.id
+  }
+  toast.success('Audit started. Results will appear as each LLM responds.')
+}
+
+// Live per-query results: sorted newest-first for the running ticker
+const liveResults = computed(() => {
+  const list = auditDetail.value?.results || []
+  return [...list].reverse()
+})
 
       // Auto-populate real competitors from LLM
       if (data.competitors && data.competitors.length) {
@@ -2353,6 +2238,119 @@ const auditETA = computed(() => {
   return `~${mins} min remaining`
 })
 
+// ── Chart Data ─────────────────────────────────────────────────────────────
+
+const PROVIDER_COLORS = {
+  claude: '#A78BFA',
+  gpt4: '#34D399',
+  gemini: '#5B8DEF',
+  perplexity: '#F59E0B',
+}
+
+const providerChartData = computed(() => {
+  const bd = latestBreakdown.value.filter(p => p.succeeded > 0)
+  return {
+    labels: bd.map(p => p.provider_display || providerLabel(p.provider)),
+    datasets: [{
+      label: 'Mention Rate (%)',
+      data: bd.map(p => p.mention_rate),
+      backgroundColor: bd.map(p => PROVIDER_COLORS[p.provider] || '#6B7280'),
+      borderRadius: 6,
+      barThickness: 36,
+    }],
+  }
+})
+
+const providerChartOptions = {
+  responsive: true,
+  maintainAspectRatio: false,
+  plugins: {
+    legend: { display: false },
+    tooltip: {
+      backgroundColor: '#1e1e2e',
+      padding: 10,
+      cornerRadius: 8,
+      callbacks: {
+        label: (ctx) => `${ctx.parsed.y}% mention rate`,
+      },
+    },
+  },
+  scales: {
+    y: {
+      min: 0,
+      max: 100,
+      grid: { color: 'rgba(255,255,255,0.04)' },
+      ticks: { callback: (v) => v + '%' },
+    },
+    x: {
+      grid: { display: false },
+    },
+  },
+}
+
+const trendChartData = computed(() => {
+  const history = historyData.value
+  return {
+    labels: history.map(h => {
+      const d = new Date(h.completed_at)
+      return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+    }),
+    datasets: [
+      {
+        label: 'Overall Score',
+        data: history.map(h => h.overall_score),
+        borderColor: '#A78BFA',
+        backgroundColor: 'rgba(167,139,250,0.08)',
+        fill: true,
+        tension: 0.4,
+        pointRadius: 4,
+        pointBackgroundColor: '#A78BFA',
+      },
+      {
+        label: 'Mention Rate (%)',
+        data: history.map(h => h.mention_rate),
+        borderColor: '#34D399',
+        backgroundColor: 'rgba(52,211,153,0.06)',
+        fill: true,
+        tension: 0.4,
+        pointRadius: 3,
+        pointBackgroundColor: '#34D399',
+        borderDash: [4, 4],
+      },
+    ],
+  }
+})
+
+const trendChartOptions = {
+  responsive: true,
+  maintainAspectRatio: false,
+  interaction: { mode: 'index', intersect: false },
+  plugins: {
+    legend: {
+      position: 'bottom',
+      labels: { usePointStyle: true, pointStyle: 'circle', padding: 16 },
+    },
+    tooltip: {
+      backgroundColor: '#1e1e2e',
+      padding: 10,
+      cornerRadius: 8,
+    },
+  },
+  scales: {
+    y: {
+      min: 0,
+      max: 100,
+      grid: { color: 'rgba(255,255,255,0.04)' },
+      ticks: { callback: (v) => v },
+    },
+    x: {
+      grid: { display: false },
+    },
+  },
+}
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
+
 function ringFillStyle(score) {
   if (score == null) return {}
   const pct = Math.min(100, Math.max(0, score))
@@ -2369,7 +2367,6 @@ function ringFillStyle(score) {
 }
 
 function mentionBadge(rate) {
-  // mention_rate is already 0-100 from backend
   const pct = rate || 0
   return pct >= 60 ? 'badge-success' : pct >= 30 ? 'badge-warning' : 'badge-neutral'
 }
@@ -3590,16 +3587,22 @@ onBeforeUnmount(() => {
   position: relative;
   flex-shrink: 0;
 }
-.pl-arrow::after {
-  content: '';
-  position: absolute;
-  right: -1px;
-  top: -3px;
-  width: 0;
-  height: 0;
-  border-top: 4px solid transparent;
-  border-bottom: 4px solid transparent;
-  border-left: 6px solid var(--border-color);
+
+function formatRelative(dt) {
+  if (!dt) return '—'
+  const d = new Date(dt)
+  const now = new Date()
+  const diffMs = d - now
+  if (diffMs < 0) return 'any moment now'
+  const diffDays = Math.ceil(diffMs / 86400000)
+  if (diffDays <= 1) return 'tomorrow'
+  if (diffDays <= 7) return `in ${diffDays} days`
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+}
+
+function scorePillClass(score) {
+  if (score == null) return 'pill-neutral'
+  return score >= 70 ? 'pill-green' : score >= 40 ? 'pill-yellow' : 'pill-red'
 }
 
 .pl-fanout {
@@ -3646,14 +3649,121 @@ onBeforeUnmount(() => {
   font-family: 'SF Mono', 'Fira Code', monospace;
   font-size: 12px;
 }
-.audit-log-row {
-  display: grid;
-  grid-template-columns: 80px 80px 1fr auto;
-  align-items: baseline;
-  gap: 12px;
-  padding: 6px 16px;
-  border-left: 2px solid transparent;
-  transition: background 0.15s;
+
+// ── Schedule Functions ─────────────────────────────────────────────────────
+
+async function fetchSchedule() {
+  try {
+    const { data } = await llmRankingApi.getSchedule(websiteId)
+    schedule.value = data?.data?.schedule || data?.schedule || null
+    if (schedule.value) {
+      scheduleForm.value = {
+        business_name: schedule.value.business_name || '',
+        industry: schedule.value.industry || '',
+        location: schedule.value.location || '',
+        frequency: schedule.value.frequency || 'weekly',
+        providers: schedule.value.providers?.length ? schedule.value.providers : ['claude', 'gpt4', 'gemini', 'perplexity'],
+      }
+    }
+  } catch (e) {
+    console.error('Schedule fetch error', e)
+  }
+}
+
+async function saveSchedule() {
+  if (!scheduleForm.value.business_name) { scheduleError.value = 'Business name is required.'; return }
+  if (!scheduleForm.value.industry) { scheduleError.value = 'Industry is required.'; return }
+  savingSchedule.value = true
+  scheduleError.value = ''
+  try {
+    const { data } = await llmRankingApi.saveSchedule(websiteId, {
+      ...scheduleForm.value,
+      is_enabled: true,
+    })
+    schedule.value = data?.data?.schedule || data?.schedule || null
+    showScheduleModal.value = false
+    toast.success('Schedule saved! Audits will run automatically.')
+  } catch (err) {
+    scheduleError.value = err.displayMessage || 'Failed to save schedule.'
+  } finally {
+    savingSchedule.value = false
+  }
+}
+
+async function disableSchedule() {
+  try {
+    await llmRankingApi.deleteSchedule(websiteId)
+    schedule.value = null
+    toast.success('Schedule disabled.')
+  } catch (err) {
+    toast.error(err.displayMessage || 'Failed to disable schedule.')
+  }
+}
+
+async function deleteSchedule() {
+  try {
+    await llmRankingApi.deleteSchedule(websiteId)
+    schedule.value = null
+    showScheduleModal.value = false
+    toast.success('Schedule removed.')
+  } catch (err) {
+    toast.error(err.displayMessage || 'Failed to remove schedule.')
+  }
+}
+
+// ── History ────────────────────────────────────────────────────────────────
+
+async function fetchHistory() {
+  try {
+    const { data } = await llmRankingApi.history(websiteId)
+    historyData.value = data?.data || data || []
+  } catch (e) {
+    console.error('History fetch error', e)
+  }
+}
+
+// Auto-polling for running audits
+function startPolling() {
+  stopPolling()
+  pollTimer = setInterval(async () => {
+    const hasRunning = audits.value.some(a => a.status === 'pending' || a.status === 'running')
+    if (!hasRunning) {
+      stopPolling()
+      return
+    }
+    try {
+      const { data } = await llmRankingApi.listAudits(websiteId)
+      const newAudits = data?.data?.results || data?.results || data || []
+      let anyCompleted = false
+      for (const newA of newAudits) {
+        const oldA = audits.value.find(a => a.id === newA.id)
+        if (oldA && (oldA.status === 'pending' || oldA.status === 'running') && newA.status === 'completed') {
+          toast.success(`Audit for "${newA.business_name}" completed! Score: ${newA.overall_score}/100`)
+          anyCompleted = true
+        }
+      }
+      audits.value = newAudits
+      if (audits.value.length && audits.value[0].status === 'completed' && !latestBreakdown.value.length) {
+        await selectAudit(audits.value[0])
+        await fetchHistory()
+      }
+      // During a running audit, fetch partial results so the live ticker
+      // updates as each LLM finishes — without blocking on /breakdown/ or
+      // /recommendations/ which require a completed audit.
+      const selected = audits.value.find(a => a.id === selectedAuditId.value)
+      if (selected && (selected.status === 'running' || selected.status === 'pending')) {
+        try {
+          const dRes = await llmRankingApi.getAudit(websiteId, selected.id)
+          auditDetail.value = dRes.data?.data || dRes.data || null
+        } catch (_) { /* ignore partial fetch errors */ }
+      }
+      if (anyCompleted) {
+        await fetchHistory()
+      }
+    } catch (e) {
+      console.error('Poll error', e)
+    }
+  }, 5000)
 }
 .audit-log-row:hover { background: var(--bg-surface); }
 .audit-log-row.log-info { border-left-color: var(--text-muted); }
@@ -3666,27 +3776,65 @@ onBeforeUnmount(() => {
   color: var(--text-muted);
   font-weight: 500;
 }
-.audit-log-tag {
-  font-weight: 800;
-  letter-spacing: 0.04em;
-}
-.log-info .audit-log-tag { color: var(--text-muted); }
-.log-hit  .audit-log-tag { color: #047857; }
-.log-miss .audit-log-tag { color: var(--text-muted); }
-.log-fail .audit-log-tag { color: #B91C1C; }
-.log-done .audit-log-tag { color: #4F46E5; }
 
-.audit-log-msg {
-  color: var(--text-primary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+async function fetchData() {
+  loading.value = true
+  try {
+    const [listRes] = await Promise.all([
+      llmRankingApi.listAudits(websiteId),
+      fetchHistory(),
+    ])
+    const { data } = listRes
+    audits.value = data?.data?.results || data?.results || data || []
+    if (audits.value.length) {
+      // Auto-select the first completed audit so its findings load
+      const firstCompleted = audits.value.find(a => a.status === 'completed')
+      if (firstCompleted) {
+        selectedAuditId.value = firstCompleted.id
+        await selectAudit(firstCompleted)
+      } else {
+        selectedAuditId.value = audits.value[0].id
+      }
+      // Start polling if any audits are running
+      if (audits.value.some(a => a.status === 'pending' || a.status === 'running')) {
+        startPolling()
+      }
+    }
+  } catch (e) {
+    console.error('LLM ranking fetch error', e)
+    audits.value = []
+  } finally {
+    loading.value = false
+  }
 }
-.audit-log-detail {
-  color: var(--text-muted);
-  font-size: 11px;
-  font-style: italic;
+
+onMounted(async () => {
+  await Promise.all([fetchData(), fetchHistory(), fetchSchedule()])
+})
+onBeforeUnmount(stopPolling)
+</script>
+
+<style scoped>
+.loading-state { text-align: center; padding: 80px 20px; font-size: var(--font-md); color: var(--text-muted); }
+
+/* Header actions */
+.header-actions { display: flex; gap: 8px; align-items: center; }
+
+/* Schedule banner */
+.schedule-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: var(--radius-md);
+  background: rgba(167, 139, 250, 0.08);
+  border: 1px solid rgba(167, 139, 250, 0.2);
+  margin-bottom: 20px;
+  font-size: var(--font-sm);
+  color: var(--text-secondary);
 }
+.schedule-banner strong { color: var(--text-primary); }
+.btn-xs { font-size: var(--font-xs); padding: 2px 8px; }
 
 /* Score summary */
 .score-main { display: flex; align-items: center; gap: 32px; }
@@ -3788,6 +3936,18 @@ onBeforeUnmount(() => {
   color: var(--text-secondary);
 }
 .provider-name { font-size: var(--font-sm); font-weight: 600; color: var(--text-primary); }
+
+/* Charts row */
+.charts-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  gap: 20px;
+}
+.chart-card { overflow: hidden; }
+.chart-wrap {
+  padding: 16px;
+  height: 260px;
+}
 
 /* Methodology */
 .methodology-content { padding: 16px; }

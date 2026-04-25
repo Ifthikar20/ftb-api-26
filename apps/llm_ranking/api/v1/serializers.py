@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from apps.llm_ranking.models import LLMRankingAudit, LLMRankingResult
+from apps.llm_ranking.models import LLMRankingAudit, LLMRankingResult, LLMRankingSchedule
 
 
 class LLMRankingResultSerializer(serializers.ModelSerializer):
@@ -68,10 +68,17 @@ class LLMRankingAuditListSerializer(serializers.ModelSerializer):
 
 
 class RunAuditSerializer(serializers.Serializer):
-    """Input serializer for creating a new audit."""
-    business_name = serializers.CharField(max_length=200)
+    """
+    Input serializer for creating a new audit.
+
+    business_name/industry/description/keywords are OPTIONAL overrides — when
+    omitted the view reads them from the Website row. This prevents clients
+    from having to re-send data the server already knows, and keeps audits
+    consistent with the tracked website.
+    """
+    business_name = serializers.CharField(max_length=200, required=False, allow_blank=True)
     business_description = serializers.CharField(required=False, default="", allow_blank=True)
-    industry = serializers.CharField(max_length=100)
+    industry = serializers.CharField(max_length=100, required=False, allow_blank=True)
     location = serializers.CharField(max_length=200, required=False, default="", allow_blank=True)
     keywords = serializers.ListField(
         child=serializers.CharField(max_length=100),
@@ -93,14 +100,40 @@ class RunAuditSerializer(serializers.Serializer):
         required=False,
         default=list,
     )
-    # Intent themes (recommendation, comparison, ...) used to filter the
-    # PromptLibrary mix when generating prompts.
-    themes = serializers.ListField(
-        child=serializers.ChoiceField(choices=[
-            "recommendation", "comparison", "alternatives", "use_case",
-            "category", "persona", "review", "local",
-        ]),
+
+
+class LLMRankingScheduleSerializer(serializers.ModelSerializer):
+    frequency_display = serializers.CharField(source="get_frequency_display", read_only=True)
+
+    class Meta:
+        model = LLMRankingSchedule
+        fields = [
+            "id", "is_enabled", "frequency", "frequency_display",
+            "business_name", "business_description", "industry", "location",
+            "keywords", "providers",
+            "next_run_at", "last_run_at", "created_at",
+        ]
+        read_only_fields = ["id", "next_run_at", "last_run_at", "created_at"]
+
+
+class CreateScheduleSerializer(serializers.Serializer):
+    """Input serializer for creating/updating a periodic schedule."""
+    is_enabled = serializers.BooleanField(default=True)
+    frequency = serializers.ChoiceField(
+        choices=["weekly", "biweekly", "monthly"], default="weekly"
+    )
+    business_name = serializers.CharField(max_length=200)
+    business_description = serializers.CharField(required=False, default="", allow_blank=True)
+    industry = serializers.CharField(max_length=100)
+    location = serializers.CharField(max_length=200, required=False, default="", allow_blank=True)
+    keywords = serializers.ListField(
+        child=serializers.CharField(max_length=100),
         required=False,
         default=list,
-        max_length=8,
+        max_length=20,
+    )
+    providers = serializers.ListField(
+        child=serializers.ChoiceField(choices=["claude", "gpt4", "gemini", "perplexity"]),
+        required=False,
+        default=list,
     )

@@ -100,4 +100,9 @@ app.conf.beat_schedule = {
         "task": "apps.notifications.tasks.send_daily_growth_reports",
         "schedule": crontab(minute=0, hour=9),  # 9 AM daily
     },
+    # ── LLM Ranking ──
+    "llm-ranking-schedule-dispatcher": {
+        "task": "apps.llm_ranking.tasks.dispatch_scheduled_audits",
+        "schedule": crontab(minute="*/15"),  # Every 15 min — checks next_run_at
+    },
 }

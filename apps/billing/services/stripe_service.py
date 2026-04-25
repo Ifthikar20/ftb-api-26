@@ -26,14 +26,17 @@ from core.logging.audit_logger import audit_log
 
 logger = logging.getLogger("billing")
 
-# ── Stripe Price IDs — 2-tier model ──
+# ── Stripe Price IDs — 3-tier model ($29 starter / $96 pro / custom enterprise) ──
+# TODO: create prices in Stripe dashboard, then set these env vars before paywall goes live.
 PLAN_PRICE_IDS = {
     "starter": getattr(settings, "STRIPE_STARTER_PRICE_ID", ""),
+    "pro": getattr(settings, "STRIPE_PRO_PRICE_ID", ""),
     # Enterprise is custom — no self-serve checkout
 }
 
 PLAN_PRICE_IDS_ANNUAL = {
     "starter": getattr(settings, "STRIPE_STARTER_ANNUAL_PRICE_ID", ""),
+    "pro": getattr(settings, "STRIPE_PRO_ANNUAL_PRICE_ID", ""),
 }
 
 # Legacy mappings for backward compatibility
@@ -49,12 +52,20 @@ _LEGACY_PLAN_MAP = {
 # Plan limits for enforcement (mirrors constants.py for service-layer use)
 PLAN_LIMITS = {
     "starter": {
-        "projects": 5,
-        "pageviews": 100_000,
-        "competitors": 10,
+        "projects": 1,
+        "pageviews": 50_000,
+        "competitors": 5,
         "team_members": 1,
-        "ai_credits": 200,
+        "ai_credits": 100,
         "integrations": 3,
+    },
+    "pro": {
+        "projects": 5,
+        "pageviews": 250_000,
+        "competitors": 25,
+        "team_members": 5,
+        "ai_credits": 500,
+        "integrations": 10,
     },
     "enterprise": {
         "projects": -1,

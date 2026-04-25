@@ -1,21 +1,29 @@
 import logging
+from datetime import timedelta
 
-from django.conf import settings
-from django.db.models import Avg, Count, Q
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.llm_ranking.api.v1.serializers import (
+    CreateScheduleSerializer,
     LLMRankingAuditListSerializer,
     LLMRankingAuditSerializer,
+    LLMRankingScheduleSerializer,
     RunAuditSerializer,
 )
-from apps.llm_ranking.models import LLMRankingAudit, LLMRankingResult
+from apps.llm_ranking.models import LLMRankingAudit, LLMRankingSchedule
 from core.views import TenantScopedAPIView, TenantScopedListAPIView
 
 logger = logging.getLogger("apps")
+
+FREQUENCY_DELTAS = {
+    "weekly": timedelta(weeks=1),
+    "biweekly": timedelta(weeks=2),
+    "monthly": timedelta(days=30),
+}
 
 
 class LLMRankingAuditListView(TenantScopedListAPIView):
@@ -37,15 +45,34 @@ class LLMRankingAuditListView(TenantScopedListAPIView):
 
         from apps.llm_ranking.services.ranking_service import LLMRankingService
 
+        # Fall back to Website row fields when the client omits them. This is
+        # the source of truth — the form doesn't need to resend what the
+        # website already knows.
+        business_name = data.get("business_name") or website.name
+        industry = data.get("industry") or (website.industry or "")
+        business_description = data.get("business_description") or (website.description or "")
+        keywords = data.get("keywords") or (website.topics or [])
+
+        if not business_name:
+            return Response(
+                {"error": "business_name is required (website has no name set)."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not industry:
+            return Response(
+                {"error": "industry is required (set one on the website or pass it in the request)."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         # Generate or use supplied prompts
         if data["custom_prompts"]:
             prompts = data["custom_prompts"]
         else:
             prompts = LLMRankingService.generate_prompts(
-                business_name=data["business_name"],
-                industry=data["industry"],
-                description=data["business_description"],
-                keywords=data["keywords"],
+                business_name=business_name,
+                industry=industry,
+                description=business_description,
+                keywords=keywords,
                 use_case=data["use_case"],
                 location=data.get("location", ""),
                 themes=data.get("themes") or None,
@@ -57,11 +84,11 @@ class LLMRankingAuditListView(TenantScopedListAPIView):
         audit = LLMRankingAudit.objects.create(
             website=website,
             created_by=request.user,
-            business_name=data["business_name"],
-            business_description=data["business_description"],
-            industry=data["industry"],
+            business_name=business_name,
+            business_description=business_description,
+            industry=industry,
             location=data.get("location", ""),
-            keywords=data["keywords"],
+            keywords=keywords,
             prompts=prompts,
             providers_queried=selected_providers,
         )
@@ -74,6 +101,42 @@ class LLMRankingAuditListView(TenantScopedListAPIView):
             LLMRankingAuditListSerializer(audit).data,
             status=status.HTTP_202_ACCEPTED,
         )
+
+
+class LLMRankingPreviewPromptsView(TenantScopedAPIView):
+    """
+    GET — returns the prompts that `generate_prompts` would produce for this
+    website without creating an audit. Used by the first-run UI to show users
+    what will be asked before they commit to a paid run.
+    """
+
+    def get(self, request, website_id):
+        from apps.llm_ranking.services.ranking_service import LLMRankingService
+
+        website = self.get_website(website_id)
+        industry = request.query_params.get("industry") or (website.industry or "")
+        location = request.query_params.get("location") or ""
+        use_case = request.query_params.get("use_case") or ""
+        keywords = request.query_params.getlist("keywords") or (website.topics or [])
+
+        prompts = LLMRankingService.generate_prompts(
+            business_name=website.name,
+            industry=industry,
+            description=website.description or "",
+            keywords=keywords,
+            use_case=use_case,
+            location=location,
+        )
+        return Response({
+            "prompts": prompts,
+            "source": {
+                "business_name": website.name,
+                "industry": industry,
+                "description": website.description or "",
+                "keywords": keywords,
+                "location": location,
+            },
+        })
 
 
 class LLMRankingAuditDetailView(TenantScopedAPIView):
@@ -316,220 +379,54 @@ class LLMRankingProviderBreakdownView(TenantScopedAPIView):
         return Response(list(breakdown.values()))
 
 
-class LLMRankingProviderHealthView(APIView):
+class LLMRankingScheduleView(TenantScopedAPIView):
     """
-    GET — return the configuration status of each LLM provider so the UI
-    can warn the user up-front when an API key is missing, instead of
-    silently failing every query for that provider mid-audit.
-
-    We do NOT make a live API call here (that would cost money on every
-    page load); we just check whether the relevant settings exist. A
-    deeper "ping" probe could be added later behind a query flag.
+    GET    — retrieve the current schedule for this website (or 404).
+    POST   — create or update the schedule.
+    DELETE — delete (disable) the schedule.
     """
-    permission_classes = [IsAuthenticated]
 
-    def get(self, request):
-        providers = [
-            {
-                "key": "claude",
-                "name": "Claude (Anthropic)",
-                "model": "claude-sonnet-4-20250514",
-                "configured": bool(getattr(settings, "ANTHROPIC_API_KEY", "")),
-                "settings_key": "ANTHROPIC_API_KEY",
+    def get(self, request, website_id):
+        self.get_website(website_id)
+        try:
+            schedule = LLMRankingSchedule.objects.get(website_id=website_id)
+        except LLMRankingSchedule.DoesNotExist:
+            return Response({"schedule": None})
+        return Response({"schedule": LLMRankingScheduleSerializer(schedule).data})
+
+    def post(self, request, website_id):
+        website = self.get_website(website_id)
+        serializer = CreateScheduleSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        delta = FREQUENCY_DELTAS.get(data["frequency"], timedelta(weeks=1))
+        now = timezone.now()
+
+        schedule, created = LLMRankingSchedule.objects.update_or_create(
+            website=website,
+            defaults={
+                "created_by": request.user,
+                "is_enabled": data["is_enabled"],
+                "frequency": data["frequency"],
+                "business_name": data["business_name"],
+                "business_description": data.get("business_description", ""),
+                "industry": data["industry"],
+                "location": data.get("location", ""),
+                "keywords": data.get("keywords", []),
+                "providers": data.get("providers", []),
+                "next_run_at": now + delta,
             },
-            {
-                "key": "gpt4",
-                "name": "GPT-4 (OpenAI)",
-                "model": "gpt-4o-mini",
-                "configured": bool(getattr(settings, "OPENAI_API_KEY", "")),
-                "settings_key": "OPENAI_API_KEY",
-            },
-            {
-                "key": "gemini",
-                "name": "Gemini (Google)",
-                "model": "gemini-2.5-flash",
-                "configured": bool(getattr(settings, "GEMINI_API_KEY", "")),
-                "settings_key": "GEMINI_API_KEY",
-            },
-            {
-                "key": "perplexity",
-                "name": "Perplexity",
-                "model": "llama-3.1-sonar-small-128k-online",
-                "configured": bool(getattr(settings, "PERPLEXITY_API_KEY", "")),
-                "settings_key": "PERPLEXITY_API_KEY",
-            },
-            {
-                "key": "meta_llama",
-                "name": "Meta Llama",
-                "model": "llama-3.3-70b-instruct",
-                "configured": bool(getattr(settings, "META_API_KEY", "")),
-                "settings_key": "META_API_KEY",
-            },
-            {
-                "key": "mistral",
-                "name": "Mistral AI",
-                "model": "mistral-large-latest",
-                "configured": bool(getattr(settings, "MISTRAL_API_KEY", "")),
-                "settings_key": "MISTRAL_API_KEY",
-            },
-            {
-                "key": "cohere",
-                "name": "Cohere",
-                "model": "command-r-plus",
-                "configured": bool(getattr(settings, "COHERE_API_KEY", "")),
-                "settings_key": "COHERE_API_KEY",
-            },
-            {
-                "key": "deepseek",
-                "name": "DeepSeek",
-                "model": "deepseek-chat",
-                "configured": bool(getattr(settings, "DEEPSEEK_API_KEY", "")),
-                "settings_key": "DEEPSEEK_API_KEY",
-            },
-            {
-                "key": "grok",
-                "name": "Grok (xAI)",
-                "model": "grok-3",
-                "configured": bool(getattr(settings, "XAI_API_KEY", "")),
-                "settings_key": "XAI_API_KEY",
-            },
-            {
-                "key": "amazon_nova",
-                "name": "Amazon Nova",
-                "model": "amazon.nova-pro-v1:0",
-                "configured": bool(getattr(settings, "AWS_BEDROCK_KEY", "")),
-                "settings_key": "AWS_BEDROCK_KEY",
-            },
-        ]
-        configured_count = sum(1 for p in providers if p["configured"])
-        return Response({
-            "providers": providers,
-            "configured_count": configured_count,
-            "total": len(providers),
-        })
-
-
-class ScanDomainView(APIView):
-    """
-    POST — scan a domain URL and return extracted business information,
-    plus AI-generated competitor and topic suggestions.
-    """
-    permission_classes = [IsAuthenticated]
-
-    def post(self, request):
-        url = (request.data.get("url") or "").strip()
-        if not url:
-            return Response(
-                {"error": "URL is required."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        from apps.llm_ranking.services.domain_scanner import scan_domain
-        result = scan_domain(url)
-
-        # If scan succeeded, try LLM for even better topics + competitors
-        if result.get("success"):
-            try:
-                from apps.llm_ranking.services.audit_context import suggest_audit_context
-                context = suggest_audit_context(
-                    business_name=result.get("business_name", ""),
-                    description=result.get("description", ""),
-                    industry=result.get("industry", ""),
-                    domain=result.get("domain", ""),
-                    content_summary=result.get("content_summary", ""),
-                )
-                # Use LLM topics if available, otherwise use scanner's own
-                if context.get("topics"):
-                    result["topics"] = context["topics"]
-                # Use LLM competitors if available
-                if context.get("competitors"):
-                    result["competitors"] = context["competitors"]
-            except Exception as e:
-                logger.warning("Audit context generation failed: %s", e)
-
-            # Ensure we always have topics (scanner generates them from DOM)
-            if not result.get("topics"):
-                result["topics"] = result.get("topics", [])
-
-            # If no competitors from LLM, try Google Search discovery
-            if not result.get("competitors"):
-                try:
-                    from apps.llm_ranking.services.competitor_discovery import (
-                        discover_competitors,
-                    )
-                    result["competitors"] = discover_competitors(
-                        business_name=result.get("business_name", ""),
-                        industry=result.get("industry", ""),
-                        domain=result.get("domain", ""),
-                        description=result.get("description", ""),
-                    )
-                except Exception as e:
-                    logger.warning("Competitor discovery failed: %s", e)
-                    result["competitors"] = []
-
-        return Response(result)
-
-
-class SuggestAuditContextView(APIView):
-    """
-    POST — generate competitor and topic suggestions from business profile.
-    Used when the user edits their description and wants fresh suggestions.
-    If no LLM is available, generates topics from the description content
-    using the scanner's extraction logic.
-    """
-    permission_classes = [IsAuthenticated]
-
-    def post(self, request):
-        business_name = (request.data.get("business_name") or "").strip()
-        description = (request.data.get("description") or "").strip()
-        industry = (request.data.get("industry") or "").strip()
-        domain = (request.data.get("domain") or "").strip()
-
-        if not business_name:
-            return Response(
-                {"error": "Business name is required."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        # If a domain is provided, re-scan it for fresh content
-        content_summary = ""
-        scanner_topics = []
-        if domain:
-            try:
-                from apps.llm_ranking.services.domain_scanner import scan_domain
-                scan_result = scan_domain(domain)
-                if scan_result.get("success"):
-                    content_summary = scan_result.get("content_summary", "")
-                    scanner_topics = scan_result.get("topics", [])
-            except Exception:
-                pass
-
-        from apps.llm_ranking.services.audit_context import suggest_audit_context
-        context = suggest_audit_context(
-            business_name=business_name,
-            description=description,
-            industry=industry,
-            domain=domain,
-            content_summary=content_summary,
         )
 
-        # If LLM didn't return topics, use scanner's content-derived topics
-        if not context.get("topics") and scanner_topics:
-            context["topics"] = scanner_topics
+        return Response(
+            {"schedule": LLMRankingScheduleSerializer(schedule).data},
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )
 
-        # If LLM didn't return competitors, try Google Search
-        if not context.get("competitors"):
-            try:
-                from apps.llm_ranking.services.competitor_discovery import (
-                    discover_competitors,
-                )
-                context["competitors"] = discover_competitors(
-                    business_name=business_name,
-                    industry=industry,
-                    domain=domain,
-                    description=description,
-                )
-            except Exception:
-                context["competitors"] = []
-
-        return Response(context)
+    def delete(self, request, website_id):
+        self.get_website(website_id)
+        deleted, _ = LLMRankingSchedule.objects.filter(website_id=website_id).delete()
+        if not deleted:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        return Response(status=status.HTTP_204_NO_CONTENT)
