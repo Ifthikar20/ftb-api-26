@@ -1,8 +1,11 @@
 import logging
 
+from django.conf import settings
 from django.db.models import Avg, Count, Q
 from rest_framework import status
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from apps.llm_ranking.api.v1.serializers import (
     LLMRankingAuditListSerializer,
@@ -228,3 +231,54 @@ class LLMRankingProviderBreakdownView(TenantScopedAPIView):
                 entry["avg_rank"] = round(sum(ranks) / len(ranks), 1)
 
         return Response(list(breakdown.values()))
+
+
+class LLMRankingProviderHealthView(APIView):
+    """
+    GET — return the configuration status of each LLM provider so the UI
+    can warn the user up-front when an API key is missing, instead of
+    silently failing every query for that provider mid-audit.
+
+    We do NOT make a live API call here (that would cost money on every
+    page load); we just check whether the relevant settings exist. A
+    deeper "ping" probe could be added later behind a query flag.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        providers = [
+            {
+                "key": "claude",
+                "name": "Claude (Anthropic)",
+                "model": "claude-sonnet-4-20250514",
+                "configured": bool(getattr(settings, "ANTHROPIC_API_KEY", "")),
+                "settings_key": "ANTHROPIC_API_KEY",
+            },
+            {
+                "key": "gpt4",
+                "name": "GPT-4 (OpenAI)",
+                "model": "gpt-4o-mini",
+                "configured": bool(getattr(settings, "OPENAI_API_KEY", "")),
+                "settings_key": "OPENAI_API_KEY",
+            },
+            {
+                "key": "gemini",
+                "name": "Gemini (Google)",
+                "model": "gemini-1.5-flash",
+                "configured": bool(getattr(settings, "GEMINI_API_KEY", "")),
+                "settings_key": "GEMINI_API_KEY",
+            },
+            {
+                "key": "perplexity",
+                "name": "Perplexity",
+                "model": "llama-3.1-sonar-small-128k-online",
+                "configured": bool(getattr(settings, "PERPLEXITY_API_KEY", "")),
+                "settings_key": "PERPLEXITY_API_KEY",
+            },
+        ]
+        configured_count = sum(1 for p in providers if p["configured"])
+        return Response({
+            "providers": providers,
+            "configured_count": configured_count,
+            "total": len(providers),
+        })

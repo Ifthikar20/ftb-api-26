@@ -39,6 +39,107 @@
         </button>
       </div>
 
+      <!-- System Status: which LLMs are configured + (when running/recent) the audit log -->
+      <div v-if="audits.length || providerHealth.providers.length" class="lr-grid-2 lr-status-grid" style="margin-bottom:24px">
+        <!-- LLM provider health card -->
+        <div class="card lr-status-card">
+          <div class="card-header">
+            <h3 class="card-title">
+              LLM Systems
+              <span class="text-xs text-muted">
+                · {{ providerHealth.configured_count }}/{{ providerHealth.total }} configured
+              </span>
+            </h3>
+          </div>
+          <div class="provider-status-list">
+            <div
+              v-for="p in providerHealth.providers"
+              :key="p.key"
+              class="provider-status-row"
+              :class="{ 'is-on': p.configured, 'is-off': !p.configured }"
+            >
+              <span class="provider-status-dot"></span>
+              <span class="provider-status-name">{{ p.name }}</span>
+              <span class="provider-status-model">{{ p.model }}</span>
+              <span class="provider-status-state">
+                {{ p.configured ? 'Enabled' : 'API key missing' }}
+              </span>
+            </div>
+            <div v-if="!providerHealth.providers.length" class="text-xs text-muted" style="padding:8px 16px">
+              Loading provider status...
+            </div>
+          </div>
+          <p v-if="providerHealth.configured_count < providerHealth.total" class="text-xs text-muted" style="padding:0 16px 14px;line-height:1.5">
+            Disabled providers won't be queried; configure their API keys in settings to include them.
+          </p>
+        </div>
+
+        <!-- Component-level pipeline diagram -->
+        <div class="card lr-pipeline-card">
+          <div class="card-header">
+            <h3 class="card-title">Pipeline</h3>
+            <span class="text-xs text-muted">How a prompt flows through the system</span>
+          </div>
+          <div class="pipeline-diagram">
+            <div class="pl-node pl-node-prompts" :class="{ active: pipelineState.prompts }">
+              <div class="pl-node-label">Prompts</div>
+              <div class="pl-node-value">{{ pipelinePromptCount }}</div>
+              <div class="pl-node-sub">from {{ pipelinePackName }}</div>
+            </div>
+            <span class="pl-arrow"></span>
+            <div class="pl-fanout">
+              <div
+                v-for="p in providerHealth.providers"
+                :key="p.key"
+                class="pl-node pl-node-llm"
+                :class="{ active: pipelineLlmState(p.key), disabled: !p.configured }"
+              >
+                <span class="pl-node-dot" :class="pipelineLlmDotClass(p.key)"></span>
+                <span class="pl-node-llm-name">{{ p.name.split(' ')[0] }}</span>
+              </div>
+            </div>
+            <span class="pl-arrow"></span>
+            <div class="pl-node pl-node-extract" :class="{ active: pipelineState.extract }">
+              <div class="pl-node-label">Haiku Extract</div>
+              <div class="pl-node-sub">JSON · brand + competitors</div>
+            </div>
+            <span class="pl-arrow"></span>
+            <div class="pl-node pl-node-score" :class="{ active: pipelineState.score }">
+              <div class="pl-node-label">Score</div>
+              <div class="pl-node-value">{{ isAuditComplete ? latestAudit.overall_score : '—' }}</div>
+              <div class="pl-node-sub">/100</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Audit Log timeline (running OR latest completed) -->
+      <div v-if="auditLogEvents.length" class="card" style="margin-bottom:24px">
+        <div class="card-header" style="cursor:pointer" @click="showAuditLog = !showAuditLog">
+          <h3 class="card-title">
+            Audit Log
+            <span v-if="isAuditRunning" class="live-pulse"></span>
+            <span class="text-xs text-muted" style="font-weight:500">
+              · {{ auditLogEvents.length }} event{{ auditLogEvents.length === 1 ? '' : 's' }}
+            </span>
+          </h3>
+          <span class="text-xs text-muted">{{ showAuditLog ? 'Hide' : 'Show' }}</span>
+        </div>
+        <div v-if="showAuditLog" class="audit-log-list">
+          <div
+            v-for="(ev, i) in auditLogEvents"
+            :key="i"
+            class="audit-log-row"
+            :class="'log-' + ev.kind"
+          >
+            <span class="audit-log-time">{{ ev.time }}</span>
+            <span class="audit-log-tag">{{ ev.tag }}</span>
+            <span class="audit-log-msg">{{ ev.message }}</span>
+            <span v-if="ev.detail" class="audit-log-detail">{{ ev.detail }}</span>
+          </div>
+        </div>
+      </div>
+
       <!-- How Scoring Works -->
       <div v-if="audits.length && (!latestAudit || latestAudit.status !== 'completed')" class="card methodology-card" style="margin-bottom:24px">
         <div class="card-header">
@@ -171,8 +272,8 @@
         </div>
       </div>
 
-      <!-- Simple prompts list (shown only during pending/running) -->
-      <div v-if="isAuditRunning && (latestAudit.prompts || []).length" class="card" style="margin-bottom:24px">
+      <!-- Prompts list — visible whenever an audit has prompts, regardless of state -->
+      <div v-if="latestAudit && (latestAudit.prompts || []).length" class="card" style="margin-bottom:24px">
         <div class="card-header" style="cursor:pointer" @click="showPrompts = !showPrompts">
           <h3 class="card-title">
             Questions we're asking
@@ -648,6 +749,7 @@ const toast = useToast()
 
 const audits = shallowRef([])
 const history = shallowRef([])
+const providerHealth = shallowRef({ providers: [], configured_count: 0, total: 0 })
 const loading = ref(true)
 const running = ref(false)
 const showRunForm = ref(false)
@@ -659,6 +761,7 @@ const auditDetail = shallowRef(null)
 const showFindings = ref(true)
 const showMethodology = ref(false)
 const showPrompts = ref(true)
+const showAuditLog = ref(true)
 const confirmDeleteId = ref(null)
 
 // Intent tags for each prompt — derived from the prompt text via the backend
@@ -898,6 +1001,126 @@ function providerDotTitle(d) {
 function sentimentBadge(s) {
   return s === 'positive' ? 'badge-success' : s === 'negative' ? 'badge-danger' : 'badge-neutral'
 }
+
+// ── Pipeline state — drives the component-level flow diagram ─────────────────
+
+const pipelineState = computed(() => {
+  const a = latestAudit.value
+  if (!a) return { prompts: false, extract: false, score: false }
+  return {
+    prompts: (a.prompts || []).length > 0,
+    extract: a.status === 'running' || a.status === 'completed',
+    score: a.status === 'completed',
+  }
+})
+
+const pipelinePromptCount = computed(() => (latestAudit.value?.prompts || []).length || '—')
+
+// Best-effort pack guess from the audit's industry
+const pipelinePackName = computed(() => {
+  const ind = (latestAudit.value?.industry || '').toLowerCase()
+  if (!ind) return 'Default pack'
+  if (/saas|software|cloud/.test(ind))                       return 'Default + SaaS'
+  if (/ecommerce|e-commerce|shopify|dtc|retail/.test(ind))   return 'Default + E-commerce'
+  if (/law|legal|attorney|lawyer/.test(ind))                 return 'Default + Legal'
+  if (/agency|marketing|seo/.test(ind))                      return 'Default + Agency'
+  if (/health|clinic|medical|telehealth|dental/.test(ind))   return 'Default + Healthcare'
+  return 'Default pack'
+})
+
+function pipelineLlmState(providerKey) {
+  const a = latestAudit.value
+  if (!a) return false
+  if (a.status === 'completed') return (a.providers_queried || []).includes(providerKey)
+  // While running: green only if at least one result has come back from this provider
+  return (auditDetail.value?.results || []).some(r => r.provider === providerKey)
+}
+
+function pipelineLlmDotClass(providerKey) {
+  const provider = providerHealth.value.providers.find(p => p.key === providerKey)
+  if (!provider) return 'dot-off'
+  if (!provider.configured) return 'dot-off'
+  if (pipelineLlmState(providerKey)) return 'dot-on'
+  return 'dot-idle'
+}
+
+// ── Audit log — synthesised from existing audit + result timestamps ─────────
+
+function fmtTime(iso) {
+  if (!iso) return ''
+  const d = new Date(iso)
+  return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+}
+
+const auditLogEvents = computed(() => {
+  const a = latestAudit.value
+  if (!a) return []
+
+  const events = []
+
+  if (a.created_at) {
+    events.push({
+      kind: 'info',
+      tag: 'QUEUED',
+      time: fmtTime(a.created_at),
+      message: `Audit created — ${a.prompts?.length || 0} prompt${a.prompts?.length === 1 ? '' : 's'} queued for ${(a.providers_queried || []).length} provider${(a.providers_queried || []).length === 1 ? '' : 's'}`,
+    })
+  }
+  if (a.started_at) {
+    events.push({
+      kind: 'info',
+      tag: 'STARTED',
+      time: fmtTime(a.started_at),
+      message: `Worker picked up audit — ${a.total_queries || '?'} queries planned`,
+    })
+  }
+
+  // Per-result events
+  const results = auditDetail.value?.results || []
+  for (const r of [...results].sort((x, y) => (x.created_at || '').localeCompare(y.created_at || ''))) {
+    const provider = providerLabel(r.provider)
+    const promptShort = (r.prompt || '').length > 70 ? r.prompt.slice(0, 70) + '...' : (r.prompt || '')
+    if (!r.query_succeeded) {
+      events.push({
+        kind: 'fail',
+        tag: provider.toUpperCase(),
+        time: fmtTime(r.created_at),
+        message: `Query failed — "${promptShort}"`,
+        detail: r.error_message,
+      })
+      continue
+    }
+    if (r.is_mentioned) {
+      events.push({
+        kind: 'hit',
+        tag: provider.toUpperCase(),
+        time: fmtTime(r.created_at),
+        message: `Ranked #${r.mention_rank ?? '—'} — "${promptShort}"`,
+        detail: r.sentiment && r.sentiment !== 'not_mentioned' ? r.sentiment : '',
+      })
+    } else {
+      events.push({
+        kind: 'miss',
+        tag: provider.toUpperCase(),
+        time: fmtTime(r.created_at),
+        message: `Not mentioned — "${promptShort}"`,
+      })
+    }
+  }
+
+  if (a.completed_at) {
+    events.push({
+      kind: a.status === 'completed' ? 'done' : 'fail',
+      tag: 'COMPLETED',
+      time: fmtTime(a.completed_at),
+      message: a.status === 'completed'
+        ? `Audit complete — Score ${a.overall_score}/100, mention rate ${Math.round(a.mention_rate || 0)}%`
+        : `Audit ${a.status}`,
+    })
+  }
+
+  return events
+})
 
 // Score factor breakdown (must sum to ~overall_score)
 const mentionPts = computed(() => {
@@ -1265,12 +1488,22 @@ async function fetchHistory() {
   }
 }
 
+async function fetchProviderHealth() {
+  try {
+    const { data } = await llmRankingApi.providerHealth()
+    providerHealth.value = data?.data || data || { providers: [], configured_count: 0, total: 0 }
+  } catch (e) {
+    console.error('Provider health fetch error', e)
+  }
+}
+
 async function fetchData() {
   loading.value = true
   try {
     const [listRes] = await Promise.all([
       llmRankingApi.listAudits(websiteId),
       fetchHistory(),
+      fetchProviderHealth(),
     ])
     const { data } = listRes
     audits.value = data?.data?.results || data?.results || data || []
@@ -1415,6 +1648,210 @@ onBeforeUnmount(stopPolling)
 .theme-chip-desc {
   font-size: 11px;
   color: var(--text-muted);
+  font-style: italic;
+}
+
+/* System status grid */
+.lr-status-grid { grid-template-columns: 1fr 2fr; }
+@media (max-width: 1100px) { .lr-status-grid { grid-template-columns: 1fr; } }
+
+/* Provider status list */
+.provider-status-list { display: flex; flex-direction: column; gap: 4px; padding: 8px 0; }
+.provider-status-row {
+  display: grid;
+  grid-template-columns: 14px 1fr auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  font-size: var(--font-sm);
+}
+.provider-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-success, #10B981);
+  box-shadow: 0 0 0 0 rgba(16,185,129,0.5);
+}
+.provider-status-row.is-on .provider-status-dot {
+  animation: dot-breathe 2s ease-in-out infinite;
+}
+.provider-status-row.is-off .provider-status-dot {
+  background: var(--text-muted);
+  box-shadow: none;
+}
+@keyframes dot-breathe {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(16,185,129,0.5); }
+  50%      { box-shadow: 0 0 0 5px rgba(16,185,129,0); }
+}
+.provider-status-name { font-weight: 600; color: var(--text-primary); }
+.provider-status-model {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.provider-status-state {
+  font-size: var(--font-xs);
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+.provider-status-row.is-on  .provider-status-state {
+  background: rgba(16,185,129,0.12);
+  color: #047857;
+}
+.provider-status-row.is-off .provider-status-state {
+  background: var(--bg-surface);
+  color: var(--text-muted);
+}
+
+/* Pipeline diagram */
+.pipeline-diagram {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 18px 16px 22px;
+  flex-wrap: wrap;
+}
+.pl-node {
+  position: relative;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-base);
+  min-width: 96px;
+  text-align: center;
+  transition: all 0.25s ease;
+}
+.pl-node.active {
+  border-color: var(--brand-accent, #4F46E5);
+  background: rgba(79, 70, 229, 0.04);
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.08);
+}
+.pl-node.disabled { opacity: 0.4; }
+.pl-node-label {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+.pl-node-value {
+  font-family: 'DM Serif Display', Georgia, serif;
+  font-weight: 400;
+  font-size: 24px;
+  color: var(--text-primary);
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+.pl-node-sub {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+.pl-arrow {
+  width: 22px;
+  height: 1px;
+  background: var(--border-color);
+  position: relative;
+  flex-shrink: 0;
+}
+.pl-arrow::after {
+  content: '';
+  position: absolute;
+  right: -1px;
+  top: -3px;
+  width: 0;
+  height: 0;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 6px solid var(--border-color);
+}
+
+.pl-fanout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+}
+.pl-node-llm {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-base);
+  min-width: 0;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-primary);
+  transition: all 0.25s ease;
+}
+.pl-node-llm.active {
+  border-color: var(--color-success, #10B981);
+  background: rgba(16,185,129,0.06);
+}
+.pl-node-llm.disabled { opacity: 0.4; }
+.pl-node-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+.pl-node-dot.dot-on   { background: var(--color-success, #10B981); }
+.pl-node-dot.dot-idle { background: var(--text-muted); }
+.pl-node-dot.dot-off  { background: var(--color-danger, #DC2626); }
+
+/* Audit Log */
+.audit-log-list {
+  display: flex;
+  flex-direction: column;
+  padding: 4px 0 8px;
+  max-height: 400px;
+  overflow-y: auto;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 12px;
+}
+.audit-log-row {
+  display: grid;
+  grid-template-columns: 80px 80px 1fr auto;
+  align-items: baseline;
+  gap: 12px;
+  padding: 6px 16px;
+  border-left: 2px solid transparent;
+  transition: background 0.15s;
+}
+.audit-log-row:hover { background: var(--bg-surface); }
+.audit-log-row.log-info { border-left-color: var(--text-muted); }
+.audit-log-row.log-hit  { border-left-color: var(--color-success, #10B981); }
+.audit-log-row.log-miss { border-left-color: var(--text-muted); opacity: 0.7; }
+.audit-log-row.log-fail { border-left-color: var(--color-danger,  #DC2626); }
+.audit-log-row.log-done { border-left-color: var(--brand-accent, #4F46E5); background: rgba(79,70,229,0.04); }
+
+.audit-log-time {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+.audit-log-tag {
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+.log-info .audit-log-tag { color: var(--text-muted); }
+.log-hit  .audit-log-tag { color: #047857; }
+.log-miss .audit-log-tag { color: var(--text-muted); }
+.log-fail .audit-log-tag { color: #B91C1C; }
+.log-done .audit-log-tag { color: #4F46E5; }
+
+.audit-log-msg {
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.audit-log-detail {
+  color: var(--text-muted);
+  font-size: 11px;
   font-style: italic;
 }
 

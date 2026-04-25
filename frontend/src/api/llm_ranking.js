@@ -8,4 +8,5 @@ export default {
     breakdown: (wid, aid) => api.get(`/llm-ranking/${wid}/audits/${aid}/breakdown/`),
     recommendations: (wid, aid) => api.get(`/llm-ranking/${wid}/audits/${aid}/recommendations/`),
     history: (wid, params) => api.get(`/llm-ranking/${wid}/history/`, { params }),
+    providerHealth: () => api.get(`/llm-ranking/provider-health/`),
 }
