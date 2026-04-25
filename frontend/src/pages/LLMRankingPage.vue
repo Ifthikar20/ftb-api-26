@@ -39,6 +39,184 @@
         </button>
       </div>
 
+      <!-- ═══ Brand Overview (Bear-style dashboard) ═══════════════════════ -->
+      <div v-if="audits.length && isAuditComplete" class="brand-overview" style="margin-bottom:24px">
+
+        <!-- Filter bar -->
+        <div class="bo-filters">
+          <button class="bo-filter" @click="toggleFilter('platform')" :class="{ open: openFilter === 'platform' }">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/>
+              <path d="M12 2a15 15 0 010 20 15 15 0 010-20"/>
+            </svg>
+            <span>{{ filters.platform === 'all' ? 'All Platforms' : providerLabel(filters.platform) }}</span>
+            <svg class="bo-caret" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4l3 3 3-3"/></svg>
+            <div v-if="openFilter === 'platform'" class="bo-filter-menu" @click.stop>
+              <button class="bo-filter-item" :class="{ active: filters.platform === 'all' }" @click="setFilter('platform', 'all')">All Platforms</button>
+              <button v-for="p in providerHealth.providers.filter(p => p.configured)" :key="p.key"
+                      class="bo-filter-item" :class="{ active: filters.platform === p.key }"
+                      @click="setFilter('platform', p.key)">{{ p.name }}</button>
+            </div>
+          </button>
+
+          <button class="bo-filter" @click="toggleFilter('time')" :class="{ open: openFilter === 'time' }">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/>
+              <line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+            </svg>
+            <span>{{ timeRangeLabel }}</span>
+            <svg class="bo-caret" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4l3 3 3-3"/></svg>
+            <div v-if="openFilter === 'time'" class="bo-filter-menu" @click.stop>
+              <button v-for="r in timeRanges" :key="r.value" class="bo-filter-item"
+                      :class="{ active: filters.timeRange === r.value }"
+                      @click="setFilter('timeRange', r.value)">{{ r.label }}</button>
+            </div>
+          </button>
+
+          <button class="bo-filter" @click="toggleFilter('topic')" :class="{ open: openFilter === 'topic' }">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2zM22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/>
+            </svg>
+            <span>{{ filters.topic === 'all' ? 'All Topics' : formatIntent(filters.topic) }}</span>
+            <svg class="bo-caret" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4l3 3 3-3"/></svg>
+            <div v-if="openFilter === 'topic'" class="bo-filter-menu" @click.stop>
+              <button class="bo-filter-item" :class="{ active: filters.topic === 'all' }" @click="setFilter('topic', 'all')">All Topics</button>
+              <button v-for="t in availableTopics" :key="t" class="bo-filter-item"
+                      :class="{ active: filters.topic === t }"
+                      @click="setFilter('topic', t)">{{ formatIntent(t) }}</button>
+            </div>
+          </button>
+        </div>
+
+        <!-- 4-KPI strip -->
+        <div class="kpi-strip">
+          <div class="kpi-card">
+            <div class="kpi-label">
+              Brand Visibility
+              <span class="kpi-info" title="How often you appear when AI assistants are asked about your category">i</span>
+            </div>
+            <div class="kpi-value">{{ kpiBrandVisibility.value }}<span class="kpi-unit">%</span></div>
+            <div class="kpi-sub">Based on {{ kpiBrandVisibility.basis }} prompts simulated</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">
+              Citation Share
+              <span class="kpi-info" title="Of all brand mentions across AI responses, the share that are you">i</span>
+            </div>
+            <div class="kpi-value">{{ kpiCitationShare.value }}<span class="kpi-unit">%</span></div>
+            <div class="kpi-sub">{{ kpiCitationShare.self }} of {{ kpiCitationShare.total }} citations</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">
+              Brand Ranking
+              <span class="kpi-info" title="Your position vs other brands by visibility in this audit">i</span>
+            </div>
+            <div class="kpi-value kpi-value-rank">#{{ kpiBrandRanking.rank }}</div>
+            <div class="kpi-sub">{{ kpiBrandRanking.label }}</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">
+              Closest Competitor
+              <span class="kpi-info" title="The brand right above or below you in the rankings">i</span>
+            </div>
+            <div class="kpi-closest">
+              <span class="kpi-closest-avatar" :style="{ background: brandColor(kpiClosestCompetitor.name) }">
+                {{ (kpiClosestCompetitor.name || '—')[0] }}
+              </span>
+              <div class="kpi-closest-meta">
+                <div class="kpi-closest-name">{{ kpiClosestCompetitor.name || '—' }}</div>
+                <div class="kpi-sub">{{ kpiClosestCompetitor.mention_count || 0 }} mentions</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Row 2: Competitor Visibility chart + Competitor Rankings -->
+        <div class="lr-grid-2 bo-row">
+          <div class="card lr-grid-main bo-chart-card">
+            <div class="card-header">
+              <h3 class="card-title">Competitor Visibility</h3>
+              <span class="text-xs text-muted">multi-line · hover for details</span>
+            </div>
+            <div class="bo-chart-wrap">
+              <Line :data="competitorVisibilityData" :options="competitorVisibilityOptions" />
+            </div>
+          </div>
+
+          <div class="card lr-grid-side bo-ranking-card">
+            <div class="card-header">
+              <h3 class="card-title">Competitor Rankings</h3>
+            </div>
+            <div class="bo-ranking-head">
+              <span class="bo-rh-rank">#</span>
+              <span class="bo-rh-name">Competitor</span>
+              <span class="bo-rh-vis">Visibility</span>
+            </div>
+            <div class="bo-ranking-list">
+              <div v-for="r in brandRankingRows" :key="r.name"
+                   class="bo-ranking-row"
+                   :class="{ 'is-you': r.is_you, 'is-highlighted': highlightedBrand === r.name }"
+                   @mouseenter="highlightedBrand = r.name"
+                   @mouseleave="highlightedBrand = null">
+                <span class="bo-rh-rank">{{ r.rank }}</span>
+                <span class="bo-rh-name">
+                  <span class="bo-brand-avatar" :style="{ background: brandColor(r.name) }">{{ r.name[0] }}</span>
+                  <span>{{ r.name }} <span v-if="r.is_you" class="bo-you-tag">(You)</span></span>
+                </span>
+                <span class="bo-rh-vis">{{ r.visibility }}%</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Row 3: Citation Share trend + Top Sources -->
+        <div class="lr-grid-2 bo-row">
+          <div class="card lr-grid-main bo-chart-card">
+            <div class="card-header">
+              <h3 class="card-title">Citation Share</h3>
+              <span class="text-xs text-muted">your share of all brand citations over time</span>
+            </div>
+            <div class="bo-chart-wrap bo-chart-small">
+              <Line :data="citationShareData" :options="citationShareOptions" />
+            </div>
+          </div>
+
+          <div class="card lr-grid-side bo-sources-card">
+            <div class="card-header">
+              <h3 class="card-title">Top Sources</h3>
+              <button class="btn-ghost btn-sm" v-if="topSources.length" @click="sortTopSources">
+                Sort: {{ topSourcesSort === 'count' ? '↓ Citations' : '↓ Domain' }}
+              </button>
+            </div>
+            <div class="bo-sources-head">
+              <span class="bo-sh-rank">#</span>
+              <span class="bo-sh-domain">Web Page</span>
+              <span class="bo-sh-type">Type</span>
+              <span class="bo-sh-count">Citations</span>
+            </div>
+            <div class="bo-sources-list">
+              <div v-for="(s, i) in topSources" :key="s.domain" class="bo-source-row">
+                <span class="bo-sh-rank">{{ i + 1 }}</span>
+                <span class="bo-sh-domain">
+                  <span class="bo-source-favicon" :style="{ background: brandColor(s.domain) }">
+                    {{ s.domain[0].toUpperCase() }}
+                  </span>
+                  <span>
+                    <span class="bo-source-name">{{ s.label }}</span>
+                    <span class="bo-source-host">{{ s.domain }}</span>
+                  </span>
+                </span>
+                <span class="bo-sh-type"><span class="bo-type-pill" :class="'bo-type-' + s.type">{{ s.type }}</span></span>
+                <span class="bo-sh-count">{{ s.count }}</span>
+              </div>
+              <div v-if="!topSources.length" class="text-xs text-muted" style="padding:16px">
+                No citations detected yet. Sources are extracted as audits run.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- System Status: which LLMs are configured + (when running/recent) the audit log -->
       <div v-if="audits.length || providerHealth.providers.length" class="lr-grid-2 lr-status-grid" style="margin-bottom:24px">
         <!-- LLM provider health card -->
@@ -1002,6 +1180,303 @@ function sentimentBadge(s) {
   return s === 'positive' ? 'badge-success' : s === 'negative' ? 'badge-danger' : 'badge-neutral'
 }
 
+// ── Brand Overview (Bear-style) ─────────────────────────────────────────────
+
+const filters = ref({ platform: 'all', timeRange: '7d', topic: 'all' })
+const openFilter = ref(null)
+const highlightedBrand = ref(null)
+const topSourcesSort = ref('count')
+
+const timeRanges = Object.freeze([
+  { label: 'Last 24 hours', value: '24h' },
+  { label: 'Last 7 days', value: '7d' },
+  { label: 'Last 30 days', value: '30d' },
+  { label: 'Last 90 days', value: '90d' },
+  { label: 'All time', value: 'all' },
+])
+
+const timeRangeLabel = computed(() => {
+  const r = timeRanges.find(t => t.value === filters.value.timeRange)
+  return r ? r.label : 'Last 7 days'
+})
+
+function toggleFilter(name) {
+  openFilter.value = openFilter.value === name ? null : name
+}
+function setFilter(name, value) {
+  filters.value = { ...filters.value, [name]: value }
+  openFilter.value = null
+}
+
+const availableTopics = computed(() => {
+  const set = new Set(promptIntents.value)
+  return [...set]
+})
+
+// Deterministic brand-name -> hue mapping so each brand keeps its colour.
+function brandColor(name) {
+  if (!name) return '#9CA3AF'
+  let h = 0
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) | 0
+  const hue = Math.abs(h) % 360
+  return `hsl(${hue}, 55%, 55%)`
+}
+
+// ── KPIs ───────────────────────────────────────────────────────────────────
+
+const kpiBrandVisibility = computed(() => {
+  const a = latestAudit.value
+  if (!a) return { value: 0, basis: 0 }
+  return {
+    value: Math.round(a.mention_rate || 0),
+    basis: a.queries_completed || a.total_queries || 0,
+  }
+})
+
+const kpiCitationShare = computed(() => {
+  // Prefer the history record for the latest audit (precomputed server-side).
+  const aid = latestAudit.value?.id
+  const fromHistory = (history.value || []).find(h => h.id === aid)
+  if (fromHistory && fromHistory.citation_total > 0) {
+    return {
+      value: fromHistory.citation_share,
+      self: fromHistory.citation_self,
+      total: fromHistory.citation_total,
+    }
+  }
+  // Fallback: derive from the loaded audit detail.
+  const results = auditDetail.value?.results || []
+  let self = 0
+  let total = 0
+  for (const r of results) {
+    if (!r.query_succeeded) continue
+    if (r.is_mentioned) { self++; total++ }
+    total += (r.competitors_mentioned || []).length
+  }
+  return {
+    value: total ? Math.round(self / total * 100 * 10) / 10 : 0,
+    self,
+    total,
+  }
+})
+
+const brandRankingRows = computed(() => {
+  // Combine you + competitors from the leaderboard, ranked by visibility.
+  const a = latestAudit.value
+  const yourName = a?.business_name || 'You'
+  const yourVis = Math.round(a?.mention_rate || 0)
+  const rows = [{ name: yourName, visibility: yourVis, mention_count: 0, is_you: true }]
+  for (const c of competitorLeaderboard.value || []) {
+    rows.push({
+      name: c.name,
+      visibility: uniquePromptCount.value
+        ? Math.round(c.promptCount / uniquePromptCount.value * 100)
+        : 0,
+      mention_count: c.promptCount,
+      avg_rank: c.avgRank,
+      is_you: false,
+    })
+  }
+  rows.sort((a, b) => b.visibility - a.visibility)
+  return rows.map((r, i) => ({ ...r, rank: i + 1 }))
+})
+
+const kpiBrandRanking = computed(() => {
+  const rows = brandRankingRows.value
+  const me = rows.find(r => r.is_you)
+  if (!me) return { rank: '—', label: '' }
+  let label
+  if (me.rank === 1) label = 'Market leader'
+  else if (me.rank <= 3) label = `Top ${me.rank}`
+  else label = `${me.rank} of ${rows.length}`
+  return { rank: me.rank, label }
+})
+
+const kpiClosestCompetitor = computed(() => {
+  const rows = brandRankingRows.value
+  const meIdx = rows.findIndex(r => r.is_you)
+  if (meIdx < 0) return { name: null, mention_count: 0 }
+  // Pick the brand that's directly above us; if we're #1, pick the one below.
+  const target = meIdx === 0 ? rows[1] : rows[meIdx - 1]
+  return target || { name: null, mention_count: 0 }
+})
+
+// ── Competitor Visibility chart (multi-line) ───────────────────────────────
+
+const competitorVisibilityData = computed(() => {
+  const audits = history.value || []
+  const labels = audits.map(h => shortDate(h.completed_at))
+  if (!audits.length) return { labels: [], datasets: [] }
+
+  // Top brands by latest audit's visibility (so the most relevant lines)
+  const latest = audits[audits.length - 1] || {}
+  const topCompetitorNames = (latest.competitors || []).slice(0, 5).map(c => c.name)
+  const yourName = latestAudit.value?.business_name || 'You'
+
+  const datasets = []
+  // Your line
+  datasets.push({
+    label: yourName + ' (You)',
+    data: audits.map(h => Math.round(h.mention_rate || 0)),
+    borderColor: '#5B8DEF',
+    backgroundColor: 'rgba(91,141,239,0.10)',
+    borderWidth: 2.5,
+    fill: 'origin',
+    tension: 0.4,
+    pointRadius: 3,
+    pointHoverRadius: 5,
+  })
+  for (const name of topCompetitorNames) {
+    datasets.push({
+      label: name,
+      data: audits.map(h => {
+        const found = (h.competitors || []).find(c => c.name === name)
+        return found ? found.visibility : null
+      }),
+      borderColor: brandColor(name),
+      backgroundColor: brandColor(name) + '14',
+      borderWidth: 2,
+      fill: false,
+      tension: 0.4,
+      pointRadius: 3,
+      pointHoverRadius: 5,
+      spanGaps: true,
+    })
+  }
+  return { labels, datasets }
+})
+
+const competitorVisibilityOptions = markRaw({
+  responsive: true,
+  maintainAspectRatio: false,
+  interaction: { mode: 'index', intersect: false },
+  plugins: {
+    legend: { display: false },
+    tooltip: {
+      backgroundColor: 'rgba(15, 23, 42, 0.98)',
+      titleColor: '#fff',
+      bodyColor: '#cbd5e1',
+      borderColor: 'rgba(255,255,255,0.08)',
+      borderWidth: 1,
+      padding: 12,
+      cornerRadius: 10,
+      displayColors: true,
+      boxWidth: 8,
+      boxHeight: 8,
+      usePointStyle: true,
+      titleFont: { size: 11, weight: '600' },
+      bodyFont: { size: 12 },
+      callbacks: {
+        title: (ctx) => 'Visibility · ' + (ctx[0]?.label || ''),
+        label: (ctx) => {
+          const v = ctx.parsed.y
+          return `  ${ctx.dataset.label}: ${v == null ? 'n/a' : v + '%'}`
+        },
+      },
+    },
+  },
+  scales: {
+    x: { grid: { display: false }, border: { display: false }, ticks: { maxTicksLimit: 8, padding: 8, font: { size: 11 } } },
+    y: {
+      grid: { color: 'rgba(15,23,42,0.05)', drawTicks: false },
+      border: { display: false },
+      ticks: { padding: 10, font: { size: 11 }, callback: (v) => v + '%' },
+      beginAtZero: true,
+      max: 100,
+    },
+  },
+})
+
+// ── Citation Share trend ───────────────────────────────────────────────────
+
+const citationShareData = computed(() => {
+  const audits = history.value || []
+  return {
+    labels: audits.map(h => shortDate(h.completed_at)),
+    datasets: [{
+      label: 'Citation Share',
+      data: audits.map(h => h.citation_share || 0),
+      borderColor: '#10B981',
+      backgroundColor: 'rgba(16,185,129,0.12)',
+      borderWidth: 2.5,
+      fill: 'origin',
+      tension: 0.4,
+      pointRadius: 3,
+      pointHoverRadius: 5,
+    }],
+  }
+})
+
+const citationShareOptions = markRaw({
+  responsive: true,
+  maintainAspectRatio: false,
+  plugins: {
+    legend: { display: false },
+    tooltip: {
+      backgroundColor: 'rgba(15, 23, 42, 0.98)',
+      titleColor: '#fff', bodyColor: '#cbd5e1',
+      padding: 10, cornerRadius: 10,
+      callbacks: { label: (ctx) => `Citation share: ${ctx.parsed.y}%` },
+    },
+  },
+  scales: {
+    x: { grid: { display: false }, border: { display: false }, ticks: { font: { size: 11 } } },
+    y: {
+      grid: { color: 'rgba(15,23,42,0.05)' },
+      border: { display: false },
+      ticks: { font: { size: 11 }, callback: (v) => v + '%' },
+      beginAtZero: true,
+    },
+  },
+})
+
+// ── Top Sources ────────────────────────────────────────────────────────────
+
+function classifyDomainType(host) {
+  const h = host.toLowerCase()
+  if (/reddit|quora|stackexchange|stackoverflow|discord|forum|community/.test(h)) return 'UGC'
+  if (/wikipedia/.test(h)) return 'Editorial'
+  if (/medium|substack|techradar|theverge|wired|tnw|forbes|bloomberg|nytimes|wsj|bbc|cnn|tc|techcrunch/.test(h)) return 'Editorial'
+  if (/g2|capterra|trustpilot|getapp|softwareadvice/.test(h)) return 'Reviews'
+  if (/youtube|tiktok|instagram|x\.com|twitter\.com|linkedin/.test(h)) return 'Social'
+  return 'Corporate'
+}
+
+function hostFromUrl(url) {
+  try {
+    const u = new URL(url)
+    return u.hostname.replace(/^www\./, '')
+  } catch { return null }
+}
+
+const topSources = computed(() => {
+  const results = auditDetail.value?.results || []
+  const counts = new Map()
+  for (const r of results) {
+    if (!r.query_succeeded) continue
+    for (const url of (r.citations || [])) {
+      const host = hostFromUrl(url)
+      if (!host) continue
+      const cur = counts.get(host) || { domain: host, count: 0 }
+      cur.count++
+      counts.set(host, cur)
+    }
+  }
+  let arr = [...counts.values()].map(s => ({
+    domain: s.domain,
+    label: s.domain.split('.')[0].replace(/^./, c => c.toUpperCase()),
+    type: classifyDomainType(s.domain),
+    count: s.count,
+  }))
+  if (topSourcesSort.value === 'count') arr.sort((a, b) => b.count - a.count)
+  else arr.sort((a, b) => a.domain.localeCompare(b.domain))
+  return arr.slice(0, 10)
+})
+
+function sortTopSources() {
+  topSourcesSort.value = topSourcesSort.value === 'count' ? 'domain' : 'count'
+}
+
 // ── Pipeline state — drives the component-level flow diagram ─────────────────
 
 const pipelineState = computed(() => {
@@ -1159,7 +1634,9 @@ const promptsUsed = computed(() => {
 })
 
 // ── Historic trend charts ──
-const shortDate = (dt) => new Date(dt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+function shortDate(dt) {
+  return new Date(dt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+}
 
 const trendLabels = computed(() => history.value.map(h => shortDate(h.completed_at)))
 
@@ -1529,8 +2006,22 @@ async function fetchData() {
   }
 }
 
-onMounted(fetchData)
-onBeforeUnmount(stopPolling)
+// Close any open filter dropdown when clicking outside the filter bar.
+function onDocClick(ev) {
+  if (!openFilter.value) return
+  const t = ev.target
+  if (t && t.closest && t.closest('.bo-filter')) return
+  openFilter.value = null
+}
+
+onMounted(() => {
+  fetchData()
+  document.addEventListener('click', onDocClick)
+})
+onBeforeUnmount(() => {
+  stopPolling()
+  document.removeEventListener('click', onDocClick)
+})
 </script>
 
 <style scoped>
@@ -1650,6 +2141,278 @@ onBeforeUnmount(stopPolling)
   color: var(--text-muted);
   font-style: italic;
 }
+
+/* ─────────────────────────────────────────────────────────────────
+   Brand Overview (Bear-style dashboard)
+   ───────────────────────────────────────────────────────────────── */
+
+.brand-overview {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.bo-row { gap: 16px; margin: 0; }
+.bo-row > .card { margin-bottom: 0 !important; }
+
+/* Filter bar */
+.bo-filters { display: flex; gap: 8px; flex-wrap: wrap; }
+.bo-filter {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font-size: var(--font-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.bo-filter:hover { border-color: var(--text-muted); }
+.bo-filter.open { border-color: var(--brand-accent, #4F46E5); box-shadow: 0 0 0 3px rgba(79,70,229,0.08); }
+.bo-caret { color: var(--text-muted); }
+.bo-filter-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 200px;
+  padding: 6px;
+  border-radius: 12px;
+  background: var(--bg-base);
+  border: 1px solid var(--border-color);
+  box-shadow: 0 12px 32px rgba(15,23,42,0.10), 0 2px 8px rgba(15,23,42,0.04);
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.bo-filter-item {
+  text-align: left;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: var(--font-sm);
+  font-weight: 500;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.bo-filter-item:hover { background: var(--bg-surface); }
+.bo-filter-item.active {
+  background: rgba(79,70,229,0.06);
+  color: var(--brand-accent, #4F46E5);
+}
+
+/* 4-KPI strip */
+.kpi-strip {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+@media (max-width: 1100px) {
+  .kpi-strip { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 600px) {
+  .kpi-strip { grid-template-columns: 1fr; }
+}
+.kpi-card {
+  background: var(--bg-base);
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  padding: 18px 18px 16px;
+  position: relative;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s;
+}
+.kpi-card:hover {
+  border-color: var(--text-muted);
+  box-shadow: 0 8px 24px rgba(15,23,42,0.05);
+  transform: translateY(-1px);
+}
+.kpi-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-xs);
+  color: var(--text-muted);
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+.kpi-info {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--bg-surface);
+  color: var(--text-muted);
+  font-size: 9px;
+  font-weight: 800;
+  cursor: help;
+  font-style: italic;
+}
+.kpi-value {
+  font-size: 36px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1;
+  letter-spacing: -0.025em;
+  font-variant-numeric: tabular-nums;
+}
+.kpi-value-rank { color: #131718; }
+.kpi-unit {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-left: 2px;
+}
+.kpi-sub {
+  margin-top: 8px;
+  font-size: var(--font-xs);
+  color: var(--text-muted);
+  font-weight: 500;
+}
+.kpi-closest {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 4px;
+}
+.kpi-closest-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: 700;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+.kpi-closest-meta { display: flex; flex-direction: column; gap: 2px; }
+.kpi-closest-name {
+  font-size: var(--font-md);
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.1;
+}
+
+/* Chart cards */
+.bo-chart-card { padding-bottom: 8px; }
+.bo-chart-wrap {
+  position: relative;
+  height: 320px;
+  padding: 6px 16px 16px;
+}
+.bo-chart-small { height: 220px; }
+
+/* Competitor Rankings */
+.bo-ranking-card { padding-bottom: 8px; }
+.bo-ranking-head, .bo-sources-head {
+  display: grid;
+  grid-template-columns: 32px 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-color);
+}
+.bo-sources-head {
+  grid-template-columns: 32px 1fr 80px 80px;
+}
+.bo-ranking-list, .bo-sources-list {
+  display: flex;
+  flex-direction: column;
+  padding: 6px 0;
+}
+.bo-ranking-row, .bo-source-row {
+  display: grid;
+  grid-template-columns: 32px 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  font-size: var(--font-sm);
+  cursor: default;
+  transition: background 0.15s;
+}
+.bo-source-row { grid-template-columns: 32px 1fr 80px 80px; cursor: default; }
+.bo-ranking-row:hover, .bo-source-row:hover { background: var(--bg-surface); }
+.bo-ranking-row.is-you {
+  background: rgba(91,141,239,0.06);
+  border-left: 3px solid #5B8DEF;
+  padding-left: 13px;
+}
+.bo-ranking-row.is-highlighted { background: rgba(79,70,229,0.06); }
+.bo-rh-rank, .bo-sh-rank { color: var(--text-muted); font-weight: 700; }
+.bo-rh-name, .bo-sh-domain {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 600;
+  color: var(--text-primary);
+  min-width: 0;
+}
+.bo-rh-vis, .bo-sh-count {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+.bo-brand-avatar, .bo-source-favicon {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+.bo-source-favicon { border-radius: 4px; }
+.bo-source-name {
+  display: block;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-size: var(--font-sm);
+  line-height: 1.2;
+}
+.bo-source-host {
+  display: block;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+.bo-you-tag {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 500;
+  margin-left: 4px;
+}
+
+/* Type pill */
+.bo-type-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+}
+.bo-type-UGC       { background: rgba(91,141,239,0.12); color: #3B5EAF; }
+.bo-type-Editorial { background: rgba(245,166,35,0.14); color: #B45309; }
+.bo-type-Reviews   { background: rgba(167,139,250,0.16); color: #6B21A8; }
+.bo-type-Social    { background: rgba(236,72,153,0.14); color: #BE185D; }
+.bo-type-Corporate { background: rgba(107,114,128,0.14); color: #374151; }
 
 /* System status grid */
 .lr-status-grid { grid-template-columns: 1fr 2fr; }

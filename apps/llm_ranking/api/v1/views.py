@@ -124,7 +124,9 @@ class LLMRankingRecommendationsView(TenantScopedAPIView):
 
 class LLMRankingHistoryView(TenantScopedAPIView):
     """
-    GET — return historical aggregate and per-provider stats for trend charts.
+    GET — return historical aggregate, per-provider, and per-competitor stats
+    for trend charts. The competitor visibility series powers the Brand
+    Overview "Competitor Visibility" multi-line chart.
     """
 
     def get(self, request, website_id):
@@ -140,6 +142,8 @@ class LLMRankingHistoryView(TenantScopedAPIView):
             return Response([])
 
         audit_ids = [a["id"] for a in audits]
+
+        # Per-provider stats per audit (existing)
         stats_rows = (
             LLMRankingResult.objects
             .filter(audit_id__in=audit_ids, query_succeeded=True)
@@ -150,13 +154,12 @@ class LLMRankingHistoryView(TenantScopedAPIView):
                 avg_rank=Avg("mention_rank", filter=Q(is_mentioned=True)),
             )
         )
-
-        by_audit: dict = {}
+        provider_by_audit: dict = {}
         for row in stats_rows:
             succeeded = row["succeeded"] or 0
             mentioned = row["mentioned"] or 0
             rate = round(mentioned / succeeded * 100, 1) if succeeded else 0.0
-            by_audit.setdefault(row["audit_id"], []).append({
+            provider_by_audit.setdefault(row["audit_id"], []).append({
                 "provider": row["provider"],
                 "succeeded": succeeded,
                 "mentioned": mentioned,
@@ -164,8 +167,88 @@ class LLMRankingHistoryView(TenantScopedAPIView):
                 "avg_rank": round(row["avg_rank"], 1) if row["avg_rank"] is not None else None,
             })
 
+        # Per-competitor visibility per audit. competitors_mentioned is a
+        # JSONField list[dict], so we have to iterate in Python rather than
+        # aggregate via the ORM.
+        competitor_by_audit: dict = {}
+        per_audit_total: dict = {}
+        per_audit_self_brand_mentions: dict = {}
+        per_audit_total_brand_mentions: dict = {}
+
+        rows = (
+            LLMRankingResult.objects
+            .filter(audit_id__in=audit_ids, query_succeeded=True)
+            .values("audit_id", "competitors_mentioned", "is_mentioned")
+        )
+        for r in rows:
+            aid = r["audit_id"]
+            per_audit_total[aid] = per_audit_total.get(aid, 0) + 1
+
+            comps = r["competitors_mentioned"] or []
+            # Total brand mentions across all responses for this audit =
+            #   self mentions + competitor mentions. Used for citation share.
+            self_mention = 1 if r["is_mentioned"] else 0
+            per_audit_self_brand_mentions[aid] = (
+                per_audit_self_brand_mentions.get(aid, 0) + self_mention
+            )
+            per_audit_total_brand_mentions[aid] = (
+                per_audit_total_brand_mentions.get(aid, 0) + self_mention + len(comps)
+            )
+
+            seen_in_response: set = set()
+            for c in comps:
+                if not isinstance(c, dict):
+                    continue
+                name = (c.get("name") or "").strip()
+                if not name or name in seen_in_response:
+                    continue
+                seen_in_response.add(name)
+                key = (aid, name)
+                if key not in competitor_by_audit:
+                    competitor_by_audit[key] = {"count": 0, "ranks": []}
+                competitor_by_audit[key]["count"] += 1
+                pos = c.get("position")
+                if isinstance(pos, (int, float)) and pos is not None:
+                    competitor_by_audit[key]["ranks"].append(int(pos))
+
+        # Group into per-audit lists.
+        comp_list_by_audit: dict = {}
+        for (aid, name), v in competitor_by_audit.items():
+            total_prompts = max(per_audit_total.get(aid, 0), 1)
+            visibility = round(v["count"] / total_prompts * 100, 1)
+            avg_rank = (
+                round(sum(v["ranks"]) / len(v["ranks"]), 1)
+                if v["ranks"] else None
+            )
+            comp_list_by_audit.setdefault(aid, []).append({
+                "name": name,
+                "mention_count": v["count"],
+                "visibility": visibility,
+                "avg_rank": avg_rank,
+            })
+
+        # Citation share: self-brand mentions / total brand mentions across
+        # all responses (us + competitors). Surfaces "of all brand citations
+        # in AI answers, what share are us?"
+        for aid in audit_ids:
+            total = per_audit_total_brand_mentions.get(aid, 0)
+            our = per_audit_self_brand_mentions.get(aid, 0)
+            share = round(our / total * 100, 1) if total else 0.0
+            for audit in audits:
+                if audit["id"] == aid:
+                    audit["citation_share"] = share
+                    audit["citation_total"] = total
+                    audit["citation_self"] = our
+                    break
+
         for audit in audits:
-            audit["providers"] = by_audit.get(audit["id"], [])
+            audit["providers"] = provider_by_audit.get(audit["id"], [])
+            comps_for_audit = comp_list_by_audit.get(audit["id"], [])
+            comps_for_audit.sort(key=lambda c: c["mention_count"], reverse=True)
+            audit["competitors"] = comps_for_audit
+            audit.setdefault("citation_share", 0.0)
+            audit.setdefault("citation_total", 0)
+            audit.setdefault("citation_self", 0)
 
         return Response(audits)
 
