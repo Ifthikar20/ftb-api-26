@@ -76,7 +76,7 @@ class LLMRankingAuditListSerializer(serializers.ModelSerializer):
             "overall_score", "mention_rate", "avg_mention_rank",
             "mention_rate_ci_lower", "mention_rate_ci_upper",
             "providers_queried", "queries_completed", "total_queries",
-            "prompts",
+            "prompts", "context_urls",
             "started_at", "completed_at", "created_at",
         ]
         read_only_fields = fields
@@ -119,7 +119,19 @@ class RunAuditSerializer(serializers.Serializer):
         required=False,
         default=list,
     )
-
+    # Extra URLs for content enrichment (blogs, product pages, etc.)
+    context_urls = serializers.ListField(
+        child=serializers.CharField(max_length=500),
+        required=False,
+        default=list,
+        max_length=5,
+    )
+    # Optional themes for prompt generation
+    themes = serializers.ListField(
+        child=serializers.CharField(max_length=100),
+        required=False,
+        default=list,
+    )
 
 class LLMRankingScheduleSerializer(serializers.ModelSerializer):
     frequency_display = serializers.CharField(source="get_frequency_display", read_only=True)

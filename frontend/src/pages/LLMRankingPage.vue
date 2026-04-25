@@ -1097,8 +1097,69 @@
             </div>
           </div>
 
-          <!-- Step 2: Topics — "What do you want to show up on ChatGPT for?" -->
+          <!-- Step 2: Context Sources — add extra URLs for richer LLM evaluation -->
           <div v-if="wizardStep === 2" class="wizard-pane">
+            <h2 class="wizard-pane-title">Add context sources</h2>
+            <p class="wizard-pane-sub">
+              Add blog posts, product pages, or any URLs that tell the story of your business.
+              We'll scan them and feed the content to the LLMs for a more accurate ranking.
+            </p>
+
+            <div class="ctx-url-input-row">
+              <input
+                v-model="contextUrlInput"
+                class="form-input"
+                placeholder="https://blog.example.com/our-latest-feature"
+                @keydown.enter.prevent="addContextUrl"
+                :disabled="scanningContextUrl"
+              />
+              <button
+                class="btn btn-primary btn-sm"
+                @click="addContextUrl"
+                :disabled="scanningContextUrl || !contextUrlInput.trim() || contextUrls.length >= 5"
+              >
+                {{ scanningContextUrl ? 'Scanning...' : '+ Add' }}
+              </button>
+            </div>
+
+            <div v-if="contextUrls.length" class="ctx-url-list">
+              <div
+                v-for="(cu, idx) in contextUrls"
+                :key="cu.url"
+                class="ctx-url-card"
+                :class="{ 'is-error': !cu.success && !cu.scanning }"
+              >
+                <div v-if="cu.scanning" class="ctx-url-scanning">
+                  <div class="wizard-scan-spinner" style="width:18px;height:18px;border-width:2px"></div>
+                  <span class="text-xs text-muted">Scanning {{ cu.url.slice(0, 50) }}...</span>
+                </div>
+                <template v-else>
+                  <div class="ctx-url-status">
+                    <svg v-if="cu.success" width="14" height="14" viewBox="0 0 16 16" fill="#10b981">
+                      <circle cx="8" cy="8" r="8"/>
+                      <path d="M5 8l2 2 4-4" stroke="#fff" stroke-width="1.5" fill="none"/>
+                    </svg>
+                    <svg v-else width="14" height="14" viewBox="0 0 16 16" fill="#EF4444">
+                      <circle cx="8" cy="8" r="8"/>
+                      <path d="M5 5l6 6M11 5l-6 6" stroke="#fff" stroke-width="1.5"/>
+                    </svg>
+                  </div>
+                  <div class="ctx-url-info">
+                    <div class="ctx-url-title">{{ cu.title || cu.url.slice(0, 60) }}</div>
+                    <div class="ctx-url-summary text-xs text-muted">{{ cu.summary || cu.error || 'No content extracted' }}</div>
+                  </div>
+                  <button class="ctx-url-remove" @click="contextUrls.splice(idx, 1)">&times;</button>
+                </template>
+              </div>
+            </div>
+
+            <p class="text-xs text-muted" style="margin-top:12px;text-align:center">
+              {{ contextUrls.length }}/5 context sources added · <em>This step is optional</em>
+            </p>
+          </div>
+
+          <!-- Step 3: Topics — "What do you want to show up on ChatGPT for?" -->
+          <div v-if="wizardStep === 3" class="wizard-pane">
             <h2 class="wizard-pane-title">What do you want to show up on ChatGPT for?</h2>
             <p class="wizard-pane-sub">Choose the topics where you want your business to be recommended by AI assistants like ChatGPT, Perplexity, and Claude.</p>
 
@@ -1146,8 +1207,8 @@
             </template>
           </div>
 
-          <!-- Step 3: Competitors -->
-          <div v-if="wizardStep === 3" class="wizard-pane">
+          <!-- Step 4: Competitors -->
+          <div v-if="wizardStep === 4" class="wizard-pane">
             <h2 class="wizard-pane-title">Add Your Competitors</h2>
             <p class="wizard-pane-sub">Track up to 20 competitors to monitor your relative AI visibility</p>
 
@@ -1212,8 +1273,8 @@
             </p>
           </div>
 
-          <!-- Step 4: Providers -->
-          <div v-if="wizardStep === 4" class="wizard-pane">
+          <!-- Step 5: Providers -->
+          <div v-if="wizardStep === 5" class="wizard-pane">
             <h2 class="wizard-pane-title">Choose AI models to audit</h2>
             <p class="wizard-pane-sub">Select which LLMs to include in your audit. Unconfigured models will be skipped.</p>
 
@@ -1234,8 +1295,8 @@
             </div>
           </div>
 
-          <!-- Step 5: Review -->
-          <div v-if="wizardStep === 5" class="wizard-pane">
+          <!-- Step 6: Review -->
+          <div v-if="wizardStep === 6" class="wizard-pane">
             <h2 class="wizard-pane-title">Review &amp; run your audit</h2>
             <p class="wizard-pane-sub">Everything looks good? Hit start to kick off the audit.</p>
 
@@ -1263,6 +1324,10 @@
               <div class="wizard-review-item">
                 <span class="wizard-review-label">Models</span>
                 <span class="wizard-review-value">{{ auditForm.providers.length }} LLMs</span>
+              </div>
+              <div class="wizard-review-item">
+                <span class="wizard-review-label">Context Sources</span>
+                <span class="wizard-review-value">{{ contextUrls.filter(c => c.success).length }} URLs scanned</span>
               </div>
             </div>
 
@@ -1584,9 +1649,42 @@ const competitorDomainInput = ref('')
 const scanning = ref(false)
 const scanResult = ref(null)
 
+// ── Context Sources state ──
+const contextUrls = ref([])      // [{url, title, summary, success, scanning, error}]
+const contextUrlInput = ref('')
+const scanningContextUrl = ref(false)
+
+async function addContextUrl() {
+  const url = contextUrlInput.value.trim()
+  if (!url || contextUrls.value.length >= 5) return
+  // Prevent duplicates
+  if (contextUrls.value.some(c => c.url === url)) return
+
+  const entry = { url, title: '', summary: '', success: false, scanning: true, error: '' }
+  contextUrls.value.push(entry)
+  contextUrlInput.value = ''
+  scanningContextUrl.value = true
+
+  try {
+    const { data } = await llmRankingApi.scanUrl(websiteId, url)
+    const result = data?.data || data
+    entry.success = result.success
+    entry.title = result.business_name || ''
+    entry.summary = (result.content_summary || result.description || '').slice(0, 200)
+    entry.error = result.error || ''
+  } catch (err) {
+    entry.success = false
+    entry.error = 'Failed to scan URL'
+  } finally {
+    entry.scanning = false
+    scanningContextUrl.value = false
+  }
+}
+
 const wizardSteps = Object.freeze([
   { id: 'website', label: 'Website' },
   { id: 'description', label: 'Description' },
+  { id: 'context', label: 'Context Sources' },
   { id: 'topics', label: 'Topics' },
   { id: 'competitors', label: 'Competitors' },
   { id: 'providers', label: 'Models' },
@@ -1600,13 +1698,14 @@ async function scanDomain() {
   scanResult.value = null
   auditError.value = ''
   try {
-    const { data } = await llmRankingApi.scanDomain(url)
-    scanResult.value = data
-    if (data.success) {
+    const { data } = await llmRankingApi.scanUrl(websiteId, url)
+    const result = data?.data || data
+    scanResult.value = result
+    if (result.success) {
       // Auto-fill the form from scan results
-      auditForm.value.business_name = data.business_name || auditForm.value.business_name
-      auditForm.value.description = data.description || auditForm.value.description
-      auditForm.value.industry = data.industry || auditForm.value.industry
+      auditForm.value.business_name = result.business_name || auditForm.value.business_name
+      auditForm.value.description = result.description || auditForm.value.description
+      auditForm.value.industry = result.industry || auditForm.value.industry
 
 // First-run gate: user lands here before ever running an audit.
 const showFirstRun = computed(() => !loading.value && audits.value.length === 0)
@@ -1628,8 +1727,8 @@ const liveResults = computed(() => {
 })
 
       // Auto-populate real competitors from LLM
-      if (data.competitors && data.competitors.length) {
-        auditForm.value.competitors = data.competitors.map(c => ({
+      if (result.competitors && result.competitors.length) {
+        auditForm.value.competitors = result.competitors.map(c => ({
           name: c.name || '',
           domain: c.domain || '',
         }))
@@ -1830,8 +1929,9 @@ async function wizardNext() {
       await regenerateTopics()
     }
   }
-  // Step 2: Topics
-  if (wizardStep.value === 2) {
+  // Step 2: Context Sources — optional, no validation needed
+  // Step 3: Topics
+  if (wizardStep.value === 3) {
     if (!auditForm.value.selectedTopics.length) {
       auditError.value = 'Select at least one topic.'
       return
@@ -2890,6 +2990,9 @@ function openRunAudit() {
   competitorDomainInput.value = ''
   scanning.value = false
   scanResult.value = null
+  contextUrls.value = []
+  contextUrlInput.value = ''
+  scanningContextUrl.value = false
   showRunForm.value = true
 }
 
@@ -2913,6 +3016,7 @@ async function submitAudit() {
       themes: auditForm.value.themes || [],
       keywords: auditForm.value.selectedTopics || [],
       competitors: (auditForm.value.competitors || []).map(c => typeof c === 'string' ? c : c.name),
+      context_urls: contextUrls.value.filter(c => c.success).map(c => c.url),
     }
     if (customPromptsText.value.trim()) {
       payload.custom_prompts = customPromptsText.value.split('\n').map(s => s.trim()).filter(Boolean)
@@ -3464,6 +3568,78 @@ onBeforeUnmount(() => {
 }
 .wizard-regen-btn:hover { color: #7C3AED; }
 .wizard-regen-btn:disabled { opacity: 0.5; cursor: default; }
+
+/* Context Sources step */
+.ctx-url-input-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.ctx-url-input-row .form-input {
+  flex: 1;
+}
+.ctx-url-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ctx-url-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: var(--radius-md, 10px);
+  border: 1.5px solid #10b981;
+  background: rgba(16, 185, 129, 0.04);
+  transition: all 0.2s;
+}
+.ctx-url-card.is-error {
+  border-color: var(--color-danger, #EF4444);
+  background: rgba(239, 68, 68, 0.04);
+}
+.ctx-url-scanning {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+.ctx-url-status {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.ctx-url-info {
+  flex: 1;
+  min-width: 0;
+}
+.ctx-url-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ctx-url-summary {
+  margin-top: 2px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.ctx-url-remove {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--text-muted);
+  padding: 0 4px;
+  transition: color 0.2s;
+}
+.ctx-url-remove:hover {
+  color: var(--color-danger, #EF4444);
+}
 
 /* Topics grid */
 .wizard-topics-loading {

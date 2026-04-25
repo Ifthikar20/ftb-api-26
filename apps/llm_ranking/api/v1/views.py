@@ -113,6 +113,7 @@ class LLMRankingAuditListView(TenantScopedListAPIView):
             keywords=keywords,
             prompts=prompts,
             providers_queried=selected_providers,
+            context_urls=data.get("context_urls", []),
         )
 
         # Dispatch: in production use Celery, in dev the user triggers
@@ -126,6 +127,39 @@ class LLMRankingAuditListView(TenantScopedListAPIView):
             LLMRankingAuditListSerializer(audit).data,
             status=status.HTTP_202_ACCEPTED,
         )
+
+
+class ScanURLView(TenantScopedAPIView):
+    """
+    POST — scan a single URL and return extracted content preview.
+
+    Used by the frontend to let users preview what will be extracted
+    from a URL before adding it as audit context.
+    """
+
+    def post(self, request, website_id):
+        self.get_website(website_id)
+        url = request.data.get("url", "").strip()
+        if not url:
+            return Response(
+                {"error": "url is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        from apps.llm_ranking.services.domain_scanner import scan_domain
+
+        scan = scan_domain(url)
+        return Response({
+            "url": url,
+            "success": scan["success"],
+            "business_name": scan.get("business_name", ""),
+            "description": scan.get("description", "")[:300],
+            "products": scan.get("products", []),
+            "features": scan.get("features", []),
+            "selling_points": scan.get("selling_points", []),
+            "content_summary": (scan.get("content_summary") or "")[:500],
+            "error": scan.get("error"),
+        })
 
 
 class LLMRankingPreviewPromptsView(TenantScopedAPIView):

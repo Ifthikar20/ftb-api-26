@@ -44,6 +44,25 @@ SYSTEM_INSTRUCTION = (
 )
 
 
+def build_enriched_system_prompt(base_instruction: str, llm_context: str = "") -> str:
+    """
+    Build a system prompt that includes real business context.
+
+    When the ContentEnricher has scanned the website, blogs, and Google,
+    this injects all that data so the LLM responds with awareness of the
+    actual business rather than relying only on its training data.
+    """
+    if not llm_context:
+        return base_instruction
+
+    return (
+        f"{base_instruction}\n\n"
+        f"IMPORTANT CONTEXT — The following is real, verified information about the "
+        f"business being evaluated. Use this when ranking or mentioning the business:\n\n"
+        f"{llm_context}"
+    )
+
+
 class LLMRankingService:
 
     # ── Prompt generation ──────────────────────────────────────────────────
@@ -133,7 +152,7 @@ class LLMRankingService:
     # ── Per-provider query methods ─────────────────────────────────────────
 
     @staticmethod
-    def _query_claude(prompt: str) -> tuple[bool, str, str]:
+    def _query_claude(prompt: str, system_prompt: str = "") -> tuple[bool, str, str]:
         """
         Returns (succeeded, response_text, error_message).
         """
@@ -143,7 +162,7 @@ class LLMRankingService:
             resp = client.messages.create(
                 model="claude-sonnet-4-20250514",
                 max_tokens=1024,
-                system=SYSTEM_INSTRUCTION,
+                system=system_prompt or SYSTEM_INSTRUCTION,
                 messages=[{"role": "user", "content": prompt}],
             )
             # Track token usage
@@ -454,6 +473,41 @@ class LLMRankingService:
         # Filter to only providers that have a query function
         selected_providers = [p for p in selected_providers if p in provider_map]
 
+        # ── Content enrichment: scan URLs + Google ────────────────────────
+        # Build rich context from the website, user-provided URLs, and Google
+        enriched_context = ""
+        try:
+            from apps.llm_ranking.services.content_enricher import ContentEnricher
+
+            # Get extra URLs from the audit (stored at creation time)
+            extra_urls = []
+            context_urls_raw = getattr(audit, 'context_urls', None) or []
+            for entry in context_urls_raw:
+                if isinstance(entry, dict):
+                    extra_urls.append(entry.get("url", ""))
+                elif isinstance(entry, str):
+                    extra_urls.append(entry)
+            extra_urls = [u for u in extra_urls if u]
+
+            enrichment = ContentEnricher.enrich(
+                main_url=audit.website.url,
+                extra_urls=extra_urls,
+                business_name=audit.business_name,
+                industry=audit.industry,
+                include_google=True,
+            )
+            enriched_context = enrichment.get("llm_context", "")
+            logger.info(
+                "Content enrichment complete for audit %s — %d extra URLs, context length: %d",
+                audit_id, len(extra_urls), len(enriched_context),
+            )
+        except Exception as exc:
+            logger.warning("Content enrichment failed for audit %s: %s", audit_id, exc)
+            # Non-fatal — audit continues with basic prompts
+
+        # Build the enriched system prompt for Claude
+        enriched_system = build_enriched_system_prompt(SYSTEM_INSTRUCTION, enriched_context)
+
         # Calculate total queries and set progress tracking
         # Prompts may be structured [{"text": ..., "type": ...}] or flat ["..."]
         prompt_items = []
@@ -483,9 +537,13 @@ class LLMRankingService:
 
             for prompt_item in prompt_items:
                 prompt_text = prompt_item["text"]
-                prompt_type = prompt_item["type"]
+
                 try:
-                    succeeded, response_text, error = query_fn(prompt_text)
+                    # Pass enriched context to Claude; other providers get basic prompt
+                    if provider == LLMRankingResult.PROVIDER_CLAUDE and enriched_context:
+                        succeeded, response_text, error = query_fn(prompt_text, enriched_system)
+                    else:
+                        succeeded, response_text, error = query_fn(prompt_text)
                 except Exception as exc:
                     succeeded, response_text, error = False, "", str(exc)
                     logger.warning("Provider %s threw for audit %s: %s", provider, audit_id, exc)
@@ -518,7 +576,7 @@ class LLMRankingService:
                     audit=audit,
                     provider=provider,
                     prompt=prompt_text,
-                    prompt_type=prompt_type,
+
                     response_text=response_text,
                     is_mentioned=analysis["is_mentioned"],
                     mention_rank=analysis["mention_rank"],

@@ -43,6 +43,9 @@ class LLMRankingAudit(TimestampMixin):
     industry = models.CharField(max_length=100, blank=True)
     location = models.CharField(max_length=200, blank=True)
     keywords = models.JSONField(default=list)
+    # Extra URLs the user provided for context (blog posts, product pages, etc.)
+    # Each entry: {"url": str, "title": str, "success": bool, "summary": str}
+    context_urls = models.JSONField(default=list, blank=True)
     # Aggregate scores
     overall_score = models.IntegerField(default=0, db_index=True)  # 0-100
     mention_rate = models.FloatField(default=0.0)   # % of queries where business was mentioned
@@ -187,6 +190,7 @@ class LLMRankingResult(TimestampMixin):
     extraction_model = models.CharField(max_length=100, blank=True)
     extraction_version = models.CharField(max_length=20, blank=True)
     # The intent type of the prompt (recommendation, comparison, persona, etc.)
+    # NOTE: computed at runtime from prompt text — no database column needed.
     PROMPT_TYPE_CHOICES = [
         ("recommendation", "Recommendation"),
         ("comparison", "Comparison"),
@@ -198,9 +202,28 @@ class LLMRankingResult(TimestampMixin):
         ("local", "Local"),
         ("custom", "Custom"),
     ]
-    prompt_type = models.CharField(
-        max_length=30, choices=PROMPT_TYPE_CHOICES, default="custom", blank=True
-    )
+    _PROMPT_TYPE_MAP = dict(PROMPT_TYPE_CHOICES)
+
+    @property
+    def prompt_type(self):
+        """Infer prompt intent from the prompt text."""
+        p = (self.prompt or "").lower()
+        if any(k in p for k in ("compare", "comparison", "side-by-side", "vs")):
+            return "comparison"
+        if any(k in p for k in ("recommend", "best", "top", "should i", "which")):
+            return "recommendation"
+        if any(k in p for k in ("use case", "scenario", "startup", "enterprise")):
+            return "use_case"
+        if any(k in p for k in ("alternative", "instead of", "replace")):
+            return "alternatives"
+        if any(k in p for k in ("review", "opinion", "rating")):
+            return "review"
+        if any(k in p for k in ("near me", "local", "in my area")):
+            return "local"
+        return "custom"
+
+    def get_prompt_type_display(self):
+        return self._PROMPT_TYPE_MAP.get(self.prompt_type, "Custom")
 
     class Meta:
         db_table = "llm_ranking_result"
