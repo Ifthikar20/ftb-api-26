@@ -89,11 +89,23 @@ class LLMRankingResult(TimestampMixin):
     PROVIDER_GPT4 = "gpt4"
     PROVIDER_GEMINI = "gemini"
     PROVIDER_PERPLEXITY = "perplexity"
+    PROVIDER_META_LLAMA = "meta_llama"
+    PROVIDER_MISTRAL = "mistral"
+    PROVIDER_COHERE = "cohere"
+    PROVIDER_DEEPSEEK = "deepseek"
+    PROVIDER_GROK = "grok"
+    PROVIDER_AMAZON_NOVA = "amazon_nova"
     PROVIDER_CHOICES = [
         (PROVIDER_CLAUDE, "Claude (Anthropic)"),
         (PROVIDER_GPT4, "GPT-4 (OpenAI)"),
         (PROVIDER_GEMINI, "Gemini (Google)"),
         (PROVIDER_PERPLEXITY, "Perplexity"),
+        (PROVIDER_META_LLAMA, "Meta Llama"),
+        (PROVIDER_MISTRAL, "Mistral AI"),
+        (PROVIDER_COHERE, "Cohere"),
+        (PROVIDER_DEEPSEEK, "DeepSeek"),
+        (PROVIDER_GROK, "Grok (xAI)"),
+        (PROVIDER_AMAZON_NOVA, "Amazon Nova"),
     ]
 
     SENTIMENT_POSITIVE = "positive"
@@ -108,7 +120,7 @@ class LLMRankingResult(TimestampMixin):
     ]
 
     audit = models.ForeignKey(LLMRankingAudit, on_delete=models.CASCADE, related_name="results")
-    provider = models.CharField(max_length=20, choices=PROVIDER_CHOICES, db_index=True)
+    provider = models.CharField(max_length=30, choices=PROVIDER_CHOICES, db_index=True)
     prompt = models.TextField()
     # Full LLM response text
     response_text = models.TextField(blank=True)

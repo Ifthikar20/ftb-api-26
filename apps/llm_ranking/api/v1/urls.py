@@ -4,6 +4,8 @@ from . import views
 
 urlpatterns = [
     path("provider-health/", views.LLMRankingProviderHealthView.as_view(), name="llm-ranking-provider-health"),
+    path("scan-domain/", views.ScanDomainView.as_view(), name="llm-ranking-scan-domain"),
+    path("suggest-context/", views.SuggestAuditContextView.as_view(), name="llm-ranking-suggest-context"),
     path("<uuid:website_id>/audits/", views.LLMRankingAuditListView.as_view(), name="llm-ranking-list"),
     path("<uuid:website_id>/audits/<uuid:audit_id>/", views.LLMRankingAuditDetailView.as_view(), name="llm-ranking-detail"),
     path("<uuid:website_id>/audits/<uuid:audit_id>/breakdown/", views.LLMRankingProviderBreakdownView.as_view(), name="llm-ranking-breakdown"),

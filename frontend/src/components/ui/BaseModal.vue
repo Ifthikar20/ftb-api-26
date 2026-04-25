@@ -2,7 +2,7 @@
   <Teleport to="body">
     <Transition name="modal">
       <div v-if="modelValue" class="modal-overlay" @click.self="close">
-        <div class="modal-card" :style="{ maxWidth: maxWidth }" role="dialog" aria-modal="true">
+        <div class="modal-card" :class="{ 'modal-wide': wide }" :style="{ maxWidth: wide ? '760px' : maxWidth }" role="dialog" aria-modal="true">
           <button class="modal-close" @click="close" aria-label="Close">&times;</button>
 
           <div v-if="title || $slots.header" class="bm-header">
@@ -33,6 +33,7 @@ const props = defineProps({
   title: { type: String, default: '' },
   subtitle: { type: String, default: '' },
   maxWidth: { type: String, default: '520px' },
+  wide: { type: Boolean, default: false },
 })
 const emit = defineEmits(['update:modelValue', 'close'])
 
@@ -70,6 +71,8 @@ defineExpose({ close })
   color: var(--text-muted);
 }
 .bm-body { flex: 1; min-height: 0; }
+.modal-wide .bm-body { padding: 0; }
+.modal-wide .bm-header { display: none; }
 .bm-footer {
   display: flex;
   gap: 8px;

@@ -477,88 +477,90 @@
         </div>
       </div>
 
-      <!-- Prompt Intelligence (rich view shown when audit is complete) -->
+      <!-- Prompts Table (rich view — matching reference design) -->
       <div v-if="isAuditComplete && intentGroups.length" class="card" style="margin-bottom:24px">
-        <div class="card-header">
-          <h3 class="card-title">
-            Prompt Intelligence
-            <span class="text-xs text-muted" style="font-weight:500">
-              · {{ uniquePromptCount }} prompt{{ uniquePromptCount === 1 ? '' : 's' }}
-              grouped by intent
-            </span>
-          </h3>
-          <div class="pi-filter">
-            <label class="text-xs text-muted" style="margin-right:6px">Provider:</label>
-            <select v-model="providerFilter" class="pi-select">
-              <option value="">All</option>
-              <option v-for="p in availableProviderFilters" :key="p" :value="p">{{ providerLabel(p) }}</option>
-            </select>
+        <div class="card-header" style="border-bottom:1px solid var(--border-color, #E5E7EB)">
+          <h3 class="card-title" style="font-size:1.1rem;font-weight:700">Prompts</h3>
+          <div class="pt-header-right">
+            <div class="pi-filter">
+              <select v-model="providerFilter" class="pi-select">
+                <option value="">All Providers</option>
+                <option v-for="p in availableProviderFilters" :key="p" :value="p">{{ providerLabel(p) }}</option>
+              </select>
+            </div>
           </div>
         </div>
 
-        <div class="pi-groups">
-          <div v-for="group in intentGroups" :key="group.intent" class="pi-group">
-            <div class="pi-group-header" @click="toggleIntent(group.intent)">
-              <svg class="pi-chevron" :class="{ open: !collapsedIntents.has(group.intent) }"
-                   width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
-                <path d="M5 4l5 4-5 4"/>
-              </svg>
-              <span class="pi-intent-name">{{ formatIntent(group.intent) }}</span>
-              <span class="pi-group-stats">
-                {{ group.prompts.length }} prompt{{ group.prompts.length === 1 ? '' : 's' }}
-                · {{ group.avgVisibility }}% avg visibility
+        <!-- Table header -->
+        <div class="pt-table">
+          <div class="pt-thead">
+            <span class="pt-th pt-th-topic">Topic</span>
+            <span class="pt-th pt-th-count">Prompts</span>
+            <span class="pt-th pt-th-vis">Avg Visibility</span>
+            <span class="pt-th pt-th-perf">Top Performers</span>
+            <span class="pt-th pt-th-status">Status</span>
+          </div>
+
+          <!-- Topic group rows -->
+          <template v-for="group in intentGroups" :key="group.intent">
+            <!-- Topic header row (clickable) -->
+            <div class="pt-topic-row" @click="toggleIntent(group.intent)">
+              <span class="pt-td pt-td-topic">
+                <svg class="pi-chevron" :class="{ open: !collapsedIntents.has(group.intent) }"
+                     width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M5 4l5 4-5 4"/>
+                </svg>
+                <span class="pt-topic-name">{{ formatIntent(group.intent) }}</span>
               </span>
-              <span class="pi-vis-bar-wrap">
-                <span class="pi-vis-bar" :style="{ width: group.avgVisibility + '%', background: visibilityColor(group.avgVisibility) }"></span>
+              <span class="pt-td pt-td-count">{{ group.prompts.length }}</span>
+              <span class="pt-td pt-td-vis">
+                <span :style="{ color: visibilityColor(group.avgVisibility) }">{{ group.avgVisibility }}%</span>
+                <svg v-if="group.avgVisibility > 0" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-left:3px">
+                  <path d="M2 7L5 3L8 7" :stroke="group.avgVisibility >= 50 ? '#10b981' : '#f59e0b'"/>
+                </svg>
+              </span>
+              <span class="pt-td pt-td-perf">
+                <span
+                  v-for="d in group.providerSummary"
+                  :key="d.provider"
+                  class="pt-perf-icon"
+                  :class="{ 'is-hit': d.hitRate > 50, 'is-partial': d.hitRate > 0 && d.hitRate <= 50, 'is-miss': d.hitRate === 0 }"
+                  :title="providerLabel(d.provider) + ': ' + d.hitRate + '% hit rate'"
+                >{{ providerInitial(d.provider) }}</span>
+              </span>
+              <span class="pt-td pt-td-status">
+                <span class="pt-see-link">See →</span>
               </span>
             </div>
 
-            <div v-if="!collapsedIntents.has(group.intent)" class="pi-group-body">
-              <div v-for="p in group.prompts" :key="p.text" class="pi-prompt">
-                <div class="pi-prompt-text">{{ p.text }}</div>
-                <div class="pi-prompt-meta">
-                  <span class="pi-stat">
-                    Visibility: <strong :style="{ color: visibilityColor(p.visibility) }">{{ p.visibility }}%</strong>
-                  </span>
-                  <span v-if="p.avgRank" class="pi-stat">
-                    Avg rank: <strong>#{{ p.avgRank }}</strong>
-                  </span>
-                  <span class="pi-stat">
-                    <span
-                      v-for="d in p.providerDots"
-                      :key="d.provider"
-                      class="pi-dot"
-                      :class="{ hit: d.mentioned, fail: !d.succeeded }"
-                      :title="providerLabel(d.provider) + ': ' + providerDotTitle(d)"
-                    >{{ providerInitial(d.provider) }}</span>
-                  </span>
-                </div>
-                <div v-if="p.topCompetitors.length" class="pi-competitors">
-                  <span class="pi-comp-label">Co-mentioned:</span>
+            <!-- Expanded prompt rows -->
+            <template v-if="!collapsedIntents.has(group.intent)">
+              <div v-for="p in group.prompts" :key="p.text" class="pt-prompt-row">
+                <span class="pt-td pt-td-topic pt-td-prompt-text">{{ p.text }}</span>
+                <span class="pt-td pt-td-count"></span>
+                <span class="pt-td pt-td-vis">
+                  <strong :style="{ color: visibilityColor(p.visibility) }">{{ p.visibility }}%</strong>
+                  <svg v-if="p.visibility > 0" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke-width="1.5" style="margin-left:3px">
+                    <path d="M2 7L5 3L8 7" :stroke="p.visibility >= 50 ? '#10b981' : '#f59e0b'"/>
+                  </svg>
+                </span>
+                <span class="pt-td pt-td-perf">
                   <span
-                    v-for="c in p.topCompetitors.slice(0, 4)"
-                    :key="c.name"
-                    class="pi-comp-chip"
-                  >{{ c.name }} <span class="pi-comp-count">×{{ c.count }}</span></span>
-                </div>
-                <details v-if="p.responses.length" class="pi-responses">
-                  <summary class="pi-responses-toggle">
-                    View {{ p.responses.length }} response{{ p.responses.length === 1 ? '' : 's' }}
-                  </summary>
-                  <div v-for="r in p.responses" :key="r.provider" class="pi-response">
-                    <div class="pi-response-header">
-                      <span class="pi-response-provider">{{ providerLabel(r.provider) }}</span>
-                      <span v-if="r.is_mentioned" class="badge badge-success">Ranked #{{ r.mention_rank || '—' }}</span>
-                      <span v-else class="badge badge-neutral">Not mentioned</span>
-                      <span v-if="r.sentiment && r.sentiment !== 'not_mentioned'"
-                            class="badge" :class="sentimentBadge(r.sentiment)">{{ r.sentiment }}</span>
-                    </div>
-                    <pre class="pi-response-text">{{ r.response_text }}</pre>
-                  </div>
-                </details>
+                    v-for="d in p.providerDots"
+                    :key="d.provider"
+                    class="pt-perf-icon"
+                    :class="{ 'is-hit': d.mentioned, 'is-miss': !d.mentioned && d.succeeded, 'is-fail': !d.succeeded }"
+                    :title="providerLabel(d.provider) + ': ' + providerDotTitle(d)"
+                  >{{ providerInitial(d.provider) }}</span>
+                </span>
+                <span class="pt-td pt-td-status">
+                  <span class="pt-status-pill" :class="p.visibility > 0 ? 'is-ran' : 'is-miss'">
+                    {{ p.visibility > 0 ? 'Prompt Ran' : 'No Mention' }}
+                  </span>
+                </span>
               </div>
-            </div>
-          </div>
+            </template>
+          </template>
         </div>
       </div>
 
@@ -822,83 +824,326 @@
     </template>
 
     <!-- Run Audit Modal -->
-    <BaseModal v-model="showRunForm" title="Set up your audit">
-      <p class="text-sm text-muted" style="margin:-4px 0 16px;line-height:1.5">
-        We'll generate buyer-style prompts from your description and the themes you select,
-        then ask each LLM the same questions and measure where you appear.
-      </p>
-
-      <div class="form-group">
-        <label class="form-label">Business Name</label>
-        <input v-model="auditForm.business_name" class="form-input" placeholder="e.g. Acme Corp" />
-      </div>
-      <div class="form-row-2">
-        <div class="form-group" style="margin-top:12px">
-          <label class="form-label">Industry / Category</label>
-          <input v-model="auditForm.industry" class="form-input" placeholder="e.g. SaaS analytics" />
-        </div>
-        <div class="form-group" style="margin-top:12px">
-          <label class="form-label">Location <span class="text-muted">(optional)</span></label>
-          <input v-model="auditForm.location" class="form-input" placeholder="e.g. New York, US" />
-        </div>
-      </div>
-
-      <div class="form-group" style="margin-top:12px">
-        <label class="form-label">
-          Description
-          <span class="text-muted text-xs">Who you serve and what makes you different</span>
-        </label>
-        <textarea
-          v-model="auditForm.description"
-          class="form-input"
-          rows="3"
-          placeholder="We help mid-market analytics teams ship dashboards 5x faster than building in-house. Our buyers compare us with Looker, Mixpanel, and Hex."
-        ></textarea>
-      </div>
-
-      <div class="form-group" style="margin-top:14px">
-        <label class="form-label">What kinds of questions do your buyers ask?</label>
-        <div class="theme-grid">
-          <label
-            v-for="t in promptThemes"
-            :key="t.id"
-            class="theme-chip"
-            :class="{ active: auditForm.themes.includes(t.id) }"
+    <BaseModal v-model="showRunForm" title="" :wide="true">
+      <div class="wizard-layout">
+        <!-- Step sidebar -->
+        <div class="wizard-sidebar">
+          <div
+            v-for="(step, idx) in wizardSteps"
+            :key="step.id"
+            class="wizard-step-item"
+            :class="{ active: wizardStep === idx, done: wizardStep > idx }"
           >
-            <input type="checkbox" :value="t.id" v-model="auditForm.themes" />
-            <span class="theme-chip-title">{{ t.label }}</span>
-            <span class="theme-chip-desc">{{ t.example }}</span>
-          </label>
-        </div>
-      </div>
-
-      <details class="run-modal-advanced" style="margin-top:16px">
-        <summary class="text-xs text-muted" style="cursor:pointer;padding:4px 0">Advanced — providers and custom prompts</summary>
-
-        <div class="form-group" style="margin-top:8px">
-          <label class="form-label">Providers</label>
-          <div class="provider-checks">
-            <label v-for="p in availableProviders" :key="p.value" class="check-label">
-              <input type="checkbox" :value="p.value" v-model="auditForm.providers" />
-              {{ p.label }}
-            </label>
+            <span class="wizard-step-dot">
+              <svg v-if="wizardStep > idx" width="14" height="14" viewBox="0 0 16 16" fill="#10b981">
+                <circle cx="8" cy="8" r="8"/>
+                <path d="M5 8l2 2 4-4" stroke="#fff" stroke-width="1.5" fill="none"/>
+              </svg>
+            </span>
+            <span class="wizard-step-label">{{ step.label }}</span>
           </div>
         </div>
 
-        <div class="form-group" style="margin-top:12px">
-          <label class="form-label">Custom prompts (one per line, replaces themes)</label>
-          <textarea v-model="customPromptsText" class="form-input" rows="3" placeholder="Best SaaS tools for startups"></textarea>
-          <p class="text-xs text-muted" style="margin-top:4px">Leave blank to use auto-generated prompts.</p>
-        </div>
-      </details>
+        <!-- Step content -->
+        <div class="wizard-content">
 
-      <p v-if="auditError" class="form-error" style="margin-top:8px">{{ auditError }}</p>
-      <template #footer>
-        <button class="btn btn-secondary" @click="showRunForm = false">Cancel</button>
-        <button class="btn btn-primary" @click="submitAudit" :disabled="running">
-          {{ running ? 'Queuing...' : 'Start Audit' }}
-        </button>
-      </template>
+          <!-- Step 0: Website — domain scan -->
+          <div v-if="wizardStep === 0" class="wizard-pane">
+            <h2 class="wizard-pane-title">Enter your website</h2>
+            <p class="wizard-pane-sub">We'll scan your site to auto-fill your business details.</p>
+
+            <div class="form-group">
+              <label class="form-label">Domain or URL</label>
+              <div class="wizard-scan-row">
+                <input
+                  v-model="auditForm.scan_url"
+                  class="form-input"
+                  placeholder="e.g. acme.com or https://acme.com"
+                  @keydown.enter.prevent="scanDomain"
+                  :disabled="scanning"
+                />
+                <button
+                  class="btn btn-primary btn-sm"
+                  @click="scanDomain"
+                  :disabled="scanning || !auditForm.scan_url"
+                >
+                  {{ scanning ? 'Scanning...' : 'Scan' }}
+                </button>
+              </div>
+            </div>
+
+            <!-- Scanning animation -->
+            <div v-if="scanning" class="wizard-scan-progress">
+              <div class="wizard-scan-spinner"></div>
+              <div class="wizard-scan-status">
+                <span class="wizard-scan-status-text">Analyzing {{ auditForm.scan_url }}...</span>
+                <span class="text-xs text-muted">Extracting business info, competitors, and ranking topics via AI</span>
+              </div>
+            </div>
+
+            <!-- Scan result preview -->
+            <div v-if="scanResult && !scanning" class="wizard-scan-result" :class="{ 'is-error': !scanResult.success }">
+              <div v-if="scanResult.success" class="wizard-scan-success">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="#10b981">
+                  <circle cx="8" cy="8" r="8"/>
+                  <path d="M5 8l2 2 4-4" stroke="#fff" stroke-width="1.5" fill="none"/>
+                </svg>
+                <div>
+                  <div class="wizard-scan-name">{{ scanResult.business_name || scanResult.domain }}</div>
+                  <div class="text-xs text-muted">{{ scanResult.description ? scanResult.description.slice(0, 100) + '...' : 'Description extracted' }}</div>
+                </div>
+              </div>
+              <div v-else class="wizard-scan-error">
+                <span class="text-sm" style="color:var(--color-danger, #EF4444)">{{ scanResult.error || 'Could not scan this domain.' }}</span>
+                <p class="text-xs text-muted" style="margin-top:4px">You can fill in the details manually on the next step.</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Step 1: Description (auto-filled from scan) -->
+          <div v-if="wizardStep === 1" class="wizard-pane">
+            <h2 class="wizard-pane-title">Tell us about your business</h2>
+            <p class="wizard-pane-sub">Verify and edit the details we extracted from your website.</p>
+
+            <div class="form-group">
+              <label class="form-label">Business Name</label>
+              <input v-model="auditForm.business_name" class="form-input" placeholder="e.g. Acme Corp" />
+            </div>
+            <div class="form-row-2" style="margin-top:12px">
+              <div class="form-group">
+                <label class="form-label">Industry / Category</label>
+                <input v-model="auditForm.industry" class="form-input" placeholder="e.g. SaaS analytics" />
+              </div>
+              <div class="form-group">
+                <label class="form-label">Location <span class="text-muted">(optional)</span></label>
+                <input v-model="auditForm.location" class="form-input" placeholder="e.g. New York, US" />
+              </div>
+            </div>
+            <div class="form-group" style="margin-top:12px">
+              <label class="form-label">
+                Description
+                <span class="text-muted text-xs">Who you serve and what makes you different</span>
+              </label>
+              <textarea
+                v-model="auditForm.description"
+                class="form-input wizard-textarea"
+                rows="5"
+                maxlength="500"
+                placeholder="Describe your product, who it's for, and what makes it unique."
+              ></textarea>
+              <div class="wizard-textarea-meta">
+                <span class="text-xs text-muted">{{ (auditForm.description || '').length }}/500 characters</span>
+                <button class="wizard-regen-btn" @click="regenerateTopics" :disabled="generatingTopics">
+                  <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M2 8a6 6 0 0110.9-3.5M14 8A6 6 0 013.1 11.5"/>
+                    <path d="M14 2v4h-4M2 14v-4h4"/>
+                  </svg>
+                  Regenerate Description
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Step 2: Topics — "What do you want to show up on ChatGPT for?" -->
+          <div v-if="wizardStep === 2" class="wizard-pane">
+            <h2 class="wizard-pane-title">What do you want to show up on ChatGPT for?</h2>
+            <p class="wizard-pane-sub">Choose the topics where you want your business to be recommended by AI assistants like ChatGPT, Perplexity, and Claude.</p>
+
+            <!-- Loading state -->
+            <div v-if="generatingTopics" class="wizard-topics-loading">
+              <div class="wizard-scan-spinner" style="width:28px;height:28px;border-width:3px"></div>
+              <span class="text-sm text-muted">Generating relevant topics for {{ auditForm.business_name }}...</span>
+            </div>
+
+            <!-- Topics grid -->
+            <template v-else>
+              <div class="wizard-topics-actions">
+                <button class="btn-ghost btn-sm" @click="auditForm.selectedTopics = [...wizardTopics]">Select All</button>
+                <button class="btn-ghost btn-sm" @click="auditForm.selectedTopics = []">Deselect All</button>
+                <button class="btn-ghost btn-sm" @click="regenerateTopics" style="margin-left:auto">
+                  <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px">
+                    <path d="M1 4v5h5"/><path d="M3.51 10a6 6 0 1 0 .59-6.2L1 4"/>
+                  </svg>
+                  Regenerate
+                </button>
+              </div>
+
+              <div class="wizard-topics-grid">
+                <button
+                  v-for="topic in wizardTopics"
+                  :key="topic"
+                  class="wizard-topic-chip"
+                  :class="{ active: auditForm.selectedTopics.includes(topic) }"
+                  @click="toggleWizardTopic(topic)"
+                >
+                  <svg v-if="auditForm.selectedTopics.includes(topic)" class="wizard-topic-check" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <path d="M3 8l3 3 7-7"/>
+                  </svg>
+                  {{ topic }}
+                </button>
+              </div>
+
+              <div v-if="!wizardTopics.length" class="wizard-topics-empty">
+                <p class="text-sm text-muted">No topics generated yet. Click <strong>Regenerate</strong> to create topics from your business description.</p>
+              </div>
+
+              <p class="text-xs text-muted" style="text-align:center;margin-top:16px">
+                {{ auditForm.selectedTopics.length }} of {{ wizardTopics.length }} topics selected
+              </p>
+            </template>
+          </div>
+
+          <!-- Step 3: Competitors -->
+          <div v-if="wizardStep === 3" class="wizard-pane">
+            <h2 class="wizard-pane-title">Add Your Competitors</h2>
+            <p class="wizard-pane-sub">Track up to 20 competitors to monitor your relative AI visibility</p>
+
+            <div class="wc-header">
+              <label class="form-label" style="margin:0;font-weight:700">Add New Competitor</label>
+              <span class="wc-counter">{{ auditForm.competitors.length }}/20</span>
+            </div>
+
+            <div class="wc-input-row">
+              <div class="wc-input-wrap">
+                <svg class="wc-input-icon" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <rect x="2" y="3" width="12" height="10" rx="2"/>
+                  <path d="M2 6h12"/>
+                </svg>
+                <input
+                  v-model="competitorInput"
+                  class="form-input wc-input"
+                  placeholder="Competitor name"
+                  @keydown.enter.prevent="addCompetitor"
+                />
+              </div>
+              <div class="wc-input-wrap">
+                <svg class="wc-input-icon" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <circle cx="8" cy="8" r="6"/>
+                  <path d="M2 8h12M8 2c-1.5 2-1.5 10 0 12M8 2c1.5 2 1.5 10 0 12"/>
+                </svg>
+                <input
+                  v-model="competitorDomainInput"
+                  class="form-input wc-input"
+                  placeholder="www.example.com (optional)"
+                  @keydown.enter.prevent="addCompetitor"
+                />
+              </div>
+              <button
+                class="btn btn-primary wc-add-btn"
+                @click="addCompetitor"
+                :disabled="!competitorInput.trim() || auditForm.competitors.length >= 20"
+              >+</button>
+            </div>
+
+            <div v-if="auditForm.competitors.length" class="wc-grid">
+              <div
+                v-for="c in auditForm.competitors"
+                :key="c.name"
+                class="wc-card"
+              >
+                <img
+                  :src="'https://www.google.com/s2/favicons?domain=' + (c.domain || c.name) + '&sz=32'"
+                  class="wc-favicon"
+                  :alt="c.name"
+                  @error="$event.target.src = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2232%22 height=%2232%22 viewBox=%220 0 32 32%22%3E%3Crect width=%2232%22 height=%2232%22 rx=%226%22 fill=%22%23E5E7EB%22/%3E%3Ctext x=%2216%22 y=%2220%22 text-anchor=%22middle%22 font-size=%2214%22 fill=%22%236B7280%22%3E' + c.name.charAt(0).toUpperCase() + '%3C/text%3E%3C/svg%3E'"
+                />
+                <div class="wc-card-info">
+                  <span class="wc-card-name">{{ c.name }}</span>
+                  <span class="wc-card-domain">{{ c.domain || '—' }}</span>
+                </div>
+                <button class="wc-card-x" @click="removeCompetitor(c.name)">&times;</button>
+              </div>
+            </div>
+            <p v-else class="text-xs text-muted" style="margin-top:16px;text-align:center">
+              No competitors added yet. You can skip this step.
+            </p>
+          </div>
+
+          <!-- Step 4: Providers -->
+          <div v-if="wizardStep === 4" class="wizard-pane">
+            <h2 class="wizard-pane-title">Choose AI models to audit</h2>
+            <p class="wizard-pane-sub">Select which LLMs to include in your audit. Unconfigured models will be skipped.</p>
+
+            <div class="wizard-provider-grid">
+              <label
+                v-for="p in availableProviders"
+                :key="p.value"
+                class="wizard-provider-card"
+                :class="{ active: auditForm.providers.includes(p.value), disabled: !p.configured }"
+              >
+                <input type="checkbox" :value="p.value" v-model="auditForm.providers" />
+                <span class="wizard-provider-name">{{ p.label }}</span>
+                <span class="wizard-provider-model">{{ p.model }}</span>
+                <span class="wizard-provider-status" :class="p.configured ? 'is-on' : 'is-off'">
+                  {{ p.configured ? 'Ready' : 'API key missing' }}
+                </span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Step 5: Review -->
+          <div v-if="wizardStep === 5" class="wizard-pane">
+            <h2 class="wizard-pane-title">Review &amp; run your audit</h2>
+            <p class="wizard-pane-sub">Everything looks good? Hit start to kick off the audit.</p>
+
+            <div class="wizard-review-grid">
+              <div class="wizard-review-item">
+                <span class="wizard-review-label">Website</span>
+                <span class="wizard-review-value">{{ auditForm.scan_url || '—' }}</span>
+              </div>
+              <div class="wizard-review-item">
+                <span class="wizard-review-label">Business</span>
+                <span class="wizard-review-value">{{ auditForm.business_name || '—' }}</span>
+              </div>
+              <div class="wizard-review-item">
+                <span class="wizard-review-label">Industry</span>
+                <span class="wizard-review-value">{{ auditForm.industry || '—' }}</span>
+              </div>
+              <div class="wizard-review-item">
+                <span class="wizard-review-label">Topics</span>
+                <span class="wizard-review-value">{{ auditForm.selectedTopics.length }} selected</span>
+              </div>
+              <div class="wizard-review-item">
+                <span class="wizard-review-label">Competitors</span>
+                <span class="wizard-review-value">{{ auditForm.competitors.length ? auditForm.competitors.map(c => c.name).join(', ') : 'None' }}</span>
+              </div>
+              <div class="wizard-review-item">
+                <span class="wizard-review-label">Models</span>
+                <span class="wizard-review-value">{{ auditForm.providers.length }} LLMs</span>
+              </div>
+            </div>
+
+            <details class="run-modal-advanced" style="margin-top:16px">
+              <summary class="text-xs text-muted" style="cursor:pointer;padding:4px 0">Advanced — custom prompts</summary>
+              <div class="form-group" style="margin-top:8px">
+                <label class="form-label">Custom prompts (one per line, replaces auto-generated)</label>
+                <textarea v-model="customPromptsText" class="form-input" rows="3" placeholder="Best SaaS tools for startups"></textarea>
+                <p class="text-xs text-muted" style="margin-top:4px">Leave blank to use auto-generated prompts.</p>
+              </div>
+            </details>
+          </div>
+
+          <!-- Error -->
+          <p v-if="auditError" class="form-error" style="margin-top:8px">{{ auditError }}</p>
+
+          <!-- Nav buttons -->
+          <div class="wizard-nav">
+            <button v-if="wizardStep > 0" class="btn btn-secondary" @click="wizardStep--">Back</button>
+            <span v-else></span>
+            <button
+              v-if="wizardStep < wizardSteps.length - 1"
+              class="btn btn-primary"
+              @click="wizardNext"
+            >Continue</button>
+            <button
+              v-else
+              class="btn btn-primary"
+              @click="submitAudit"
+              :disabled="running"
+            >{{ running ? 'Queuing...' : 'Start Audit' }}</button>
+          </div>
+        </div>
+      </div>
     </BaseModal>
   </div>
 </template>
@@ -967,10 +1212,16 @@ const promptIntents = computed(() =>
 let pollTimer = null
 
 const PROVIDER_META = {
-  claude:     { label: 'Claude',     color: '#A78BFA' },
-  gpt4:       { label: 'GPT-4',      color: '#34D399' },
-  gemini:     { label: 'Gemini',     color: '#5B8DEF' },
-  perplexity: { label: 'Perplexity', color: '#F59E0B' },
+  claude:     { label: 'Claude',       color: '#A78BFA' },
+  gpt4:       { label: 'GPT-4',        color: '#34D399' },
+  gemini:     { label: 'Gemini',       color: '#5B8DEF' },
+  perplexity: { label: 'Perplexity',   color: '#F59E0B' },
+  meta_llama: { label: 'Meta Llama',   color: '#3B82F6' },
+  mistral:    { label: 'Mistral AI',   color: '#F97316' },
+  cohere:     { label: 'Cohere',       color: '#14B8A6' },
+  deepseek:   { label: 'DeepSeek',     color: '#6366F1' },
+  grok:       { label: 'Grok',         color: '#EF4444' },
+  amazon_nova:{ label: 'Amazon Nova',  color: '#EC4899' },
 }
 
 const customPromptsText = ref('')
@@ -981,14 +1232,279 @@ const auditForm = ref({
   description: '',
   themes: ['recommendation', 'comparison', 'use_case', 'persona'],
   providers: ['claude', 'gpt4', 'gemini', 'perplexity'],
+  selectedTopics: [],
+  competitors: [],
+  scan_url: '',
 })
 
-const availableProviders = Object.freeze([
-  { value: 'claude', label: 'Claude (Anthropic)' },
-  { value: 'gpt4', label: 'GPT-4 (OpenAI)' },
-  { value: 'gemini', label: 'Gemini (Google)' },
-  { value: 'perplexity', label: 'Perplexity' },
+// ── Wizard state ──
+const wizardStep = ref(0)
+const wizardTopics = ref([])
+const generatingTopics = ref(false)
+const competitorInput = ref('')
+const competitorDomainInput = ref('')
+const scanning = ref(false)
+const scanResult = ref(null)
+
+const wizardSteps = Object.freeze([
+  { id: 'website', label: 'Website' },
+  { id: 'description', label: 'Description' },
+  { id: 'topics', label: 'Topics' },
+  { id: 'competitors', label: 'Competitors' },
+  { id: 'providers', label: 'Models' },
+  { id: 'review', label: 'Review' },
 ])
+
+async function scanDomain() {
+  const url = (auditForm.value.scan_url || '').trim()
+  if (!url) return
+  scanning.value = true
+  scanResult.value = null
+  auditError.value = ''
+  try {
+    const { data } = await llmRankingApi.scanDomain(url)
+    scanResult.value = data
+    if (data.success) {
+      // Auto-fill the form from scan results
+      auditForm.value.business_name = data.business_name || auditForm.value.business_name
+      auditForm.value.description = data.description || auditForm.value.description
+      auditForm.value.industry = data.industry || auditForm.value.industry
+
+      // Auto-populate real topics from LLM
+      if (data.topics && data.topics.length) {
+        wizardTopics.value = data.topics
+        auditForm.value.selectedTopics = [...data.topics] // pre-select all
+      } else {
+        // Fallback: generate topics locally
+        wizardTopics.value = generateLocalTopics(
+          auditForm.value.business_name,
+          auditForm.value.description,
+          auditForm.value.industry
+        )
+        auditForm.value.selectedTopics = [...wizardTopics.value]
+      }
+
+      // Auto-populate real competitors from LLM
+      if (data.competitors && data.competitors.length) {
+        auditForm.value.competitors = data.competitors.map(c => ({
+          name: c.name || '',
+          domain: c.domain || '',
+        }))
+      }
+
+      // Auto-advance to Description step
+      wizardStep.value = 1
+    }
+  } catch (err) {
+    scanResult.value = { success: false, error: err.displayMessage || 'Scan failed. Please try again.' }
+  } finally {
+    scanning.value = false
+  }
+}
+
+async function regenerateTopics() {
+  generatingTopics.value = true
+  let gotTopics = false
+  try {
+    const { data } = await llmRankingApi.suggestContext({
+      business_name: auditForm.value.business_name,
+      description: auditForm.value.description,
+      industry: auditForm.value.industry,
+      domain: auditForm.value.scan_url || '',
+    })
+    if (data.topics && data.topics.length) {
+      wizardTopics.value = data.topics
+      auditForm.value.selectedTopics = [...data.topics] // pre-select all
+      gotTopics = true
+    }
+    if (data.competitors && data.competitors.length) {
+      auditForm.value.competitors = data.competitors.map(c => ({
+        name: c.name || '',
+        domain: c.domain || '',
+      }))
+    }
+  } catch (err) {
+    console.warn('LLM topic generation failed, using smart fallback:', err)
+  }
+
+  // Fallback: generate topics locally from business description + industry
+  if (!gotTopics) {
+    wizardTopics.value = generateLocalTopics(
+      auditForm.value.business_name,
+      auditForm.value.description,
+      auditForm.value.industry
+    )
+    auditForm.value.selectedTopics = [...wizardTopics.value]
+  }
+
+  generatingTopics.value = false
+}
+
+/**
+ * Smart client-side fallback: generates buyer-intent search queries
+ * derived directly from the business description. Extracts real
+ * product terms, use cases, and features from the text.
+ */
+function generateLocalTopics(name, desc, industry) {
+  const ind = industry || 'software'
+  const topics = []
+  const seen = new Set()
+
+  function add(t) {
+    const key = t.toLowerCase().trim()
+    if (key && !seen.has(key) && key.length > 12) {
+      seen.add(key)
+      topics.push(t)
+    }
+  }
+
+  if (desc && desc.length > 10) {
+    const descLower = desc.toLowerCase()
+
+    // 1. Extract "X for Y" patterns from the description
+    const forPatterns = descLower.matchAll(/(\b[\w\s]{6,40})\s+for\s+([\w\s]{4,30})/gi)
+    for (const m of forPatterns) {
+      const what = m[1].trim()
+      const who = m[2].trim().replace(/[.,!]+$/, '')
+      add(`best ${what} for ${who}`)
+      add(`top ${what} tools for ${who}`)
+    }
+
+    // 2. Extract meaningful noun phrases (3+ char words not in stop list)
+    const stopWords = new Set([
+      'the','and','for','with','that','this','from','your','their','have',
+      'been','will','are','our','you','can','all','more','most','also',
+      'about','just','into','very','every','not','but','than','then',
+      'only','such','like','over','each','both','its','was','were','has',
+      'does','get','use','any','help','make','need','want','take'
+    ])
+    const words = desc.split(/[\s,.;:!?()\[\]{}]+/).filter(w => w.length > 3)
+    const meaningfulWords = words.filter(w => !stopWords.has(w.toLowerCase()))
+
+    // Build 2-3 word phrases from consecutive meaningful words
+    const phrases = []
+    for (let i = 0; i < meaningfulWords.length - 1; i++) {
+      const w1 = meaningfulWords[i]
+      const w2 = meaningfulWords[i + 1]
+      if (w1.length > 3 && w2.length > 3) {
+        phrases.push(`${w1} ${w2}`.toLowerCase())
+      }
+    }
+
+    // Use the best phrases to create topics
+    const uniquePhrases = [...new Set(phrases)].slice(0, 5)
+    for (const phrase of uniquePhrases) {
+      add(`best ${phrase} tools`)
+      add(`top ${phrase} solutions compared`)
+    }
+
+    // 3. Look for key product/feature terms in the description
+    const productTerms = [
+      'analytics', 'tracking', 'automation', 'monitoring', 'reporting',
+      'management', 'platform', 'dashboard', 'integration', 'optimization',
+      'detection', 'scoring', 'generation', 'intelligence', 'engagement',
+      'conversion', 'retention', 'acquisition', 'verification', 'scheduling',
+      'collaboration', 'communication', 'marketplace', 'payment', 'billing'
+    ]
+    const foundTerms = productTerms.filter(t => descLower.includes(t))
+    for (const term of foundTerms.slice(0, 3)) {
+      add(`best ${term} software for businesses`)
+      add(`top ${term} tools compared`)
+    }
+
+    // 4. Create a "what is X" and comparison query from the full description
+    const firstSentence = desc.split(/[.!?]/)[0]?.trim()
+    if (firstSentence && firstSentence.length > 15 && firstSentence.length < 80) {
+      add(`tools for ${firstSentence.toLowerCase()}`)
+    }
+  }
+
+  // Industry-level queries (only if we don't have enough from description)
+  if (topics.length < 6) {
+    add(`best ${ind} tools for small businesses`)
+    add(`top ${ind} platforms compared`)
+    add(`most recommended ${ind} solutions`)
+    add(`${ind} tools for startups and growing companies`)
+  }
+
+  // Name-specific
+  if (name && name.length > 2) {
+    add(`${name} alternatives and competitors`)
+    add(`is ${name} the best ${ind} tool`)
+  }
+
+  return topics.slice(0, 12)
+}
+
+function toggleWizardTopic(topic) {
+  const idx = auditForm.value.selectedTopics.indexOf(topic)
+  if (idx >= 0) {
+    auditForm.value.selectedTopics.splice(idx, 1)
+  } else {
+    auditForm.value.selectedTopics.push(topic)
+  }
+}
+
+function addCompetitor() {
+  const name = competitorInput.value.trim()
+  if (!name || auditForm.value.competitors.length >= 20) return
+  const domain = competitorDomainInput.value.trim()
+  // Support comma-separated names
+  const names = name.split(',').map(s => s.trim()).filter(Boolean)
+  for (const n of names) {
+    if (!auditForm.value.competitors.some(c => c.name === n)) {
+      auditForm.value.competitors.push({ name: n, domain: domain || '' })
+    }
+  }
+  competitorInput.value = ''
+  competitorDomainInput.value = ''
+}
+
+function removeCompetitor(name) {
+  auditForm.value.competitors = auditForm.value.competitors.filter(c => c.name !== name)
+}
+
+async function wizardNext() {
+  auditError.value = ''
+  // Step 0: Website — just need a URL or allow skip
+  if (wizardStep.value === 0) {
+    if (!auditForm.value.scan_url) {
+      auditError.value = 'Enter a domain to scan, or type any URL to continue.'
+      return
+    }
+    // If not yet scanned, scan now
+    if (!scanResult.value) {
+      scanDomain()
+      return
+    }
+  }
+  // Step 1: Description
+  if (wizardStep.value === 1) {
+    if (!auditForm.value.business_name) { auditError.value = 'Business name is required.'; return }
+    if (!auditForm.value.industry) { auditError.value = 'Industry is required.'; return }
+    // If no topics were loaded from scan, fetch them now and wait
+    if (!wizardTopics.value.length) {
+      await regenerateTopics()
+    }
+  }
+  // Step 2: Topics
+  if (wizardStep.value === 2) {
+    if (!auditForm.value.selectedTopics.length) {
+      auditError.value = 'Select at least one topic.'
+      return
+    }
+  }
+  wizardStep.value++
+}
+
+const availableProviders = computed(() =>
+  providerHealth.value.providers.map(p => ({
+    value: p.key,
+    label: p.name,
+    model: p.model,
+    configured: p.configured,
+  }))
+)
 
 // Theme chips shown in the Run Audit modal — drive prompt generation.
 const promptThemes = Object.freeze([
@@ -1128,7 +1644,20 @@ const intentGroups = computed(() => {
       const avgVisibility = prompts.length
         ? Math.round(prompts.reduce((a, p) => a + p.visibility, 0) / prompts.length)
         : 0
-      return { intent, prompts, avgVisibility }
+      // Aggregate provider hit rates across all prompts in this group
+      const providerStats = {}
+      for (const p of prompts) {
+        for (const d of (p.providerDots || [])) {
+          if (!providerStats[d.provider]) providerStats[d.provider] = { total: 0, hits: 0 }
+          providerStats[d.provider].total++
+          if (d.mentioned) providerStats[d.provider].hits++
+        }
+      }
+      const providerSummary = Object.entries(providerStats).map(([provider, s]) => ({
+        provider,
+        hitRate: s.total ? Math.round(s.hits / s.total * 100) : 0,
+      }))
+      return { intent, prompts, avgVisibility, providerSummary }
     })
     .sort((a, b) => b.avgVisibility - a.avgVisibility)
 })
@@ -1846,11 +2375,19 @@ function mentionBadge(rate) {
 }
 
 function providerLabel(p) {
-  return { claude: 'Claude', gpt4: 'GPT-4', gemini: 'Gemini', perplexity: 'Perplexity' }[p] || p
+  return {
+    claude: 'Claude', gpt4: 'GPT-4', gemini: 'Gemini', perplexity: 'Perplexity',
+    meta_llama: 'Meta Llama', mistral: 'Mistral AI', cohere: 'Cohere',
+    deepseek: 'DeepSeek', grok: 'Grok', amazon_nova: 'Amazon Nova',
+  }[p] || p
 }
 
 function providerInitial(p) {
-  return { claude: 'A', gpt4: 'G', gemini: 'G', perplexity: 'P' }[p] || p[0].toUpperCase()
+  return {
+    claude: 'A', gpt4: 'G', gemini: 'G', perplexity: 'P',
+    meta_llama: 'M', mistral: 'M', cohere: 'C',
+    deepseek: 'D', grok: 'X', amazon_nova: 'N',
+  }[p] || p[0].toUpperCase()
 }
 
 function formatDate(dt) {
@@ -1880,8 +2417,17 @@ function openRunAudit() {
     location: '',
     description: '',
     themes: ['recommendation', 'comparison', 'use_case', 'persona'],
-    providers: ['claude', 'gpt4', 'gemini', 'perplexity'],
+    providers: providerHealth.value.providers.filter(p => p.configured).map(p => p.key),
+    selectedTopics: [],
+    competitors: [],
+    scan_url: '',
   }
+  wizardStep.value = 0
+  wizardTopics.value = []
+  competitorInput.value = ''
+  competitorDomainInput.value = ''
+  scanning.value = false
+  scanResult.value = null
   showRunForm.value = true
 }
 
@@ -1903,6 +2449,8 @@ async function submitAudit() {
       location: auditForm.value.location,
       providers: auditForm.value.providers,
       themes: auditForm.value.themes || [],
+      keywords: auditForm.value.selectedTopics || [],
+      competitors: (auditForm.value.competitors || []).map(c => typeof c === 'string' ? c : c.name),
     }
     if (customPromptsText.value.trim()) {
       payload.custom_prompts = customPromptsText.value.split('\n').map(s => s.trim()).filter(Boolean)
@@ -2197,6 +2745,471 @@ onBeforeUnmount(() => {
   font-size: 11px;
   color: var(--text-muted);
   font-style: italic;
+}
+
+/* ── Wizard layout ── */
+.wizard-layout {
+  display: flex;
+  gap: 0;
+  min-height: 480px;
+}
+.wizard-sidebar {
+  width: 180px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border-color);
+  padding: 32px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.wizard-step-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  position: relative;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted);
+  transition: color 0.2s;
+}
+.wizard-step-item.active {
+  color: var(--text-primary);
+  font-weight: 700;
+}
+.wizard-step-item.done {
+  color: var(--text-secondary);
+}
+/* Vertical connector line */
+.wizard-step-item:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  left: 6px;
+  top: 34px;
+  width: 2px;
+  height: 20px;
+  background: var(--border-color);
+}
+.wizard-step-item.done:not(:last-child)::after {
+  background: #10b981;
+}
+.wizard-step-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.wizard-step-item.active .wizard-step-dot {
+  border-color: var(--text-primary);
+}
+.wizard-step-item.done .wizard-step-dot {
+  border-color: transparent;
+}
+.wizard-content {
+  flex: 1;
+  padding: 32px 40px;
+  display: flex;
+  flex-direction: column;
+}
+.wizard-pane {
+  flex: 1;
+}
+.wizard-pane-title {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+  letter-spacing: -0.02em;
+}
+
+/* Scan step */
+.wizard-scan-row {
+  display: flex;
+  gap: 8px;
+}
+.wizard-scan-row .form-input {
+  flex: 1;
+}
+.wizard-scan-progress {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 24px;
+  padding: 20px;
+  background: var(--bg-offset, #F9FAFB);
+  border-radius: var(--radius-md, 10px);
+}
+.wizard-scan-spinner {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 3px solid var(--border-color, #E5E7EB);
+  border-top-color: var(--text-primary, #0F172A);
+  animation: wizardSpin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes wizardSpin {
+  to { transform: rotate(360deg); }
+}
+.wizard-scan-status {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.wizard-scan-status-text {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.wizard-scan-result {
+  margin-top: 20px;
+  padding: 16px 20px;
+  border-radius: var(--radius-md, 10px);
+  border: 1.5px solid #10b981;
+  background: rgba(16, 185, 129, 0.04);
+}
+.wizard-scan-result.is-error {
+  border-color: var(--color-danger, #EF4444);
+  background: rgba(239, 68, 68, 0.04);
+}
+.wizard-scan-success {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.wizard-scan-success svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.wizard-scan-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.wizard-scan-error {
+  display: flex;
+  flex-direction: column;
+}
+.wizard-pane-sub {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-bottom: 24px;
+  line-height: 1.5;
+}
+.wizard-textarea {
+  font-size: 14px;
+  line-height: 1.6;
+  min-height: 120px;
+  resize: vertical;
+}
+.wizard-textarea-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 6px;
+}
+.wizard-regen-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  color: #A78BFA;
+  transition: color 0.2s;
+}
+.wizard-regen-btn:hover { color: #7C3AED; }
+.wizard-regen-btn:disabled { opacity: 0.5; cursor: default; }
+
+/* Topics grid */
+.wizard-topics-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 40px 20px;
+}
+.wizard-topics-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  max-width: 620px;
+  margin-left: auto;
+  margin-right: auto;
+}
+.wizard-topics-actions .btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: none;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 5px 12px;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+.wizard-topics-actions .btn-ghost:hover {
+  color: var(--text-primary);
+  border-color: var(--text-muted);
+}
+.wizard-topics-empty {
+  text-align: center;
+  padding: 32px 20px;
+}
+.wizard-topics-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+  max-width: 620px;
+  margin: 0 auto;
+}
+.wizard-topic-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 18px;
+  border-radius: 999px;
+  border: 1.5px solid var(--border-color);
+  background: var(--bg-base);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all 0.15s;
+  user-select: none;
+  line-height: 1.3;
+}
+.wizard-topic-chip:hover {
+  border-color: var(--text-muted);
+  background: var(--bg-offset, #F9FAFB);
+}
+.wizard-topic-chip.active {
+  background: #0F172A;
+  color: #fff;
+  border-color: #0F172A;
+}
+.wizard-topic-check {
+  flex-shrink: 0;
+}
+
+/* Competitor cards */
+.wc-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.wc-counter {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.wc-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+.wc-input-wrap {
+  flex: 1;
+  position: relative;
+}
+.wc-input-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted, #9CA3AF);
+  pointer-events: none;
+}
+.wc-input {
+  padding-left: 34px !important;
+}
+.wc-add-btn {
+  width: 42px;
+  min-width: 42px;
+  height: 42px;
+  padding: 0;
+  font-size: 20px;
+  font-weight: 700;
+  border-radius: var(--radius-md, 10px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.wc-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-top: 16px;
+}
+.wc-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: var(--radius-md, 10px);
+  border: 1.5px solid var(--border-color, #E5E7EB);
+  background: #fff;
+  transition: border-color 0.15s;
+}
+.wc-card:hover {
+  border-color: var(--text-muted, #9CA3AF);
+}
+.wc-favicon {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  flex-shrink: 0;
+  object-fit: contain;
+  background: var(--bg-offset, #F5F5F5);
+}
+.wc-card-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1;
+  min-width: 0;
+}
+.wc-card-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wc-card-domain {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wc-card-x {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+  color: var(--text-muted);
+  padding: 0;
+  line-height: 1;
+  flex-shrink: 0;
+  opacity: 0.5;
+  transition: opacity 0.15s, color 0.15s;
+}
+.wc-card-x:hover {
+  opacity: 1;
+  color: var(--color-danger, #EF4444);
+}
+
+/* Provider grid */
+.wizard-provider-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+.wizard-provider-card {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 14px 16px;
+  border-radius: var(--radius-md, 10px);
+  border: 1.5px solid var(--border-color);
+  cursor: pointer;
+  transition: all 0.15s;
+  background: var(--bg-base);
+}
+.wizard-provider-card:hover { border-color: var(--text-muted); }
+.wizard-provider-card.active {
+  border-color: #0F172A;
+  background: rgba(15, 23, 42, 0.03);
+}
+.wizard-provider-card.disabled {
+  opacity: 0.5;
+}
+.wizard-provider-card input { display: none; }
+.wizard-provider-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.wizard-provider-model {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: 'SF Mono', 'Monaco', monospace;
+}
+.wizard-provider-status {
+  font-size: 10px;
+  font-weight: 600;
+  margin-top: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.wizard-provider-status.is-on { color: #10B981; }
+.wizard-provider-status.is-off { color: #EF4444; }
+
+/* Review grid */
+.wizard-review-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: var(--bg-offset, #F9FAFB);
+  padding: 20px 24px;
+  border-radius: var(--radius-md, 10px);
+}
+.wizard-review-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.wizard-review-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.wizard-review-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* Wizard nav */
+.wizard-nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-color);
+}
+
+@media (max-width: 600px) {
+  .wizard-layout { flex-direction: column; }
+  .wizard-sidebar {
+    width: 100%;
+    flex-direction: row;
+    overflow-x: auto;
+    padding: 16px 20px;
+    border-right: none;
+    border-bottom: 1px solid var(--border-color);
+    gap: 16px;
+  }
+  .wizard-step-item:not(:last-child)::after { display: none; }
+  .wizard-content { padding: 20px; }
+  .wizard-topics-grid { max-width: 100%; }
+  .wizard-provider-grid { grid-template-columns: 1fr; }
 }
 
 /* ─────────────────────────────────────────────────────────────────
@@ -3173,7 +4186,112 @@ onBeforeUnmount(() => {
   font-family: inherit;
 }
 
-/* Competitors leaderboard */
+/* ═══ Prompts Table ═══════════════════════════════════════════════════════ */
+.pt-header-right { display: flex; align-items: center; gap: 12px; }
+.pt-table { }
+.pt-thead {
+  display: grid;
+  grid-template-columns: 1fr 80px 120px 140px 100px;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--border-color, #E5E7EB);
+  background: var(--bg-offset, #FAFAFA);
+}
+.pt-th {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted, #9CA3AF);
+}
+.pt-topic-row {
+  display: grid;
+  grid-template-columns: 1fr 80px 120px 140px 100px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border-color, #E5E7EB);
+  cursor: pointer;
+  transition: background 0.12s;
+  align-items: center;
+  background: var(--bg-surface, #fff);
+}
+.pt-topic-row:hover { background: var(--bg-offset, #F9FAFB); }
+.pt-prompt-row {
+  display: grid;
+  grid-template-columns: 1fr 80px 120px 140px 100px;
+  padding: 10px 20px 10px 44px;
+  border-bottom: 1px solid var(--border-color, #E5E7EB);
+  align-items: center;
+  background: var(--bg-offset, #FAFAFA);
+  font-size: 13px;
+}
+.pt-prompt-row:last-child { border-bottom: none; }
+.pt-td { display: flex; align-items: center; gap: 4px; }
+.pt-td-topic {
+  font-weight: 600;
+  color: var(--text-primary);
+  gap: 8px;
+}
+.pt-topic-name { font-size: 13px; }
+.pt-td-prompt-text {
+  font-weight: 400;
+  color: var(--text-secondary, #6B7280);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+.pt-td-count {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  justify-content: center;
+}
+.pt-td-vis {
+  font-size: 13px;
+  font-weight: 600;
+}
+.pt-td-perf { gap: 3px; }
+.pt-perf-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 800;
+  background: var(--border-color, #E5E7EB);
+  color: var(--text-muted, #9CA3AF);
+  cursor: help;
+}
+.pt-perf-icon.is-hit { background: #10b981; color: #fff; }
+.pt-perf-icon.is-partial { background: #f59e0b; color: #fff; }
+.pt-perf-icon.is-miss { background: var(--border-color, #E5E7EB); color: var(--text-muted); }
+.pt-perf-icon.is-fail { background: var(--color-danger, #EF4444); color: #fff; opacity: 0.6; }
+.pt-td-status { justify-content: flex-end; }
+.pt-see-link {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.pt-status-pill {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid;
+}
+.pt-status-pill.is-ran {
+  color: #D97706;
+  border-color: #FDE68A;
+  background: #FFFBEB;
+}
+.pt-status-pill.is-miss {
+  color: var(--text-muted);
+  border-color: var(--border-color);
+  background: var(--bg-offset);
+}
+
+
 .comp-leaderboard { display: flex; flex-direction: column; padding: 16px 16px 0; gap: 6px; }
 .comp-row {
   display: grid;

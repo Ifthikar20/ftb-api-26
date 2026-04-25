@@ -9,4 +9,6 @@ export default {
     recommendations: (wid, aid) => api.get(`/llm-ranking/${wid}/audits/${aid}/recommendations/`),
     history: (wid, params) => api.get(`/llm-ranking/${wid}/history/`, { params }),
     providerHealth: () => api.get(`/llm-ranking/provider-health/`),
+    scanDomain: (url) => api.post(`/llm-ranking/scan-domain/`, { url }),
+    suggestContext: (data) => api.post(`/llm-ranking/suggest-context/`, data),
 }

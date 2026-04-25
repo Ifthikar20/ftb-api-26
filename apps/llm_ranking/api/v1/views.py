@@ -347,7 +347,7 @@ class LLMRankingProviderHealthView(APIView):
             {
                 "key": "gemini",
                 "name": "Gemini (Google)",
-                "model": "gemini-1.5-flash",
+                "model": "gemini-2.5-flash",
                 "configured": bool(getattr(settings, "GEMINI_API_KEY", "")),
                 "settings_key": "GEMINI_API_KEY",
             },
@@ -358,6 +358,48 @@ class LLMRankingProviderHealthView(APIView):
                 "configured": bool(getattr(settings, "PERPLEXITY_API_KEY", "")),
                 "settings_key": "PERPLEXITY_API_KEY",
             },
+            {
+                "key": "meta_llama",
+                "name": "Meta Llama",
+                "model": "llama-3.3-70b-instruct",
+                "configured": bool(getattr(settings, "META_API_KEY", "")),
+                "settings_key": "META_API_KEY",
+            },
+            {
+                "key": "mistral",
+                "name": "Mistral AI",
+                "model": "mistral-large-latest",
+                "configured": bool(getattr(settings, "MISTRAL_API_KEY", "")),
+                "settings_key": "MISTRAL_API_KEY",
+            },
+            {
+                "key": "cohere",
+                "name": "Cohere",
+                "model": "command-r-plus",
+                "configured": bool(getattr(settings, "COHERE_API_KEY", "")),
+                "settings_key": "COHERE_API_KEY",
+            },
+            {
+                "key": "deepseek",
+                "name": "DeepSeek",
+                "model": "deepseek-chat",
+                "configured": bool(getattr(settings, "DEEPSEEK_API_KEY", "")),
+                "settings_key": "DEEPSEEK_API_KEY",
+            },
+            {
+                "key": "grok",
+                "name": "Grok (xAI)",
+                "model": "grok-3",
+                "configured": bool(getattr(settings, "XAI_API_KEY", "")),
+                "settings_key": "XAI_API_KEY",
+            },
+            {
+                "key": "amazon_nova",
+                "name": "Amazon Nova",
+                "model": "amazon.nova-pro-v1:0",
+                "configured": bool(getattr(settings, "AWS_BEDROCK_KEY", "")),
+                "settings_key": "AWS_BEDROCK_KEY",
+            },
         ]
         configured_count = sum(1 for p in providers if p["configured"])
         return Response({
@@ -365,3 +407,129 @@ class LLMRankingProviderHealthView(APIView):
             "configured_count": configured_count,
             "total": len(providers),
         })
+
+
+class ScanDomainView(APIView):
+    """
+    POST — scan a domain URL and return extracted business information,
+    plus AI-generated competitor and topic suggestions.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        url = (request.data.get("url") or "").strip()
+        if not url:
+            return Response(
+                {"error": "URL is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        from apps.llm_ranking.services.domain_scanner import scan_domain
+        result = scan_domain(url)
+
+        # If scan succeeded, try LLM for even better topics + competitors
+        if result.get("success"):
+            try:
+                from apps.llm_ranking.services.audit_context import suggest_audit_context
+                context = suggest_audit_context(
+                    business_name=result.get("business_name", ""),
+                    description=result.get("description", ""),
+                    industry=result.get("industry", ""),
+                    domain=result.get("domain", ""),
+                    content_summary=result.get("content_summary", ""),
+                )
+                # Use LLM topics if available, otherwise use scanner's own
+                if context.get("topics"):
+                    result["topics"] = context["topics"]
+                # Use LLM competitors if available
+                if context.get("competitors"):
+                    result["competitors"] = context["competitors"]
+            except Exception as e:
+                logger.warning("Audit context generation failed: %s", e)
+
+            # Ensure we always have topics (scanner generates them from DOM)
+            if not result.get("topics"):
+                result["topics"] = result.get("topics", [])
+
+            # If no competitors from LLM, try Google Search discovery
+            if not result.get("competitors"):
+                try:
+                    from apps.llm_ranking.services.competitor_discovery import (
+                        discover_competitors,
+                    )
+                    result["competitors"] = discover_competitors(
+                        business_name=result.get("business_name", ""),
+                        industry=result.get("industry", ""),
+                        domain=result.get("domain", ""),
+                        description=result.get("description", ""),
+                    )
+                except Exception as e:
+                    logger.warning("Competitor discovery failed: %s", e)
+                    result["competitors"] = []
+
+        return Response(result)
+
+
+class SuggestAuditContextView(APIView):
+    """
+    POST — generate competitor and topic suggestions from business profile.
+    Used when the user edits their description and wants fresh suggestions.
+    If no LLM is available, generates topics from the description content
+    using the scanner's extraction logic.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        business_name = (request.data.get("business_name") or "").strip()
+        description = (request.data.get("description") or "").strip()
+        industry = (request.data.get("industry") or "").strip()
+        domain = (request.data.get("domain") or "").strip()
+
+        if not business_name:
+            return Response(
+                {"error": "Business name is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # If a domain is provided, re-scan it for fresh content
+        content_summary = ""
+        scanner_topics = []
+        if domain:
+            try:
+                from apps.llm_ranking.services.domain_scanner import scan_domain
+                scan_result = scan_domain(domain)
+                if scan_result.get("success"):
+                    content_summary = scan_result.get("content_summary", "")
+                    scanner_topics = scan_result.get("topics", [])
+            except Exception:
+                pass
+
+        from apps.llm_ranking.services.audit_context import suggest_audit_context
+        context = suggest_audit_context(
+            business_name=business_name,
+            description=description,
+            industry=industry,
+            domain=domain,
+            content_summary=content_summary,
+        )
+
+        # If LLM didn't return topics, use scanner's content-derived topics
+        if not context.get("topics") and scanner_topics:
+            context["topics"] = scanner_topics
+
+        # If LLM didn't return competitors, try Google Search
+        if not context.get("competitors"):
+            try:
+                from apps.llm_ranking.services.competitor_discovery import (
+                    discover_competitors,
+                )
+                context["competitors"] = discover_competitors(
+                    business_name=business_name,
+                    industry=industry,
+                    domain=domain,
+                    description=description,
+                )
+            except Exception:
+                context["competitors"] = []
+
+        return Response(context)
