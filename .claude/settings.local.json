@@ -35,7 +35,6 @@
       "Bash(find /Users/ifthikaraliseyed/Desktop/FTB_APP/ftb-api-26/apps -name \"*.py\" -type f -exec grep -l \"FileField\\\\|ImageField\\\\|upload\" {} \\\\;)",
       "Bash(find:*)",
       "Bash(ls:*)",
-      "Bash(python -m py_compile apps/voice_agent/services/prompt_builder.py apps/voice_agent/api/v1/views.py apps/voice_agent/api/v1/urls.py apps/voice_agent/tests/test_prompt_builder.py apps/voice_agent/tests/test_context_document_api.py)",
       "Bash(git -C /Users/ifthikaraliseyed/Desktop/FTB_APP/ftb-api-26 log --oneline --all)",
       "Bash(git -C /Users/ifthikaraliseyed/Desktop/FTB_APP/ftb-api-26 show --stat dea5299)",
       "Bash(psql:*)",

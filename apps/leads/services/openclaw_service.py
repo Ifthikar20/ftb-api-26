@@ -14,7 +14,7 @@ logger = logging.getLogger("apps")
 
 # Defaults (overridden by env vars in production)
 DEFAULT_GATEWAY_URL = "http://localhost:18789"
-DEFAULT_TIMEOUT = 90  # seconds — AI agents can take a while
+DEFAULT_TIMEOUT = 90  # seconds — research jobs can take a while
 
 
 class OpenClawService:

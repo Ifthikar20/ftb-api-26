@@ -56,10 +56,8 @@ LOCAL_APPS = [
 
     "apps.notifications",
     "apps.billing",
-    "apps.agents",
     "apps.llm_ranking",
     "apps.compliance",
-    "apps.voice_agent",
     "apps.social_leads",
     "apps.messaging",
 ]
@@ -319,8 +317,6 @@ CANVA_CLIENT_SECRET = env("CANVA_CLIENT_SECRET", default="")
 GEMINI_API_KEY = env("GEMINI_API_KEY", default="")
 PERPLEXITY_API_KEY = env("PERPLEXITY_API_KEY", default="")
 
-# ── Voice Agent ──
-# Option A: Retell AI (managed, ~$0.14-0.27/min)
 # ── Social Leads (Facebook, LinkedIn, X) ──
 FACEBOOK_APP_ID = env("FACEBOOK_APP_ID", default="")
 FACEBOOK_APP_SECRET = env("FACEBOOK_APP_SECRET", default="")
@@ -328,32 +324,6 @@ LINKEDIN_CLIENT_ID = env("LINKEDIN_CLIENT_ID", default="")
 LINKEDIN_CLIENT_SECRET = env("LINKEDIN_CLIENT_SECRET", default="")
 TIKTOK_APP_ID = env("TIKTOK_APP_ID", default="")
 TIKTOK_APP_SECRET = env("TIKTOK_APP_SECRET", default="")
-
-# ── Voice Agent ──
-RETELL_API_KEY = env("RETELL_API_KEY", default="")
-
-# Option B: Self-hosted via LiveKit + Deepgram + OpenAI (~$0.017/min, 88-94% cheaper)
-LIVEKIT_URL = env("LIVEKIT_URL", default="")
-LIVEKIT_API_KEY = env("LIVEKIT_API_KEY", default="")
-LIVEKIT_API_SECRET = env("LIVEKIT_API_SECRET", default="")
-DEEPGRAM_API_KEY = env("DEEPGRAM_API_KEY", default="")
-VOICE_AGENT_BACKEND = env("VOICE_AGENT_BACKEND", default="selfhosted")  # "retell", "livekit", or "selfhosted"
-
-# Option C: Fully self-hosted (complete privacy — no external API calls)
-SELFHOSTED_LLM_URL = env("SELFHOSTED_LLM_URL", default="http://localhost:8000/v1")
-SELFHOSTED_STT_URL = env("SELFHOSTED_STT_URL", default="http://localhost:8001/v1")
-SELFHOSTED_TTS_URL = env("SELFHOSTED_TTS_URL", default="http://localhost:8002")
-SELFHOSTED_LLM_MODEL = env("SELFHOSTED_LLM_MODEL", default="Qwen/Qwen2.5-7B-Instruct-AWQ")
-
-# Outbound dialer (Telnyx + LiveKit)
-TELNYX_API_KEY = env("TELNYX_API_KEY", default="")
-TELNYX_OUTBOUND_CONNECTION_ID = env("TELNYX_OUTBOUND_CONNECTION_ID", default="")
-TELNYX_SIP_USERNAME = env("TELNYX_SIP_USERNAME", default="")
-TELNYX_SIP_PASSWORD = env("TELNYX_SIP_PASSWORD", default="")
-TELNYX_SIP_ADDRESS = env("TELNYX_SIP_ADDRESS", default="sip.telnyx.com")
-LIVEKIT_AGENT_API_TOKEN = env("LIVEKIT_AGENT_API_TOKEN", default="")
-LIVEKIT_AGENT_NAME = env("LIVEKIT_AGENT_NAME", default="ftb-voice-agent")
-DIALER_DEFAULT_RATE_PER_MIN = env.int("DIALER_DEFAULT_RATE_PER_MIN", default=10)
 
 # Beta gate — set SIGNUPS_ENABLED=true in env to re-enable public registration.
 SIGNUPS_ENABLED = env.bool("SIGNUPS_ENABLED", default=False)

@@ -8,14 +8,14 @@ const PLAN_FEATURES = {
   individual: {
     integrations: 2, projects: 3, pageviews: 50000, team_members: 1, ai_credits: 100, competitors: 5,
     pipeline: true, trends: true, sso: false, api: false, whitelabel: false,
-    agents: false, llm_ranking: false,
+    llm_ranking: false,
     tabs: ['dashboard', 'projects', 'analytics', 'leads', 'heatmaps', 'keywords', 'campaigns', 'integrations', 'billing', 'settings'],
   },
   enterprise: {
     integrations: -1, projects: -1, pageviews: -1, team_members: -1, ai_credits: -1, competitors: -1,
     pipeline: true, trends: true, sso: true, api: true, whitelabel: true,
-    agents: true, llm_ranking: true,
-    tabs: ['dashboard', 'projects', 'analytics', 'leads', 'heatmaps', 'keywords', 'agents', 'campaigns', 'llm_ranking', 'integrations', 'billing', 'settings'],
+    llm_ranking: true,
+    tabs: ['dashboard', 'projects', 'analytics', 'leads', 'heatmaps', 'keywords', 'campaigns', 'llm_ranking', 'integrations', 'billing', 'settings'],
   },
 }
 

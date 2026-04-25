@@ -115,9 +115,6 @@ class SocialLead(TimestampMixin):
     is_processed = models.BooleanField(
         default=False, help_text="Whether a Lead record has been created."
     )
-    voice_call_queued = models.BooleanField(
-        default=False, help_text="Whether an outbound voice call has been queued."
-    )
 
     class Meta:
         db_table = "social_leads_lead"

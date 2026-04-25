@@ -10,7 +10,6 @@
         <QuickActions :actions="quickActions" />
         <WeeklyTasks :tasks="actions" class="tint-green" />
         <RecentActivity :activity="activity" />
-        <AgentActivity :runs="agentRuns" />
         <TrendInsights class="tint-lavender" />
         <IntegrationStatus :integrations="integrations" />
       </div>
@@ -22,7 +21,6 @@
 import { ref, computed, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import dashboardApi from '@/api/dashboard'
-import agentsApi from '@/api/agents'
 
 import GreetingHeader from '@/components/dashboard/GreetingHeader.vue'
 import StatsGrid from '@/components/dashboard/StatsGrid.vue'
@@ -30,7 +28,6 @@ import MorningBrief from '@/components/dashboard/MorningBrief.vue'
 import QuickActions from '@/components/dashboard/QuickActions.vue'
 import WeeklyTasks from '@/components/dashboard/WeeklyTasks.vue'
 import RecentActivity from '@/components/dashboard/RecentActivity.vue'
-import AgentActivity from '@/components/dashboard/AgentActivity.vue'
 import IntegrationStatus from '@/components/dashboard/IntegrationStatus.vue'
 import TrendInsights from '@/components/dashboard/TrendInsights.vue'
 
@@ -46,7 +43,6 @@ const brief = ref('')
 const actions = ref([])
 const activity = ref([])
 const quickActions = ref([])
-const agentRuns = ref([])
 const DEFAULT_INTEGRATIONS = {
   pixel: { installed: false, verified: false, verified_at: null, pixel_key: null },
   services: [
@@ -59,10 +55,7 @@ const integrations = ref({ ...DEFAULT_INTEGRATIONS })
 
 onMounted(async () => {
   try {
-    const [dashRes, agentRes] = await Promise.all([
-      dashboardApi.get(),
-      agentsApi.activity().catch(() => ({ data: [] })),
-    ])
+    const dashRes = await dashboardApi.get()
     const d = dashRes.data?.data || dashRes.data
     stats.value = d.stats || []
     brief.value = d.brief || ''
@@ -77,7 +70,6 @@ onMounted(async () => {
             : DEFAULT_INTEGRATIONS.services,
         }
       : { ...DEFAULT_INTEGRATIONS }
-    agentRuns.value = (agentRes.data || agentRes || []).slice(0, 3)
   } catch (e) {
     console.error('Dashboard load error', e)
   } finally {

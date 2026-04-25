@@ -72,7 +72,6 @@ class Migration(migrations.Migration):
                 ("linkedin_profile", models.URLField(blank=True)),
                 ("form_data", models.JSONField(default=dict)),
                 ("is_processed", models.BooleanField(default=False)),
-                ("voice_call_queued", models.BooleanField(default=False)),
                 ("source", models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
                     related_name="leads",

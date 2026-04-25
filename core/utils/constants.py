@@ -30,7 +30,6 @@ PLAN_LIMITS = {
         "ai_credits_monthly": 100,
         "integrations": 3,
         "competitors": 5,
-        "voice_minutes_monthly": 60,
         "pipeline_builder": True,
         "trend_intelligence": False,
         "sso": False,
@@ -55,7 +54,6 @@ PLAN_LIMITS = {
         "ai_credits_monthly": 500,
         "integrations": 10,
         "competitors": 25,
-        "voice_minutes_monthly": 300,
         "pipeline_builder": True,
         "trend_intelligence": True,
         "sso": False,
@@ -65,7 +63,7 @@ PLAN_LIMITS = {
         "tabs": [
             "dashboard", "projects", "analytics", "leads",
             "heatmaps", "keywords",
-            "agents", "campaigns", "llm_ranking",
+            "campaigns", "llm_ranking",
             "integrations", "billing", "settings",
         ],
     },
@@ -79,7 +77,6 @@ PLAN_LIMITS = {
         "ai_credits_monthly": -1,  # unlimited
         "integrations": -1,
         "competitors": -1,
-        "voice_minutes_monthly": -1,  # unlimited
         "pipeline_builder": True,
         "trend_intelligence": True,
         "sso": True,
@@ -90,7 +87,7 @@ PLAN_LIMITS = {
         "tabs": [
             "dashboard", "projects", "analytics", "leads",
             "heatmaps", "keywords",
-            "agents", "campaigns", "llm_ranking",
+            "campaigns", "llm_ranking",
             "integrations", "billing", "settings",
         ],
     },
