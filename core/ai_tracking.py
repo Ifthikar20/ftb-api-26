@@ -27,6 +27,7 @@ PRICING = {
     "claude-3-5-sonnet-20241022": {"input": 3.00, "output": 15.00},
     "claude-sonnet-4-6": {"input": 3.00, "output": 15.00},
     "claude-haiku-4-5-20251001": {"input": 0.80, "output": 4.00},
+    "claude-haiku-4-5": {"input": 0.80, "output": 4.00},
     "claude-3-haiku-20240307": {"input": 0.25, "output": 1.25},
     # OpenAI
     "gpt-4o-mini": {"input": 0.15, "output": 0.60},
@@ -49,6 +50,7 @@ MODEL_PROVIDER = {
     "claude-3-5-sonnet-20241022": "anthropic",
     "claude-sonnet-4-6": "anthropic",
     "claude-haiku-4-5-20251001": "anthropic",
+    "claude-haiku-4-5": "anthropic",
     "claude-3-haiku-20240307": "anthropic",
     "gpt-4o-mini": "openai",
     "gpt-4o": "openai",
@@ -137,7 +139,7 @@ def get_usage_summary(user=None, days=30):
     via record_usage() — Lead Finder, Messaging, Analytics, LLM Ranking
     (upstream + extraction), Competitor Discovery — rolls into the same totals.
     """
-    from django.db.models import Sum, Count, Q
+    from django.db.models import Sum, Count
     from django.db.models.functions import TruncDate
     from apps.accounts.models import AITokenUsage
 
@@ -180,22 +182,21 @@ def get_usage_summary(user=None, days=30):
         ).order_by("-cost")
     )
 
-    # Role split — upstream LLM call vs internal extraction/parse call.
-    # Stored in metadata.role; default to "upstream" when absent.
-    upstream_q = Q(metadata__role="upstream") | Q(metadata__role__isnull=True) | Q(metadata={})
-    extraction_q = Q(metadata__role="extraction")
-    upstream = qs.filter(upstream_q).aggregate(
-        calls=Count("id"), tokens=Sum("total_tokens"), cost=Sum("estimated_cost_usd"),
-    )
-    extraction = qs.filter(extraction_q).aggregate(
-        calls=Count("id"), tokens=Sum("total_tokens"), cost=Sum("estimated_cost_usd"),
-    )
-    by_role = [
-        {"role": "upstream", "calls": upstream["calls"] or 0,
-         "tokens": upstream["tokens"] or 0, "cost": float(upstream["cost"] or 0)},
-        {"role": "extraction", "calls": extraction["calls"] or 0,
-         "tokens": extraction["tokens"] or 0, "cost": float(extraction["cost"] or 0)},
-    ]
+    # Role split — bucket every recorded call by metadata.role so the rows
+    # add up to the totals row. Rows lacking a role tag (legacy records and
+    # call sites that pre-date role tagging) bucket as "upstream".
+    by_role_map: dict = {}
+    for row in qs.values("metadata", "total_tokens", "estimated_cost_usd"):
+        role = (row["metadata"] or {}).get("role") or "upstream"
+        bucket = by_role_map.setdefault(
+            role, {"role": role, "calls": 0, "tokens": 0, "cost": 0.0},
+        )
+        bucket["calls"] += 1
+        bucket["tokens"] += row["total_tokens"] or 0
+        bucket["cost"] += float(row["estimated_cost_usd"] or 0)
+    by_role = sorted(by_role_map.values(), key=lambda r: r["cost"], reverse=True)
+    for r in by_role:
+        r["cost"] = round(r["cost"], 6)
 
     daily = list(
         qs.annotate(day=TruncDate("created_at"))

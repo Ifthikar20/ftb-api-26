@@ -611,15 +611,17 @@ class LLMRankingUsageView(TenantScopedAPIView):
             return Response({"error": "Usage tracking not available."}, status=500)
 
         cutoff = timezone.now() - timedelta(days=days)
+        # Tenant safety: scope every llm_ranking AITokenUsage row by the
+        # current website AND the requesting user. The OR-with-website-isnull
+        # workaround that used to be here leaked website-less rows from any
+        # tenant; now that extraction/context calls all pass website through,
+        # an exact website match is correct.
         qs = AITokenUsage.objects.filter(
             module="llm_ranking",
             created_at__gte=cutoff,
+            website_id=website_id,
+            user=request.user,
         )
-        # Filter by website if the tracking records have a website FK
-        if hasattr(AITokenUsage, "website"):
-            qs = qs.filter(
-                Q(website_id=website_id) | Q(website__isnull=True)
-            )
 
         # Overall totals
         from django.db.models import Sum

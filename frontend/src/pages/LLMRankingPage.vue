@@ -2157,15 +2157,23 @@ function togglePrompt(text) {
   expandedPrompts.value = s
 }
 
-// Per-prompt 0-100 score using the same formula as compute_overall_score:
-//   visibility * 0.40 + rank bonus + sentiment + provider coverage
+// Per-prompt 0-100 score. Mirrors compute_overall_score on the server so
+// what the user sees per-prompt is consistent with the audit's headline
+// score for the same data:
+//   mention rate * 0.40 (0-40)
+// + rank bonus by avg rank when mentioned (0-30; 0 when no extractable rank)
+// + sentiment ((pos*20 + neu*10) / mentioned, averaged) (0-20)
+// + provider coverage (10 if >=3 providers succeeded, else proportional)
 function computePromptScore(results) {
   const succeeded = results.filter(r => r.query_succeeded)
   if (!succeeded.length) return 0
   const mentioned = succeeded.filter(r => r.is_mentioned)
   const mentionRate = mentioned.length / succeeded.length * 100
 
-  let rankScore = 5
+  // Rank bonus only when we have at least one extractable rank, matching
+  // the server (rank_score stays 0 when ranks list is empty, even if some
+  // responses mention the brand without giving a list position).
+  let rankScore = 0
   const ranks = mentioned.map(r => r.mention_rank).filter(x => x != null)
   if (ranks.length) {
     const avg = ranks.reduce((a, b) => a + b, 0) / ranks.length
@@ -2173,8 +2181,7 @@ function computePromptScore(results) {
     else if (avg <= 3) rankScore = 20
     else if (avg <= 5) rankScore = 15
     else if (avg <= 10) rankScore = 10
-  } else if (!mentioned.length) {
-    rankScore = 0
+    else rankScore = 5
   }
 
   let sentimentScore = 0
@@ -2187,8 +2194,15 @@ function computePromptScore(results) {
   const providerSet = new Set(succeeded.map(r => r.provider))
   const coverage = providerSet.size >= 3 ? 10 : (providerSet.size / 3) * 10
 
-  return Math.round(mentionRate * 0.40 + rankScore + sentimentScore + coverage)
+  return Math.min(100, Math.round(mentionRate * 0.40 + rankScore + sentimentScore + coverage))
 }
+
+// Escape every regex metacharacter so user-supplied keywords can be safely
+// embedded in a RegExp. The previous inline character class was malformed
+// and matched almost nothing, so special chars in a keyword like "C++" or
+// "node.js" would either crash RegExp() or silently never match.
+const REGEX_META = /[.*+?^${}()|[\]\\]/g
+function escapeRegExp(s) { return s.replace(REGEX_META, '\\$&') }
 
 // Intersect audit keywords with the lowercase mention_context across all
 // providers' responses for a prompt. Returns ordered by frequency.
@@ -2201,8 +2215,15 @@ function computeMatchedKeywords(results, auditKeywords) {
     for (const kw of auditKeywords) {
       const k = (kw || '').toLowerCase().trim()
       if (!k || k.length < 2) continue
-      // Word-boundary match to avoid "ai" hitting "email"
-      const pattern = new RegExp('(^|\\W)' + k.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&') + '(\\W|$)', 'i')
+      let pattern
+      try {
+        // Word-boundary match to avoid short keywords matching mid-word
+        // (e.g. "ai" hitting "email"). Wrapped in try/catch so a single
+        // malformed keyword can't poison the whole prompt's match list.
+        pattern = new RegExp('(^|\\W)' + escapeRegExp(k) + '(\\W|$)', 'i')
+      } catch (_) {
+        continue
+      }
       if (pattern.test(blob)) {
         counts.set(k, (counts.get(k) || 0) + 1)
       }
