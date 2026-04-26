@@ -820,6 +820,10 @@
                 <button v-else class="btn btn-ghost btn-sm delete-btn" @click.stop="confirmDeleteId = audit.id">×</button>
               </span>
             </div>
+            <!-- Cost caption (only when populated) -->
+            <div v-if="audit.total_cost_usd && Number(audit.total_cost_usd) > 0" class="lr-job-cost-caption">
+              ${{ Number(audit.total_cost_usd).toFixed(4) }} · {{ formatTokens(audit.total_tokens) }} tokens
+            </div>
 
             <!-- Expanded prompt jobs -->
             <div v-if="expandedAuditId === audit.id" class="lr-job-detail">
@@ -1435,7 +1439,25 @@
                 <span class="wizard-review-label">Context Sources</span>
                 <span class="wizard-review-value">{{ contextUrls.filter(c => c.success).length }} URLs scanned</span>
               </div>
+              <div class="wizard-review-item wizard-review-cost" :class="{ 'over-cap': preflight && preflight.cap_status.would_exceed }">
+                <span class="wizard-review-label">Estimated cost</span>
+                <span v-if="preflightLoading" class="wizard-review-value">Estimating…</span>
+                <span v-else-if="preflight" class="wizard-review-value">
+                  ${{ preflight.estimate.cost_usd.toFixed(4) }}
+                  <span class="wizard-review-cost-sub">
+                    (${{ preflight.estimate.cost_usd_low.toFixed(4) }} – ${{ preflight.estimate.cost_usd_high.toFixed(4) }},
+                    {{ preflight.queries }} queries,
+                    {{ preflight.method === 'historical' ? 'from your history' : 'default rates' }})
+                  </span>
+                </span>
+                <span v-else class="wizard-review-value">—</span>
+              </div>
             </div>
+            <p v-if="preflight && preflight.cap_status.would_exceed" class="form-error" style="margin-top:6px">
+              This audit would push your month-to-date spend past your cap of
+              ${{ Number(preflight.cap_status.cap_usd).toFixed(2) }} (currently
+              ${{ Number(preflight.cap_status.spent_usd).toFixed(2) }}). Raise the cap in Settings to proceed.
+            </p>
 
             <details class="run-modal-advanced" style="margin-top:16px">
               <summary class="text-xs text-muted" style="cursor:pointer;padding:4px 0">Advanced — custom prompts</summary>
@@ -1513,6 +1535,34 @@
         </button>
       </template>
     </BaseModal>
+
+    <!-- Cap-exceeded modal: HTTP 402 from /audits/. Surfaces as a clear
+         action ("raise the cap") instead of a generic error banner. -->
+    <BaseModal
+      v-if="capExceededModal"
+      :model-value="!!capExceededModal"
+      title="Monthly AI spend cap reached"
+      @update:model-value="capExceededModal = null"
+      @close="capExceededModal = null"
+    >
+      <div class="cap-modal-body">
+        <p class="cap-modal-msg">
+          Month-to-date AI spend
+          <strong>${{ Number(capExceededModal.spent).toFixed(2) }}</strong>
+          has reached your cap of
+          <strong>${{ Number(capExceededModal.cap).toFixed(2) }}</strong>.
+        </p>
+        <p class="cap-modal-help">
+          {{ capExceededModal.detail }}
+        </p>
+      </div>
+      <template #footer>
+        <button class="btn btn-secondary" @click="capExceededModal = null">Close</button>
+        <router-link class="btn btn-primary" to="/settings" @click="capExceededModal = null">
+          Go to Settings
+        </router-link>
+      </template>
+    </BaseModal>
     </template>
   </div>
 </template>
@@ -1554,6 +1604,7 @@ const loading = ref(true)
 const running = ref(false)
 const showRunForm = ref(false)
 const auditError = ref('')
+const capExceededModal = ref(null)
 const selectedAuditId = ref(null)
 const latestBreakdown = shallowRef([])
 const recommendations = shallowRef([])
@@ -2038,6 +2089,38 @@ async function wizardNext() {
     }
   }
   wizardStep.value++
+  // Fetch a cost estimate when we land on the review step so the user
+  // sees what the audit will cost BEFORE clicking Start.
+  if (wizardStep.value === 6) {
+    fetchPreflight()
+  }
+}
+
+const preflight = ref(null)
+const preflightLoading = ref(false)
+
+async function fetchPreflight() {
+  preflight.value = null
+  preflightLoading.value = true
+  try {
+    // Estimate using the chosen prompt count (custom prompts override the
+    // default-generated set, otherwise the wizard targets up to 10 prompts).
+    const customCount = (customPromptsText.value || '')
+      .split('\n').map(s => s.trim()).filter(Boolean).length
+    const promptCount = customCount > 0
+      ? customCount
+      : Math.max(1, Math.min(10, auditForm.value.selectedTopics.length || 5))
+    const { data } = await llmRankingApi.preflight(websiteId, {
+      prompt_count: promptCount,
+      providers: auditForm.value.providers,
+    })
+    preflight.value = data?.data || data
+  } catch (e) {
+    // Pre-flight is informational — fail silently if the endpoint is unavailable
+    preflight.value = null
+  } finally {
+    preflightLoading.value = false
+  }
 }
 
 const availableProviders = computed(() =>
@@ -3311,7 +3394,20 @@ async function submitAudit() {
     logsExpanded.value = true
     startLogPolling(audit.id)
   } catch (err) {
-    auditError.value = err.displayMessage || 'Failed to start audit.'
+    // Per-user monthly AI spend cap reached — show a friendly modal instead
+    // of the generic banner so the user knows what to do.
+    const status = err?.response?.status
+    const body = err?.response?.data?.data || err?.response?.data
+    if (status === 402 && body?.error === 'monthly_ai_cost_cap_exceeded') {
+      capExceededModal.value = {
+        spent: body?.cap_status?.spent_usd ?? 0,
+        cap: body?.cap_status?.cap_usd ?? 0,
+        detail: body?.detail || '',
+      }
+      showRunForm.value = false
+    } else {
+      auditError.value = err.displayMessage || 'Failed to start audit.'
+    }
   } finally {
     running.value = false
   }
@@ -4191,6 +4287,25 @@ onBeforeUnmount(() => {
   font-weight: 600;
   color: var(--text-primary);
 }
+.wizard-review-cost {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+.wizard-review-cost.over-cap {
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+.wizard-review-cost-sub {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-muted);
+  margin-left: 4px;
+}
 
 /* Wizard nav */
 .wizard-nav {
@@ -4570,6 +4685,24 @@ onBeforeUnmount(() => {
 }
 .lr-job-header.is-active {
   background: rgba(79, 70, 229, 0.03);
+}
+.lr-job-cost-caption {
+  font-size: 11.5px;
+  color: var(--text-muted, #9ca3af);
+  padding: 2px 0 8px 36px;
+  letter-spacing: 0.02em;
+}
+.cap-modal-body { padding: 8px 4px 0; }
+.cap-modal-msg {
+  font-size: var(--font-base, 14px);
+  margin: 0 0 8px;
+  color: var(--text-primary);
+}
+.cap-modal-help {
+  font-size: var(--font-sm, 13px);
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin: 0;
 }
 .lr-job-chevron {
   transition: transform 0.2s ease;

@@ -77,10 +77,11 @@ A collapsible bar showing which AI providers are configured:
 
 Clickable bar with a mini SVG donut ring showing the overall score (0–100). Clicking expands:
 
-- **Score Breakdown** — three horizontal factor bars:
+- **Score Breakdown** — four horizontal factor bars (matches the formula in `compute_overall_score`):
   - Mention Rate (40pts) — colored green/yellow/red based on score
-  - Rank Position (35pts)
-  - Sentiment + Coverage (25pts)
+  - Rank Position (30pts)
+  - Sentiment (20pts)
+  - Provider Coverage (10pts)
 - **Provider Breakdown grid** — one card per provider showing mention rate badge, avg rank, and queries succeeded/total.
 
 ### 6. Prompts Table

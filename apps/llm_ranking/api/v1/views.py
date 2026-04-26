@@ -143,6 +143,140 @@ class LLMRankingAuditListView(TenantScopedListAPIView):
         )
 
 
+class LLMRankingPreflightView(TenantScopedAPIView):
+    """
+    POST — estimate cost for an audit run BEFORE creating one.
+
+    Body:
+      {
+        "prompt_count": int,         # required, max 10
+        "providers": [str, ...],     # optional, default = all configured
+      }
+
+    Returns:
+      {
+        "providers": [...],           # actually-implemented + configured
+        "prompt_count": int,
+        "queries": int,               # prompt_count * len(providers)
+        "estimate": {
+          "tokens": int,              # total estimated tokens
+          "cost_usd_low": float,
+          "cost_usd_high": float,     # +/- 30% band around the mean
+          "cost_usd": float,          # mean estimate
+        },
+        "cap_status": {
+          "spent_usd": float,
+          "cap_usd": float,
+          "would_exceed": bool,       # spent + cost_usd > cap
+        },
+        "method": "historical" | "default"  # how we costed it
+      }
+    """
+    # Conservative per-call defaults when no historical data exists, in tokens.
+    # Slightly above observed averages so we don't under-quote.
+    DEFAULT_TOKENS = {
+        "claude":     {"input": 1200, "output": 600},
+        "gpt4":       {"input": 1100, "output": 500},
+        "gemini":     {"input": 1100, "output": 550},
+        "perplexity": {"input": 1000, "output": 500},
+    }
+    EXTRACTION_TOKENS = {"input": 600, "output": 300}  # per query, Haiku
+
+    def post(self, request, website_id):
+        self.get_website(website_id)
+        from apps.llm_ranking.providers import PROVIDERS
+        from core.ai_tracking import (
+            PRICING, MODEL_PROVIDER, _estimate_cost, month_to_date_cost,
+        )
+
+        try:
+            prompt_count = int(request.data.get("prompt_count", 0))
+        except (TypeError, ValueError):
+            return Response({"error": "prompt_count must be an integer"}, status=400)
+        if prompt_count <= 0 or prompt_count > 50:
+            return Response({"error": "prompt_count must be 1-50"}, status=400)
+
+        requested = request.data.get("providers") or list(PROVIDERS.keys())
+        # Filter to implemented + configured (mirrors AuditListView behaviour)
+        provider_keys = []
+        for key in requested:
+            if key not in PROVIDERS:
+                continue
+            cls = PROVIDERS[key]
+            if getattr(settings, cls.api_key_setting, ""):
+                provider_keys.append(key)
+        if not provider_keys:
+            return Response({"error": "no providers configured"}, status=400)
+
+        # Try to compute from historical AITokenUsage averages for this user;
+        # fall back to defaults when there's nothing to learn from.
+        from apps.accounts.models import AITokenUsage
+        from django.db.models import Avg
+        method = "historical"
+        total_cost = 0.0
+        total_tokens = 0
+
+        for key in provider_keys:
+            cls = PROVIDERS[key]
+            model = cls.model
+            avg = (
+                AITokenUsage.objects
+                .filter(user=request.user, model_name=model)
+                .aggregate(
+                    in_avg=Avg("input_tokens"),
+                    out_avg=Avg("output_tokens"),
+                )
+            )
+            in_tokens = avg["in_avg"]
+            out_tokens = avg["out_avg"]
+            if in_tokens is None or out_tokens is None:
+                method = "default"
+                defaults = self.DEFAULT_TOKENS.get(key, {"input": 1000, "output": 500})
+                in_tokens = defaults["input"]
+                out_tokens = defaults["output"]
+            in_tokens = int(in_tokens)
+            out_tokens = int(out_tokens)
+            cells = prompt_count
+            cost = _estimate_cost(model, in_tokens, out_tokens) * cells
+            total_cost += cost
+            total_tokens += (in_tokens + out_tokens) * cells
+
+        # Add Haiku extraction cost — runs once per successful upstream cell.
+        extraction_cells = prompt_count * len(provider_keys)
+        ex_cost = _estimate_cost(
+            "claude-haiku-4-5",
+            self.EXTRACTION_TOKENS["input"],
+            self.EXTRACTION_TOKENS["output"],
+        ) * extraction_cells
+        total_cost += ex_cost
+        total_tokens += (
+            self.EXTRACTION_TOKENS["input"] + self.EXTRACTION_TOKENS["output"]
+        ) * extraction_cells
+
+        # Cap context — for a "would exceed?" warning at the modal layer.
+        cap = float(getattr(request.user, "monthly_ai_cost_cap_usd", 0) or 0)
+        spent = month_to_date_cost(request.user)
+        would_exceed = cap > 0 and (spent + total_cost) > cap
+
+        return Response({
+            "providers": provider_keys,
+            "prompt_count": prompt_count,
+            "queries": prompt_count * len(provider_keys),
+            "estimate": {
+                "tokens": total_tokens,
+                "cost_usd": round(total_cost, 4),
+                "cost_usd_low": round(total_cost * 0.7, 4),
+                "cost_usd_high": round(total_cost * 1.3, 4),
+            },
+            "cap_status": {
+                "spent_usd": round(spent, 4),
+                "cap_usd": cap,
+                "would_exceed": would_exceed,
+            },
+            "method": method,
+        })
+
+
 class ScanURLView(TenantScopedAPIView):
     """
     POST — scan a single URL and return extracted content preview.

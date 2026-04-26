@@ -57,6 +57,27 @@ def dispatch_scheduled_audits() -> None:
 
     for schedule in due:
         try:
+            # Per-user monthly AI spend cap. The on-demand audit path enforces
+            # this in the API view; scheduled runs would otherwise bypass it
+            # and silently push the user over their cap. Skip and advance the
+            # schedule so we re-check next cycle.
+            cap_user = schedule.created_by
+            cap = float(getattr(cap_user, "monthly_ai_cost_cap_usd", 0) or 0)
+            if cap > 0:
+                from core.ai_tracking import month_to_date_cost
+                spent = month_to_date_cost(cap_user)
+                if spent >= cap:
+                    logger.warning(
+                        "Skipping scheduled audit for %s: user %s at cap "
+                        "($%.2f / $%.2f).",
+                        schedule.website.name, cap_user.id, spent, cap,
+                    )
+                    # Advance next_run_at so we don't tight-loop checking it.
+                    delta = FREQUENCY_DELTAS.get(schedule.frequency, timedelta(weeks=1))
+                    schedule.next_run_at = now + delta
+                    schedule.save(update_fields=["next_run_at", "updated_at"])
+                    continue
+
             # Generate prompts for the scheduled audit
             prompts = LLMRankingService.generate_prompts(
                 business_name=schedule.business_name,
@@ -64,9 +85,21 @@ def dispatch_scheduled_audits() -> None:
                 description=schedule.business_description,
                 keywords=schedule.keywords,
                 location=schedule.location,
+                user=cap_user,
+                website=schedule.website,
             )
 
-            selected_providers = schedule.providers or ["claude", "gpt4", "gemini", "perplexity"]
+            # Filter requested providers down to those that are both
+            # implemented and configured. Mirrors the API path so a schedule
+            # saved with stale provider keys cannot queue dead cells.
+            from apps.llm_ranking.providers import PROVIDERS
+            from django.conf import settings as _settings
+            requested = schedule.providers or list(PROVIDERS.keys())
+            selected_providers = [
+                key for key in requested
+                if key in PROVIDERS
+                and getattr(_settings, PROVIDERS[key].api_key_setting, "")
+            ] or ["claude"]
 
             audit = LLMRankingAudit.objects.create(
                 website=schedule.website,

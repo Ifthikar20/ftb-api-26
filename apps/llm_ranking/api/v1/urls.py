@@ -4,6 +4,7 @@ from . import views
 
 urlpatterns = [
     path("<uuid:website_id>/audits/", views.LLMRankingAuditListView.as_view(), name="llm-ranking-list"),
+    path("<uuid:website_id>/audits/preflight/", views.LLMRankingPreflightView.as_view(), name="llm-ranking-preflight"),
     path("<uuid:website_id>/preview-prompts/", views.LLMRankingPreviewPromptsView.as_view(), name="llm-ranking-preview-prompts"),
     path("<uuid:website_id>/scan-url/", views.ScanURLView.as_view(), name="llm-ranking-scan-url"),
     path("<uuid:website_id>/audits/<uuid:audit_id>/", views.LLMRankingAuditDetailView.as_view(), name="llm-ranking-detail"),
