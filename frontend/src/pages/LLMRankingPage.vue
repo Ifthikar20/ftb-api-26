@@ -407,7 +407,9 @@
             <span class="pt-th pt-th-topic">Topic</span>
             <span class="pt-th pt-th-count">Prompts</span>
             <span class="pt-th pt-th-vis">Avg Visibility</span>
+            <span class="pt-th pt-th-score">Score</span>
             <span class="pt-th pt-th-perf">Top Performers</span>
+            <span class="pt-th pt-th-keywords">Top Keywords</span>
             <span class="pt-th pt-th-status">Status</span>
           </div>
 
@@ -429,6 +431,9 @@
                   <path d="M2 7L5 3L8 7" :stroke="group.avgVisibility >= 50 ? '#10b981' : '#f59e0b'"/>
                 </svg>
               </span>
+              <span class="pt-td pt-td-score">
+                <strong :style="{ color: scoreColor(group.avgScore) }">{{ group.avgScore }}</strong>
+              </span>
               <span class="pt-td pt-td-perf">
                 <span
                   v-for="d in group.providerSummary"
@@ -438,6 +443,10 @@
                   :title="providerLabel(d.provider) + ': ' + d.hitRate + '% hit rate'"
                 >{{ providerInitial(d.provider) }}</span>
               </span>
+              <span class="pt-td pt-td-keywords">
+                <span v-for="kw in group.topKeywords.slice(0, 3)" :key="kw" class="pt-kw-chip">{{ kw }}</span>
+                <span v-if="!group.topKeywords.length" class="pt-kw-empty">—</span>
+              </span>
               <span class="pt-td pt-td-status">
                 <span class="pt-see-link">See →</span>
               </span>
@@ -445,30 +454,92 @@
 
             <!-- Expanded prompt rows -->
             <template v-if="!collapsedIntents.has(group.intent)">
-              <div v-for="p in group.prompts" :key="p.text" class="pt-prompt-row">
-                <span class="pt-td pt-td-topic pt-td-prompt-text">{{ p.text }}</span>
-                <span class="pt-td pt-td-count"></span>
-                <span class="pt-td pt-td-vis">
-                  <strong :style="{ color: visibilityColor(p.visibility) }">{{ p.visibility }}%</strong>
-                  <svg v-if="p.visibility > 0" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke-width="1.5" style="margin-left:3px">
-                    <path d="M2 7L5 3L8 7" :stroke="p.visibility >= 50 ? '#10b981' : '#f59e0b'"/>
-                  </svg>
-                </span>
-                <span class="pt-td pt-td-perf">
-                  <span
-                    v-for="d in p.providerDots"
-                    :key="d.provider"
-                    class="pt-perf-icon"
-                    :class="{ 'is-hit': d.mentioned, 'is-miss': !d.mentioned && d.succeeded, 'is-fail': !d.succeeded }"
-                    :title="providerLabel(d.provider) + ': ' + providerDotTitle(d)"
-                  >{{ providerInitial(d.provider) }}</span>
-                </span>
-                <span class="pt-td pt-td-status">
-                  <span class="pt-status-pill" :class="p.visibility > 0 ? 'is-ran' : 'is-miss'">
-                    {{ p.visibility > 0 ? 'Prompt Ran' : 'No Mention' }}
+              <template v-for="p in group.prompts" :key="p.text">
+                <div class="pt-prompt-row" @click="togglePrompt(p.text)">
+                  <span class="pt-td pt-td-topic pt-td-prompt-text">
+                    <svg class="pi-chevron pi-chevron-prompt" :class="{ open: expandedPrompts.has(p.text) }"
+                         width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M5 4l5 4-5 4"/>
+                    </svg>
+                    {{ p.text }}
                   </span>
-                </span>
-              </div>
+                  <span class="pt-td pt-td-count"></span>
+                  <span class="pt-td pt-td-vis">
+                    <strong :style="{ color: visibilityColor(p.visibility) }">{{ p.visibility }}%</strong>
+                    <svg v-if="p.visibility > 0" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke-width="1.5" style="margin-left:3px">
+                      <path d="M2 7L5 3L8 7" :stroke="p.visibility >= 50 ? '#10b981' : '#f59e0b'"/>
+                    </svg>
+                  </span>
+                  <span class="pt-td pt-td-score">
+                    <strong :style="{ color: scoreColor(p.score) }">{{ p.score }}</strong>
+                  </span>
+                  <span class="pt-td pt-td-perf">
+                    <span
+                      v-for="d in p.providerDots"
+                      :key="d.provider"
+                      class="pt-perf-icon"
+                      :class="{ 'is-hit': d.mentioned, 'is-miss': !d.mentioned && d.succeeded, 'is-fail': !d.succeeded }"
+                      :title="providerLabel(d.provider) + ': ' + providerDotTitle(d)"
+                    >
+                      {{ providerInitial(d.provider) }}<sub v-if="d.rank" class="pt-perf-rank">{{ d.rank }}</sub>
+                    </span>
+                  </span>
+                  <span class="pt-td pt-td-keywords">
+                    <span v-for="kw in p.matchedKeywords.slice(0, 3)" :key="kw" class="pt-kw-chip">{{ kw }}</span>
+                    <span v-if="!p.matchedKeywords.length" class="pt-kw-empty">—</span>
+                  </span>
+                  <span class="pt-td pt-td-status">
+                    <span class="pt-status-pill" :class="promptStatusClass(p)">
+                      {{ promptStatusLabel(p) }}
+                    </span>
+                  </span>
+                </div>
+
+                <!-- Per-prompt expansion panel -->
+                <div v-if="expandedPrompts.has(p.text)" class="pt-prompt-detail">
+                  <div class="pt-detail-summary">
+                    <div class="pt-detail-stat">
+                      <span class="pt-detail-stat-label">Score</span>
+                      <span class="pt-detail-stat-value" :style="{ color: scoreColor(p.score) }">{{ p.score }}/100</span>
+                    </div>
+                    <div class="pt-detail-stat">
+                      <span class="pt-detail-stat-label">Visibility</span>
+                      <span class="pt-detail-stat-value">{{ p.visibility }}%</span>
+                    </div>
+                    <div class="pt-detail-stat">
+                      <span class="pt-detail-stat-label">Avg rank</span>
+                      <span class="pt-detail-stat-value">{{ p.avgRank ? '#' + p.avgRank : '—' }}</span>
+                    </div>
+                    <div class="pt-detail-stat">
+                      <span class="pt-detail-stat-label">Sentiment</span>
+                      <span class="pt-detail-stat-value pt-sentiment" :class="'pt-sentiment-' + p.dominantSentiment">{{ p.dominantSentiment }}</span>
+                    </div>
+                  </div>
+
+                  <div class="pt-detail-section">
+                    <div class="pt-detail-label">Per-provider results</div>
+                    <div v-for="r in p.responses" :key="r.provider" class="pt-detail-row">
+                      <span class="pt-detail-prov">{{ providerLabel(r.provider) }}</span>
+                      <span v-if="r.is_mentioned" class="pt-detail-rank">{{ r.mention_rank ? '#' + r.mention_rank : 'mentioned' }}</span>
+                      <span v-else-if="r.query_succeeded" class="pt-detail-rank pt-detail-miss">not mentioned</span>
+                      <span v-else class="pt-detail-rank pt-detail-fail">API failed</span>
+                      <span class="pt-detail-context">{{ (r.mention_context || '').slice(0, 220) || (r.response_text || '').slice(0, 220) }}</span>
+                    </div>
+                  </div>
+
+                  <div v-if="p.matchedKeywords.length" class="pt-detail-section">
+                    <div class="pt-detail-label">Keywords found alongside your brand</div>
+                    <span v-for="kw in p.matchedKeywords" :key="kw" class="pt-kw-chip pt-kw-chip-strong">{{ kw }}</span>
+                  </div>
+
+                  <div v-if="p.topCompetitors.length" class="pt-detail-section">
+                    <div class="pt-detail-label">Competitors named on this prompt</div>
+                    <span v-for="c in p.topCompetitors.slice(0, 8)" :key="c.name" class="pt-comp-chip">
+                      {{ c.name }}<sub>×{{ c.count }}</sub>
+                    </span>
+                  </div>
+                </div>
+              </template>
             </template>
           </template>
         </div>
@@ -2070,12 +2141,102 @@ function stopLogPolling() {
 // ── Prompt Intelligence aggregation ─────────────────────────────────────────
 const providerFilter = ref('')
 const collapsedIntents = ref(new Set())
+const expandedPrompts = ref(new Set())
 
 function toggleIntent(intent) {
   const s = new Set(collapsedIntents.value)
   if (s.has(intent)) s.delete(intent)
   else s.add(intent)
   collapsedIntents.value = s
+}
+
+function togglePrompt(text) {
+  const s = new Set(expandedPrompts.value)
+  if (s.has(text)) s.delete(text)
+  else s.add(text)
+  expandedPrompts.value = s
+}
+
+// Per-prompt 0-100 score using the same formula as compute_overall_score:
+//   visibility * 0.40 + rank bonus + sentiment + provider coverage
+function computePromptScore(results) {
+  const succeeded = results.filter(r => r.query_succeeded)
+  if (!succeeded.length) return 0
+  const mentioned = succeeded.filter(r => r.is_mentioned)
+  const mentionRate = mentioned.length / succeeded.length * 100
+
+  let rankScore = 5
+  const ranks = mentioned.map(r => r.mention_rank).filter(x => x != null)
+  if (ranks.length) {
+    const avg = ranks.reduce((a, b) => a + b, 0) / ranks.length
+    if (avg <= 1) rankScore = 30
+    else if (avg <= 3) rankScore = 20
+    else if (avg <= 5) rankScore = 15
+    else if (avg <= 10) rankScore = 10
+  } else if (!mentioned.length) {
+    rankScore = 0
+  }
+
+  let sentimentScore = 0
+  if (mentioned.length) {
+    const pos = mentioned.filter(r => r.sentiment === 'positive').length
+    const neu = mentioned.filter(r => r.sentiment === 'neutral').length
+    sentimentScore = (pos * 20 + neu * 10) / mentioned.length
+  }
+
+  const providerSet = new Set(succeeded.map(r => r.provider))
+  const coverage = providerSet.size >= 3 ? 10 : (providerSet.size / 3) * 10
+
+  return Math.round(mentionRate * 0.40 + rankScore + sentimentScore + coverage)
+}
+
+// Intersect audit keywords with the lowercase mention_context across all
+// providers' responses for a prompt. Returns ordered by frequency.
+function computeMatchedKeywords(results, auditKeywords) {
+  if (!auditKeywords?.length) return []
+  const counts = new Map()
+  for (const r of results) {
+    if (!r.is_mentioned) continue
+    const blob = ((r.mention_context || '') + ' ' + (r.response_text || '')).toLowerCase()
+    for (const kw of auditKeywords) {
+      const k = (kw || '').toLowerCase().trim()
+      if (!k || k.length < 2) continue
+      // Word-boundary match to avoid "ai" hitting "email"
+      const pattern = new RegExp('(^|\\W)' + k.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&') + '(\\W|$)', 'i')
+      if (pattern.test(blob)) {
+        counts.set(k, (counts.get(k) || 0) + 1)
+      }
+    }
+  }
+  return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([k]) => k)
+}
+
+function dominantSentiment(results) {
+  const mentioned = results.filter(r => r.is_mentioned)
+  if (!mentioned.length) return 'not_mentioned'
+  const counts = { positive: 0, neutral: 0, negative: 0 }
+  for (const r of mentioned) {
+    if (counts[r.sentiment] !== undefined) counts[r.sentiment]++
+  }
+  let max = 'neutral', maxCount = -1
+  for (const [k, v] of Object.entries(counts)) {
+    if (v > maxCount) { max = k; maxCount = v }
+  }
+  return max
+}
+
+function promptStatusClass(p) {
+  if (p.providerDots.every(d => !d.succeeded)) return 'is-fail'
+  if (p.visibility === 0) return 'is-miss'
+  if (p.visibility >= 50) return 'is-ran'
+  return 'is-partial'
+}
+
+function promptStatusLabel(p) {
+  if (p.providerDots.every(d => !d.succeeded)) return 'API Failed'
+  if (p.visibility === 0) return 'No Mention'
+  if (p.providerDots.some(d => d.succeeded && !d.mentioned)) return 'Partial'
+  return 'Mentioned'
 }
 
 const filteredResults = computed(() => {
@@ -2140,11 +2301,15 @@ const promptRows = computed(() => {
       .map(([name, count]) => ({ name, count }))
       .sort((a, b) => b.count - a.count)
 
+    const auditKeywords = latestAudit.value?.keywords || auditDetail.value?.keywords || []
     rows.push({
       text,
       intent: promptIntentByText.value[text] || 'custom',
       visibility,
       avgRank,
+      score: computePromptScore(results),
+      matchedKeywords: computeMatchedKeywords(results, auditKeywords),
+      dominantSentiment: dominantSentiment(results),
       providerDots,
       topCompetitors,
       responses: results.filter(r => r.query_succeeded && r.response_text),
@@ -2177,9 +2342,22 @@ const intentGroups = computed(() => {
         provider,
         hitRate: s.total ? Math.round(s.hits / s.total * 100) : 0,
       }))
-      return { intent, prompts, avgVisibility, providerSummary }
+      const avgScore = prompts.length
+        ? Math.round(prompts.reduce((a, p) => a + p.score, 0) / prompts.length)
+        : 0
+      // Top keywords across all prompts in this topic, ranked by frequency.
+      const kwCounts = new Map()
+      for (const p of prompts) {
+        for (const kw of p.matchedKeywords) {
+          kwCounts.set(kw, (kwCounts.get(kw) || 0) + 1)
+        }
+      }
+      const topKeywords = [...kwCounts.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .map(([k]) => k)
+      return { intent, prompts, avgVisibility, avgScore, providerSummary, topKeywords }
     })
-    .sort((a, b) => b.avgVisibility - a.avgVisibility)
+    .sort((a, b) => b.avgScore - a.avgScore)
 })
 
 // Competitors leaderboard: aggregated across all prompts, not filtered
@@ -5271,7 +5449,7 @@ onBeforeUnmount(() => {
 .pt-table { }
 .pt-thead {
   display: grid;
-  grid-template-columns: 1fr 80px 120px 140px 100px;
+  grid-template-columns: 1fr 70px 100px 70px 130px 180px 110px;
   padding: 10px 20px;
   border-bottom: 1px solid var(--border-color, #E5E7EB);
   background: var(--bg-offset, #FAFAFA);
@@ -5285,7 +5463,7 @@ onBeforeUnmount(() => {
 }
 .pt-topic-row {
   display: grid;
-  grid-template-columns: 1fr 80px 120px 140px 100px;
+  grid-template-columns: 1fr 70px 100px 70px 130px 180px 110px;
   padding: 14px 20px;
   border-bottom: 1px solid var(--border-color, #E5E7EB);
   cursor: pointer;
@@ -5296,12 +5474,13 @@ onBeforeUnmount(() => {
 .pt-topic-row:hover { background: var(--bg-offset, #F9FAFB); }
 .pt-prompt-row {
   display: grid;
-  grid-template-columns: 1fr 80px 120px 140px 100px;
+  grid-template-columns: 1fr 70px 100px 70px 130px 180px 110px;
   padding: 10px 20px 10px 44px;
   border-bottom: 1px solid var(--border-color, #E5E7EB);
   align-items: center;
   background: var(--bg-offset, #FAFAFA);
   font-size: 13px;
+  cursor: pointer;
 }
 .pt-prompt-row:last-child { border-bottom: none; }
 .pt-td { display: flex; align-items: center; gap: 4px; }
@@ -5369,6 +5548,152 @@ onBeforeUnmount(() => {
   color: var(--text-muted);
   border-color: var(--border-color);
   background: var(--bg-offset);
+}
+.pt-status-pill.is-partial {
+  color: #b45309;
+  border-color: #fde68a;
+  background: #fffbeb;
+}
+.pt-status-pill.is-fail {
+  color: #b91c1c;
+  border-color: #fecaca;
+  background: #fef2f2;
+}
+
+/* Score column */
+.pt-td-score {
+  font-size: 14px;
+  font-weight: 700;
+  justify-content: center;
+}
+.pt-td-vis { justify-content: center; }
+
+/* Top Keywords column */
+.pt-td-keywords {
+  flex-wrap: wrap;
+  gap: 4px;
+  overflow: hidden;
+}
+.pt-kw-chip {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: #eff6ff;
+  color: #1e40af;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.pt-kw-chip-strong {
+  background: #dbeafe;
+  color: #1e3a8a;
+  font-weight: 600;
+  margin: 2px 4px 2px 0;
+}
+.pt-kw-empty { color: var(--text-muted, #9CA3AF); font-size: 12px; }
+
+/* Provider rank sub-badge (e.g. "C" with #2) */
+.pt-perf-rank {
+  position: absolute;
+  bottom: -4px;
+  right: -4px;
+  font-size: 8px;
+  font-weight: 700;
+  background: var(--text-primary, #111);
+  color: #fff;
+  border-radius: 8px;
+  padding: 1px 4px;
+  line-height: 1;
+}
+.pt-perf-icon { position: relative; }
+
+/* Prompt expand chevron */
+.pi-chevron-prompt {
+  margin-right: 4px;
+  transition: transform 0.15s;
+  color: var(--text-muted);
+}
+.pi-chevron-prompt.open { transform: rotate(90deg); }
+
+/* Per-prompt expansion panel */
+.pt-prompt-detail {
+  padding: 16px 20px 20px 44px;
+  background: var(--bg-base, #fff);
+  border-bottom: 1px solid var(--border-color, #E5E7EB);
+  border-left: 3px solid #3b82f6;
+}
+.pt-detail-summary {
+  display: flex;
+  gap: 32px;
+  padding-bottom: 14px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--border-color, #E5E7EB);
+}
+.pt-detail-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.pt-detail-stat-label {
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+.pt-detail-stat-value {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.pt-sentiment { font-size: 13px; text-transform: capitalize; }
+.pt-sentiment-positive { color: #059669; }
+.pt-sentiment-neutral { color: #4b5563; }
+.pt-sentiment-negative { color: #dc2626; }
+.pt-sentiment-not_mentioned { color: #9ca3af; }
+
+.pt-detail-section {
+  margin-top: 12px;
+}
+.pt-detail-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+.pt-detail-row {
+  display: grid;
+  grid-template-columns: 110px 90px 1fr;
+  gap: 12px;
+  padding: 6px 0;
+  font-size: 12.5px;
+  align-items: baseline;
+}
+.pt-detail-prov { font-weight: 600; color: var(--text-primary); }
+.pt-detail-rank { font-weight: 600; color: #059669; }
+.pt-detail-rank.pt-detail-miss { color: var(--text-muted); font-weight: 500; }
+.pt-detail-rank.pt-detail-fail { color: #dc2626; font-weight: 500; }
+.pt-detail-context {
+  color: var(--text-secondary);
+  font-style: italic;
+  line-height: 1.45;
+}
+
+.pt-comp-chip {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: var(--bg-offset, #f3f4f6);
+  color: var(--text-primary);
+  font-size: 11.5px;
+  margin: 2px 4px 2px 0;
+}
+.pt-comp-chip sub {
+  font-size: 9px;
+  color: var(--text-muted);
+  margin-left: 3px;
 }
 
 
