@@ -13,6 +13,9 @@ class ClaudeProvider(LLMProvider):
     name = "claude"
     model = "claude-sonnet-4-20250514"
     api_key_setting = "ANTHROPIC_API_KEY"
+    # Anthropic Tier 1 = 50 RPM. Stay well under to share with extraction.
+    rpm = 40
+    burst = 15
 
     def _call(self, *, prompt: str, system_prompt: str) -> ProviderResult:
         import anthropic

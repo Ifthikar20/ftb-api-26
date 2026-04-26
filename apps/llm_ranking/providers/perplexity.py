@@ -10,6 +10,9 @@ class PerplexityProvider(LLMProvider):
     model = "llama-3.1-sonar-small-128k-online"
     api_key_setting = "PERPLEXITY_API_KEY"
     timeout_seconds = 30
+    # Perplexity free tier = 50 RPM for Sonar small. Cap at 30 for headroom.
+    rpm = 30
+    burst = 10
 
     def _call(self, *, prompt: str, system_prompt: str) -> ProviderResult:
         resp = requests.post(

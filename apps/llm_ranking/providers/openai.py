@@ -7,6 +7,9 @@ class OpenAIProvider(LLMProvider):
     name = "gpt4"
     model = "gpt-4o-mini"
     api_key_setting = "OPENAI_API_KEY"
+    # OpenAI Tier 1 for gpt-4o-mini = ~500 RPM. Cap at 200 for headroom.
+    rpm = 200
+    burst = 30
 
     def _call(self, *, prompt: str, system_prompt: str) -> ProviderResult:
         import openai

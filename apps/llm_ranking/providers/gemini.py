@@ -7,6 +7,9 @@ class GeminiProvider(LLMProvider):
     name = "gemini"
     model = "gemini-1.5-flash"
     api_key_setting = "GEMINI_API_KEY"
+    # Gemini 1.5 Flash free tier = 15 RPM. Paid tier higher; stay conservative.
+    rpm = 15
+    burst = 10
 
     def _call(self, *, prompt: str, system_prompt: str) -> ProviderResult:
         import google.generativeai as genai
