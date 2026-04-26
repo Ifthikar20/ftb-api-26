@@ -275,6 +275,34 @@ class LLMRankingAuditRunView(TenantScopedAPIView):
         return Response(LLMRankingAuditListSerializer(audit).data)
 
 
+class LLMRankingAuditLogsView(TenantScopedAPIView):
+    """
+    GET — return live pipeline logs for an audit.
+
+    Used by the frontend to display real-time progress during a running audit.
+    Supports ?after=<ISO8601> to only return new entries since the given timestamp.
+    """
+
+    def get(self, request, website_id, audit_id):
+        self.get_website(website_id)
+        audit = self.get_tenant_object(
+            LLMRankingAudit, id=audit_id, website_id=website_id,
+        )
+        logs = list(audit.audit_logs or [])
+
+        # Optional: only return logs after a given timestamp
+        after = request.query_params.get("after")
+        if after:
+            logs = [l for l in logs if l.get("ts", "") > after]
+
+        return Response({
+            "audit_id": str(audit.id),
+            "status": audit.status,
+            "queries_completed": audit.queries_completed,
+            "total_queries": audit.total_queries,
+            "logs": logs,
+        })
+
 class LLMRankingRecommendationsView(TenantScopedAPIView):
     """GET — return actionable recommendations for improving LLM visibility."""
 

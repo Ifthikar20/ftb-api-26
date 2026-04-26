@@ -8,6 +8,7 @@ urlpatterns = [
     path("<uuid:website_id>/scan-url/", views.ScanURLView.as_view(), name="llm-ranking-scan-url"),
     path("<uuid:website_id>/audits/<uuid:audit_id>/", views.LLMRankingAuditDetailView.as_view(), name="llm-ranking-detail"),
     path("<uuid:website_id>/audits/<uuid:audit_id>/run/", views.LLMRankingAuditRunView.as_view(), name="llm-ranking-run"),
+    path("<uuid:website_id>/audits/<uuid:audit_id>/logs/", views.LLMRankingAuditLogsView.as_view(), name="llm-ranking-logs"),
     path("<uuid:website_id>/audits/<uuid:audit_id>/breakdown/", views.LLMRankingProviderBreakdownView.as_view(), name="llm-ranking-breakdown"),
     path("<uuid:website_id>/audits/<uuid:audit_id>/recommendations/", views.LLMRankingRecommendationsView.as_view(), name="llm-ranking-recommendations"),
     path("<uuid:website_id>/audits/<uuid:audit_id>/prompts/", views.LLMRankingPromptResultsView.as_view(), name="llm-ranking-prompt-results"),

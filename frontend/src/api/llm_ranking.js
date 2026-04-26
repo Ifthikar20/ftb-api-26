@@ -8,6 +8,7 @@ export default {
     getAudit: (wid, aid) => api.get(`/llm-ranking/${wid}/audits/${aid}/`),
     deleteAudit: (wid, aid) => api.delete(`/llm-ranking/${wid}/audits/${aid}/`),
     executeAudit: (wid, aid) => api.post(`/llm-ranking/${wid}/audits/${aid}/run/`),
+    auditLogs: (wid, aid, params) => api.get(`/llm-ranking/${wid}/audits/${aid}/logs/`, { params }),
     breakdown: (wid, aid) => api.get(`/llm-ranking/${wid}/audits/${aid}/breakdown/`),
     recommendations: (wid, aid) => api.get(`/llm-ranking/${wid}/audits/${aid}/recommendations/`),
     // Prompt-level results with optional filters

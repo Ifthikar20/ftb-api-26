@@ -58,6 +58,9 @@ class LLMRankingAudit(TimestampMixin):
     started_at = models.DateTimeField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
     error_message = models.TextField(blank=True)
+    # Live pipeline logs — the frontend polls these during a running audit
+    # Each entry: {"ts": "ISO8601", "level": "info|warn|success|error", "msg": str}
+    audit_logs = models.JSONField(default=list, blank=True)
     # Duration of the audit run in seconds
     duration_seconds = models.FloatField(null=True, blank=True)
     # Statistics: number of replicates per (prompt, provider) — N=1 is the current default

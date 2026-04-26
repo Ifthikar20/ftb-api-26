@@ -455,6 +455,21 @@ class LLMRankingService:
         """
         from apps.llm_ranking.models import LLMRankingAudit, LLMRankingResult
 
+        def _audit_log(audit_obj, msg, level="info"):
+            """Append a timestamped log entry and persist immediately."""
+            entry = {
+                "ts": timezone.now().isoformat(),
+                "level": level,
+                "msg": msg,
+            }
+            logs = list(audit_obj.audit_logs or [])
+            logs.append(entry)
+            audit_obj.audit_logs = logs
+            try:
+                audit_obj.save(update_fields=["audit_logs", "updated_at"])
+            except Exception:
+                pass  # non-critical
+
         try:
             audit = LLMRankingAudit.objects.select_related("website").get(id=audit_id)
         except LLMRankingAudit.DoesNotExist:
@@ -473,6 +488,9 @@ class LLMRankingService:
         # Filter to only providers that have a query function
         selected_providers = [p for p in selected_providers if p in provider_map]
 
+        _audit_log(audit, f"Starting audit for {audit.business_name} ({audit.industry})")
+        _audit_log(audit, f"Selected LLM providers: {', '.join(selected_providers)}")
+
         # ── Content enrichment: scan URLs + Google ────────────────────────
         # Build rich context from the website, user-provided URLs, and Google
         enriched_context = ""
@@ -489,6 +507,10 @@ class LLMRankingService:
                     extra_urls.append(entry)
             extra_urls = [u for u in extra_urls if u]
 
+            _audit_log(audit, f"🔍 Scanning main website: {audit.website.url}")
+            if extra_urls:
+                _audit_log(audit, f"🔍 Scanning {len(extra_urls)} extra URL(s): {', '.join(u[:50] for u in extra_urls)}")
+
             enrichment = ContentEnricher.enrich(
                 main_url=audit.website.url,
                 extra_urls=extra_urls,
@@ -497,16 +519,42 @@ class LLMRankingService:
                 include_google=True,
             )
             enriched_context = enrichment.get("llm_context", "")
+
+            # Log what was found
+            main_scan = enrichment.get("main_scan", {})
+            if main_scan.get("success"):
+                products = main_scan.get("products", [])
+                _audit_log(audit, f"✅ Website scanned — found {len(products)} product(s)/service(s)", "success")
+            else:
+                _audit_log(audit, f"⚠️ Website scan returned no data", "warn")
+
+            extra_scans = enrichment.get("extra_scans", [])
+            for scan in extra_scans:
+                url_short = scan.get("url", "")[:60]
+                if scan.get("success"):
+                    _audit_log(audit, f"✅ Scanned: {url_short}", "success")
+                else:
+                    _audit_log(audit, f"⚠️ Failed to scan: {url_short}", "warn")
+
+            google_snippets = enrichment.get("google_snippets", [])
+            if google_snippets:
+                _audit_log(audit, f"🌐 Google Search: found {len(google_snippets)} competitive snippet(s)", "success")
+
+            _audit_log(audit, f"📦 Context assembled — {len(enriched_context):,} chars of business intelligence")
+
             logger.info(
                 "Content enrichment complete for audit %s — %d extra URLs, context length: %d",
                 audit_id, len(extra_urls), len(enriched_context),
             )
         except Exception as exc:
             logger.warning("Content enrichment failed for audit %s: %s", audit_id, exc)
+            _audit_log(audit, f"⚠️ Content enrichment failed: {str(exc)[:100]}", "warn")
             # Non-fatal — audit continues with basic prompts
 
         # Build the enriched system prompt for Claude
         enriched_system = build_enriched_system_prompt(SYSTEM_INSTRUCTION, enriched_context)
+        if enriched_context:
+            _audit_log(audit, "🧠 Enriched system prompt ready — Claude will see full business context")
 
         # Calculate total queries and set progress tracking
         # Prompts may be structured [{"text": ..., "type": ...}] or flat ["..."]
@@ -518,6 +566,7 @@ class LLMRankingService:
                 prompt_items.append({"text": str(p), "type": "custom"})
 
         total = len(selected_providers) * len(prompt_items)
+        _audit_log(audit, f"🚀 Running {total} queries ({len(prompt_items)} prompts × {len(selected_providers)} providers)")
         audit.status = LLMRankingAudit.STATUS_RUNNING
         audit.total_queries = total
         audit.queries_completed = 0
@@ -530,13 +579,25 @@ class LLMRankingService:
         providers_succeeded = []
         completed = 0
 
+        PROVIDER_LABELS = {
+            'claude': 'Claude', 'gpt4': 'GPT-4', 'gemini': 'Gemini',
+            'perplexity': 'Perplexity', 'meta_llama': 'Meta Llama',
+            'mistral': 'Mistral', 'cohere': 'Cohere', 'deepseek': 'DeepSeek',
+            'grok': 'Grok', 'amazon_nova': 'Amazon Nova',
+        }
+
         for provider in selected_providers:
             query_fn = provider_map.get(provider)
             if not query_fn:
                 continue
 
+            plabel = PROVIDER_LABELS.get(provider, provider)
+            _audit_log(audit, f"━━━ Querying {plabel} ━━━")
+
             for prompt_item in prompt_items:
                 prompt_text = prompt_item["text"]
+                prompt_short = prompt_text[:80] + ('...' if len(prompt_text) > 80 else '')
+                _audit_log(audit, f"📤 → {plabel}: \"{prompt_short}\"")
 
                 try:
                     # Pass enriched context to Claude; other providers get basic prompt
@@ -547,8 +608,11 @@ class LLMRankingService:
                 except Exception as exc:
                     succeeded, response_text, error = False, "", str(exc)
                     logger.warning("Provider %s threw for audit %s: %s", provider, audit_id, exc)
+                    _audit_log(audit, f"❌ {plabel} error: {str(exc)[:80]}", "error")
 
                 if succeeded:
+                    resp_len = len(response_text)
+                    _audit_log(audit, f"📥 ← {plabel} responded ({resp_len:,} chars) — extracting mentions...", "success")
                     from apps.llm_ranking.services.extraction_service import (
                         HaikuExtractionService,
                     )
@@ -557,7 +621,18 @@ class LLMRankingService:
                         brand_name=audit.business_name,
                         keywords=audit.keywords,
                     )
+                    # Log extraction result
+                    if analysis["is_mentioned"]:
+                        rank = analysis.get("mention_rank") or "?"
+                        sentiment = analysis.get("sentiment", "neutral")
+                        _audit_log(audit, f"🏆 {audit.business_name} mentioned at rank #{rank} — sentiment: {sentiment}", "success")
+                    else:
+                        _audit_log(audit, f"👻 {audit.business_name} NOT mentioned in response", "warn")
+                    competitors = analysis.get("competitors_mentioned", [])
+                    if competitors:
+                        _audit_log(audit, f"   ↳ Competitors found: {', '.join(competitors[:5])}")
                 else:
+                    _audit_log(audit, f"❌ {plabel} query failed: {error[:80]}", "error")
                     analysis = {
                         "is_mentioned": False,
                         "mention_rank": None,
@@ -599,10 +674,14 @@ class LLMRankingService:
                 audit.queries_completed = completed
                 audit.save(update_fields=["queries_completed", "updated_at"])
 
+            provider_results = [r for r in all_results if r.provider == provider]
+            prov_mentioned = sum(1 for r in provider_results if r.is_mentioned)
             if any(r.provider == provider and r.query_succeeded for r in all_results):
                 providers_succeeded.append(provider)
+            _audit_log(audit, f"✅ {plabel} done — mentioned in {prov_mentioned}/{len(provider_results)} responses", "success")
 
         # Compute aggregate scores
+        _audit_log(audit, "📊 Computing aggregate scores...")
         scores = LLMRankingService.compute_overall_score(all_results)
 
         audit.status = LLMRankingAudit.STATUS_COMPLETED
@@ -617,6 +696,16 @@ class LLMRankingService:
         # Calculate duration
         if audit.started_at:
             audit.duration_seconds = (audit.completed_at - audit.started_at).total_seconds()
+
+        _audit_log(audit, f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        _audit_log(audit, f"🏁 AUDIT COMPLETE", "success")
+        _audit_log(audit, f"   Overall Score: {scores['overall_score']}/100")
+        _audit_log(audit, f"   Mention Rate: {scores['mention_rate']:.1f}%")
+        _audit_log(audit, f"   Avg Rank When Mentioned: #{scores['avg_mention_rank']:.1f}")
+        if audit.duration_seconds:
+            _audit_log(audit, f"   Duration: {audit.duration_seconds:.1f}s")
+        _audit_log(audit, f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+
         audit.save(update_fields=[
             "status", "overall_score", "mention_rate", "avg_mention_rank",
             "mention_rate_ci_lower", "mention_rate_ci_upper",

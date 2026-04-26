@@ -501,6 +501,41 @@
         </div>
       </div>
 
+      <!-- ═══ Pipeline Logs (terminal-style) ═══ -->
+      <div v-if="pipelineLogs.length" class="pipeline-log-card" :class="{ 'is-collapsed': !logsExpanded && !isAuditRunning }" style="margin-bottom:24px">
+        <div class="pipeline-log-header" @click="logsExpanded = !logsExpanded">
+          <div class="pipeline-log-title">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+              <rect x="2" y="2" width="12" height="12" rx="2"/>
+              <path d="M5 6l2 2-2 2"/>
+              <line x1="9" y1="10" x2="11" y2="10"/>
+            </svg>
+            Pipeline Log
+            <span v-if="isAuditRunning" class="live-pulse"></span>
+          </div>
+          <div class="pipeline-log-meta">
+            <span v-if="logProgress.total" class="text-xs">{{ logProgress.completed }}/{{ logProgress.total }} queries</span>
+            <svg class="pipeline-log-chevron" :class="{ rotated: logsExpanded || isAuditRunning }" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M3 5l3 3 3-3"/>
+            </svg>
+          </div>
+        </div>
+        <div v-show="logsExpanded || isAuditRunning" class="pipeline-log-body" ref="logScrollRef">
+          <div
+            v-for="(log, idx) in pipelineLogs"
+            :key="idx"
+            class="pipeline-log-entry"
+            :class="'log-' + log.level"
+          >
+            <span class="log-time">{{ formatLogTime(log.ts) }}</span>
+            <span class="log-msg">{{ log.msg }}</span>
+          </div>
+          <div v-if="isAuditRunning" class="pipeline-log-cursor">
+            <span class="cursor-blink">▊</span>
+          </div>
+        </div>
+      </div>
+
       <!-- Overview row: trends (left) + competitors leaderboard (right) -->
       <div v-if="history.length || (isAuditComplete && competitorLeaderboard.length)"
            class="lr-grid-2" style="margin-bottom:24px">
@@ -1412,7 +1447,7 @@
 </template>
 
 <script setup>
-import { ref, shallowRef, computed, onMounted, onBeforeUnmount, markRaw } from 'vue'
+import { ref, shallowRef, computed, onMounted, onBeforeUnmount, markRaw, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { useToast } from '@/composables/useToast'
 import { useAppStore } from '@/stores/app'
@@ -1707,25 +1742,6 @@ async function scanDomain() {
       auditForm.value.description = result.description || auditForm.value.description
       auditForm.value.industry = result.industry || auditForm.value.industry
 
-// First-run gate: user lands here before ever running an audit.
-const showFirstRun = computed(() => !loading.value && audits.value.length === 0)
-
-function handleAuditStarted(audit) {
-  // The new audit record is now live — add it to the list, select it, and
-  // begin polling. This swaps the view out of first-run into the dashboard.
-  if (audit?.id) {
-    audits.value.unshift(audit)
-    selectedAuditId.value = audit.id
-  }
-  toast.success('Audit started. Results will appear as each LLM responds.')
-}
-
-// Live per-query results: sorted newest-first for the running ticker
-const liveResults = computed(() => {
-  const list = auditDetail.value?.results || []
-  return [...list].reverse()
-})
-
       // Auto-populate real competitors from LLM
       if (result.competitors && result.competitors.length) {
         auditForm.value.competitors = result.competitors.map(c => ({
@@ -1742,6 +1758,19 @@ const liveResults = computed(() => {
   } finally {
     scanning.value = false
   }
+}
+
+// First-run gate: user lands here before ever running an audit.
+const showFirstRun = computed(() => !loading.value && audits.value.length === 0)
+
+function handleAuditStarted(audit) {
+  // The new audit record is now live — add it to the list, select it, and
+  // begin polling. This swaps the view out of first-run into the dashboard.
+  if (audit?.id) {
+    audits.value.unshift(audit)
+    selectedAuditId.value = audit.id
+  }
+  toast.success('Audit started. Results will appear as each LLM responds.')
 }
 
 async function regenerateTopics() {
@@ -1989,6 +2018,54 @@ const liveResults = computed(() => {
   const list = auditDetail.value?.results || []
   return [...list].reverse()
 })
+
+// ── Pipeline Logs state ──────────────────────────────────────────────────────
+const pipelineLogs = ref([])
+const logsExpanded = ref(true)
+const logScrollRef = ref(null)
+const logProgress = ref({ completed: 0, total: 0 })
+let logPollTimer = null
+
+function formatLogTime(ts) {
+  if (!ts) return ''
+  const d = new Date(ts)
+  return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+}
+
+async function fetchPipelineLogs(auditId) {
+  if (!auditId) return
+  try {
+    const { data } = await llmRankingApi.auditLogs(websiteId, auditId)
+    const result = data?.data || data
+    pipelineLogs.value = result.logs || []
+    logProgress.value = {
+      completed: result.queries_completed || 0,
+      total: result.total_queries || 0,
+    }
+    // Auto-scroll to bottom
+    nextTick(() => {
+      if (logScrollRef.value) {
+        logScrollRef.value.scrollTop = logScrollRef.value.scrollHeight
+      }
+    })
+  } catch (_) { /* ignore */ }
+}
+
+function startLogPolling(auditId) {
+  stopLogPolling()
+  if (!auditId) return
+  // Fetch immediately
+  fetchPipelineLogs(auditId)
+  // Then poll every 2s
+  logPollTimer = setInterval(() => fetchPipelineLogs(auditId), 2000)
+}
+
+function stopLogPolling() {
+  if (logPollTimer) {
+    clearInterval(logPollTimer)
+    logPollTimer = null
+  }
+}
 
 // ── Prompt Intelligence aggregation ─────────────────────────────────────────
 const providerFilter = ref('')
@@ -3029,8 +3106,11 @@ async function submitAudit() {
     auditDetail.value = audit
     showRunForm.value = false
     toast.success('Audit queued. Results will appear once complete.')
-    // Start polling for results
+    // Start polling for results + pipeline logs
     startPolling()
+    pipelineLogs.value = []
+    logsExpanded.value = true
+    startLogPolling(audit.id)
   } catch (err) {
     auditError.value = err.displayMessage || 'Failed to start audit.'
   } finally {
@@ -3043,6 +3123,16 @@ async function selectAudit(audit) {
   latestBreakdown.value = []
   recommendations.value = []
   auditDetail.value = null
+
+  // Load pipeline logs for this audit
+  fetchPipelineLogs(audit.id)
+  if (audit.status === 'running' || audit.status === 'pending') {
+    logsExpanded.value = true
+    startLogPolling(audit.id)
+  } else {
+    stopLogPolling()
+    logsExpanded.value = false
+  }
 
   if (audit.status !== 'completed') return
 
@@ -3083,6 +3173,9 @@ function startPolling() {
     const hasRunning = audits.value.some(a => a.status === 'pending' || a.status === 'running')
     if (!hasRunning) {
       stopPolling()
+      stopLogPolling()
+      // Final log fetch to capture completion summary
+      if (selectedAuditId.value) fetchPipelineLogs(selectedAuditId.value)
       return
     }
     try {
@@ -3267,6 +3360,7 @@ onMounted(() => {
 })
 onBeforeUnmount(() => {
   stopPolling()
+  stopLogPolling()
   document.removeEventListener('click', onDocClick)
 })
 </script>
@@ -5366,6 +5460,99 @@ onBeforeUnmount(() => {
 @keyframes live-row-in {
   from { opacity: 0; transform: translateY(-4px); }
   to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ═══ Pipeline Log (terminal-style) ═══ */
+.pipeline-log-card {
+  border-radius: var(--radius-lg, 12px);
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.06);
+  background: #0d1117;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.25);
+}
+.pipeline-log-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: #161b22;
+  cursor: pointer;
+  user-select: none;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.pipeline-log-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #e6edf3;
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+}
+.pipeline-log-title svg { stroke: #7d8590; }
+.pipeline-log-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #7d8590;
+}
+.pipeline-log-chevron {
+  transition: transform 0.2s;
+  stroke: #7d8590;
+}
+.pipeline-log-chevron.rotated {
+  transform: rotate(180deg);
+}
+.pipeline-log-body {
+  max-height: 420px;
+  overflow-y: auto;
+  padding: 12px 16px;
+  scroll-behavior: smooth;
+}
+.pipeline-log-body::-webkit-scrollbar { width: 6px; }
+.pipeline-log-body::-webkit-scrollbar-track { background: transparent; }
+.pipeline-log-body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+.pipeline-log-entry {
+  display: flex;
+  gap: 12px;
+  padding: 3px 0;
+  font-size: 12.5px;
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  line-height: 1.6;
+  animation: log-entry-in 0.25s ease;
+}
+@keyframes log-entry-in {
+  from { opacity: 0; transform: translateX(-4px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.log-time {
+  flex-shrink: 0;
+  color: #484f58;
+  font-size: 11px;
+  min-width: 70px;
+}
+.log-msg {
+  color: #8b949e;
+  word-break: break-word;
+}
+.log-info .log-msg  { color: #8b949e; }
+.log-success .log-msg { color: #3fb950; }
+.log-warn .log-msg { color: #d29922; }
+.log-error .log-msg { color: #f85149; }
+.pipeline-log-cursor {
+  padding: 2px 0;
+}
+.cursor-blink {
+  color: #58a6ff;
+  font-size: 13px;
+  animation: cursor-blink-kf 1s step-end infinite;
+}
+@keyframes cursor-blink-kf {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0; }
+}
+.pipeline-log-card.is-collapsed .pipeline-log-header {
+  border-bottom: none;
 }
 
 /* Recommendations */
