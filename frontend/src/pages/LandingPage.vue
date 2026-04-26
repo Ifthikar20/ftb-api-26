@@ -186,6 +186,32 @@
                   </div>
                 </div>
 
+                <!-- LLM Ranking: provider visibility bars -->
+                <div v-else-if="f.visual === 'llm'" class="viz viz-llm">
+                  <div class="viz-stat">
+                    <div class="viz-stat-value">{{ metricFor(f, i) }}</div>
+                    <div class="viz-stat-meta">
+                      <span class="viz-stat-label">{{ f.metric.label }}</span>
+                      <span class="viz-stat-delta up">{{ f.metric.delta }}</span>
+                    </div>
+                  </div>
+                  <div class="llm-list">
+                    <div
+                      v-for="(p, pi) in f.providers"
+                      :key="p.name"
+                      class="llm-row"
+                      :style="{ animationDelay: (0.15 + pi * 0.12) + 's' }"
+                    >
+                      <span class="llm-icon">{{ p.icon }}</span>
+                      <span class="llm-name">{{ p.name }}</span>
+                      <span class="llm-bar">
+                        <span class="llm-bar-fill" :class="p.tier" :style="{ width: p.score + '%', animationDelay: (0.25 + pi * 0.12) + 's' }"></span>
+                      </span>
+                      <span class="llm-score">{{ p.score }}%</span>
+                    </div>
+                  </div>
+                </div>
+
                 <!-- Fallback: icon -->
                 <div v-else class="card-icon" v-html="f.icon"></div>
               </div>
@@ -648,6 +674,22 @@ const features = [
       { name: 'Northwind Ltd',  domain: 'northwind.co',  score: 67, hot: false },
     ],
     icon: '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="12" cy="7" r="4"/><path d="M5.5 21c0-3.5 3-6 6.5-6s6.5 2.5 6.5 6"/></svg>'
+  },
+  {
+    title: 'LLM Ranking',
+    desc: 'Audit your AI visibility across ChatGPT, Claude, Gemini & more — see if LLMs recommend your brand.',
+    replaces: 'Nothing like it exists',
+    tint: 'tint-violet',
+    visual: 'llm',
+    scene: 'aurora',
+    metric: { value: '72', label: 'AI Visibility Score', delta: '+12 pts' },
+    providers: [
+      { name: 'ChatGPT',    icon: '🟢', score: 85, tier: 'tier-high' },
+      { name: 'Claude',     icon: '🟣', score: 72, tier: 'tier-high' },
+      { name: 'Gemini',     icon: '🔵', score: 58, tier: 'tier-mid' },
+      { name: 'Perplexity', icon: '🟠', score: 41, tier: 'tier-low' },
+    ],
+    icon: '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>'
   },
 ]
 

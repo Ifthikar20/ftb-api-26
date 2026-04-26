@@ -43,6 +43,9 @@ class LLMRankingAudit(TimestampMixin):
     industry = models.CharField(max_length=100, blank=True)
     location = models.CharField(max_length=200, blank=True)
     keywords = models.JSONField(default=list)
+    # Extra URLs the user provided for context (blog posts, product pages, etc.)
+    # Each entry: {"url": str, "title": str, "success": bool, "summary": str}
+    context_urls = models.JSONField(default=list, blank=True)
     # Aggregate scores
     overall_score = models.IntegerField(default=0, db_index=True)  # 0-100
     mention_rate = models.FloatField(default=0.0)   # % of queries where business was mentioned
@@ -55,6 +58,9 @@ class LLMRankingAudit(TimestampMixin):
     started_at = models.DateTimeField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
     error_message = models.TextField(blank=True)
+    # Live pipeline logs — the frontend polls these during a running audit
+    # Each entry: {"ts": "ISO8601", "level": "info|warn|success|error", "msg": str}
+    audit_logs = models.JSONField(default=list, blank=True)
     # Duration of the audit run in seconds
     duration_seconds = models.FloatField(null=True, blank=True)
     # Statistics: number of replicates per (prompt, provider) — N=1 is the current default
@@ -186,6 +192,41 @@ class LLMRankingResult(TimestampMixin):
     # Which model + prompt version was used to extract structured data
     extraction_model = models.CharField(max_length=100, blank=True)
     extraction_version = models.CharField(max_length=20, blank=True)
+    # The intent type of the prompt (recommendation, comparison, persona, etc.)
+    # NOTE: computed at runtime from prompt text — no database column needed.
+    PROMPT_TYPE_CHOICES = [
+        ("recommendation", "Recommendation"),
+        ("comparison", "Comparison"),
+        ("use_case", "Use Case"),
+        ("alternatives", "Alternatives"),
+        ("category", "Category"),
+        ("persona", "Persona"),
+        ("review", "Review"),
+        ("local", "Local"),
+        ("custom", "Custom"),
+    ]
+    _PROMPT_TYPE_MAP = dict(PROMPT_TYPE_CHOICES)
+
+    @property
+    def prompt_type(self):
+        """Infer prompt intent from the prompt text."""
+        p = (self.prompt or "").lower()
+        if any(k in p for k in ("compare", "comparison", "side-by-side", "vs")):
+            return "comparison"
+        if any(k in p for k in ("recommend", "best", "top", "should i", "which")):
+            return "recommendation"
+        if any(k in p for k in ("use case", "scenario", "startup", "enterprise")):
+            return "use_case"
+        if any(k in p for k in ("alternative", "instead of", "replace")):
+            return "alternatives"
+        if any(k in p for k in ("review", "opinion", "rating")):
+            return "review"
+        if any(k in p for k in ("near me", "local", "in my area")):
+            return "local"
+        return "custom"
+
+    def get_prompt_type_display(self):
+        return self._PROMPT_TYPE_MAP.get(self.prompt_type, "Custom")
 
     class Meta:
         db_table = "llm_ranking_result"
