@@ -395,7 +395,329 @@ class LLMRankingService:
             "mention_rate_ci_upper": round(ci_high * 100, 1),
         }
 
-    # ── Main audit runner ──────────────────────────────────────────────────
+    # ── Chord-style audit runner (preferred at scale) ──────────────────────
+    #
+    # The audit pipeline is split into three pieces so it can fan out across
+    # Celery workers:
+    #   prepare_audit   — synchronous prep (enrichment, status flip)
+    #   run_audit_cell  — one (prompt, provider) cell, idempotent
+    #   finalise_audit  — chord callback, computes aggregate score + cost
+    #
+    # The legacy run_audit() below remains for tests that run the whole
+    # pipeline in-process (CELERY_TASK_ALWAYS_EAGER=True).
+
+    @staticmethod
+    def prepare_audit(*, audit_id: str) -> dict | None:
+        """
+        Run enrichment + flip the audit to RUNNING. Returns the plan dict the
+        Celery task uses to fan out cells, or None if the audit isn't runnable.
+        """
+        from apps.llm_ranking.models import LLMRankingAudit, LLMRankingResult
+
+        try:
+            audit = LLMRankingAudit.objects.select_related("website").get(id=audit_id)
+        except LLMRankingAudit.DoesNotExist:
+            logger.error("LLMRankingAudit %s not found", audit_id)
+            return None
+
+        # Filter requested providers down to those that are implemented.
+        from apps.llm_ranking.providers import PROVIDERS
+        provider_keys = [p for p in (audit.providers_queried or []) if p in PROVIDERS]
+        if not provider_keys:
+            audit.status = LLMRankingAudit.STATUS_FAILED
+            audit.error_message = "No implemented providers selected for this audit."
+            audit.save(update_fields=["status", "error_message", "updated_at"])
+            return None
+
+        # Normalise prompt list to {"text", "type"}.
+        prompt_items = []
+        for p in (audit.prompts or []):
+            if isinstance(p, dict):
+                prompt_items.append({"text": p.get("text", ""), "type": p.get("type", "custom")})
+            else:
+                prompt_items.append({"text": str(p), "type": "custom"})
+        prompt_items = [p for p in prompt_items if p["text"].strip()]
+        if not prompt_items:
+            audit.status = LLMRankingAudit.STATUS_FAILED
+            audit.error_message = "Audit has no prompts."
+            audit.save(update_fields=["status", "error_message", "updated_at"])
+            return None
+
+        def _audit_log(msg, level="info"):
+            entry = {"ts": timezone.now().isoformat(), "level": level, "msg": msg}
+            logs = list(audit.audit_logs or [])
+            logs.append(entry)
+            audit.audit_logs = logs
+
+        _audit_log(f"Starting audit for {audit.business_name} ({audit.industry})")
+        _audit_log(f"Selected LLM providers: {', '.join(provider_keys)}")
+
+        # Enrichment — same as the legacy path.
+        enriched_context = ""
+        try:
+            from apps.llm_ranking.services.content_enricher import ContentEnricher
+
+            extra_urls = []
+            for entry in (getattr(audit, "context_urls", None) or []):
+                if isinstance(entry, dict):
+                    extra_urls.append(entry.get("url", ""))
+                elif isinstance(entry, str):
+                    extra_urls.append(entry)
+            extra_urls = [u for u in extra_urls if u]
+
+            _audit_log(f"🔍 Scanning main website: {audit.website.url}")
+            enrichment = ContentEnricher.enrich(
+                main_url=audit.website.url,
+                extra_urls=extra_urls,
+                business_name=audit.business_name,
+                industry=audit.industry,
+                include_google=True,
+            )
+            enriched_context = enrichment.get("llm_context", "")
+            if enriched_context:
+                _audit_log(
+                    f"📦 Context assembled — {len(enriched_context):,} chars of business intelligence",
+                    "success",
+                )
+        except Exception as exc:
+            logger.warning("Content enrichment failed for audit %s: %s", audit_id, exc)
+            _audit_log(f"⚠️ Content enrichment failed: {str(exc)[:100]}", "warn")
+
+        total = len(prompt_items) * len(provider_keys)
+        _audit_log(
+            f"🚀 Running {total} queries ({len(prompt_items)} prompts × {len(provider_keys)} providers)"
+        )
+
+        audit.status = LLMRankingAudit.STATUS_RUNNING
+        audit.total_queries = total
+        audit.queries_completed = 0
+        audit.started_at = timezone.now()
+        audit.providers_queried = provider_keys
+        # Snapshot the enriched context onto the audit so cells don't have to
+        # rescrape. Stored as a single string field via JSON to keep the schema
+        # change minimal — context_urls already accepts arbitrary structure.
+        existing_ctx = list(audit.context_urls or [])
+        existing_ctx_strings = [c for c in existing_ctx if isinstance(c, dict) and c.get("kind") == "_enriched"]
+        if existing_ctx_strings:
+            for c in existing_ctx_strings:
+                c["text"] = enriched_context
+        else:
+            existing_ctx.append({"kind": "_enriched", "text": enriched_context})
+        audit.context_urls = existing_ctx
+
+        audit.save(update_fields=[
+            "status", "total_queries", "queries_completed", "started_at",
+            "providers_queried", "audit_logs", "context_urls", "updated_at",
+        ])
+        return {"prompts": prompt_items, "providers": provider_keys}
+
+    @staticmethod
+    def run_audit_cell(*, audit_id: str, prompt_index: int, provider: str) -> dict:
+        """
+        Execute a single (prompt, provider) cell. Idempotent: uses
+        update_or_create on (audit, prompt_index, provider, run_id=0) so a
+        retried task can never produce a second row for the same cell.
+        """
+        from apps.llm_ranking.models import LLMRankingAudit, LLMRankingResult
+        from apps.llm_ranking.providers import get_provider
+        from apps.llm_ranking.services.extraction_service import HaikuExtractionService
+
+        audit = LLMRankingAudit.objects.select_related("website").get(id=audit_id)
+        prompts = audit.prompts or []
+        if prompt_index >= len(prompts):
+            return {"skipped": True, "reason": "prompt_index out of range"}
+
+        prompt_entry = prompts[prompt_index]
+        prompt_text = prompt_entry.get("text") if isinstance(prompt_entry, dict) else str(prompt_entry)
+        prompt_text = (prompt_text or "").strip()
+        if not prompt_text:
+            return {"skipped": True, "reason": "empty prompt"}
+
+        # Restore enriched context snapshot.
+        enriched_context = ""
+        for c in (audit.context_urls or []):
+            if isinstance(c, dict) and c.get("kind") == "_enriched":
+                enriched_context = c.get("text", "")
+                break
+        sys_prompt = (
+            build_enriched_system_prompt(SYSTEM_INSTRUCTION, enriched_context)
+            if enriched_context else ""
+        )
+
+        provider_inst = get_provider(provider)
+        if provider_inst is None:
+            # Provider not configured — record a failure row so aggregation
+            # sees the cell as terminal.
+            LLMRankingService._upsert_failed_cell(
+                audit=audit, prompt_index=prompt_index, provider=provider,
+                prompt_text=prompt_text,
+                error=f"{provider} not configured or implemented",
+            )
+            LLMRankingService._bump_progress(audit_id)
+            return {"audit_id": audit_id, "prompt_index": prompt_index,
+                    "provider": provider, "succeeded": False}
+
+        result = provider_inst.query(
+            prompt_text, sys_prompt,
+            user=audit.created_by, website=audit.website,
+            audit_id=str(audit.id),
+        )
+
+        analysis = LLMRankingService._empty_analysis()
+        if result.succeeded:
+            try:
+                analysis = HaikuExtractionService.extract(
+                    response_text=result.text,
+                    brand_name=audit.business_name,
+                    keywords=audit.keywords,
+                    user=audit.created_by,
+                    website=audit.website,
+                    audit_id=str(audit.id),
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Extraction failed for audit %s cell (%d/%s): %s",
+                    audit_id, prompt_index, provider, exc,
+                )
+
+        LLMRankingResult.objects.update_or_create(
+            audit=audit, prompt_index=prompt_index, provider=provider, run_id=0,
+            defaults={
+                "prompt": prompt_text,
+                "response_text": result.text or "",
+                "is_mentioned": analysis["is_mentioned"],
+                "mention_rank": analysis["mention_rank"],
+                "sentiment": analysis["sentiment"],
+                "confidence_score": analysis["confidence_score"],
+                "mention_context": analysis["mention_context"],
+                "query_succeeded": result.succeeded,
+                "error_message": (result.error or "")[:500],
+                "is_linked": analysis.get("is_linked", False),
+                "competitors_mentioned": analysis.get("competitors_mentioned", []),
+                "primary_recommendation": analysis.get("primary_recommendation", ""),
+                "citations": analysis.get("citations", []),
+                "extraction_model": analysis.get("extraction_model", ""),
+                "extraction_version": analysis.get("extraction_version", ""),
+            },
+        )
+        LLMRankingService._bump_progress(audit_id)
+        return {
+            "audit_id": audit_id, "prompt_index": prompt_index,
+            "provider": provider, "succeeded": result.succeeded,
+        }
+
+    @staticmethod
+    def _empty_analysis() -> dict:
+        from apps.llm_ranking.models import LLMRankingResult
+        return {
+            "is_mentioned": False,
+            "mention_rank": None,
+            "sentiment": LLMRankingResult.SENTIMENT_NOT_MENTIONED,
+            "confidence_score": 0.0,
+            "mention_context": "",
+            "is_linked": False,
+            "competitors_mentioned": [],
+            "primary_recommendation": "",
+            "citations": [],
+            "extraction_model": "",
+            "extraction_version": "",
+        }
+
+    @staticmethod
+    def _upsert_failed_cell(*, audit, prompt_index, provider, prompt_text, error):
+        from apps.llm_ranking.models import LLMRankingResult
+        analysis = LLMRankingService._empty_analysis()
+        LLMRankingResult.objects.update_or_create(
+            audit=audit, prompt_index=prompt_index, provider=provider, run_id=0,
+            defaults={
+                "prompt": prompt_text,
+                "response_text": "",
+                "is_mentioned": False,
+                "mention_rank": None,
+                "sentiment": analysis["sentiment"],
+                "confidence_score": 0.0,
+                "mention_context": "",
+                "query_succeeded": False,
+                "error_message": (error or "")[:500],
+                "competitors_mentioned": [],
+                "citations": [],
+                "extraction_model": "",
+                "extraction_version": "",
+            },
+        )
+
+    @staticmethod
+    def _bump_progress(audit_id: str) -> None:
+        """Atomically increment queries_completed so the live UI ETAs work."""
+        from django.db.models import F
+        from apps.llm_ranking.models import LLMRankingAudit
+        LLMRankingAudit.objects.filter(id=audit_id).update(
+            queries_completed=F("queries_completed") + 1,
+        )
+
+    @staticmethod
+    def finalise_audit(*, audit_id: str) -> None:
+        """Chord callback — compute aggregates, roll up cost, mark completed."""
+        from apps.llm_ranking.models import LLMRankingAudit, LLMRankingResult
+
+        try:
+            audit = LLMRankingAudit.objects.get(id=audit_id)
+        except LLMRankingAudit.DoesNotExist:
+            return
+
+        all_results = list(audit.results.all())
+        scores = LLMRankingService.compute_overall_score(all_results)
+
+        # Cost roll-up — only rows tagged with this audit's id.
+        try:
+            from django.db.models import Sum
+            from apps.accounts.models import AITokenUsage
+            spend = (
+                AITokenUsage.objects
+                .filter(metadata__audit_id=str(audit.id))
+                .aggregate(tokens=Sum("total_tokens"), cost=Sum("estimated_cost_usd"))
+            )
+            audit.total_tokens = int(spend["tokens"] or 0)
+            audit.total_cost_usd = spend["cost"] or 0
+        except Exception as exc:
+            logger.warning("Cost roll-up failed for audit %s: %s", audit_id, exc)
+
+        providers_with_any_success = sorted({
+            r.provider for r in all_results if r.query_succeeded
+        })
+
+        audit.status = LLMRankingAudit.STATUS_COMPLETED
+        audit.overall_score = scores["overall_score"]
+        audit.mention_rate = scores["mention_rate"]
+        audit.avg_mention_rank = scores["avg_mention_rank"]
+        audit.mention_rate_ci_lower = scores["mention_rate_ci_lower"]
+        audit.mention_rate_ci_upper = scores["mention_rate_ci_upper"]
+        audit.providers_queried = providers_with_any_success or audit.providers_queried
+        audit.extraction_method = LLMRankingAudit.EXTRACTION_LLM
+        audit.completed_at = timezone.now()
+        if audit.started_at:
+            audit.duration_seconds = (audit.completed_at - audit.started_at).total_seconds()
+
+        logs = list(audit.audit_logs or [])
+        logs.append({
+            "ts": timezone.now().isoformat(), "level": "success",
+            "msg": (
+                f"🏁 AUDIT COMPLETE — Score {scores['overall_score']}/100, "
+                f"mention rate {scores['mention_rate']:.1f}%, "
+                f"cost ${float(audit.total_cost_usd):.4f}"
+            ),
+        })
+        audit.audit_logs = logs
+
+        audit.save(update_fields=[
+            "status", "overall_score", "mention_rate", "avg_mention_rank",
+            "mention_rate_ci_lower", "mention_rate_ci_upper",
+            "providers_queried", "extraction_method", "completed_at",
+            "duration_seconds", "total_tokens", "total_cost_usd",
+            "audit_logs", "updated_at",
+        ])
+
+    # ── Legacy single-task runner (eager mode + tests) ─────────────────────
 
     @staticmethod
     def run_audit(*, audit_id: str) -> None:

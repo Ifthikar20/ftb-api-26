@@ -1,29 +1,100 @@
 import logging
 from datetime import timedelta
 
-from celery import shared_task
+from celery import chord, shared_task
 
 logger = logging.getLogger("apps")
 
 
 @shared_task(name="apps.llm_ranking.tasks.run_llm_ranking_audit", bind=True, max_retries=1)
 def run_llm_ranking_audit(self, *, audit_id: str) -> None:
-    """Run a full LLM ranking audit asynchronously."""
+    """
+    Run a full LLM ranking audit asynchronously.
+
+    Uses a Celery chord to fan out one task per (prompt, provider) cell so:
+      - cells run in parallel up to worker concurrency
+      - a single cell failure doesn't kill the whole audit
+      - retries are bounded per cell, not per audit
+      - workers can restart mid-audit without losing committed cells
+
+    The aggregator task is the chord callback — it computes scores once
+    every cell has either committed a row or hit max retries.
+    """
     from apps.llm_ranking.models import LLMRankingAudit
     from apps.llm_ranking.services.ranking_service import LLMRankingService
 
     try:
-        LLMRankingService.run_audit(audit_id=audit_id)
+        # Synchronous prep: enrichment + status flip + persist context.
+        # Fast (a few HTTP calls); doing it inside the chord adds no value.
+        plan = LLMRankingService.prepare_audit(audit_id=audit_id)
+        if not plan:
+            return  # already terminal or non-existent
+
+        cells = [
+            query_provider_prompt_task.s(
+                audit_id=audit_id,
+                prompt_index=p_idx,
+                provider=provider,
+            )
+            for p_idx in range(len(plan["prompts"]))
+            for provider in plan["providers"]
+        ]
+        if not cells:
+            # No work to do — flip to completed with an empty score.
+            aggregate_audit_results_task.delay([], audit_id=audit_id)
+            return
+
+        chord(cells)(aggregate_audit_results_task.s(audit_id=audit_id))
     except Exception as exc:
         logger.error("LLM ranking audit %s failed: %s", audit_id, exc)
         try:
             LLMRankingAudit.objects.filter(id=audit_id).update(
                 status=LLMRankingAudit.STATUS_FAILED,
-                error_message=str(exc),
+                error_message=str(exc)[:500],
             )
         except Exception:
             pass
         raise self.retry(exc=exc, countdown=30) from None
+
+
+@shared_task(
+    name="apps.llm_ranking.tasks.query_provider_prompt",
+    bind=True, max_retries=2, default_retry_delay=10, acks_late=True,
+)
+def query_provider_prompt_task(self, *, audit_id: str, prompt_index: int, provider: str) -> dict:
+    """
+    Run one (prompt, provider) cell of an audit. Idempotent: a duplicate run
+    of the same (audit, prompt_index, provider, run_id=0) tuple updates the
+    existing row instead of creating a second one. Errors do not propagate
+    to the chord — we always commit a row so aggregation can proceed.
+    """
+    from apps.llm_ranking.services.ranking_service import LLMRankingService
+    try:
+        return LLMRankingService.run_audit_cell(
+            audit_id=audit_id, prompt_index=prompt_index, provider=provider,
+        )
+    except Exception as exc:
+        # Log but don't kill the chord — return a sentinel so aggregation
+        # still runs. Retry once on transient errors via Celery's retry.
+        logger.warning(
+            "Audit %s cell (%d/%s) failed: %s", audit_id, prompt_index, provider, exc,
+        )
+        try:
+            self.retry(exc=exc)
+        except self.MaxRetriesExceededError:
+            return {"audit_id": audit_id, "prompt_index": prompt_index,
+                    "provider": provider, "error": str(exc)[:200]}
+
+
+@shared_task(name="apps.llm_ranking.tasks.aggregate_audit_results")
+def aggregate_audit_results_task(_cell_results, *, audit_id: str) -> None:
+    """
+    Chord callback — compute aggregate scores and roll up cost once every
+    cell has committed (or exhausted retries). Receives the list of cell
+    return values; we ignore them and re-read from the DB for consistency.
+    """
+    from apps.llm_ranking.services.ranking_service import LLMRankingService
+    LLMRankingService.finalise_audit(audit_id=audit_id)
 
 
 # ── Periodic scheduling ─────────────────────────────────────────────────────

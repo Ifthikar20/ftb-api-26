@@ -163,6 +163,10 @@ class LLMRankingResult(TimestampMixin):
 
     audit = models.ForeignKey(LLMRankingAudit, on_delete=models.CASCADE, related_name="results")
     provider = models.CharField(max_length=30, choices=PROVIDER_CHOICES, db_index=True)
+    # Index of the prompt within the audit's prompts list. Together with
+    # (audit, provider) this is the natural idempotency key, so a retried
+    # cell task cannot create a duplicate row.
+    prompt_index = models.IntegerField(default=0)
     prompt = models.TextField()
     # Full LLM response text
     response_text = models.TextField(blank=True)
@@ -236,6 +240,16 @@ class LLMRankingResult(TimestampMixin):
         indexes = [
             models.Index(fields=["audit", "provider"]),
             models.Index(fields=["audit", "is_mentioned"]),
+        ]
+        # Idempotency: at most one row per (audit, prompt_index, provider).
+        # Lets the chord fan-out's per-cell task safely retry without making
+        # duplicate rows. run_id distinguishes replicate runs of the same cell
+        # so the unique key is the full triple plus run_id.
+        constraints = [
+            models.UniqueConstraint(
+                fields=["audit", "prompt_index", "provider", "run_id"],
+                name="uq_llm_result_audit_prompt_provider_run",
+            ),
         ]
 
     def __str__(self):
