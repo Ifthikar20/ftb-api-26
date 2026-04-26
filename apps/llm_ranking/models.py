@@ -63,6 +63,9 @@ class LLMRankingAudit(TimestampMixin):
     audit_logs = models.JSONField(default=list, blank=True)
     # Duration of the audit run in seconds
     duration_seconds = models.FloatField(null=True, blank=True)
+    # Token + cost roll-up for this audit (sum of upstream + extraction calls)
+    total_tokens = models.IntegerField(default=0)
+    total_cost_usd = models.DecimalField(max_digits=10, decimal_places=6, default=0)
     # Statistics: number of replicates per (prompt, provider) — N=1 is the current default
     runs_per_query = models.IntegerField(default=1)
     # 95% Wilson CI on the overall mention_rate (percent 0-100)

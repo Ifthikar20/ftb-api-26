@@ -71,7 +71,8 @@ class LLMRankingService:
     def generate_prompts(*, business_name: str, industry: str, description: str,
                          keywords: list, use_case: str = "",
                          location: str = "",
-                         themes: list | None = None) -> list[dict]:
+                         themes: list | None = None,
+                         user=None, website=None) -> list[dict]:
         """
         Generate discovery prompts from business context.
 
@@ -121,12 +122,15 @@ class LLMRankingService:
             import json
             import re as _re
             text = resp.content[0].text.strip()
-            # Track token usage
+            # Track token usage — tagged as prompt-generation so it's
+            # distinguishable from upstream and extraction calls.
             try:
                 from core.ai_tracking import record_usage
                 record_usage(
                     module="llm_ranking", model_name="claude-sonnet-4-20250514",
                     input_tokens=resp.usage.input_tokens, output_tokens=resp.usage.output_tokens,
+                    user=user, website=website,
+                    metadata={"role": "prompt_generation"},
                 )
             except Exception:
                 pass
@@ -150,100 +154,47 @@ class LLMRankingService:
         return deduped[:10]  # cap at 10 prompts per audit
 
     # ── Per-provider query methods ─────────────────────────────────────────
+    #
+    # Provider integrations live in apps.llm_ranking.providers and share a
+    # base class that records token usage centrally. The thin wrappers below
+    # are kept so older callers / tests that import the static methods still
+    # work, but new code should use providers.get_provider() directly.
 
     @staticmethod
-    def _query_claude(prompt: str, system_prompt: str = "") -> tuple[bool, str, str]:
-        """
-        Returns (succeeded, response_text, error_message).
-        """
-        try:
-            import anthropic
-            client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
-            resp = client.messages.create(
-                model="claude-sonnet-4-20250514",
-                max_tokens=1024,
-                system=system_prompt or SYSTEM_INSTRUCTION,
-                messages=[{"role": "user", "content": prompt}],
-            )
-            # Track token usage
-            try:
-                from core.ai_tracking import record_usage
-                record_usage(
-                    module="llm_ranking", model_name="claude-sonnet-4-20250514",
-                    input_tokens=resp.usage.input_tokens, output_tokens=resp.usage.output_tokens,
-                )
-            except Exception:
-                pass
-            return True, resp.content[0].text.strip(), ""
-        except Exception as e:
-            return False, "", str(e)
+    def _query_claude(prompt: str, system_prompt: str = "",
+                      *, user=None, website=None, audit_id=None) -> tuple[bool, str, str]:
+        from apps.llm_ranking.providers import ClaudeProvider
+        result = ClaudeProvider().query(
+            prompt, system_prompt, user=user, website=website, audit_id=audit_id,
+        )
+        return result.succeeded, result.text, result.error
 
     @staticmethod
-    def _query_openai(prompt: str) -> tuple[bool, str, str]:
-        """Query GPT-4 via OpenAI API."""
-        api_key = getattr(settings, "OPENAI_API_KEY", "")
-        if not api_key:
-            return False, "", "OPENAI_API_KEY not configured"
-        try:
-            import openai
-            client = openai.OpenAI(api_key=api_key)
-            resp = client.chat.completions.create(
-                model="gpt-4o-mini",
-                max_tokens=1024,
-                messages=[
-                    {"role": "system", "content": SYSTEM_INSTRUCTION},
-                    {"role": "user", "content": prompt},
-                ],
-            )
-            return True, resp.choices[0].message.content.strip(), ""
-        except Exception as e:
-            return False, "", str(e)
+    def _query_openai(prompt: str, system_prompt: str = "",
+                      *, user=None, website=None, audit_id=None) -> tuple[bool, str, str]:
+        from apps.llm_ranking.providers import OpenAIProvider
+        result = OpenAIProvider().query(
+            prompt, system_prompt, user=user, website=website, audit_id=audit_id,
+        )
+        return result.succeeded, result.text, result.error
 
     @staticmethod
-    def _query_gemini(prompt: str) -> tuple[bool, str, str]:
-        """Query Gemini via Google Generative AI SDK."""
-        api_key = getattr(settings, "GEMINI_API_KEY", "")
-        if not api_key:
-            return False, "", "GEMINI_API_KEY not configured"
-        try:
-            import google.generativeai as genai
-            genai.configure(api_key=api_key)
-            model = genai.GenerativeModel("gemini-1.5-flash")
-            full_prompt = f"{SYSTEM_INSTRUCTION}\n\n{prompt}"
-            resp = model.generate_content(full_prompt)
-            return True, resp.text.strip(), ""
-        except Exception as e:
-            return False, "", str(e)
+    def _query_gemini(prompt: str, system_prompt: str = "",
+                      *, user=None, website=None, audit_id=None) -> tuple[bool, str, str]:
+        from apps.llm_ranking.providers import GeminiProvider
+        result = GeminiProvider().query(
+            prompt, system_prompt, user=user, website=website, audit_id=audit_id,
+        )
+        return result.succeeded, result.text, result.error
 
     @staticmethod
-    def _query_perplexity(prompt: str) -> tuple[bool, str, str]:
-        """Query Perplexity via their OpenAI-compatible API."""
-        api_key = getattr(settings, "PERPLEXITY_API_KEY", "")
-        if not api_key:
-            return False, "", "PERPLEXITY_API_KEY not configured"
-        try:
-            import requests
-            resp = requests.post(
-                "https://api.perplexity.ai/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": "llama-3.1-sonar-small-128k-online",
-                    "messages": [
-                        {"role": "system", "content": SYSTEM_INSTRUCTION},
-                        {"role": "user", "content": prompt},
-                    ],
-                    "max_tokens": 1024,
-                },
-                timeout=30,
-            )
-            resp.raise_for_status()
-            text = resp.json()["choices"][0]["message"]["content"].strip()
-            return True, text, ""
-        except Exception as e:
-            return False, "", str(e)
+    def _query_perplexity(prompt: str, system_prompt: str = "",
+                          *, user=None, website=None, audit_id=None) -> tuple[bool, str, str]:
+        from apps.llm_ranking.providers import PerplexityProvider
+        result = PerplexityProvider().query(
+            prompt, system_prompt, user=user, website=website, audit_id=audit_id,
+        )
+        return result.succeeded, result.text, result.error
 
     # ── Response analysis ──────────────────────────────────────────────────
 
@@ -600,11 +551,15 @@ class LLMRankingService:
                 _audit_log(audit, f"📤 → {plabel}: \"{prompt_short}\"")
 
                 try:
-                    # Pass enriched context to Claude; other providers get basic prompt
-                    if provider == LLMRankingResult.PROVIDER_CLAUDE and enriched_context:
-                        succeeded, response_text, error = query_fn(prompt_text, enriched_system)
-                    else:
-                        succeeded, response_text, error = query_fn(prompt_text)
+                    # All providers get the enriched context when available.
+                    # user/website/audit_id are passed through so each call's
+                    # token usage is attributed to the right user in Settings.
+                    sys_prompt = enriched_system if enriched_context else ""
+                    succeeded, response_text, error = query_fn(
+                        prompt_text, sys_prompt,
+                        user=audit.created_by, website=audit.website,
+                        audit_id=str(audit.id),
+                    )
                 except Exception as exc:
                     succeeded, response_text, error = False, "", str(exc)
                     logger.warning("Provider %s threw for audit %s: %s", provider, audit_id, exc)
@@ -620,6 +575,9 @@ class LLMRankingService:
                         response_text=response_text,
                         brand_name=audit.business_name,
                         keywords=audit.keywords,
+                        user=audit.created_by,
+                        website=audit.website,
+                        audit_id=str(audit.id),
                     )
                     # Log extraction result
                     if analysis["is_mentioned"]:
@@ -684,6 +642,22 @@ class LLMRankingService:
         _audit_log(audit, "📊 Computing aggregate scores...")
         scores = LLMRankingService.compute_overall_score(all_results)
 
+        # Roll up token + cost spend for this audit. We tagged every record
+        # with metadata.audit_id, so we can sum exactly the rows this run
+        # produced (upstream + extraction + any prompt-generation).
+        try:
+            from django.db.models import Sum
+            from apps.accounts.models import AITokenUsage
+            spend = (
+                AITokenUsage.objects
+                .filter(metadata__audit_id=str(audit.id))
+                .aggregate(tokens=Sum("total_tokens"), cost=Sum("estimated_cost_usd"))
+            )
+            audit.total_tokens = int(spend["tokens"] or 0)
+            audit.total_cost_usd = spend["cost"] or 0
+        except Exception as exc:
+            logger.warning("Cost roll-up failed for audit %s: %s", audit_id, exc)
+
         audit.status = LLMRankingAudit.STATUS_COMPLETED
         audit.overall_score = scores["overall_score"]
         audit.mention_rate = scores["mention_rate"]
@@ -704,13 +678,15 @@ class LLMRankingService:
         _audit_log(audit, f"   Avg Rank When Mentioned: #{scores['avg_mention_rank']:.1f}")
         if audit.duration_seconds:
             _audit_log(audit, f"   Duration: {audit.duration_seconds:.1f}s")
+        if audit.total_cost_usd:
+            _audit_log(audit, f"   Cost: ${float(audit.total_cost_usd):.4f} ({audit.total_tokens:,} tokens)")
         _audit_log(audit, f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
         audit.save(update_fields=[
             "status", "overall_score", "mention_rate", "avg_mention_rank",
             "mention_rate_ci_lower", "mention_rate_ci_upper",
             "providers_queried", "extraction_method", "completed_at",
-            "duration_seconds", "updated_at",
+            "duration_seconds", "total_tokens", "total_cost_usd", "updated_at",
         ])
 
         logger.info(

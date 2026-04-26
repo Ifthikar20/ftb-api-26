@@ -46,6 +46,27 @@ class LLMRankingAuditListView(TenantScopedListAPIView):
         data = serializer.validated_data
 
         from apps.llm_ranking.services.ranking_service import LLMRankingService
+        from apps.llm_ranking.providers import PROVIDERS
+
+        # Enforce per-user monthly AI spend cap before queuing more work.
+        # 0 = no cap; spend covers every module that writes to AITokenUsage.
+        cap = float(getattr(request.user, "monthly_ai_cost_cap_usd", 0) or 0)
+        if cap > 0:
+            from core.ai_tracking import month_to_date_cost
+            spent = month_to_date_cost(request.user)
+            if spent >= cap:
+                return Response(
+                    {
+                        "error": "monthly_ai_cost_cap_exceeded",
+                        "detail": (
+                            f"Month-to-date AI spend ${spent:.2f} has reached "
+                            f"your cap of ${cap:.2f}. Raise the cap in Settings "
+                            f"or wait until the next billing month."
+                        ),
+                        "cap_status": {"spent_usd": round(spent, 4), "cap_usd": cap},
+                    },
+                    status=402,
+                )
 
         # Fall back to Website row fields when the client omits them. This is
         # the source of truth — the form doesn't need to resend what the
@@ -79,29 +100,22 @@ class LLMRankingAuditListView(TenantScopedListAPIView):
                 use_case=data["use_case"],
                 location=data.get("location", ""),
                 themes=data.get("themes") or None,
+                user=request.user,
+                website=website,
             )
 
-        # Use selected providers or default to all configured
-        if data.get("providers"):
-            selected_providers = data["providers"]
-        else:
-            # Auto-detect configured providers
-            all_providers = {
-                "claude": "ANTHROPIC_API_KEY",
-                "gpt4": "OPENAI_API_KEY",
-                "gemini": "GEMINI_API_KEY",
-                "perplexity": "PERPLEXITY_API_KEY",
-                "meta_llama": "META_API_KEY",
-                "mistral": "MISTRAL_API_KEY",
-                "cohere": "COHERE_API_KEY",
-                "deepseek": "DEEPSEEK_API_KEY",
-                "grok": "XAI_API_KEY",
-                "amazon_nova": "AWS_BEDROCK_KEY",
-            }
-            selected_providers = [
-                key for key, setting in all_providers.items()
-                if getattr(settings, setting, "")
-            ] or ["claude", "gpt4"]  # fallback to at least two
+        # Selected providers must be implemented AND configured. Stub providers
+        # in PROVIDER_CHOICES (meta_llama, mistral, etc.) are filtered out so
+        # the UI can never queue a run that would silently produce no results.
+        requested = data.get("providers") or list(PROVIDERS.keys())
+        configured = []
+        for key in requested:
+            if key not in PROVIDERS:
+                continue
+            cls = PROVIDERS[key]
+            if getattr(settings, cls.api_key_setting, ""):
+                configured.append(key)
+        selected_providers = configured or ["claude"]
 
         audit = LLMRankingAudit.objects.create(
             website=website,
@@ -496,16 +510,30 @@ class LLMRankingProviderDetailView(TenantScopedAPIView):
             if s in sentiments:
                 sentiments[s] += 1
 
-        # Top competitors across all responses for this provider
-        comp_counts = {}
+        # Top competitors — collapse surface-form variants ("Mixpanel" /
+        # "mixpanel" / "Mixpanel Inc.") so the leaderboard isn't inflated.
+        from apps.llm_ranking.services.competitor_normalize import (
+            canonical_name, MIN_MENTIONS_FOR_RANKING,
+        )
+        comp_counts: dict = {}
         for r in succeeded:
             for c in (r.competitors_mentioned or []):
-                if isinstance(c, dict):
-                    name = (c.get("name") or "").strip()
-                    if name:
-                        comp_counts[name] = comp_counts.get(name, 0) + 1
+                if not isinstance(c, dict):
+                    continue
+                raw = (c.get("name") or "").strip()
+                key = canonical_name(raw)
+                if not key:
+                    continue
+                bucket = comp_counts.setdefault(
+                    key, {"display": raw, "mentions": 0}
+                )
+                bucket["mentions"] += 1
         top_competitors = sorted(
-            [{"name": k, "mentions": v} for k, v in comp_counts.items()],
+            [
+                {"name": v["display"], "mentions": v["mentions"]}
+                for v in comp_counts.values()
+                if v["mentions"] >= MIN_MENTIONS_FOR_RANKING
+            ],
             key=lambda x: x["mentions"], reverse=True,
         )[:10]
 
@@ -657,6 +685,43 @@ class LLMRankingUsageView(TenantScopedAPIView):
         })
 
 
+class LLMRankingProviderHealthView(TenantScopedAPIView):
+    """
+    GET — list every provider the ranking module can actually call, with its
+    canonical key, label, model, and configured status (API key present).
+
+    Stub providers (Meta Llama, Mistral, Cohere, etc.) listed in the model
+    schema but lacking an implementation are deliberately excluded so the UI
+    can never queue a run that would silently produce no results.
+    """
+
+    def get(self, request, website_id):
+        self.get_website(website_id)
+        from apps.llm_ranking.providers import PROVIDERS
+
+        labels = {
+            "claude": "Claude",
+            "gpt4": "GPT-4",
+            "gemini": "Gemini",
+            "perplexity": "Perplexity",
+        }
+        items = []
+        for key, cls in PROVIDERS.items():
+            configured = bool(getattr(settings, cls.api_key_setting, ""))
+            items.append({
+                "key": key,
+                "name": labels.get(key, key),
+                "model": cls.model,
+                "api_key_setting": cls.api_key_setting,
+                "configured": configured,
+            })
+        return Response({
+            "providers": items,
+            "configured_count": sum(1 for p in items if p["configured"]),
+            "total": len(items),
+        })
+
+
 class LLMRankingHistoryView(TenantScopedAPIView):
     """
     GET — return historical aggregate, per-provider, and per-competitor stats
@@ -703,8 +768,13 @@ class LLMRankingHistoryView(TenantScopedAPIView):
             })
 
         # Per-competitor visibility per audit. competitors_mentioned is a
-        # JSONField list[dict], so we have to iterate in Python rather than
-        # aggregate via the ORM.
+        # JSONField list[dict] so we iterate in Python. Surface-form variants
+        # ("Mixpanel" / "mixpanel" / "Mixpanel Inc.") are collapsed via
+        # canonical_name() so the citation-share denominator and rankings
+        # aren't inflated by name drift.
+        from apps.llm_ranking.services.competitor_normalize import (
+            canonical_name, MIN_MENTIONS_FOR_RANKING,
+        )
         competitor_by_audit: dict = {}
         per_audit_total: dict = {}
         per_audit_self_brand_mentions: dict = {}
@@ -720,35 +790,45 @@ class LLMRankingHistoryView(TenantScopedAPIView):
             per_audit_total[aid] = per_audit_total.get(aid, 0) + 1
 
             comps = r["competitors_mentioned"] or []
-            # Total brand mentions across all responses for this audit =
-            #   self mentions + competitor mentions. Used for citation share.
             self_mention = 1 if r["is_mentioned"] else 0
             per_audit_self_brand_mentions[aid] = (
                 per_audit_self_brand_mentions.get(aid, 0) + self_mention
             )
-            per_audit_total_brand_mentions[aid] = (
-                per_audit_total_brand_mentions.get(aid, 0) + self_mention + len(comps)
-            )
 
-            seen_in_response: set = set()
+            # Dedupe by canonical key within a single response so naming the
+            # same brand twice doesn't double-count the citation-share total.
+            seen_canonical: set = set()
+            unique_competitor_count_in_response = 0
             for c in comps:
                 if not isinstance(c, dict):
                     continue
-                name = (c.get("name") or "").strip()
-                if not name or name in seen_in_response:
+                raw = (c.get("name") or "").strip()
+                key = canonical_name(raw)
+                if not key or key in seen_canonical:
                     continue
-                seen_in_response.add(name)
-                key = (aid, name)
-                if key not in competitor_by_audit:
-                    competitor_by_audit[key] = {"count": 0, "ranks": []}
-                competitor_by_audit[key]["count"] += 1
+                seen_canonical.add(key)
+                unique_competitor_count_in_response += 1
+
+                bucket_key = (aid, key)
+                bucket = competitor_by_audit.setdefault(
+                    bucket_key, {"display": raw, "count": 0, "ranks": []},
+                )
+                bucket["count"] += 1
                 pos = c.get("position")
                 if isinstance(pos, (int, float)) and pos is not None:
-                    competitor_by_audit[key]["ranks"].append(int(pos))
+                    bucket["ranks"].append(int(pos))
 
-        # Group into per-audit lists.
+            per_audit_total_brand_mentions[aid] = (
+                per_audit_total_brand_mentions.get(aid, 0)
+                + self_mention
+                + unique_competitor_count_in_response
+            )
+
+        # Group into per-audit lists, applying the min-mentions threshold.
         comp_list_by_audit: dict = {}
-        for (aid, name), v in competitor_by_audit.items():
+        for (aid, _key), v in competitor_by_audit.items():
+            if v["count"] < MIN_MENTIONS_FOR_RANKING:
+                continue
             total_prompts = max(per_audit_total.get(aid, 0), 1)
             visibility = round(v["count"] / total_prompts * 100, 1)
             avg_rank = (
@@ -756,7 +836,7 @@ class LLMRankingHistoryView(TenantScopedAPIView):
                 if v["ranks"] else None
             )
             comp_list_by_audit.setdefault(aid, []).append({
-                "name": name,
+                "name": v["display"],
                 "mention_count": v["count"],
                 "visibility": visibility,
                 "avg_rank": avg_rank,
