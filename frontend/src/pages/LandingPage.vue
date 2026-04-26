@@ -16,7 +16,7 @@
         </div>
         <div class="nav-right">
           <router-link to="/login" class="nav-link-text">Log In</router-link>
-          <router-link to="/login" class="nav-cta">Sign In</router-link>
+          <router-link to="/register" class="nav-cta">Get Started</router-link>
         </div>
       </div>
     </nav>
@@ -25,35 +25,18 @@
     <section class="hero">
       <div class="wrap">
         <h1 class="hero-h anim" data-anim="fade-up">
-          Marketing intelligence,<br/>
-          <em>simplified.</em>
+          <span class="tw-line" ref="twLine1"></span><br/>
+          <span class="tw-line" ref="twLine2"></span><br/>
+          <em><span class="tw-line" ref="twLine3"></span></em>
+          <span class="tw-cursor" :class="{ 'tw-cursor--done': twDone }">|</span>
         </h1>
         <p class="hero-p anim" data-anim="fade-up" data-delay="60">
           Track visitors, score leads, audit your site, and grow<br class="hide-m"/>
           with AI — all in one platform.
         </p>
-        <p class="hero-beta-note anim" data-anim="fade-up" data-delay="90">
-          <span class="brand-beta">BETA</span>
-          <span class="beta-text">We're in private beta. New sign-ups are paused — existing users can sign in.</span>
-        </p>
         <div class="hero-ctas anim" data-anim="fade-up" data-delay="120">
-          <router-link to="/login" class="btn-primary">Sign In</router-link>
-          <a href="#features" class="btn-ghost">Learn More</a>
-        </div>
-      </div>
-    </section>
-
-    <!-- ═══ Dashboard Preview — video bg with floating dashboard ═══ -->
-    <section class="dash-preview anim" data-anim="fade-up">
-      <div class="dash-preview-inner">
-        <!-- Background video — plays silently, edges visible around dashboard -->
-        <video class="dash-video" autoplay muted loop playsinline>
-          <source src="/videos/background-vid.mp4" type="video/mp4" />
-        </video>
-        <div class="dash-video-overlay"></div>
-        <!-- Dashboard mockup floating on top -->
-        <div class="dash-mockup">
-          <img src="/images/hero-dashboard.png" alt="FetchBot Dashboard" class="dash-img" />
+          <router-link to="/register" class="btn-primary">Get Started</router-link>
+          <router-link to="/login" class="btn-ghost">Sign In</router-link>
         </div>
       </div>
     </section>
@@ -66,12 +49,12 @@
           <h2 class="feat-headline">
             OUR TOOLS FOR
             <span class="feat-word-cycler">
-              <Transition name="word-cycle" mode="out-in">
+              <TransitionGroup name="word-cycle">
                 <span class="feat-word" :key="categories[activeCat]">
                   {{ categories[activeCat] }}
                   <span class="feat-word-glow"></span>
                 </span>
-              </Transition>
+              </TransitionGroup>
             </span>
           </h2>
           <div class="feat-tabs">
@@ -87,11 +70,10 @@
                :style="{ transform: `translateX(${trackOffset}px)` }">
             <div v-for="(f, i) in features" :key="f.title"
                  class="carousel-card" :class="[f.tint, { expanded: activeCard === i, 'is-playing': activeCard === i }]"
-                 :style="{ '--card-stagger': i * 80 + 'ms' }"
+                 :style="{ animationDelay: `${i * 100}ms` }"
                  @click="activeCard = activeCard === i ? -1 : i"
-                 @mousemove="onCardMouseMove($event, i)"
-                 @mouseenter="onCardMouseEnter(i)"
-                 @mouseleave="onCardMouseLeave($event, i)">
+                 @mouseenter="pauseAutoAdvance"
+                 @mouseleave="resumeAutoAdvance">
               <span class="card-num">{{ String(i + 1).padStart(2, '0') }}</span>
 
               <!-- Per-tool animated visual -->
@@ -99,7 +81,7 @@
                 <!-- Analytics: line chart with drawing animation -->
                 <div v-if="f.visual === 'chart'" class="viz viz-chart">
                   <div class="viz-stat">
-                    <div class="viz-stat-value">{{ metricFor(f, i) }}</div>
+                    <div class="viz-stat-value">{{ f.metric.value }}</div>
                     <div class="viz-stat-meta">
                       <span class="viz-stat-label">{{ f.metric.label }}</span>
                       <span class="viz-stat-delta up">{{ f.metric.delta }}</span>
@@ -108,20 +90,20 @@
                   <svg class="chart-svg" viewBox="0 0 220 70" preserveAspectRatio="none">
                     <defs>
                       <linearGradient :id="'g-' + i" x1="0" x2="0" y1="0" y2="1">
-                        <stop offset="0%" stop-color="#F97316" stop-opacity="0.30"/>
-                        <stop offset="100%" stop-color="#F97316" stop-opacity="0"/>
+                        <stop offset="0%" stop-color="#131718" stop-opacity="0.35"/>
+                        <stop offset="100%" stop-color="#131718" stop-opacity="0"/>
                       </linearGradient>
                     </defs>
                     <path class="chart-area" :d="buildAreaPath(f.chart)" :fill="'url(#g-' + i + ')'" />
-                    <path class="chart-line" :d="buildLinePath(f.chart)" fill="none" stroke="#F97316" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
-                    <circle class="chart-pulse" :cx="220" :cy="lastY(f.chart)" r="3" fill="#F97316"/>
+                    <path class="chart-line" :d="buildLinePath(f.chart)" fill="none" stroke="#131718" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+                    <circle class="chart-pulse" :cx="220" :cy="lastY(f.chart)" r="3" fill="#131718"/>
                   </svg>
                 </div>
 
                 <!-- Heatmaps: pulsing radial hotspots -->
                 <div v-else-if="f.visual === 'heatmap'" class="viz viz-heatmap">
                   <div class="viz-stat">
-                    <div class="viz-stat-value">{{ metricFor(f, i) }}</div>
+                    <div class="viz-stat-value">{{ f.metric.value }}</div>
                     <div class="viz-stat-meta">
                       <span class="viz-stat-label">{{ f.metric.label }}</span>
                       <span class="viz-stat-delta">{{ f.metric.delta }}</span>
@@ -148,7 +130,7 @@
                 <!-- Keywords: animated rank bars -->
                 <div v-else-if="f.visual === 'keywords'" class="viz viz-keywords">
                   <div class="viz-stat">
-                    <div class="viz-stat-value">{{ metricFor(f, i) }}</div>
+                    <div class="viz-stat-value">{{ f.metric.value }}</div>
                     <div class="viz-stat-meta">
                       <span class="viz-stat-label">{{ f.metric.label }}</span>
                       <span class="viz-stat-delta up">{{ f.metric.delta }}</span>
@@ -179,7 +161,7 @@
                 <!-- Lead ID: stacked company chips sliding in -->
                 <div v-else-if="f.visual === 'leads'" class="viz viz-leads">
                   <div class="viz-stat">
-                    <div class="viz-stat-value">{{ metricFor(f, i) }}</div>
+                    <div class="viz-stat-value">{{ f.metric.value }}</div>
                     <div class="viz-stat-meta">
                       <span class="viz-stat-label">{{ f.metric.label }}</span>
                       <span class="viz-stat-delta up">{{ f.metric.delta }}</span>
@@ -259,6 +241,96 @@
       </div>
     </section>
 
+    <!-- ═══ Our Tools For — Framer-style tool carousel ═══ -->
+    <section class="tools-for" id="tools">
+      <div class="wrap">
+        <div class="tools-head">
+          <span class="tools-eyebrow">OUR TOOLS FOR</span>
+          <div class="tools-tabs" role="tablist">
+            <button
+              v-for="(tab, i) in toolTabs"
+              :key="tab.id"
+              :class="['tools-tab', { 'tools-tab-active': toolTab === i }]"
+              type="button"
+              @click="toolTab = i"
+            >{{ tab.label }}</button>
+          </div>
+        </div>
+
+        <div class="tools-grid">
+          <article
+            v-for="(card, i) in toolCards"
+            :key="card.id"
+            :class="['tool-card', `tool-card-${card.accent}`, { 'tool-card-active': toolIndex === i }]"
+            @click="toolIndex = i"
+          >
+            <header class="tool-card-head">
+              <span class="tool-num">{{ String(i + 1).padStart(2, '0') }}</span>
+              <span class="tool-label">{{ card.label }}</span>
+            </header>
+
+            <div class="tool-metric">
+              <div class="tool-metric-num">{{ card.mainValue }}</div>
+              <div class="tool-metric-sub">{{ card.mainLabel }}</div>
+              <span v-if="card.badge" :class="['tool-badge', card.badgeTone]">{{ card.badge }}</span>
+            </div>
+
+            <!-- Custom visual per card -->
+            <div v-if="card.kind === 'keywords'" class="tool-viz tool-viz-list">
+              <div v-for="k in card.items" :key="k.term" class="kw-row">
+                <span :class="['kw-pos', posClass(k.pos)]">#{{ k.pos }}</span>
+                <span class="kw-term">{{ k.term }}</span>
+                <span class="kw-delta">{{ k.delta }}</span>
+              </div>
+            </div>
+
+            <div v-else-if="card.kind === 'leads'" class="tool-viz tool-viz-list">
+              <div v-for="c in card.items" :key="c.name" class="lead-row">
+                <span class="lead-avatar">{{ c.name[0] }}</span>
+                <span class="lead-meta">
+                  <span class="lead-name">{{ c.name }}</span>
+                  <span class="lead-domain">{{ c.domain }}</span>
+                </span>
+                <span :class="['lead-score', scoreTone(c.score)]">{{ c.score }}</span>
+              </div>
+            </div>
+
+            <div v-else-if="card.kind === 'spark'" class="tool-viz tool-viz-spark">
+              <svg viewBox="0 0 220 52" preserveAspectRatio="none" class="spark-svg">
+                <path :d="card.path" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                <path :d="card.area" :fill="card.fill" opacity="0.1" />
+              </svg>
+            </div>
+
+            <div v-else-if="card.kind === 'dots'" class="tool-viz tool-viz-dots">
+              <span
+                v-for="(d, di) in card.dots"
+                :key="di"
+                class="viz-dot"
+                :style="{ top: d.y + '%', left: d.x + '%', transform: `scale(${d.size})` }"
+              />
+            </div>
+          </article>
+        </div>
+
+        <div class="tools-bottom">
+          <div class="tool-caption">
+            <p class="tool-desc">{{ toolCards[toolIndex].desc }}</p>
+            <span class="tool-replace">Replaces <strong>{{ toolCards[toolIndex].replaces }}</strong></span>
+          </div>
+          <div class="tool-pager">
+            <button class="tool-arrow" type="button" @click="toolIndex = (toolIndex - 1 + toolCards.length) % toolCards.length" aria-label="Previous">
+              <svg width="14" height="14" viewBox="0 0 16 16"><path d="M10 3L5 8l5 5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <span class="tool-count">{{ toolIndex + 1 }} / {{ toolCards.length }}</span>
+            <button class="tool-arrow" type="button" @click="toolIndex = (toolIndex + 1) % toolCards.length" aria-label="Next">
+              <svg width="14" height="14" viewBox="0 0 16 16"><path d="M6 3l5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- ═══ How It Works ═══ -->
     <section class="how" id="how">
       <div class="wrap">
@@ -291,7 +363,7 @@
             <ul>
               <li v-for="f in plan.features" :key="f">{{ f }}</li>
             </ul>
-            <router-link to="/login" class="price-btn" :class="{ dark: plan.featured }">{{ plan.cta }}</router-link>
+            <router-link to="/register" class="price-btn" :class="{ dark: plan.featured }">{{ plan.cta }}</router-link>
           </div>
         </div>
       </div>
@@ -300,15 +372,9 @@
     <!-- ═══ Final CTA ═══ -->
     <section class="final-cta anim" data-anim="fade-up">
       <div class="wrap cta-inner">
-        <video class="cta-video" autoplay muted loop playsinline>
-          <source src="/videos/background-vid.mp4" type="video/mp4" />
-        </video>
-        <div class="cta-video-overlay"></div>
-        <div class="cta-content">
-          <h2>Ready to grow <em>smarter?</em></h2>
-          <p>FetchBot is in private beta. Existing users — sign in below.</p>
-          <router-link to="/login" class="btn-primary cta-btn-white">Sign In</router-link>
-        </div>
+        <h2>Ready to grow <em>smarter?</em></h2>
+        <p>Start your AI visibility audit in minutes.</p>
+        <router-link to="/register" class="btn-primary">Get Started</router-link>
       </div>
     </section>
 
@@ -326,7 +392,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 
 const scrolled = ref(false)
 const activeCard = ref(0)
@@ -334,7 +400,107 @@ const activeCat = ref(0)
 const trackOffset = ref(0)
 const trackRef = ref(null)
 
+/* ── "Our tools for" section ── */
+const toolTab = ref(3) // default to "SEO Intelligence" active
+const toolTabs = [
+  { id: 'seo', label: 'SEO' },
+  { id: 'growth', label: 'Growth' },
+  { id: 'analytics', label: 'Analytics' },
+  { id: 'seo-intel', label: 'SEO Intelligence' },
+]
 
+const toolIndex = ref(3) // default highlight "Lead ID"
+const toolCards = [
+  {
+    id: 'analytics',
+    label: 'Analytics',
+    accent: 'blue',
+    mainValue: '2,847',
+    mainLabel: 'Visitors today',
+    badge: '+18%',
+    badgeTone: 'tone-pos',
+    kind: 'spark',
+    path: 'M0,40 L20,34 L40,32 L60,28 L80,30 L100,22 L120,18 L140,22 L160,14 L180,12 L200,8 L220,6',
+    area: 'M0,40 L20,34 L40,32 L60,28 L80,30 L100,22 L120,18 L140,22 L160,14 L180,12 L200,8 L220,6 L220,52 L0,52 Z',
+    fill: '#0a1f3d',
+    desc: 'Track every visit, session, and source in real time — see what works without sampling.',
+    replaces: 'Google Analytics',
+  },
+  {
+    id: 'heatmaps',
+    label: 'Heatmaps',
+    accent: 'coral',
+    mainValue: '4,132',
+    mainLabel: 'Clicks tracked',
+    badge: '12 hotspots',
+    badgeTone: 'tone-neutral',
+    kind: 'dots',
+    dots: [
+      { x: 22, y: 30, size: 1.4 },
+      { x: 48, y: 22, size: 1.1 },
+      { x: 72, y: 38, size: 1.8 },
+      { x: 30, y: 60, size: 1.2 },
+      { x: 60, y: 68, size: 2.2 },
+      { x: 82, y: 58, size: 1 },
+      { x: 12, y: 76, size: 0.9 },
+      { x: 44, y: 80, size: 1.3 },
+    ],
+    desc: 'See exactly where users click, scroll, and hesitate. Ship UI changes with proof.',
+    replaces: 'Hotjar',
+  },
+  {
+    id: 'keywords',
+    label: 'Keywords',
+    accent: 'green',
+    mainValue: '87',
+    mainLabel: 'Tracked keywords',
+    badge: '+4 new #1s',
+    badgeTone: 'tone-pos',
+    kind: 'keywords',
+    items: [
+      { pos: 3, term: 'ai analytics', delta: '4' },
+      { pos: 1, term: 'visitor tracking', delta: '1' },
+      { pos: 5, term: 'heatmap tool', delta: '6' },
+      { pos: 2, term: 'lead scoring saas', delta: '2' },
+    ],
+    desc: 'Monitor rankings daily, catch movement before competitors, and own the SERP.',
+    replaces: 'Ahrefs',
+  },
+  {
+    id: 'lead-id',
+    label: 'Lead ID',
+    accent: 'rausch',
+    mainValue: '23',
+    mainLabel: 'Companies today',
+    badge: '4 hot leads',
+    badgeTone: 'tone-accent',
+    kind: 'leads',
+    items: [
+      { name: 'Acme Corp', domain: 'acme.com', score: 94 },
+      { name: 'Vector Labs', domain: 'vectorlabs.io', score: 81 },
+      { name: 'Northwind Ltd', domain: 'northwind.co', score: 67 },
+    ],
+    desc: 'Identify companies visiting your site with behavioral scoring and company intel.',
+    replaces: 'Clearbit',
+  },
+]
+
+function posClass(pos) {
+  if (pos === 1) return 'pos-1'
+  if (pos <= 3) return 'pos-3'
+  return 'pos-5'
+}
+function scoreTone(score) {
+  if (score >= 90) return 'score-hot'
+  if (score >= 75) return 'score-warm'
+  return 'score-cool'
+}
+
+/* Typewriter refs */
+const twLine1 = ref(null)
+const twLine2 = ref(null)
+const twLine3 = ref(null)
+const twDone = ref(false)
 
 const cardStep = 280
 const visibleCards = 4
@@ -342,8 +508,7 @@ let cycleTimer = null
 let featureTimer = null
 const featureDwellMs = 4200
 
-// Restrained, ink-leaning avatar palette — no brights.
-const leadColors = ['#0F172A', '#475569', '#334155', '#64748B']
+const leadColors = ['#131718', '#C65A2F', '#4A7FB0', '#5E6B73']
 
 // ── Chart path helpers ──
 const CHART_W = 220
@@ -377,96 +542,8 @@ function startFeatureAutoAdvance() {
 function stopFeatureAutoAdvance() {
   if (featureTimer) { clearInterval(featureTimer); featureTimer = null }
 }
-
-// ── Framer-style mouse tilt + parallax ──
-// We write transforms to CSS vars on the card element, throttled by rAF.
-// CSS handles the spring smoothing via transition + cubic-bezier.
-const TILT_MAX = 6        // max degrees
-const PARALLAX_MAX = 6    // max px shift for inner content
-const tiltRaf = new Map()
-
-function onCardMouseEnter(i) {
-  stopFeatureAutoAdvance()
-  activeCard.value = i
-}
-
-function onCardMouseLeave(ev, i) {
-  startFeatureAutoAdvance()
-  const card = ev.currentTarget
-  if (tiltRaf.has(i)) { cancelAnimationFrame(tiltRaf.get(i)); tiltRaf.delete(i) }
-  card.style.setProperty('--tx', '0deg')
-  card.style.setProperty('--ty', '0deg')
-  card.style.setProperty('--px', '0px')
-  card.style.setProperty('--py', '0px')
-  card.style.setProperty('--gx', '50%')
-  card.style.setProperty('--gy', '50%')
-}
-
-function onCardMouseMove(ev, i) {
-  const card = ev.currentTarget
-  if (tiltRaf.has(i)) cancelAnimationFrame(tiltRaf.get(i))
-  // rAF the read+write so we don't fight the browser
-  tiltRaf.set(i, requestAnimationFrame(() => {
-    const rect = card.getBoundingClientRect()
-    const x = (ev.clientX - rect.left) / rect.width  // 0..1
-    const y = (ev.clientY - rect.top)  / rect.height // 0..1
-    const tx = (y - 0.5) * -2 * TILT_MAX  // tilt UP when mouse is at top
-    const ty = (x - 0.5) *  2 * TILT_MAX  // tilt RIGHT when mouse is at right
-    const px = (x - 0.5) * PARALLAX_MAX
-    const py = (y - 0.5) * PARALLAX_MAX
-    card.style.setProperty('--tx', tx.toFixed(2) + 'deg')
-    card.style.setProperty('--ty', ty.toFixed(2) + 'deg')
-    card.style.setProperty('--px', px.toFixed(2) + 'px')
-    card.style.setProperty('--py', py.toFixed(2) + 'px')
-    card.style.setProperty('--gx', (x * 100).toFixed(1) + '%')
-    card.style.setProperty('--gy', (y * 100).toFixed(1) + '%')
-  }))
-}
-
-// ── Count-up animation for the active card's headline number ──
-// Stored as a map { cardIndex: displayString } so non-active cards
-// keep their final value (we only count the active card up).
-const animatedMetrics = ref({})
-let countUpRaf = null
-
-function formatLikeOriginal(n, original) {
-  const s = String(original)
-  if (/[,]/.test(s)) return Math.round(n).toLocaleString()
-  return String(Math.round(n))
-}
-
-function startCountUp(targetCardIdx) {
-  if (countUpRaf) cancelAnimationFrame(countUpRaf)
-  if (targetCardIdx < 0) return
-  const target = features[targetCardIdx]?.metric?.value
-  if (!target) return
-  const cleaned = String(target).replace(/[^\d.]/g, '')
-  const final = parseFloat(cleaned) || 0
-  const startTs = performance.now()
-  const duration = 900
-  const tick = (now) => {
-    const t = Math.min(1, (now - startTs) / duration)
-    // ease-out cubic — matches Framer's default "easeOut"
-    const eased = 1 - Math.pow(1 - t, 3)
-    const current = final * eased
-    animatedMetrics.value = {
-      ...animatedMetrics.value,
-      [targetCardIdx]: formatLikeOriginal(current, target),
-    }
-    if (t < 1) countUpRaf = requestAnimationFrame(tick)
-    else {
-      animatedMetrics.value = { ...animatedMetrics.value, [targetCardIdx]: target }
-      countUpRaf = null
-    }
-  }
-  countUpRaf = requestAnimationFrame(tick)
-}
-
-function metricFor(card, i) {
-  return animatedMetrics.value[i] ?? card.metric.value
-}
-
-watch(activeCard, (idx) => startCountUp(idx))
+function pauseAutoAdvance() { stopFeatureAutoAdvance() }
+function resumeAutoAdvance() { startFeatureAutoAdvance() }
 
 function scrollCarousel(dir) {
   const maxOffset = -(features.length - visibleCards) * cardStep
@@ -484,6 +561,34 @@ function resetCycle() {
   startCycle()
 }
 
+/* Typewriter engine */
+function typeWriter(el, text, speed = 65) {
+  return new Promise(resolve => {
+    let idx = 0
+    function tick() {
+      if (!el) { resolve(); return }
+      if (idx <= text.length) {
+        el.textContent = text.slice(0, idx)
+        idx++
+        setTimeout(tick, speed)
+      } else {
+        resolve()
+      }
+    }
+    tick()
+  })
+}
+
+async function runTypewriter() {
+  await new Promise(r => setTimeout(r, 400)) // initial pause
+  await typeWriter(twLine1.value, 'MARKETING', 80)
+  await new Promise(r => setTimeout(r, 200))
+  await typeWriter(twLine2.value, 'INTELLIGENCE,', 70)
+  await new Promise(r => setTimeout(r, 200))
+  await typeWriter(twLine3.value, 'SIMPLIFIED.', 70)
+  await new Promise(r => setTimeout(r, 400))
+  twDone.value = true
+}
 
 onMounted(() => {
   const onScroll = () => { scrolled.value = window.scrollY > 40 }
@@ -501,6 +606,7 @@ onMounted(() => {
 
   document.querySelectorAll('.anim').forEach(el => obs.observe(el))
   startCycle()
+  runTypewriter()
   startFeatureAutoAdvance()
 
   onUnmounted(() => {
@@ -520,7 +626,6 @@ const features = [
     replaces: 'Replaces Mixpanel',
     tint: 'tint-peach',
     visual: 'chart',
-    scene: 'floral',
     metric: { value: '2,847', label: 'Visitors today', delta: '+18%' },
     chart: [12, 28, 22, 40, 34, 56, 48, 70, 64, 82, 74, 96],
     icon: '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M3 20V10l4-4 4 4 4-4 4 4v10" stroke-linejoin="round"/></svg>'
@@ -531,7 +636,6 @@ const features = [
     replaces: 'Replaces Hotjar',
     tint: 'tint-blue',
     visual: 'heatmap',
-    scene: 'mountain',
     metric: { value: '4,132', label: 'Clicks tracked', delta: '12 hotspots' },
     hotspots: [
       { x: 22, y: 30, size: 42, delay: 0,    intensity: 0.9 },
@@ -548,7 +652,6 @@ const features = [
     replaces: 'Replaces Semrush',
     tint: 'tint-yellow',
     visual: 'keywords',
-    scene: 'meadow',
     metric: { value: '87', label: 'Tracked keywords', delta: '+4 new #1s' },
     keywords: [
       { term: 'ai analytics', rank: 3, prev: 7,  score: 92 },
@@ -564,7 +667,6 @@ const features = [
     replaces: 'Replaces Clearbit',
     tint: 'tint-peach',
     visual: 'leads',
-    scene: 'floral',
     metric: { value: '23', label: 'Companies today', delta: '4 hot leads' },
     leads: [
       { name: 'Acme Corp',      domain: 'acme.com',    score: 94, hot: true },
@@ -596,10 +698,6 @@ const steps = [
   { title: 'Install the Pixel', desc: 'Copy one line of JavaScript into your site header — takes 30 seconds.' },
   { title: 'Watch Insights Flow', desc: 'Real-time analytics and AI insights appear immediately.' },
 ]
-
-
-
-
 
 const plans = [
   {
@@ -665,7 +763,7 @@ const plans = [
   -webkit-font-smoothing: antialiased;
 }
 .wrap { max-width: 1200px; margin: 0 auto; padding: 0 32px; }
-em { color: #F97316; font-style: italic; }
+em { color: #5B8DEF; font-style: italic; }
 .hide-m {}
 
 /* ── Nav ── */
@@ -685,31 +783,26 @@ em { color: #F97316; font-style: italic; }
 .brand-beta {
   display: inline-block;
   background: #131718;
-  color: #FFFFFF;
+  color: #fcd34d;
   font-family: -apple-system, BlinkMacSystemFont, sans-serif;
   font-weight: 800;
-  font-size: 9px;
+  font-size: 10px;
   letter-spacing: 0.1em;
-  padding: 2px 7px;
+  padding: 3px 8px;
   border-radius: 999px;
   vertical-align: middle;
-  background: #F97316;
 }
 .hero-beta-note {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  font-size: 11px;
-  color: rgba(15, 23, 42, 0.5);
-  background: transparent;
-  border: none;
-  padding: 0;
-  margin: 14px 0 4px;
-}
-.beta-text {
-  font-size: 11px;
-  color: rgba(15, 23, 42, 0.45);
-  font-weight: 400;
+  gap: 10px;
+  font-size: 14px;
+  color: #475569;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  padding: 8px 14px;
+  border-radius: 999px;
+  margin: 18px 0 8px;
 }
 .nav-links { display: flex; gap: 32px; }
 .nav-links a { font-size: 13px; font-weight: 500; color: #6e6a65; text-decoration: none; transition: color 0.2s; }
@@ -726,31 +819,37 @@ em { color: #F97316; font-style: italic; }
 .nav-cta:hover { background: #2a2d2e; transform: translateY(-1px); }
 
 /* ── Hero ── */
-.hero { padding: 160px 0 80px; text-align: center; }
-.hero .wrap { display: flex; flex-direction: column; align-items: center; }
+.hero { padding: 160px 0 80px; }
 .hero-h {
   font-family: 'DM Serif Display', Georgia, serif;
-  font-weight: 400;
-  font-size: clamp(2.6rem, 5.5vw, 4.5rem);
-  line-height: 1.12;
-  letter-spacing: -0.03em;
-  color: #0F172A;
+  font-weight: 400; font-size: clamp(2.8rem, 6vw, 5.5rem);
+  line-height: 1.05; letter-spacing: -0.03em;
+  text-transform: uppercase;
   margin-bottom: 24px;
-  animation: hero-float 6s ease-in-out infinite;
-}
-@keyframes hero-float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-6px); }
-}
-.hero-h em {
-  font-style: italic;
-  color: #F97316;
+  min-height: 3.3em; /* prevent layout shift during typewriter */
 }
 
-.hero-p {
-  font-size: 17px; color: #475569; line-height: 1.65; max-width: 520px;
-  margin-bottom: 20px; text-align: center;
+/* Typewriter cursor */
+.tw-line {
+  display: inline;
 }
+.tw-cursor {
+  display: inline-block;
+  font-weight: 300;
+  color: #5B8DEF;
+  animation: tw-blink 0.6s step-end infinite;
+  margin-left: 2px;
+}
+.tw-cursor--done {
+  animation: tw-blink 1.2s step-end infinite;
+  opacity: 0.5;
+}
+@keyframes tw-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.hero-p { font-size: 16px; color: #6e6a65; line-height: 1.7; max-width: 480px; margin-bottom: 32px; }
 .hero-ctas { display: flex; gap: 12px; }
 .btn-primary {
   padding: 14px 32px; background: #131718; color: #fff;
@@ -767,87 +866,18 @@ em { color: #F97316; font-style: italic; }
 }
 .btn-ghost:hover { border-color: #131718; }
 
-/* ═══ Dashboard Preview — video background with floating mockup ═══ */
-.dash-preview {
-  padding: 0 32px 80px;
-  background: #FFFFFF;
-}
-.dash-preview-inner {
-  position: relative;
-  max-width: 1200px;
-  margin: 0 auto;
-  border-radius: 24px;
-  overflow: hidden;
-  aspect-ratio: 16 / 10;
-  box-shadow:
-    0 2px 4px rgba(15, 23, 42, 0.04),
-    0 24px 64px rgba(15, 23, 42, 0.10);
-}
-.dash-video {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  z-index: 0;
-}
-.dash-video-overlay {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  background: rgba(250, 249, 247, 0.15);
-  pointer-events: none;
-}
-.dash-mockup {
-  position: absolute;
-  z-index: 2;
-  top: 5%;
-  left: 5%;
-  right: 5%;
-  bottom: 5%;
-  border-radius: 16px;
-  overflow: hidden;
-  box-shadow:
-    0 2px 8px rgba(15, 23, 42, 0.08),
-    0 16px 48px rgba(15, 23, 42, 0.12);
-  background: #FFFFFF;
-}
-.dash-img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: top left;
-  display: block;
-}
-
-@media (max-width: 768px) {
-  .dash-preview { padding: 0 16px 48px; }
-  .dash-preview-inner { aspect-ratio: 4 / 3; border-radius: 16px; }
-  .dash-mockup { top: 4%; left: 4%; right: 4%; bottom: 4%; border-radius: 10px; }
-}
-
 /* ═══ Features Carousel — Travel Lab Style ═══ */
-
-
-/* Features section — clean gray background */
-.features-section {
-  padding: 64px 0 80px;
-  position: relative;
-  overflow: hidden;
-  background: #F5F5F5;
-}
-.feat-full { background: transparent; border-radius: 0; margin: 0; padding: 48px 32px 40px; overflow: visible; position: relative; z-index: 1; }
+.features-section { padding: 64px 0 80px; }
+.feat-full { background: #FFF6C6; border-radius: 24px; margin: 0 32px; padding: 48px 0 40px; overflow: hidden; }
 
 .feat-header { display: flex; align-items: baseline; gap: 40px; margin-bottom: 36px; flex-wrap: wrap; }
 .feat-headline {
   font-family: 'DM Serif Display', Georgia, serif;
   font-size: clamp(1.8rem, 3.5vw, 3rem);
-  font-weight: 400;
-  letter-spacing: -0.025em;
-  color: #0F172A;
+  font-weight: 400; text-transform: uppercase;
+  letter-spacing: -0.02em;
   display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap;
-  line-height: 1.15;
-  text-transform: none;
+  line-height: 1.2;
 }
 
 /* ── Framer-style word cycler ── */
@@ -864,32 +894,34 @@ em { color: #F97316; font-style: italic; }
   display: inline-block;
   position: absolute;
   left: 0; bottom: 0;
-  color: #0F172A;
+  color: #5B8DEF;
   font-style: italic;
   white-space: nowrap;
   line-height: 1.2;
 }
 .feat-word-glow {
-  position: absolute; bottom: -2px; left: 0; right: 0;
-  height: 2px; background: #0F172A;
-  border-radius: 1px;
-  opacity: 0.5;
+  position: absolute; bottom: -4px; left: 0; right: 0;
+  height: 3px; background: #5B8DEF;
+  border-radius: 2px;
+  box-shadow: 0 0 12px rgba(91, 141, 239, 0.5), 0 0 24px rgba(91, 141, 239, 0.2);
+  animation: glow-pulse 2.8s ease-in-out infinite;
 }
 @keyframes glow-pulse {
   0%, 100% { opacity: 0.6; }
   50% { opacity: 1; }
 }
 
-/* Word cycle transition — smooth slide-up, no flicker */
+/* Word cycle transition — slide up with blur */
 .word-cycle-enter-active {
-  transition: all 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+  transition: all 0.55s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 .word-cycle-leave-active {
-  transition: all 0.25s cubic-bezier(0.55, 0, 1, 0.45);
+  transition: all 0.35s cubic-bezier(0.55, 0, 1, 0.45);
+  position: absolute;
 }
 .word-cycle-enter-from {
-  opacity: 0; transform: translateY(60%) scale(0.95);
-  filter: blur(4px);
+  opacity: 0; transform: translateY(100%) scale(0.9);
+  filter: blur(6px);
 }
 .word-cycle-enter-to {
   opacity: 1; transform: translateY(0) scale(1);
@@ -900,8 +932,8 @@ em { color: #F97316; font-style: italic; }
   filter: blur(0);
 }
 .word-cycle-leave-to {
-  opacity: 0; transform: translateY(-50%) scale(0.95);
-  filter: blur(4px);
+  opacity: 0; transform: translateY(-80%) scale(0.9);
+  filter: blur(6px);
 }
 
 .feat-tabs { display: flex; gap: 24px; }
@@ -914,16 +946,16 @@ em { color: #F97316; font-style: italic; }
   position: relative;
 }
 .feat-tab.active {
-  color: #0F172A;
+  color: #5B8DEF;
   text-decoration: none;
 }
 .feat-tab.active::after {
   content: '';
   position: absolute;
   bottom: -4px; left: 0; right: 0;
-  height: 1px;
-  background: #0F172A;
-  border-radius: 0;
+  height: 2px;
+  background: #5B8DEF;
+  border-radius: 1px;
   animation: tab-slide-in 0.3s cubic-bezier(0.22, 1, 0.36, 1);
 }
 @keyframes tab-slide-in {
@@ -940,111 +972,36 @@ em { color: #F97316; font-style: italic; }
 }
 
 /* Individual card */
-/* ── Framer-style card: 3D tilt, spring entrance, layered shadow ── */
 .carousel-card {
-  --tx: 0deg;
-  --ty: 0deg;
-  --px: 0px;
-  --py: 0px;
-  --gx: 50%;
-  --gy: 50%;
   flex: 0 0 260px; min-height: 320px;
-  border-radius: 18px; padding: 24px 20px;
+  border-radius: 16px; padding: 24px 20px;
   cursor: pointer; position: relative;
   display: flex; flex-direction: column;
+  transition: flex 0.45s cubic-bezier(0.22, 1, 0.36, 1),
+              transform 0.3s cubic-bezier(0.22, 1, 0.36, 1),
+              box-shadow 0.3s ease;
   overflow: hidden;
-  transform-style: preserve-3d;
-  perspective: 800px;
-  /* Two-layer shadow: tight near + soft far. Driven by --shadow-* in active state. */
-  box-shadow:
-    0 1px 3px rgba(19,23,24,0.06),
-    0 8px 24px rgba(19,23,24,0.05);
-  /* Spring-eased motion (Framer's classic overshoot curve). The transform
-     is driven by mouse-move CSS vars so we only animate when settling. */
-  transform:
-    perspective(900px)
-    rotateX(var(--tx))
-    rotateY(var(--ty))
-    translateZ(0)
-    scale(var(--card-scale, 1));
-  transition:
-    flex 0.5s cubic-bezier(0.34, 1.56, 0.64, 1),
-    transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1),
-    box-shadow 0.45s cubic-bezier(0.22, 1, 0.36, 1),
-    --card-scale 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
-  /* Stagger-in on first paint */
-  animation: card-spring-in 0.85s cubic-bezier(0.34, 1.56, 0.64, 1) var(--card-stagger, 0ms) both;
-  will-change: transform, box-shadow;
+  animation: card-entrance 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
-
-/* Subtle cursor spotlight — much softer than before so it doesn't compete
-   with the content. Only visible on the active card. */
-.carousel-card::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  background: radial-gradient(
-    320px circle at var(--gx) var(--gy),
-    rgba(15, 23, 42, 0.04),
-    rgba(15, 23, 42, 0) 60%
-  );
-  opacity: 0;
-  transition: opacity 0.4s cubic-bezier(0.22, 1, 0.36, 1);
-  z-index: 1;
+@keyframes card-entrance {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
-.carousel-card.is-playing::before { opacity: 1; }
-
-/* Inner content above the glow layer */
-.carousel-card > * { position: relative; z-index: 2; }
-
-@keyframes card-spring-in {
-  0%   { opacity: 0; transform: perspective(900px) translateY(28px) scale(0.92) rotateX(8deg); }
-  60%  { opacity: 1; transform: perspective(900px) translateY(-4px) scale(1.02) rotateX(-1deg); }
-  100% { opacity: 1; transform: perspective(900px) translateY(0)    scale(1)    rotateX(0deg); }
-}
-
 .carousel-card:hover {
-  --card-scale: 1.015;
-  border-color: rgba(15, 23, 42, 0.12);
-  box-shadow:
-    0 1px 2px rgba(15, 23, 42, 0.04),
-    0 12px 28px rgba(15, 23, 42, 0.06);
+  transform: translateY(-3px);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.08);
 }
-
-.carousel-card.expanded,
-.carousel-card.is-playing {
+.carousel-card.expanded {
   flex: 0 0 420px;
   min-height: 360px;
-  --card-scale: 1.025;
-  background: #ffffff;
-  border-color: rgba(15, 23, 42, 0.16);
-  box-shadow:
-    0 1px 2px rgba(15, 23, 42, 0.04),
-    0 16px 40px rgba(15, 23, 42, 0.08);
-}
-
-/* Inner-content parallax — chart/visual shifts opposite to tilt */
-.carousel-card .card-visual,
-.carousel-card .card-title {
-  transform: translate3d(var(--px), var(--py), 0);
-  transition: transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-.carousel-card .card-num {
-  transform: translate3d(calc(var(--px) * 0.6), calc(var(--py) * 0.6), 0);
-  transition: transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .carousel-card,
-  .carousel-card .card-visual,
-  .carousel-card .card-title,
-  .carousel-card .card-num {
-    animation: none !important;
-    transition: opacity 0.3s ease, flex 0.3s ease;
-    transform: none !important;
-  }
+  box-shadow: 0 18px 48px rgba(0,0,0,0.14);
+  transform: translateY(-4px);
 }
 
 /* ── Per-tool animated visuals ── */
@@ -1066,23 +1023,6 @@ em { color: #F97316; font-style: italic; }
   color: #131718;
   line-height: 1;
   letter-spacing: -0.02em;
-  font-variant-numeric: tabular-nums;
-  display: inline-block;
-}
-.is-playing .viz-stat-value {
-  animation: stat-pop-in 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-@keyframes stat-pop-in {
-  0%   { opacity: 0; transform: translateY(8px) scale(0.92); filter: blur(2px); }
-  60%  { opacity: 1; transform: translateY(-1px) scale(1.04); filter: blur(0); }
-  100% { opacity: 1; transform: translateY(0) scale(1); }
-}
-.is-playing .viz-stat-meta {
-  animation: stat-meta-fade 0.6s cubic-bezier(0.22, 1, 0.36, 1) 0.15s both;
-}
-@keyframes stat-meta-fade {
-  from { opacity: 0; transform: translateY(4px); }
-  to   { opacity: 1; transform: translateY(0); }
 }
 .viz-stat-meta {
   display: flex;
@@ -1092,15 +1032,15 @@ em { color: #F97316; font-style: italic; }
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
-.viz-stat-label { color: rgba(15, 23, 42, 0.5); font-weight: 500; letter-spacing: 0.04em; }
+.viz-stat-label { color: #131718; opacity: 0.6; font-weight: 600; }
 .viz-stat-delta {
   padding: 2px 6px;
   border-radius: 4px;
-  background: rgba(249, 115, 22, 0.08);
-  color: rgba(15, 23, 42, 0.65);
-  font-weight: 600;
+  background: rgba(19,23,24,0.08);
+  color: #131718;
+  font-weight: 700;
 }
-.viz-stat-delta.up { background: rgba(249, 115, 22, 0.12); color: #EA580C; }
+.viz-stat-delta.up { background: rgba(24,110,58,0.14); color: #186E3A; }
 
 /* Chart (Analytics) */
 .viz-chart { padding-right: 4px; }
@@ -1154,7 +1094,7 @@ em { color: #F97316; font-style: italic; }
   position: absolute;
   border-radius: 50%;
   transform: translate(-50%, -50%) scale(0.4);
-  background: radial-gradient(circle, rgba(249, 115, 22, 0.55) 0%, rgba(249, 115, 22, 0.22) 45%, rgba(249, 115, 22, 0) 75%);
+  background: radial-gradient(circle, rgba(220,82,48,0.9) 0%, rgba(245,166,35,0.5) 45%, rgba(245,166,35,0) 75%);
   filter: blur(2px);
   opacity: 0;
   pointer-events: none;
@@ -1231,7 +1171,7 @@ em { color: #F97316; font-style: italic; }
 .kw-bar-fill {
   display: block;
   height: 100%;
-  background: linear-gradient(90deg, #F97316 0%, #FB923C 100%);
+  background: #131718;
   border-radius: 2px;
   transform: scaleX(0);
   transform-origin: left center;
@@ -1247,9 +1187,9 @@ em { color: #F97316; font-style: italic; }
   align-items: center;
   gap: 2px;
   font-size: 10px;
-  font-weight: 600;
-  color: rgba(15, 23, 42, 0.65);
-  background: rgba(15, 23, 42, 0.05);
+  font-weight: 700;
+  color: #186E3A;
+  background: rgba(24,110,58,0.12);
   padding: 2px 5px;
   border-radius: 4px;
 }
@@ -1262,8 +1202,8 @@ em { color: #F97316; font-style: italic; }
   gap: 10px;
   padding: 8px 10px;
   border-radius: 10px;
-  background: #ffffff;
-  border: 1px solid rgba(15, 23, 42, 0.06);
+  background: rgba(255,255,255,0.55);
+  border: 1px solid rgba(19,23,24,0.06);
   opacity: 0;
   transform: translateY(8px);
 }
@@ -1275,7 +1215,7 @@ em { color: #F97316; font-style: italic; }
 }
 .lead-avatar {
   width: 26px; height: 26px;
-  border-radius: 6px;
+  border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
   color: #fff;
   font-weight: 700;
@@ -1283,124 +1223,53 @@ em { color: #F97316; font-style: italic; }
   flex-shrink: 0;
 }
 .lead-meta { flex: 1; min-width: 0; }
-.lead-name { font-size: 12px; font-weight: 600; color: #0F172A; line-height: 1.2; }
-.lead-domain { font-size: 10px; color: rgba(15, 23, 42, 0.5); }
+.lead-name { font-size: 12px; font-weight: 700; color: #131718; line-height: 1.2; }
+.lead-domain { font-size: 10px; color: #131718; opacity: 0.55; }
 .lead-score {
   font-size: 11px;
-  font-weight: 700;
-  padding: 3px 8px;
+  font-weight: 800;
+  padding: 3px 7px;
   border-radius: 999px;
-  background: rgba(15, 23, 42, 0.05);
-  color: #0F172A;
-  font-variant-numeric: tabular-nums;
+  background: rgba(19,23,24,0.08);
+  color: #131718;
 }
 .lead-score.hot {
-  background: #F97316;
+  background: #DC5230;
   color: #fff;
-  box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.30);
+  box-shadow: 0 0 0 0 rgba(220,82,48,0.7);
 }
 .is-playing .lead-score.hot {
   animation: lead-hot-pulse 1.8s ease-in-out 0.8s infinite;
 }
 @keyframes lead-hot-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.30); }
-  50%      { box-shadow: 0 0 0 5px rgba(249, 115, 22, 0); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(220,82,48,0.6); }
+  50%      { box-shadow: 0 0 0 6px rgba(220,82,48,0); }
 }
 
-/* ── LLM Ranking visual ── */
-.viz-llm { display: flex; flex-direction: column; gap: 8px; }
-.llm-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.llm-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  opacity: 0;
-  transform: translateX(-12px);
-  animation: kw-slide-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-}
-.llm-icon {
-  font-size: 12px;
-  width: 18px;
-  text-align: center;
-  flex-shrink: 0;
-}
-.llm-name {
-  font-size: 11px;
-  font-weight: 600;
-  color: #0F172A;
-  width: 72px;
-  flex-shrink: 0;
-}
-.llm-bar {
-  flex: 1;
-  height: 6px;
-  background: rgba(0, 0, 0, 0.06);
-  border-radius: 3px;
-  overflow: hidden;
-  min-width: 0;
-}
-.llm-bar-fill {
-  height: 100%;
-  border-radius: 3px;
-  width: 0;
-  animation: kw-bar-grow 0.7s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-}
-.llm-bar-fill.tier-high { background: linear-gradient(90deg, #10B981, #34D399); }
-.llm-bar-fill.tier-mid  { background: linear-gradient(90deg, #F59E0B, #FBBF24); }
-.llm-bar-fill.tier-low  { background: linear-gradient(90deg, #EF4444, #F87171); }
-.llm-score {
-  font-size: 11px;
-  font-weight: 700;
-  color: #475569;
-  width: 32px;
-  text-align: right;
-  flex-shrink: 0;
-}
-
-.carousel-card.tint-peach,
-.carousel-card.tint-blue,
-.carousel-card.tint-yellow,
-.carousel-card.tint-pink,
-.carousel-card.tint-violet {
-  background: #FFFFFF;
-  border: 1px solid rgba(255, 255, 255, 0.7);
-  box-shadow:
-    0 1px 3px rgba(19,23,24,0.06),
-    0 8px 24px rgba(19,23,24,0.08);
-}
+/* Card tints — Travel Lab branding */
+.carousel-card.tint-peach   { background: #FEC29F; }
+.carousel-card.tint-blue    { background: #D1E6F6; }
+.carousel-card.tint-yellow  { background: #FFF6C6; border: 1px solid rgba(0,0,0,0.06); }
+.carousel-card.tint-pink    { background: #FFDAE4; }
 
 /* Card inner elements */
 .card-num {
-  /* Bear-style monospace numeric label, not the loud serif. Smaller,
-     muted, uppercase, lots of letter-spacing. */
-  font-family: 'SF Mono', 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.12em;
-  color: rgba(15, 23, 42, 0.4);
-  line-height: 1;
-  margin-bottom: 18px;
+  font-family: 'DM Serif Display', Georgia, serif;
+  font-size: 2.2rem; font-weight: 400;
+  color: #131718; line-height: 1;
+  margin-bottom: 16px;
 }
 .card-visual { margin-bottom: auto; }
 .card-icon {
-  color: rgba(15, 23, 42, 0.5);
+  color: #131718; opacity: 0.7;
   transition: transform 0.3s ease;
 }
 .carousel-card:hover .card-icon {
-  transform: scale(1.05);
+  transform: scale(1.1);
 }
 .card-title {
-  /* Lighter weight, tighter tracking — Bear's serif headline pattern. */
-  font-family: 'DM Serif Display', Georgia, serif;
-  font-size: 22px;
-  font-weight: 400;
-  color: #0F172A;
-  letter-spacing: -0.025em;
-  line-height: 1.15;
+  font-size: 18px; font-weight: 800;
+  color: #131718; letter-spacing: -0.01em;
   margin-top: auto;
 }
 
@@ -1420,8 +1289,8 @@ em { color: #F97316; font-style: italic; }
   margin-top: 10px;
 }
 .card-arrow { display: flex; justify-content: flex-end; margin-bottom: 8px; }
-.card-desc { font-size: 13px; color: #475569; line-height: 1.55; margin-bottom: 10px; font-weight: 400; }
-.card-replaces { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; color: rgba(15, 23, 42, 0.45); }
+.card-desc { font-size: 12px; color: #131718; opacity: 0.75; line-height: 1.5; margin-bottom: 10px; }
+.card-replaces { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #131718; opacity: 0.4; }
 
 /* Carousel nav */
 .carousel-nav { display: flex; align-items: center; gap: 16px; margin-top: 28px; }
@@ -1472,10 +1341,10 @@ em { color: #F97316; font-style: italic; }
   position: relative; transition: all 0.3s;
 }
 .price-card:hover { transform: translateY(-3px); box-shadow: 0 8px 28px rgba(0,0,0,0.05); }
-.price-card.featured { border-color: #F97316; box-shadow: 0 4px 20px rgba(249,115,22,0.1); }
+.price-card.featured { border-color: #5B8DEF; box-shadow: 0 4px 20px rgba(91,141,239,0.1); }
 .pop {
   position: absolute; top: -11px; left: 50%; transform: translateX(-50%);
-  padding: 3px 14px; background: #F97316; color: #fff;
+  padding: 3px 14px; background: #5B8DEF; color: #fff;
   border-radius: 999px; font-size: 10px; font-weight: 700;
   text-transform: uppercase; letter-spacing: 0.04em;
 }
@@ -1491,59 +1360,23 @@ em { color: #F97316; font-style: italic; }
   text-decoration: none; border: 1.5px solid rgba(0,0,0,0.1);
   color: #131718; transition: all 0.25s;
 }
-.price-btn:hover { border-color: #F97316; color: #F97316; }
+.price-btn:hover { border-color: #5B8DEF; color: #5B8DEF; }
 .price-btn.dark { background: #131718; border-color: #131718; color: #fff; }
 .price-btn.dark:hover { background: #2a2d2e; transform: translateY(-1px); }
 
 /* ── Final CTA ── */
 .final-cta { padding: 48px 0 80px; }
 .cta-inner {
-  position: relative;
-  text-align: center;
+  text-align: center; background: #D1E6F6;
   border: none; border-radius: 24px;
-  padding: 0;
-  overflow: hidden;
-  min-height: 340px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.cta-video {
-  position: absolute;
-  inset: 0;
-  width: 100%; height: 100%;
-  object-fit: cover;
-  z-index: 0;
-}
-.cta-video-overlay {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  background: rgba(15, 23, 42, 0.55);
-  backdrop-filter: blur(2px);
-  pointer-events: none;
-}
-.cta-content {
-  position: relative;
-  z-index: 2;
   padding: 72px 40px;
 }
 .cta-inner h2 {
   font-family: 'DM Serif Display', Georgia, serif;
-  font-weight: 400; font-size: clamp(1.6rem, 3vw, 2.4rem);
+  font-weight: 400; font-size: clamp(1.6rem, 3vw, 2.2rem);
   margin-bottom: 10px;
-  color: #FFFFFF;
 }
-.cta-inner h2 em { color: #FB923C; }
-.cta-inner p { font-size: 15px; color: rgba(255,255,255,0.7); margin-bottom: 28px; }
-.cta-btn-white {
-  background: #FFFFFF !important;
-  color: #0F172A !important;
-}
-.cta-btn-white:hover {
-  background: #F8FAFC !important;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.2);
-}
+.cta-inner p { font-size: 15px; color: #6e6a65; margin-bottom: 28px; }
 
 /* ── Footer ── */
 .footer { padding: 24px 0; border-top: 1px solid rgba(0,0,0,0.06); }
@@ -1566,5 +1399,367 @@ em { color: #F97316; font-style: italic; }
 @media (max-width: 640px) {
   .hero-h { font-size: 2.4rem; min-height: auto; }
   .hero-ctas { flex-direction: column; align-items: flex-start; }
+}
+
+/* ──────────────────────────────────────────────────
+   "Our Tools For" section — Airbnb-style cards
+   Warm neutrals + per-card accent borders (rausch, coral,
+   teal/babu, sky). Fonts: Geist + Inter.
+   ────────────────────────────────────────────────── */
+.tools-for {
+  --ab-fg: #222222;
+  --ab-fg-muted: #6a6a6a;
+  --ab-fg-subtle: #b0b0b0;
+  --ab-bg: #f7f7f7;
+  --ab-card: #ffffff;
+  --ab-hairline: #ebebeb;
+  --ab-hairline-strong: #dddddd;
+  --ab-rausch: #ff385c;
+  --ab-coral: #e07856;
+  --ab-babu: #00a699;
+  --ab-sky: #428bca;
+  --ab-arches: #fc642d;
+  padding: 120px 0 100px;
+  background: var(--ab-bg);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  color: var(--ab-fg);
+}
+.tools-for .wrap { max-width: 1200px; margin: 0 auto; padding: 0 24px; }
+
+.tools-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 32px;
+  margin-bottom: 56px;
+  flex-wrap: wrap;
+}
+
+.tools-eyebrow {
+  font-family: 'Geist', 'Inter', system-ui, sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  color: var(--ab-fg-muted);
+  text-transform: uppercase;
+}
+
+.tools-tabs {
+  display: inline-flex;
+  gap: 2px;
+  padding: 4px;
+  background: #ffffff;
+  border: 1px solid var(--ab-hairline);
+  border-radius: 999px;
+}
+
+.tools-tab {
+  appearance: none;
+  border: none;
+  background: transparent;
+  padding: 9px 18px;
+  border-radius: 999px;
+  font-family: 'Inter', sans-serif;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--ab-fg-muted);
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+.tools-tab:hover { color: var(--ab-fg); background: #f7f7f7; }
+.tools-tab-active {
+  background: var(--ab-fg);
+  color: #ffffff;
+}
+.tools-tab-active:hover { background: var(--ab-fg); color: #ffffff; }
+
+.tools-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 18px;
+  margin-bottom: 48px;
+}
+
+/* Base tool card */
+.tool-card {
+  --accent: var(--ab-fg);
+  --accent-soft: #f7f7f7;
+  --accent-strong: #222222;
+  position: relative;
+  background: var(--ab-card);
+  border: 1px solid var(--ab-hairline);
+  border-radius: 16px;
+  padding: 22px 22px 26px;
+  cursor: pointer;
+  transition: all 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+  min-height: 340px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+.tool-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 4px;
+  background: var(--accent);
+  border-top-left-radius: 16px;
+  border-top-right-radius: 16px;
+  opacity: 0.9;
+}
+.tool-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(0, 0, 0, 0.04);
+  border-color: var(--accent);
+}
+.tool-card-active {
+  border-color: var(--accent);
+  box-shadow: 0 12px 32px -10px color-mix(in srgb, var(--accent) 28%, transparent), 0 2px 6px rgba(0, 0, 0, 0.06);
+}
+.tool-card-active::before { height: 6px; opacity: 1; }
+
+/* Per-tool accents */
+.tool-card-rausch { --accent: var(--ab-rausch); --accent-soft: #fff1f3; --accent-strong: #c01e3c; }
+.tool-card-coral  { --accent: var(--ab-coral);  --accent-soft: #fdf2ec; --accent-strong: #a55436; }
+.tool-card-green  { --accent: var(--ab-babu);   --accent-soft: #e6f6f4; --accent-strong: #007a72; }
+.tool-card-blue   { --accent: var(--ab-sky);    --accent-soft: #eef4fb; --accent-strong: #2e63a1; }
+
+.tool-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+.tool-num {
+  font-family: 'Geist', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+  padding: 3px 9px;
+  border-radius: 6px;
+}
+.tool-label {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--ab-fg-muted);
+  text-transform: uppercase;
+}
+
+.tool-metric { margin-bottom: 18px; }
+.tool-metric-num {
+  font-family: 'Geist', 'Inter', sans-serif;
+  font-size: 40px;
+  font-weight: 500;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  color: var(--ab-fg);
+  margin-bottom: 4px;
+}
+.tool-metric-sub {
+  font-size: 13.5px;
+  color: var(--ab-fg-muted);
+  margin-bottom: 10px;
+}
+.tool-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-family: 'Inter', sans-serif;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+.tool-badge.tone-pos {
+  background: #e6f6f4;
+  color: #007a72;
+}
+.tool-badge.tone-neutral {
+  background: #f2f2f2;
+  color: #555555;
+}
+.tool-badge.tone-accent {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+/* ── Keyword list ── */
+.tool-viz-list { margin-top: auto; display: flex; flex-direction: column; gap: 6px; }
+.kw-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  background: #fafafa;
+  border: 1px solid var(--ab-hairline);
+  border-radius: 8px;
+  font-size: 12.5px;
+}
+.kw-pos {
+  font-family: 'Geist', sans-serif;
+  font-weight: 500;
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  min-width: 26px;
+  text-align: center;
+  letter-spacing: 0.02em;
+}
+.kw-pos.pos-1 { background: #e6f6f4; color: #007a72; }
+.kw-pos.pos-3 { background: #eef4fb; color: #2e63a1; }
+.kw-pos.pos-5 { background: #f2f2f2; color: #555555; }
+.kw-term { color: #333333; font-size: 12.5px; }
+.kw-delta {
+  font-family: 'Geist', sans-serif;
+  font-size: 11px;
+  color: var(--ab-fg-subtle);
+}
+
+/* ── Lead rows ── */
+.lead-row {
+  display: grid;
+  grid-template-columns: 28px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  background: #fafafa;
+  border: 1px solid var(--ab-hairline);
+  border-radius: 8px;
+}
+.lead-avatar {
+  display: inline-flex;
+  width: 26px;
+  height: 26px;
+  align-items: center;
+  justify-content: center;
+  background: var(--ab-rausch);
+  color: #ffffff;
+  font-family: 'Geist', sans-serif;
+  font-weight: 500;
+  font-size: 11px;
+  border-radius: 6px;
+}
+.lead-meta { display: flex; flex-direction: column; line-height: 1.25; min-width: 0; }
+.lead-name { font-size: 12.5px; font-weight: 600; color: var(--ab-fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lead-domain { font-size: 11px; color: var(--ab-fg-subtle); }
+.lead-score {
+  font-family: 'Geist', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 4px;
+  min-width: 30px;
+  text-align: center;
+}
+.lead-score.score-hot  { background: #fff1f3; color: var(--ab-rausch); }
+.lead-score.score-warm { background: #fdf2ec; color: var(--ab-arches); }
+.lead-score.score-cool { background: #f2f2f2; color: #555555; }
+
+/* ── Sparkline (Analytics) ── */
+.tool-viz-spark { margin-top: auto; color: var(--accent); }
+.spark-svg { width: 100%; height: 52px; display: block; }
+
+/* ── Heatmap dots (Heatmaps) ── */
+.tool-viz-dots {
+  position: relative;
+  margin-top: auto;
+  height: 80px;
+  background: #fafafa;
+  border: 1px solid var(--ab-hairline);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.viz-dot {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  margin-left: -5px;
+  margin-top: -5px;
+  background: var(--accent);
+  border-radius: 50%;
+  box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 55%, transparent);
+  opacity: 0.85;
+}
+
+/* ── Bottom caption + pager ── */
+.tools-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 32px;
+  padding-top: 28px;
+  border-top: 1px solid var(--ab-hairline);
+}
+.tool-caption { max-width: 680px; }
+.tool-desc {
+  font-family: 'Inter', sans-serif;
+  font-size: 17px;
+  line-height: 1.5;
+  font-weight: 500;
+  color: var(--ab-fg);
+  margin: 0 0 8px;
+  letter-spacing: -0.01em;
+}
+.tool-replace {
+  font-size: 12.5px;
+  color: var(--ab-fg-muted);
+  letter-spacing: 0.01em;
+}
+.tool-replace strong {
+  color: var(--ab-fg);
+  font-family: 'Geist', sans-serif;
+  font-weight: 500;
+}
+
+.tool-pager {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.tool-count {
+  font-family: 'Geist', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ab-fg);
+  min-width: 40px;
+  text-align: center;
+  letter-spacing: 0.01em;
+}
+.tool-arrow {
+  appearance: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 1px solid var(--ab-hairline-strong);
+  color: var(--ab-fg);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.18s ease;
+}
+.tool-arrow:hover {
+  background: var(--ab-fg);
+  color: #ffffff;
+  border-color: var(--ab-fg);
+}
+
+@media (max-width: 1024px) {
+  .tools-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 640px) {
+  .tools-for { padding: 80px 0 72px; }
+  .tools-grid { grid-template-columns: 1fr; gap: 14px; }
+  .tool-card { min-height: auto; }
+  .tools-head { flex-direction: column; align-items: flex-start; gap: 20px; }
+  .tools-bottom { flex-direction: column; align-items: flex-start; gap: 18px; }
 }
 </style>

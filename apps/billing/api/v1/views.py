@@ -91,8 +91,8 @@ class CheckoutView(APIView):
             origin = "https://app.fetchbot.io"
         origin = origin.rstrip("/")
 
-        success_url = f"{origin}/billing?checkout=success"
-        cancel_url = f"{origin}/billing?checkout=canceled"
+        success_url = f"{origin}/dashboard?checkout=success"
+        cancel_url = f"{origin}/paywall?checkout=canceled"
 
         try:
             url = StripeService.create_checkout_session(
