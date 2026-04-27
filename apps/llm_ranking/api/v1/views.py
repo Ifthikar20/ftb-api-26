@@ -89,8 +89,22 @@ class LLMRankingAuditListView(TenantScopedListAPIView):
 
         # Generate or use supplied prompts
         if data["custom_prompts"]:
-            # Tag custom prompts with "custom" type
-            prompts = [{"text": p, "type": "custom"} for p in data["custom_prompts"]]
+            # Tag custom prompts with "custom" type and the niche funnel
+            # stage so they group sensibly in the Prompts table.
+            from apps.llm_ranking.services.prompt_library import (
+                funnel_stage_for, rationale_for,
+            )
+            prompts = [
+                {
+                    "text": p,
+                    "type": "custom",
+                    "funnel_stage": funnel_stage_for("custom"),
+                    "rationale": rationale_for(
+                        "custom", business_name=business_name, industry=industry,
+                    ),
+                }
+                for p in data["custom_prompts"]
+            ]
         else:
             prompts = LLMRankingService.generate_prompts(
                 business_name=business_name,

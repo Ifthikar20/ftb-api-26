@@ -83,20 +83,37 @@ class LLMRankingService:
         then asks Claude for additional natural-language variants to cover
         phrasings the library can't anticipate.
         """
-        from apps.llm_ranking.services.prompt_library import PromptLibrary
+        from apps.llm_ranking.services.prompt_library import (
+            PromptLibrary, funnel_stage_for, rationale_for,
+        )
 
         use_case = use_case or (keywords[0] if keywords else industry)
 
-        # Library returns intent-tagged dicts: {"text": ..., "intent": ...}
+        # Library returns intent-tagged dicts including funnel_stage and a
+        # short strategic rationale per prompt. Funnel stage drives the
+        # default UI grouping; rationale renders as a sub-line beneath each
+        # prompt so the user knows what the prompt actually tests.
         base_items = PromptLibrary.generate(
             industry=industry or "software",
             use_case=use_case,
             location=location,
             max_prompts=10,
             themes=themes,
+            business_name=business_name,
         )
-        # Normalise to {"text": str, "type": str}
-        result_items = [{"text": p["text"], "type": p["intent"]} for p in base_items]
+        # Normalise to {"text", "type", "funnel_stage", "rationale"}
+        # ("type" is preserved for backwards compatibility with older clients)
+        result_items = [
+            {
+                "text": p["text"],
+                "type": p["intent"],
+                "funnel_stage": p.get("funnel_stage", funnel_stage_for(p["intent"])),
+                "rationale": p.get("rationale", rationale_for(
+                    p["intent"], business_name=business_name, industry=industry,
+                )),
+            }
+            for p in base_items
+        ]
 
         # Use Claude to generate additional natural variants
         try:
@@ -139,7 +156,15 @@ class LLMRankingService:
                 ai_prompts = json.loads(match.group())
                 for p in ai_prompts:
                     if isinstance(p, str):
-                        result_items.append({"text": p.strip(), "type": "custom"})
+                        result_items.append({
+                            "text": p.strip(),
+                            "type": "custom",
+                            "funnel_stage": funnel_stage_for("custom"),
+                            "rationale": rationale_for(
+                                "custom", business_name=business_name,
+                                industry=industry, use_case=use_case,
+                            ),
+                        })
         except Exception as e:
             logger.warning("Prompt generation via Claude failed: %s", e)
 
@@ -1023,7 +1048,8 @@ class LLMRankingService:
     def generate_recommendations(*, audit) -> list[str]:
         """
         Return actionable recommendations for improving LLM visibility
-        based on the audit results.
+        based on the audit results — including a funnel-stage gap
+        analysis (GEO playbook) when prompts are tagged.
         """
         recs = []
         results = list(audit.results.all())
@@ -1034,6 +1060,76 @@ class LLMRankingService:
         mention_rate = audit.mention_rate
         avg_rank = audit.avg_mention_rank
         score = audit.overall_score
+
+        # ── Funnel-stage GEO playbook ─────────────────────────────────────
+        # Bucket prompts by funnel_stage and compare visibility per stage.
+        # The strategic gap (e.g. ranking on review queries but absent on
+        # discovery queries) tells the user where to focus content + PR.
+        from apps.llm_ranking.services.prompt_library import (
+            INTENT_FUNNEL_STAGE as INTENT_TO_FUNNEL,
+        )
+
+        prompt_meta = {}
+        for p in (audit.prompts or []):
+            if isinstance(p, dict):
+                text = (p.get("text") or "").strip().lower()
+                stage = p.get("funnel_stage") or INTENT_TO_FUNNEL.get(p.get("type") or "", "niche")
+                prompt_meta[text] = stage
+
+        stage_stats: dict[str, dict] = {}
+        for r in results:
+            if not r.query_succeeded:
+                continue
+            stage = prompt_meta.get((r.prompt or "").strip().lower(), "niche")
+            bucket = stage_stats.setdefault(stage, {"total": 0, "mentioned": 0})
+            bucket["total"] += 1
+            if r.is_mentioned:
+                bucket["mentioned"] += 1
+
+        def _rate(stage: str) -> float | None:
+            b = stage_stats.get(stage)
+            if not b or not b["total"]:
+                return None
+            return b["mentioned"] / b["total"] * 100
+
+        bottom = _rate("bottom")
+        mid = _rate("mid")
+        top = _rate("top")
+
+        # Bottom-of-funnel weakness is the biggest red flag — these are
+        # the prompts your buyers actually run.
+        if bottom is not None and bottom < 40:
+            recs.append(
+                f"You surface in only {bottom:.0f}% of bottom-of-funnel prompts "
+                f"(direct discovery and brand-trust queries). This is the most "
+                f"important gap — buyers running these prompts are ready to pick "
+                f"a tool. Publish landing pages and product comparisons that "
+                f"explicitly name {audit.business_name}, get listed in "
+                f"third-party roundups (G2, Capterra, niche directories), and "
+                f"earn backlinks from publications LLMs already crawl."
+            )
+        if (
+            bottom is not None and top is not None
+            and top - bottom >= 25
+        ):
+            recs.append(
+                f"You score higher on awareness prompts ({top:.0f}%) than on "
+                f"high-intent prompts ({bottom:.0f}%). Awareness without "
+                f"discovery means buyers know the category but not your brand "
+                f"in it — focus on bottom-funnel content and direct-comparison "
+                f"pages, not more thought-leadership."
+            )
+        if (
+            bottom is not None and mid is not None
+            and mid - bottom >= 25
+        ):
+            recs.append(
+                f"AI mentions you in comparison contexts ({mid:.0f}%) but not "
+                f"in direct discovery ({bottom:.0f}%). This usually means "
+                f"competitors own the category-defining content. Publish "
+                f"definitive guides for your top use cases and lobby for "
+                f"placement in industry listicles."
+            )
 
         if mention_rate < 30:
             recs.append(

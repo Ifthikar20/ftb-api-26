@@ -393,6 +393,12 @@
           <h3 class="card-title" style="font-size:1.1rem;font-weight:700">Prompts</h3>
           <div class="pt-header-right">
             <div class="pi-filter">
+              <select v-model="groupBy" class="pi-select">
+                <option value="funnel_stage">Group by funnel stage</option>
+                <option value="intent">Group by topic</option>
+              </select>
+            </div>
+            <div class="pi-filter">
               <select v-model="providerFilter" class="pi-select">
                 <option value="">All Providers</option>
                 <option v-for="p in availableProviderFilters" :key="p" :value="p">{{ providerLabel(p) }}</option>
@@ -422,7 +428,7 @@
                      width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M5 4l5 4-5 4"/>
                 </svg>
-                <span class="pt-topic-name">{{ formatIntent(group.intent) }}</span>
+                <span class="pt-topic-name">{{ groupLabel(group.intent) }}</span>
               </span>
               <span class="pt-td pt-td-count">{{ group.prompts.length }}</span>
               <span class="pt-td pt-td-vis">
@@ -461,7 +467,10 @@
                          width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
                       <path d="M5 4l5 4-5 4"/>
                     </svg>
-                    {{ p.text }}
+                    <span class="pt-prompt-block">
+                      <span class="pt-prompt-headline">{{ p.text }}</span>
+                      <span v-if="p.rationale" class="pt-prompt-rationale">{{ p.rationale }}</span>
+                    </span>
                   </span>
                   <span class="pt-td pt-td-count"></span>
                   <span class="pt-td pt-td-vis">
@@ -2223,8 +2232,42 @@ function stopLogPolling() {
 
 // ── Prompt Intelligence aggregation ─────────────────────────────────────────
 const providerFilter = ref('')
+// "funnel_stage" or "intent" — how the Prompts table groups its rows.
+// Funnel-stage is the strategic view (Bottom/Mid/Top/Niche), topic is the
+// query-shape view (Recommendation/Comparison/Use Case/etc.).
+const groupBy = ref('funnel_stage')
 const collapsedIntents = ref(new Set())
 const expandedPrompts = ref(new Set())
+
+const FUNNEL_STAGE_LABELS = {
+  bottom: 'Bottom of Funnel — High Intent',
+  mid:    'Mid Funnel — Category & Comparison',
+  top:    'Top of Funnel — Awareness',
+  niche:  'Niche / Long-Tail',
+}
+// Funnel-stage sort order — bottom first because that's the most decision-
+// critical stage.
+const FUNNEL_STAGE_ORDER = ['bottom', 'mid', 'top', 'niche']
+
+// Fallback for old audits where prompts weren't tagged with funnel_stage.
+const INTENT_TO_FUNNEL = {
+  recommendation: 'bottom',
+  alternatives:   'bottom',
+  review:         'bottom',
+  comparison:     'mid',
+  use_case:       'mid',
+  category:       'mid',
+  persona:        'top',
+  local:          'niche',
+  custom:         'niche',
+}
+
+function groupLabel(key) {
+  if (groupBy.value === 'funnel_stage') {
+    return FUNNEL_STAGE_LABELS[key] || 'Other'
+  }
+  return formatIntent(key)
+}
 
 function toggleIntent(intent) {
   const s = new Set(collapsedIntents.value)
@@ -2358,11 +2401,42 @@ const uniquePromptCount = computed(() => {
   return new Set((auditDetail.value?.results || []).map(r => r.prompt)).size
 })
 
-// Map prompt text -> intent, derived once from the audit's prompts list
+// Map prompt text -> intent, derived once from the audit's prompts list.
+// Old audits stored prompts as plain strings; new audits store
+// {text, type, funnel_stage, rationale} dicts. Handle both shapes.
 const promptIntentByText = computed(() => {
   const map = {}
   const prompts = latestAudit.value?.prompts || []
-  prompts.forEach((p, i) => { map[p] = promptIntents.value[i] || 'custom' })
+  prompts.forEach((p, i) => {
+    if (typeof p === 'string') {
+      map[p] = promptIntents.value[i] || 'custom'
+    } else if (p && p.text) {
+      map[p.text] = p.type || promptIntents.value[i] || 'custom'
+    }
+  })
+  return map
+})
+
+// Map prompt text -> {funnel_stage, rationale}. Falls back to the
+// intent → stage table when the audit doesn't carry the new fields.
+const promptMetaByText = computed(() => {
+  const map = {}
+  const prompts = latestAudit.value?.prompts || []
+  prompts.forEach((p, i) => {
+    if (typeof p === 'string') {
+      const intent = promptIntents.value[i] || 'custom'
+      map[p] = {
+        funnel_stage: INTENT_TO_FUNNEL[intent] || 'niche',
+        rationale: '',
+      }
+    } else if (p && p.text) {
+      const intent = p.type || 'custom'
+      map[p.text] = {
+        funnel_stage: p.funnel_stage || INTENT_TO_FUNNEL[intent] || 'niche',
+        rationale: p.rationale || '',
+      }
+    }
+  })
   return map
 })
 
@@ -2406,9 +2480,13 @@ const promptRows = computed(() => {
       .sort((a, b) => b.count - a.count)
 
     const auditKeywords = latestAudit.value?.keywords || auditDetail.value?.keywords || []
+    const meta = promptMetaByText.value[text] || {}
+    const intent = promptIntentByText.value[text] || 'custom'
     rows.push({
       text,
-      intent: promptIntentByText.value[text] || 'custom',
+      intent,
+      funnel_stage: meta.funnel_stage || INTENT_TO_FUNNEL[intent] || 'niche',
+      rationale: meta.rationale || '',
       visibility,
       avgRank,
       score: computePromptScore(results),
@@ -2423,10 +2501,15 @@ const promptRows = computed(() => {
 })
 
 const intentGroups = computed(() => {
+  // The "intent" key on each group is the grouping key — funnel stage by
+  // default, intent label when the user picks "Group by topic". The Vue
+  // template keeps using `group.intent` so we don't have to touch it.
+  const key = groupBy.value === 'funnel_stage' ? 'funnel_stage' : 'intent'
   const groups = {}
   for (const row of promptRows.value) {
-    if (!groups[row.intent]) groups[row.intent] = []
-    groups[row.intent].push(row)
+    const k = row[key] || 'custom'
+    if (!groups[k]) groups[k] = []
+    groups[k].push(row)
   }
   return Object.entries(groups)
     .map(([intent, prompts]) => {
@@ -2461,7 +2544,17 @@ const intentGroups = computed(() => {
         .map(([k]) => k)
       return { intent, prompts, avgVisibility, avgScore, providerSummary, topKeywords }
     })
-    .sort((a, b) => b.avgScore - a.avgScore)
+    .sort((a, b) => {
+      // Funnel-stage groups: sort top→bottom of funnel (Bottom first because
+      // it's the most decision-critical stage).
+      if (groupBy.value === 'funnel_stage') {
+        const ai = FUNNEL_STAGE_ORDER.indexOf(a.intent)
+        const bi = FUNNEL_STAGE_ORDER.indexOf(b.intent)
+        return (ai < 0 ? 99 : ai) - (bi < 0 ? 99 : bi)
+      }
+      // Intent groups: highest-scoring topic first.
+      return b.avgScore - a.avgScore
+    })
 })
 
 // Competitors leaderboard: aggregated across all prompts, not filtered
@@ -5648,6 +5741,26 @@ onBeforeUnmount(() => {
   font-weight: 400;
   color: var(--text-secondary, #6B7280);
   font-size: 12.5px;
+  line-height: 1.4;
+  align-items: flex-start;
+}
+.pt-prompt-block {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+}
+.pt-prompt-headline {
+  font-weight: 500;
+  color: var(--text-primary, #111);
+  font-size: 13px;
+  line-height: 1.35;
+}
+.pt-prompt-rationale {
+  font-size: 11.5px;
+  font-style: italic;
+  color: var(--text-muted, #9CA3AF);
   line-height: 1.4;
 }
 .pt-td-count {
