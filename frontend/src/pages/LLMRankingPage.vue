@@ -861,9 +861,20 @@
                   class="lr-prompt-row"
                 >
                   <span class="lr-pr-num">{{ pi + 1 }}</span>
-                  <span class="lr-pr-prompt">{{ prompt }}</span>
+                  <span class="lr-pr-prompt">
+                    <span class="lr-pr-prompt-text">{{ promptText(prompt) }}</span>
+                    <span v-if="promptRationale(prompt)" class="lr-pr-rationale">
+                      {{ promptRationale(prompt) }}
+                    </span>
+                  </span>
                   <span class="lr-pr-type">
                     <span class="badge badge-neutral" style="font-size:10px">{{ promptIntents[pi] || 'custom' }}</span>
+                    <span
+                      v-if="promptStageLabel(prompt, promptIntents[pi] || 'custom')"
+                      class="badge"
+                      :class="'lr-pr-stage-' + (prompt?.funnel_stage || INTENT_TO_FUNNEL[promptIntents[pi]] || 'niche')"
+                      style="font-size:10px;margin-left:4px"
+                    >{{ promptStageLabel(prompt, promptIntents[pi] || 'custom') }}</span>
                   </span>
                   <span class="lr-pr-providers">
                     <span
@@ -1768,12 +1779,48 @@ const INTENT_PATTERNS = [
   { intent: 'persona',        keywords: ['startup', 'mid-market', 'enterprise teams'] },
   { intent: 'review',         keywords: ['users say', 'reputation', 'reviewers'] },
 ]
-function classifyIntent(text) {
-  const lower = text.toLowerCase()
+function classifyIntent(prompt) {
+  // Old audits stored prompts as plain strings; new audits store
+  // {text, type, funnel_stage, rationale} dicts. Handle both.
+  if (prompt && typeof prompt === 'object') {
+    return prompt.type || classifyIntent(prompt.text || '')
+  }
+  const lower = String(prompt || '').toLowerCase()
   for (const { intent, keywords } of INTENT_PATTERNS) {
     if (keywords.some(k => lower.includes(k))) return intent
   }
   return 'custom'
+}
+
+// Extract the plain text out of a stored prompt entry so v-text rendering
+// never produces "[object Object]" for new-format dict prompts.
+function promptText(prompt) {
+  if (prompt && typeof prompt === 'object') return prompt.text || ''
+  return String(prompt || '')
+}
+
+// Extract the rationale (or empty string) — only present on prompts
+// generated after the funnel-stage tagging change.
+function promptRationale(prompt) {
+  return prompt && typeof prompt === 'object' ? (prompt.rationale || '') : ''
+}
+
+// Funnel-stage label. Prefer the stored value, fall back to the
+// intent → stage mapping for old-format prompts.
+const STAGE_TO_LABEL = {
+  bottom: 'Bottom of Funnel',
+  mid:    'Mid Funnel',
+  top:    'Top of Funnel',
+  niche:  'Niche / Long-Tail',
+}
+function promptStageLabel(prompt, intent) {
+  let stage
+  if (prompt && typeof prompt === 'object' && prompt.funnel_stage) {
+    stage = prompt.funnel_stage
+  } else {
+    stage = INTENT_TO_FUNNEL[intent] || 'niche'
+  }
+  return STAGE_TO_LABEL[stage] || ''
 }
 const promptIntents = computed(() =>
   (latestAudit.value?.prompts || []).map(classifyIntent)
@@ -4908,10 +4955,29 @@ onBeforeUnmount(() => {
 .lr-pr-prompt {
   color: var(--text-primary);
   line-height: 1.4;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.lr-pr-prompt-text { font-weight: 500; }
+.lr-pr-rationale {
+  font-size: 11px;
+  color: var(--text-muted, #9CA3AF);
+  font-style: italic;
+  line-height: 1.4;
 }
 .lr-pr-type {
   text-align: center;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
 }
+.lr-pr-stage-bottom { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
+.lr-pr-stage-mid    { background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; }
+.lr-pr-stage-top    { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
+.lr-pr-stage-niche  { background: #f9fafb; color: #4b5563; border: 1px solid #e5e7eb; }
 .lr-pr-providers {
   display: flex;
   gap: 3px;
