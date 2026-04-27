@@ -393,7 +393,7 @@ class LLMRankingAuditRunView(TenantScopedAPIView):
     def post(self, request, website_id, audit_id):
         self.get_website(website_id)
         audit = self.get_tenant_object(
-            LLMRankingAudit, id=audit_id, website_id=website_id,
+            LLMRankingAudit.objects.all(), id=audit_id, website_id=website_id,
         )
         if audit.status == LLMRankingAudit.STATUS_COMPLETED:
             return Response(
@@ -448,7 +448,7 @@ class LLMRankingAuditLogsView(TenantScopedAPIView):
     def get(self, request, website_id, audit_id):
         self.get_website(website_id)
         audit = self.get_tenant_object(
-            LLMRankingAudit, id=audit_id, website_id=website_id,
+            LLMRankingAudit.objects.all(), id=audit_id, website_id=website_id,
         )
         logs = list(audit.audit_logs or [])
 
