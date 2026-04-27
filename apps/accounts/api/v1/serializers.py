@@ -55,12 +55,17 @@ class UserProfileSerializer(serializers.ModelSerializer):
     phone = serializers.CharField(source="profile.phone", required=False, allow_blank=True)
     bio = serializers.CharField(source="profile.bio", required=False, allow_blank=True)
 
+    monthly_ai_cost_cap_usd = serializers.DecimalField(
+        max_digits=10, decimal_places=2, required=False, min_value=0, max_value=100000,
+    )
+
     class Meta:
         model = User
         fields = [
             "id", "email", "full_name", "company_name", "plan",
             "is_email_verified", "onboarding_complete",
             "avatar_url", "timezone", "phone", "bio",
+            "monthly_ai_cost_cap_usd",
             "created_at", "updated_at",
         ]
         read_only_fields = ["id", "email", "plan", "is_email_verified", "created_at", "updated_at"]

@@ -393,6 +393,12 @@
           <h3 class="card-title" style="font-size:1.1rem;font-weight:700">Prompts</h3>
           <div class="pt-header-right">
             <div class="pi-filter">
+              <select v-model="groupBy" class="pi-select">
+                <option value="funnel_stage">Group by funnel stage</option>
+                <option value="intent">Group by topic</option>
+              </select>
+            </div>
+            <div class="pi-filter">
               <select v-model="providerFilter" class="pi-select">
                 <option value="">All Providers</option>
                 <option v-for="p in availableProviderFilters" :key="p" :value="p">{{ providerLabel(p) }}</option>
@@ -407,7 +413,9 @@
             <span class="pt-th pt-th-topic">Topic</span>
             <span class="pt-th pt-th-count">Prompts</span>
             <span class="pt-th pt-th-vis">Avg Visibility</span>
+            <span class="pt-th pt-th-score">Score</span>
             <span class="pt-th pt-th-perf">Top Performers</span>
+            <span class="pt-th pt-th-keywords">Top Keywords</span>
             <span class="pt-th pt-th-status">Status</span>
           </div>
 
@@ -420,7 +428,7 @@
                      width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M5 4l5 4-5 4"/>
                 </svg>
-                <span class="pt-topic-name">{{ formatIntent(group.intent) }}</span>
+                <span class="pt-topic-name">{{ groupLabel(group.intent) }}</span>
               </span>
               <span class="pt-td pt-td-count">{{ group.prompts.length }}</span>
               <span class="pt-td pt-td-vis">
@@ -428,6 +436,9 @@
                 <svg v-if="group.avgVisibility > 0" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-left:3px">
                   <path d="M2 7L5 3L8 7" :stroke="group.avgVisibility >= 50 ? '#10b981' : '#f59e0b'"/>
                 </svg>
+              </span>
+              <span class="pt-td pt-td-score">
+                <strong :style="{ color: scoreColor(group.avgScore) }">{{ group.avgScore }}</strong>
               </span>
               <span class="pt-td pt-td-perf">
                 <span
@@ -438,6 +449,10 @@
                   :title="providerLabel(d.provider) + ': ' + d.hitRate + '% hit rate'"
                 >{{ providerInitial(d.provider) }}</span>
               </span>
+              <span class="pt-td pt-td-keywords">
+                <span v-for="kw in group.topKeywords.slice(0, 3)" :key="kw" class="pt-kw-chip">{{ kw }}</span>
+                <span v-if="!group.topKeywords.length" class="pt-kw-empty">—</span>
+              </span>
               <span class="pt-td pt-td-status">
                 <span class="pt-see-link">See →</span>
               </span>
@@ -445,30 +460,95 @@
 
             <!-- Expanded prompt rows -->
             <template v-if="!collapsedIntents.has(group.intent)">
-              <div v-for="p in group.prompts" :key="p.text" class="pt-prompt-row">
-                <span class="pt-td pt-td-topic pt-td-prompt-text">{{ p.text }}</span>
-                <span class="pt-td pt-td-count"></span>
-                <span class="pt-td pt-td-vis">
-                  <strong :style="{ color: visibilityColor(p.visibility) }">{{ p.visibility }}%</strong>
-                  <svg v-if="p.visibility > 0" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke-width="1.5" style="margin-left:3px">
-                    <path d="M2 7L5 3L8 7" :stroke="p.visibility >= 50 ? '#10b981' : '#f59e0b'"/>
-                  </svg>
-                </span>
-                <span class="pt-td pt-td-perf">
-                  <span
-                    v-for="d in p.providerDots"
-                    :key="d.provider"
-                    class="pt-perf-icon"
-                    :class="{ 'is-hit': d.mentioned, 'is-miss': !d.mentioned && d.succeeded, 'is-fail': !d.succeeded }"
-                    :title="providerLabel(d.provider) + ': ' + providerDotTitle(d)"
-                  >{{ providerInitial(d.provider) }}</span>
-                </span>
-                <span class="pt-td pt-td-status">
-                  <span class="pt-status-pill" :class="p.visibility > 0 ? 'is-ran' : 'is-miss'">
-                    {{ p.visibility > 0 ? 'Prompt Ran' : 'No Mention' }}
+              <template v-for="p in group.prompts" :key="p.text">
+                <div class="pt-prompt-row" @click="togglePrompt(p.text)">
+                  <span class="pt-td pt-td-topic pt-td-prompt-text">
+                    <svg class="pi-chevron pi-chevron-prompt" :class="{ open: expandedPrompts.has(p.text) }"
+                         width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M5 4l5 4-5 4"/>
+                    </svg>
+                    <span class="pt-prompt-block">
+                      <span class="pt-prompt-headline">{{ p.text }}</span>
+                      <span v-if="p.rationale" class="pt-prompt-rationale">{{ p.rationale }}</span>
+                    </span>
                   </span>
-                </span>
-              </div>
+                  <span class="pt-td pt-td-count"></span>
+                  <span class="pt-td pt-td-vis">
+                    <strong :style="{ color: visibilityColor(p.visibility) }">{{ p.visibility }}%</strong>
+                    <svg v-if="p.visibility > 0" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke-width="1.5" style="margin-left:3px">
+                      <path d="M2 7L5 3L8 7" :stroke="p.visibility >= 50 ? '#10b981' : '#f59e0b'"/>
+                    </svg>
+                  </span>
+                  <span class="pt-td pt-td-score">
+                    <strong :style="{ color: scoreColor(p.score) }">{{ p.score }}</strong>
+                  </span>
+                  <span class="pt-td pt-td-perf">
+                    <span
+                      v-for="d in p.providerDots"
+                      :key="d.provider"
+                      class="pt-perf-icon"
+                      :class="{ 'is-hit': d.mentioned, 'is-miss': !d.mentioned && d.succeeded, 'is-fail': !d.succeeded }"
+                      :title="providerLabel(d.provider) + ': ' + providerDotTitle(d)"
+                    >
+                      {{ providerInitial(d.provider) }}<sub v-if="d.rank" class="pt-perf-rank">{{ d.rank }}</sub>
+                    </span>
+                  </span>
+                  <span class="pt-td pt-td-keywords">
+                    <span v-for="kw in p.matchedKeywords.slice(0, 3)" :key="kw" class="pt-kw-chip">{{ kw }}</span>
+                    <span v-if="!p.matchedKeywords.length" class="pt-kw-empty">—</span>
+                  </span>
+                  <span class="pt-td pt-td-status">
+                    <span class="pt-status-pill" :class="promptStatusClass(p)">
+                      {{ promptStatusLabel(p) }}
+                    </span>
+                  </span>
+                </div>
+
+                <!-- Per-prompt expansion panel -->
+                <div v-if="expandedPrompts.has(p.text)" class="pt-prompt-detail">
+                  <div class="pt-detail-summary">
+                    <div class="pt-detail-stat">
+                      <span class="pt-detail-stat-label">Score</span>
+                      <span class="pt-detail-stat-value" :style="{ color: scoreColor(p.score) }">{{ p.score }}/100</span>
+                    </div>
+                    <div class="pt-detail-stat">
+                      <span class="pt-detail-stat-label">Visibility</span>
+                      <span class="pt-detail-stat-value">{{ p.visibility }}%</span>
+                    </div>
+                    <div class="pt-detail-stat">
+                      <span class="pt-detail-stat-label">Avg rank</span>
+                      <span class="pt-detail-stat-value">{{ p.avgRank ? '#' + p.avgRank : '—' }}</span>
+                    </div>
+                    <div class="pt-detail-stat">
+                      <span class="pt-detail-stat-label">Sentiment</span>
+                      <span class="pt-detail-stat-value pt-sentiment" :class="'pt-sentiment-' + p.dominantSentiment">{{ p.dominantSentiment }}</span>
+                    </div>
+                  </div>
+
+                  <div class="pt-detail-section">
+                    <div class="pt-detail-label">Per-provider results</div>
+                    <div v-for="r in p.responses" :key="r.provider" class="pt-detail-row">
+                      <span class="pt-detail-prov">{{ providerLabel(r.provider) }}</span>
+                      <span v-if="r.is_mentioned" class="pt-detail-rank">{{ r.mention_rank ? '#' + r.mention_rank : 'mentioned' }}</span>
+                      <span v-else-if="r.query_succeeded" class="pt-detail-rank pt-detail-miss">not mentioned</span>
+                      <span v-else class="pt-detail-rank pt-detail-fail">API failed</span>
+                      <span class="pt-detail-context">{{ (r.mention_context || '').slice(0, 220) || (r.response_text || '').slice(0, 220) }}</span>
+                    </div>
+                  </div>
+
+                  <div v-if="p.matchedKeywords.length" class="pt-detail-section">
+                    <div class="pt-detail-label">Keywords found alongside your brand</div>
+                    <span v-for="kw in p.matchedKeywords" :key="kw" class="pt-kw-chip pt-kw-chip-strong">{{ kw }}</span>
+                  </div>
+
+                  <div v-if="p.topCompetitors.length" class="pt-detail-section">
+                    <div class="pt-detail-label">Competitors named on this prompt</div>
+                    <span v-for="c in p.topCompetitors.slice(0, 8)" :key="c.name" class="pt-comp-chip">
+                      {{ c.name }}<sub>×{{ c.count }}</sub>
+                    </span>
+                  </div>
+                </div>
+              </template>
             </template>
           </template>
         </div>
@@ -748,6 +828,10 @@
                 </div>
                 <button v-else class="btn btn-ghost btn-sm delete-btn" @click.stop="confirmDeleteId = audit.id">×</button>
               </span>
+            </div>
+            <!-- Cost caption (only when populated) -->
+            <div v-if="audit.total_cost_usd && Number(audit.total_cost_usd) > 0" class="lr-job-cost-caption">
+              ${{ Number(audit.total_cost_usd).toFixed(4) }} · {{ formatTokens(audit.total_tokens) }} tokens
             </div>
 
             <!-- Expanded prompt jobs -->
@@ -1364,7 +1448,25 @@
                 <span class="wizard-review-label">Context Sources</span>
                 <span class="wizard-review-value">{{ contextUrls.filter(c => c.success).length }} URLs scanned</span>
               </div>
+              <div class="wizard-review-item wizard-review-cost" :class="{ 'over-cap': preflight && preflight.cap_status.would_exceed }">
+                <span class="wizard-review-label">Estimated cost</span>
+                <span v-if="preflightLoading" class="wizard-review-value">Estimating…</span>
+                <span v-else-if="preflight" class="wizard-review-value">
+                  ${{ preflight.estimate.cost_usd.toFixed(4) }}
+                  <span class="wizard-review-cost-sub">
+                    (${{ preflight.estimate.cost_usd_low.toFixed(4) }} – ${{ preflight.estimate.cost_usd_high.toFixed(4) }},
+                    {{ preflight.queries }} queries,
+                    {{ preflight.method === 'historical' ? 'from your history' : 'default rates' }})
+                  </span>
+                </span>
+                <span v-else class="wizard-review-value">—</span>
+              </div>
             </div>
+            <p v-if="preflight && preflight.cap_status.would_exceed" class="form-error" style="margin-top:6px">
+              This audit would push your month-to-date spend past your cap of
+              ${{ Number(preflight.cap_status.cap_usd).toFixed(2) }} (currently
+              ${{ Number(preflight.cap_status.spent_usd).toFixed(2) }}). Raise the cap in Settings to proceed.
+            </p>
 
             <details class="run-modal-advanced" style="margin-top:16px">
               <summary class="text-xs text-muted" style="cursor:pointer;padding:4px 0">Advanced — custom prompts</summary>
@@ -1442,6 +1544,34 @@
         </button>
       </template>
     </BaseModal>
+
+    <!-- Cap-exceeded modal: HTTP 402 from /audits/. Surfaces as a clear
+         action ("raise the cap") instead of a generic error banner. -->
+    <BaseModal
+      v-if="capExceededModal"
+      :model-value="!!capExceededModal"
+      title="Monthly AI spend cap reached"
+      @update:model-value="capExceededModal = null"
+      @close="capExceededModal = null"
+    >
+      <div class="cap-modal-body">
+        <p class="cap-modal-msg">
+          Month-to-date AI spend
+          <strong>${{ Number(capExceededModal.spent).toFixed(2) }}</strong>
+          has reached your cap of
+          <strong>${{ Number(capExceededModal.cap).toFixed(2) }}</strong>.
+        </p>
+        <p class="cap-modal-help">
+          {{ capExceededModal.detail }}
+        </p>
+      </div>
+      <template #footer>
+        <button class="btn btn-secondary" @click="capExceededModal = null">Close</button>
+        <router-link class="btn btn-primary" to="/settings" @click="capExceededModal = null">
+          Go to Settings
+        </router-link>
+      </template>
+    </BaseModal>
     </template>
   </div>
 </template>
@@ -1483,6 +1613,7 @@ const loading = ref(true)
 const running = ref(false)
 const showRunForm = ref(false)
 const auditError = ref('')
+const capExceededModal = ref(null)
 const selectedAuditId = ref(null)
 const latestBreakdown = shallowRef([])
 const recommendations = shallowRef([])
@@ -1967,6 +2098,38 @@ async function wizardNext() {
     }
   }
   wizardStep.value++
+  // Fetch a cost estimate when we land on the review step so the user
+  // sees what the audit will cost BEFORE clicking Start.
+  if (wizardStep.value === 6) {
+    fetchPreflight()
+  }
+}
+
+const preflight = ref(null)
+const preflightLoading = ref(false)
+
+async function fetchPreflight() {
+  preflight.value = null
+  preflightLoading.value = true
+  try {
+    // Estimate using the chosen prompt count (custom prompts override the
+    // default-generated set, otherwise the wizard targets up to 10 prompts).
+    const customCount = (customPromptsText.value || '')
+      .split('\n').map(s => s.trim()).filter(Boolean).length
+    const promptCount = customCount > 0
+      ? customCount
+      : Math.max(1, Math.min(10, auditForm.value.selectedTopics.length || 5))
+    const { data } = await llmRankingApi.preflight(websiteId, {
+      prompt_count: promptCount,
+      providers: auditForm.value.providers,
+    })
+    preflight.value = data?.data || data
+  } catch (e) {
+    // Pre-flight is informational — fail silently if the endpoint is unavailable
+    preflight.value = null
+  } finally {
+    preflightLoading.value = false
+  }
 }
 
 const availableProviders = computed(() =>
@@ -2069,13 +2232,158 @@ function stopLogPolling() {
 
 // ── Prompt Intelligence aggregation ─────────────────────────────────────────
 const providerFilter = ref('')
+// "funnel_stage" or "intent" — how the Prompts table groups its rows.
+// Funnel-stage is the strategic view (Bottom/Mid/Top/Niche), topic is the
+// query-shape view (Recommendation/Comparison/Use Case/etc.).
+const groupBy = ref('funnel_stage')
 const collapsedIntents = ref(new Set())
+const expandedPrompts = ref(new Set())
+
+const FUNNEL_STAGE_LABELS = {
+  bottom: 'Bottom of Funnel — High Intent',
+  mid:    'Mid Funnel — Category & Comparison',
+  top:    'Top of Funnel — Awareness',
+  niche:  'Niche / Long-Tail',
+}
+// Funnel-stage sort order — bottom first because that's the most decision-
+// critical stage.
+const FUNNEL_STAGE_ORDER = ['bottom', 'mid', 'top', 'niche']
+
+// Fallback for old audits where prompts weren't tagged with funnel_stage.
+const INTENT_TO_FUNNEL = {
+  recommendation: 'bottom',
+  alternatives:   'bottom',
+  review:         'bottom',
+  comparison:     'mid',
+  use_case:       'mid',
+  category:       'mid',
+  persona:        'top',
+  local:          'niche',
+  custom:         'niche',
+}
+
+function groupLabel(key) {
+  if (groupBy.value === 'funnel_stage') {
+    return FUNNEL_STAGE_LABELS[key] || 'Other'
+  }
+  return formatIntent(key)
+}
 
 function toggleIntent(intent) {
   const s = new Set(collapsedIntents.value)
   if (s.has(intent)) s.delete(intent)
   else s.add(intent)
   collapsedIntents.value = s
+}
+
+function togglePrompt(text) {
+  const s = new Set(expandedPrompts.value)
+  if (s.has(text)) s.delete(text)
+  else s.add(text)
+  expandedPrompts.value = s
+}
+
+// Per-prompt 0-100 score. Mirrors compute_overall_score on the server so
+// what the user sees per-prompt is consistent with the audit's headline
+// score for the same data:
+//   mention rate * 0.40 (0-40)
+// + rank bonus by avg rank when mentioned (0-30; 0 when no extractable rank)
+// + sentiment ((pos*20 + neu*10) / mentioned, averaged) (0-20)
+// + provider coverage (10 if >=3 providers succeeded, else proportional)
+function computePromptScore(results) {
+  const succeeded = results.filter(r => r.query_succeeded)
+  if (!succeeded.length) return 0
+  const mentioned = succeeded.filter(r => r.is_mentioned)
+  const mentionRate = mentioned.length / succeeded.length * 100
+
+  // Rank bonus only when we have at least one extractable rank, matching
+  // the server (rank_score stays 0 when ranks list is empty, even if some
+  // responses mention the brand without giving a list position).
+  let rankScore = 0
+  const ranks = mentioned.map(r => r.mention_rank).filter(x => x != null)
+  if (ranks.length) {
+    const avg = ranks.reduce((a, b) => a + b, 0) / ranks.length
+    if (avg <= 1) rankScore = 30
+    else if (avg <= 3) rankScore = 20
+    else if (avg <= 5) rankScore = 15
+    else if (avg <= 10) rankScore = 10
+    else rankScore = 5
+  }
+
+  let sentimentScore = 0
+  if (mentioned.length) {
+    const pos = mentioned.filter(r => r.sentiment === 'positive').length
+    const neu = mentioned.filter(r => r.sentiment === 'neutral').length
+    sentimentScore = (pos * 20 + neu * 10) / mentioned.length
+  }
+
+  const providerSet = new Set(succeeded.map(r => r.provider))
+  const coverage = providerSet.size >= 3 ? 10 : (providerSet.size / 3) * 10
+
+  return Math.min(100, Math.round(mentionRate * 0.40 + rankScore + sentimentScore + coverage))
+}
+
+// Escape every regex metacharacter so user-supplied keywords can be safely
+// embedded in a RegExp. The previous inline character class was malformed
+// and matched almost nothing, so special chars in a keyword like "C++" or
+// "node.js" would either crash RegExp() or silently never match.
+const REGEX_META = /[.*+?^${}()|[\]\\]/g
+function escapeRegExp(s) { return s.replace(REGEX_META, '\\$&') }
+
+// Intersect audit keywords with the lowercase mention_context across all
+// providers' responses for a prompt. Returns ordered by frequency.
+function computeMatchedKeywords(results, auditKeywords) {
+  if (!auditKeywords?.length) return []
+  const counts = new Map()
+  for (const r of results) {
+    if (!r.is_mentioned) continue
+    const blob = ((r.mention_context || '') + ' ' + (r.response_text || '')).toLowerCase()
+    for (const kw of auditKeywords) {
+      const k = (kw || '').toLowerCase().trim()
+      if (!k || k.length < 2) continue
+      let pattern
+      try {
+        // Word-boundary match to avoid short keywords matching mid-word
+        // (e.g. "ai" hitting "email"). Wrapped in try/catch so a single
+        // malformed keyword can't poison the whole prompt's match list.
+        pattern = new RegExp('(^|\\W)' + escapeRegExp(k) + '(\\W|$)', 'i')
+      } catch (_) {
+        continue
+      }
+      if (pattern.test(blob)) {
+        counts.set(k, (counts.get(k) || 0) + 1)
+      }
+    }
+  }
+  return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([k]) => k)
+}
+
+function dominantSentiment(results) {
+  const mentioned = results.filter(r => r.is_mentioned)
+  if (!mentioned.length) return 'not_mentioned'
+  const counts = { positive: 0, neutral: 0, negative: 0 }
+  for (const r of mentioned) {
+    if (counts[r.sentiment] !== undefined) counts[r.sentiment]++
+  }
+  let max = 'neutral', maxCount = -1
+  for (const [k, v] of Object.entries(counts)) {
+    if (v > maxCount) { max = k; maxCount = v }
+  }
+  return max
+}
+
+function promptStatusClass(p) {
+  if (p.providerDots.every(d => !d.succeeded)) return 'is-fail'
+  if (p.visibility === 0) return 'is-miss'
+  if (p.visibility >= 50) return 'is-ran'
+  return 'is-partial'
+}
+
+function promptStatusLabel(p) {
+  if (p.providerDots.every(d => !d.succeeded)) return 'API Failed'
+  if (p.visibility === 0) return 'No Mention'
+  if (p.providerDots.some(d => d.succeeded && !d.mentioned)) return 'Partial'
+  return 'Mentioned'
 }
 
 const filteredResults = computed(() => {
@@ -2093,11 +2401,42 @@ const uniquePromptCount = computed(() => {
   return new Set((auditDetail.value?.results || []).map(r => r.prompt)).size
 })
 
-// Map prompt text -> intent, derived once from the audit's prompts list
+// Map prompt text -> intent, derived once from the audit's prompts list.
+// Old audits stored prompts as plain strings; new audits store
+// {text, type, funnel_stage, rationale} dicts. Handle both shapes.
 const promptIntentByText = computed(() => {
   const map = {}
   const prompts = latestAudit.value?.prompts || []
-  prompts.forEach((p, i) => { map[p] = promptIntents.value[i] || 'custom' })
+  prompts.forEach((p, i) => {
+    if (typeof p === 'string') {
+      map[p] = promptIntents.value[i] || 'custom'
+    } else if (p && p.text) {
+      map[p.text] = p.type || promptIntents.value[i] || 'custom'
+    }
+  })
+  return map
+})
+
+// Map prompt text -> {funnel_stage, rationale}. Falls back to the
+// intent → stage table when the audit doesn't carry the new fields.
+const promptMetaByText = computed(() => {
+  const map = {}
+  const prompts = latestAudit.value?.prompts || []
+  prompts.forEach((p, i) => {
+    if (typeof p === 'string') {
+      const intent = promptIntents.value[i] || 'custom'
+      map[p] = {
+        funnel_stage: INTENT_TO_FUNNEL[intent] || 'niche',
+        rationale: '',
+      }
+    } else if (p && p.text) {
+      const intent = p.type || 'custom'
+      map[p.text] = {
+        funnel_stage: p.funnel_stage || INTENT_TO_FUNNEL[intent] || 'niche',
+        rationale: p.rationale || '',
+      }
+    }
+  })
   return map
 })
 
@@ -2140,11 +2479,19 @@ const promptRows = computed(() => {
       .map(([name, count]) => ({ name, count }))
       .sort((a, b) => b.count - a.count)
 
+    const auditKeywords = latestAudit.value?.keywords || auditDetail.value?.keywords || []
+    const meta = promptMetaByText.value[text] || {}
+    const intent = promptIntentByText.value[text] || 'custom'
     rows.push({
       text,
-      intent: promptIntentByText.value[text] || 'custom',
+      intent,
+      funnel_stage: meta.funnel_stage || INTENT_TO_FUNNEL[intent] || 'niche',
+      rationale: meta.rationale || '',
       visibility,
       avgRank,
+      score: computePromptScore(results),
+      matchedKeywords: computeMatchedKeywords(results, auditKeywords),
+      dominantSentiment: dominantSentiment(results),
       providerDots,
       topCompetitors,
       responses: results.filter(r => r.query_succeeded && r.response_text),
@@ -2154,10 +2501,15 @@ const promptRows = computed(() => {
 })
 
 const intentGroups = computed(() => {
+  // The "intent" key on each group is the grouping key — funnel stage by
+  // default, intent label when the user picks "Group by topic". The Vue
+  // template keeps using `group.intent` so we don't have to touch it.
+  const key = groupBy.value === 'funnel_stage' ? 'funnel_stage' : 'intent'
   const groups = {}
   for (const row of promptRows.value) {
-    if (!groups[row.intent]) groups[row.intent] = []
-    groups[row.intent].push(row)
+    const k = row[key] || 'custom'
+    if (!groups[k]) groups[k] = []
+    groups[k].push(row)
   }
   return Object.entries(groups)
     .map(([intent, prompts]) => {
@@ -2177,9 +2529,32 @@ const intentGroups = computed(() => {
         provider,
         hitRate: s.total ? Math.round(s.hits / s.total * 100) : 0,
       }))
-      return { intent, prompts, avgVisibility, providerSummary }
+      const avgScore = prompts.length
+        ? Math.round(prompts.reduce((a, p) => a + p.score, 0) / prompts.length)
+        : 0
+      // Top keywords across all prompts in this topic, ranked by frequency.
+      const kwCounts = new Map()
+      for (const p of prompts) {
+        for (const kw of p.matchedKeywords) {
+          kwCounts.set(kw, (kwCounts.get(kw) || 0) + 1)
+        }
+      }
+      const topKeywords = [...kwCounts.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .map(([k]) => k)
+      return { intent, prompts, avgVisibility, avgScore, providerSummary, topKeywords }
     })
-    .sort((a, b) => b.avgVisibility - a.avgVisibility)
+    .sort((a, b) => {
+      // Funnel-stage groups: sort top→bottom of funnel (Bottom first because
+      // it's the most decision-critical stage).
+      if (groupBy.value === 'funnel_stage') {
+        const ai = FUNNEL_STAGE_ORDER.indexOf(a.intent)
+        const bi = FUNNEL_STAGE_ORDER.indexOf(b.intent)
+        return (ai < 0 ? 99 : ai) - (bi < 0 ? 99 : bi)
+      }
+      // Intent groups: highest-scoring topic first.
+      return b.avgScore - a.avgScore
+    })
 })
 
 // Competitors leaderboard: aggregated across all prompts, not filtered
@@ -3112,7 +3487,20 @@ async function submitAudit() {
     logsExpanded.value = true
     startLogPolling(audit.id)
   } catch (err) {
-    auditError.value = err.displayMessage || 'Failed to start audit.'
+    // Per-user monthly AI spend cap reached — show a friendly modal instead
+    // of the generic banner so the user knows what to do.
+    const status = err?.response?.status
+    const body = err?.response?.data?.data || err?.response?.data
+    if (status === 402 && body?.error === 'monthly_ai_cost_cap_exceeded') {
+      capExceededModal.value = {
+        spent: body?.cap_status?.spent_usd ?? 0,
+        cap: body?.cap_status?.cap_usd ?? 0,
+        detail: body?.detail || '',
+      }
+      showRunForm.value = false
+    } else {
+      auditError.value = err.displayMessage || 'Failed to start audit.'
+    }
   } finally {
     running.value = false
   }
@@ -3992,6 +4380,25 @@ onBeforeUnmount(() => {
   font-weight: 600;
   color: var(--text-primary);
 }
+.wizard-review-cost {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+.wizard-review-cost.over-cap {
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+.wizard-review-cost-sub {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-muted);
+  margin-left: 4px;
+}
 
 /* Wizard nav */
 .wizard-nav {
@@ -4371,6 +4778,24 @@ onBeforeUnmount(() => {
 }
 .lr-job-header.is-active {
   background: rgba(79, 70, 229, 0.03);
+}
+.lr-job-cost-caption {
+  font-size: 11.5px;
+  color: var(--text-muted, #9ca3af);
+  padding: 2px 0 8px 36px;
+  letter-spacing: 0.02em;
+}
+.cap-modal-body { padding: 8px 4px 0; }
+.cap-modal-msg {
+  font-size: var(--font-base, 14px);
+  margin: 0 0 8px;
+  color: var(--text-primary);
+}
+.cap-modal-help {
+  font-size: var(--font-sm, 13px);
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin: 0;
 }
 .lr-job-chevron {
   transition: transform 0.2s ease;
@@ -5271,7 +5696,7 @@ onBeforeUnmount(() => {
 .pt-table { }
 .pt-thead {
   display: grid;
-  grid-template-columns: 1fr 80px 120px 140px 100px;
+  grid-template-columns: 1fr 70px 100px 70px 130px 180px 110px;
   padding: 10px 20px;
   border-bottom: 1px solid var(--border-color, #E5E7EB);
   background: var(--bg-offset, #FAFAFA);
@@ -5285,7 +5710,7 @@ onBeforeUnmount(() => {
 }
 .pt-topic-row {
   display: grid;
-  grid-template-columns: 1fr 80px 120px 140px 100px;
+  grid-template-columns: 1fr 70px 100px 70px 130px 180px 110px;
   padding: 14px 20px;
   border-bottom: 1px solid var(--border-color, #E5E7EB);
   cursor: pointer;
@@ -5296,12 +5721,13 @@ onBeforeUnmount(() => {
 .pt-topic-row:hover { background: var(--bg-offset, #F9FAFB); }
 .pt-prompt-row {
   display: grid;
-  grid-template-columns: 1fr 80px 120px 140px 100px;
+  grid-template-columns: 1fr 70px 100px 70px 130px 180px 110px;
   padding: 10px 20px 10px 44px;
   border-bottom: 1px solid var(--border-color, #E5E7EB);
   align-items: center;
   background: var(--bg-offset, #FAFAFA);
   font-size: 13px;
+  cursor: pointer;
 }
 .pt-prompt-row:last-child { border-bottom: none; }
 .pt-td { display: flex; align-items: center; gap: 4px; }
@@ -5315,6 +5741,26 @@ onBeforeUnmount(() => {
   font-weight: 400;
   color: var(--text-secondary, #6B7280);
   font-size: 12.5px;
+  line-height: 1.4;
+  align-items: flex-start;
+}
+.pt-prompt-block {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+}
+.pt-prompt-headline {
+  font-weight: 500;
+  color: var(--text-primary, #111);
+  font-size: 13px;
+  line-height: 1.35;
+}
+.pt-prompt-rationale {
+  font-size: 11.5px;
+  font-style: italic;
+  color: var(--text-muted, #9CA3AF);
   line-height: 1.4;
 }
 .pt-td-count {
@@ -5369,6 +5815,152 @@ onBeforeUnmount(() => {
   color: var(--text-muted);
   border-color: var(--border-color);
   background: var(--bg-offset);
+}
+.pt-status-pill.is-partial {
+  color: #b45309;
+  border-color: #fde68a;
+  background: #fffbeb;
+}
+.pt-status-pill.is-fail {
+  color: #b91c1c;
+  border-color: #fecaca;
+  background: #fef2f2;
+}
+
+/* Score column */
+.pt-td-score {
+  font-size: 14px;
+  font-weight: 700;
+  justify-content: center;
+}
+.pt-td-vis { justify-content: center; }
+
+/* Top Keywords column */
+.pt-td-keywords {
+  flex-wrap: wrap;
+  gap: 4px;
+  overflow: hidden;
+}
+.pt-kw-chip {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: #eff6ff;
+  color: #1e40af;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.pt-kw-chip-strong {
+  background: #dbeafe;
+  color: #1e3a8a;
+  font-weight: 600;
+  margin: 2px 4px 2px 0;
+}
+.pt-kw-empty { color: var(--text-muted, #9CA3AF); font-size: 12px; }
+
+/* Provider rank sub-badge (e.g. "C" with #2) */
+.pt-perf-rank {
+  position: absolute;
+  bottom: -4px;
+  right: -4px;
+  font-size: 8px;
+  font-weight: 700;
+  background: var(--text-primary, #111);
+  color: #fff;
+  border-radius: 8px;
+  padding: 1px 4px;
+  line-height: 1;
+}
+.pt-perf-icon { position: relative; }
+
+/* Prompt expand chevron */
+.pi-chevron-prompt {
+  margin-right: 4px;
+  transition: transform 0.15s;
+  color: var(--text-muted);
+}
+.pi-chevron-prompt.open { transform: rotate(90deg); }
+
+/* Per-prompt expansion panel */
+.pt-prompt-detail {
+  padding: 16px 20px 20px 44px;
+  background: var(--bg-base, #fff);
+  border-bottom: 1px solid var(--border-color, #E5E7EB);
+  border-left: 3px solid #3b82f6;
+}
+.pt-detail-summary {
+  display: flex;
+  gap: 32px;
+  padding-bottom: 14px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--border-color, #E5E7EB);
+}
+.pt-detail-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.pt-detail-stat-label {
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+.pt-detail-stat-value {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.pt-sentiment { font-size: 13px; text-transform: capitalize; }
+.pt-sentiment-positive { color: #059669; }
+.pt-sentiment-neutral { color: #4b5563; }
+.pt-sentiment-negative { color: #dc2626; }
+.pt-sentiment-not_mentioned { color: #9ca3af; }
+
+.pt-detail-section {
+  margin-top: 12px;
+}
+.pt-detail-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+.pt-detail-row {
+  display: grid;
+  grid-template-columns: 110px 90px 1fr;
+  gap: 12px;
+  padding: 6px 0;
+  font-size: 12.5px;
+  align-items: baseline;
+}
+.pt-detail-prov { font-weight: 600; color: var(--text-primary); }
+.pt-detail-rank { font-weight: 600; color: #059669; }
+.pt-detail-rank.pt-detail-miss { color: var(--text-muted); font-weight: 500; }
+.pt-detail-rank.pt-detail-fail { color: #dc2626; font-weight: 500; }
+.pt-detail-context {
+  color: var(--text-secondary);
+  font-style: italic;
+  line-height: 1.45;
+}
+
+.pt-comp-chip {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: var(--bg-offset, #f3f4f6);
+  color: var(--text-primary);
+  font-size: 11.5px;
+  margin: 2px 4px 2px 0;
+}
+.pt-comp-chip sub {
+  font-size: 9px;
+  color: var(--text-muted);
+  margin-left: 3px;
 }
 
 

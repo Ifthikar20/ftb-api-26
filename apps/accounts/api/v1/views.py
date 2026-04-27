@@ -290,7 +290,14 @@ class SessionView(APIView):
 
 
 class AIUsageView(APIView):
-    """Return AI token usage summary for the authenticated user."""
+    """
+    Centralised AI usage rollup for the authenticated user.
+
+    One source of truth for the Settings "Overall Usage" panel — every AI
+    call site (Lead Finder, Messaging, Analytics, LLM Ranking upstream +
+    extraction, Competitor Discovery) writes through core.ai_tracking and
+    rolls up here, broken down by module, model, provider, and role.
+    """
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
@@ -300,7 +307,7 @@ class AIUsageView(APIView):
         days = min(days, 365)  # cap at 1 year
         summary = get_usage_summary(user=request.user, days=days)
 
-        # Serialize dates and Decimals for JSON
+        # Serialise dates and Decimals for JSON
         for d in summary.get("daily", []):
             d["day"] = d["day"].isoformat() if d.get("day") else None
             d["cost"] = float(d.get("cost") or 0)
@@ -308,6 +315,8 @@ class AIUsageView(APIView):
             m["cost"] = float(m.get("cost") or 0)
         for m in summary.get("by_model", []):
             m["cost"] = float(m.get("cost") or 0)
+        for p in summary.get("by_provider", []):
+            p["cost"] = float(p.get("cost") or 0)
 
         return Response(summary)
 

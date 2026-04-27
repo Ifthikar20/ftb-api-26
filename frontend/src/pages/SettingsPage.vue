@@ -48,6 +48,67 @@
         </div>
 
         <div v-else-if="usage" class="usage-content">
+          <!-- Monthly Cap Progress -->
+          <div v-if="usage.cap_status && usage.cap_status.cap_usd > 0" class="cap-bar-wrap">
+            <div class="cap-bar-header">
+              <span class="cap-bar-label">Monthly AI spend</span>
+              <span class="cap-bar-value">
+                ${{ usage.cap_status.spent_usd.toFixed(2) }} / ${{ usage.cap_status.cap_usd.toFixed(2) }}
+                ({{ usage.cap_status.pct }}%)
+              </span>
+            </div>
+            <div class="cap-bar">
+              <div
+                class="cap-bar-fill"
+                :class="{ 'cap-bar-warn': usage.cap_status.pct >= 80, 'cap-bar-exceeded': usage.cap_status.exceeded }"
+                :style="{ width: Math.min(100, usage.cap_status.pct) + '%' }"
+              ></div>
+            </div>
+            <p v-if="usage.cap_status.exceeded" class="cap-bar-msg">
+              Cap reached. New AI runs will be blocked until next month or until you raise the cap.
+            </p>
+            <div class="cap-input-row">
+              <label class="cap-input-label" for="capInput">Cap (USD)</label>
+              <input
+                id="capInput"
+                v-model.number="capInput"
+                type="number"
+                step="1"
+                min="0"
+                class="cap-input"
+                :disabled="capSaving"
+              />
+              <button
+                class="cap-input-btn"
+                :disabled="capSaving || capInput === usage.cap_status.cap_usd"
+                @click="saveCap"
+              >{{ capSaving ? 'Saving…' : 'Save' }}</button>
+              <span v-if="capError" class="cap-input-error">{{ capError }}</span>
+            </div>
+          </div>
+          <div v-else-if="usage.cap_status" class="cap-bar-wrap cap-bar-none">
+            <div>No monthly spend cap set. Add one to control runaway AI cost.</div>
+            <div class="cap-input-row">
+              <label class="cap-input-label" for="capInputNew">Cap (USD)</label>
+              <input
+                id="capInputNew"
+                v-model.number="capInput"
+                type="number"
+                step="1"
+                min="0"
+                placeholder="50"
+                class="cap-input"
+                :disabled="capSaving"
+              />
+              <button
+                class="cap-input-btn"
+                :disabled="capSaving || !capInput"
+                @click="saveCap"
+              >{{ capSaving ? 'Saving…' : 'Set cap' }}</button>
+              <span v-if="capError" class="cap-input-error">{{ capError }}</span>
+            </div>
+          </div>
+
           <!-- Totals Row -->
           <div class="usage-totals">
             <div class="usage-stat">
@@ -90,6 +151,44 @@
                 <span>{{ formatNum(m.calls) }}</span>
                 <span>{{ formatTokens(m.tokens) }}</span>
                 <span class="cost-cell">${{ m.cost.toFixed(4) }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Provider Breakdown -->
+          <div class="usage-section" v-if="usage.by_provider && usage.by_provider.length">
+            <h4 class="usage-section-title">Usage by Provider</h4>
+            <div class="usage-table">
+              <div class="usage-table-header">
+                <span>Provider</span>
+                <span>Calls</span>
+                <span>Tokens</span>
+                <span>Cost</span>
+              </div>
+              <div v-for="p in usage.by_provider" :key="p.provider" class="usage-table-row">
+                <span class="model-name">{{ providerLabels[p.provider] || p.provider }}</span>
+                <span>{{ formatNum(p.calls) }}</span>
+                <span>{{ formatTokens(p.tokens) }}</span>
+                <span class="cost-cell">${{ p.cost.toFixed(4) }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Role Split -->
+          <div class="usage-section" v-if="usage.by_role && usage.by_role.length">
+            <h4 class="usage-section-title">Upstream vs Internal Parsing</h4>
+            <div class="usage-table">
+              <div class="usage-table-header">
+                <span>Role</span>
+                <span>Calls</span>
+                <span>Tokens</span>
+                <span>Cost</span>
+              </div>
+              <div v-for="r in usage.by_role" :key="r.role" class="usage-table-row">
+                <span class="model-name">{{ roleLabels[r.role] || r.role }}</span>
+                <span>{{ formatNum(r.calls) }}</span>
+                <span>{{ formatTokens(r.tokens) }}</span>
+                <span class="cost-cell">${{ r.cost.toFixed(4) }}</span>
               </div>
             </div>
           </div>
@@ -194,6 +293,9 @@ const notifPrefs = ref({
 
 // ── AI Usage ──
 const usage = ref(null)
+const capInput = ref(0)
+const capSaving = ref(false)
+const capError = ref('')
 const usageLoading = ref(false)
 const usagePeriod = ref('30')
 
@@ -203,6 +305,20 @@ const moduleLabels = {
   llm_ranking: 'LLM Ranking',
   seo_keywords: 'SEO Keywords',
   analytics: 'AI Insights',
+}
+
+const providerLabels = {
+  anthropic: 'Anthropic (Claude)',
+  openai: 'OpenAI (GPT)',
+  google: 'Google (Gemini)',
+  perplexity: 'Perplexity',
+}
+
+const roleLabels = {
+  upstream: 'Upstream LLM (ranking, lead finder, messaging)',
+  extraction: 'Internal parsing (Haiku extraction)',
+  prompt_generation: 'Prompt generation',
+  context_inference: 'Audit context inference',
 }
 
 function formatNum(n) { return (n || 0).toLocaleString() }
@@ -234,11 +350,45 @@ async function loadUsage() {
     })
     if (res.ok) {
       usage.value = await res.json()
+      // Seed the cap input from server so the Save button can detect changes.
+      const cap = usage.value?.cap_status?.cap_usd
+      if (typeof cap === 'number') capInput.value = cap
     }
   } catch (e) {
     console.error('Failed to load AI usage', e)
   } finally {
     usageLoading.value = false
+  }
+}
+
+async function saveCap() {
+  capError.value = ''
+  const value = Number(capInput.value)
+  if (Number.isNaN(value) || value < 0) {
+    capError.value = 'Enter a non-negative number.'
+    return
+  }
+  capSaving.value = true
+  try {
+    const token = authStore.token || localStorage.getItem('access_token')
+    const res = await fetch('/api/v1/auth/me/', {
+      method: 'PATCH',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ monthly_ai_cost_cap_usd: value }),
+    })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))
+      capError.value = body?.detail || 'Could not save cap.'
+      return
+    }
+    await loadUsage()
+  } catch (e) {
+    capError.value = 'Network error. Try again.'
+  } finally {
+    capSaving.value = false
   }
 }
 
@@ -287,6 +437,82 @@ async function saveNotifPrefs() {
   flex-direction: column;
   gap: 16px;
   max-width: 480px;
+}
+
+.cap-bar-wrap {
+  margin-bottom: 18px;
+  padding: 12px 14px;
+  background: var(--bg-soft, #f8fafc);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+}
+.cap-bar-header {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--font-sm);
+  margin-bottom: 6px;
+  color: var(--text-primary);
+}
+.cap-bar-label { font-weight: 600; }
+.cap-bar-value { color: var(--text-secondary); }
+.cap-bar {
+  height: 8px;
+  background: var(--border-color);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.cap-bar-fill {
+  height: 100%;
+  background: #16a34a;
+  transition: width 0.2s;
+}
+.cap-bar-warn { background: #f59e0b; }
+.cap-bar-exceeded { background: #dc2626; }
+.cap-bar-msg {
+  margin: 8px 0 0;
+  font-size: var(--font-xs);
+  color: #dc2626;
+}
+.cap-bar-none {
+  font-size: var(--font-xs);
+  color: var(--text-secondary);
+  font-style: italic;
+}
+.cap-input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  font-style: normal;
+}
+.cap-input-label {
+  font-size: var(--font-xs);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.cap-input {
+  width: 90px;
+  padding: 4px 8px;
+  font-size: var(--font-sm);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--bg-base, #fff);
+  color: var(--text-primary);
+}
+.cap-input-btn {
+  padding: 4px 12px;
+  font-size: var(--font-xs);
+  font-weight: 600;
+  border: 1px solid var(--border-color);
+  background: var(--bg-base, #fff);
+  color: var(--text-primary);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.cap-input-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.cap-input-error {
+  font-size: var(--font-xs);
+  color: #dc2626;
 }
 
 .toggle-row {
