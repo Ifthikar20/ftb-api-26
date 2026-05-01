@@ -13,6 +13,11 @@
           See how AI tools like Claude, GPT-4, Gemini, and Perplexity rank your business
           when users ask them to find a service like yours.
         </p>
+        <p v-if="currentWebsite" class="page-context">
+          Auditing <strong>{{ websiteName }}</strong>
+          <span v-if="homepageUrl" class="text-muted">· {{ homepageUrl }}</span>
+          <a href="/websites/" class="page-context-link">change website</a>
+        </p>
       </div>
       <div class="header-actions">
         <button class="btn btn-secondary btn-sm" @click="showScheduleModal = true">
@@ -1220,56 +1225,63 @@
         <!-- Step content -->
         <div class="wizard-content">
 
-          <!-- Step 0: Website — domain scan -->
+          <!-- Step 0: Pages to scan (same domain only) -->
           <div v-if="wizardStep === 0" class="wizard-pane">
-            <h2 class="wizard-pane-title">Enter your website</h2>
-            <p class="wizard-pane-sub">We'll scan your site to auto-fill your business details.</p>
+            <h2 class="wizard-pane-title">Pages to scan</h2>
+            <p class="wizard-pane-sub">
+              We'll scan <strong>{{ websiteName }}</strong> for this audit.
+              Add specific pages you want grounded into the LLMs' context —
+              blog posts, product pages, case studies, etc.
+              <a href="/websites/" class="wizard-link-inline">Switch website →</a>
+            </p>
 
-            <div class="form-group">
-              <label class="form-label">Domain or URL</label>
-              <div class="wizard-scan-row">
-                <input
-                  v-model="auditForm.scan_url"
-                  class="form-input"
-                  placeholder="e.g. acme.com or https://acme.com"
-                  @keydown.enter.prevent="scanDomain"
-                  :disabled="scanning"
-                />
-                <button
-                  class="btn btn-primary btn-sm"
-                  @click="scanDomain"
-                  :disabled="scanning || !auditForm.scan_url"
-                >
-                  {{ scanning ? 'Scanning...' : 'Scan' }}
+            <div class="wizard-pages-list">
+              <!-- Homepage row, always included, can't be removed -->
+              <div class="wizard-page-row is-homepage">
+                <span class="wizard-page-icon">⌂</span>
+                <div class="wizard-page-meta">
+                  <div class="wizard-page-url">{{ homepageUrl || '—' }}</div>
+                  <div class="text-xs text-muted">Homepage · always included</div>
+                </div>
+              </div>
+              <!-- User-added sub-paths -->
+              <div
+                v-for="p in extraPaths"
+                :key="p.url"
+                class="wizard-page-row"
+              >
+                <span class="wizard-page-icon">↳</span>
+                <div class="wizard-page-meta">
+                  <div class="wizard-page-url">{{ p.url }}</div>
+                  <div class="text-xs text-muted">Sub-path · {{ p.label }}</div>
+                </div>
+                <button class="wizard-page-remove" @click="removeExtraPath(p.url)" title="Remove">
+                  ×
                 </button>
               </div>
             </div>
 
-            <!-- Scanning animation -->
-            <div v-if="scanning" class="wizard-scan-progress">
-              <div class="wizard-scan-spinner"></div>
-              <div class="wizard-scan-status">
-                <span class="wizard-scan-status-text">Analyzing {{ auditForm.scan_url }}...</span>
-                <span class="text-xs text-muted">Extracting business info, competitors, and ranking topics via AI</span>
+            <div class="form-group" style="margin-top:12px">
+              <label class="form-label">Add a page</label>
+              <div class="wizard-scan-row">
+                <input
+                  v-model="extraPathInput"
+                  class="form-input"
+                  :placeholder="`/blog or ${homepageOrigin}/products/...`"
+                  @keydown.enter.prevent="addExtraPath"
+                />
+                <button
+                  class="btn btn-primary btn-sm"
+                  @click="addExtraPath"
+                  :disabled="!extraPathInput.trim()"
+                >
+                  Add
+                </button>
               </div>
-            </div>
-
-            <!-- Scan result preview -->
-            <div v-if="scanResult && !scanning" class="wizard-scan-result" :class="{ 'is-error': !scanResult.success }">
-              <div v-if="scanResult.success" class="wizard-scan-success">
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="#10b981">
-                  <circle cx="8" cy="8" r="8"/>
-                  <path d="M5 8l2 2 4-4" stroke="#fff" stroke-width="1.5" fill="none"/>
-                </svg>
-                <div>
-                  <div class="wizard-scan-name">{{ scanResult.business_name || scanResult.domain }}</div>
-                  <div class="text-xs text-muted">{{ scanResult.description ? scanResult.description.slice(0, 100) + '...' : 'Description extracted' }}</div>
-                </div>
-              </div>
-              <div v-else class="wizard-scan-error">
-                <span class="text-sm" style="color:var(--color-danger, #EF4444)">{{ scanResult.error || 'Could not scan this domain.' }}</span>
-                <p class="text-xs text-muted" style="margin-top:4px">You can fill in the details manually on the next step.</p>
-              </div>
+              <p class="text-xs text-muted" style="margin-top:6px">
+                Paths must be on <strong>{{ homepageOrigin || 'this domain' }}</strong>.
+                External URLs go in the next step's Context Sources.
+              </p>
             </div>
           </div>
 
@@ -1534,7 +1546,11 @@
             <div class="wizard-review-grid">
               <div class="wizard-review-item">
                 <span class="wizard-review-label">Website</span>
-                <span class="wizard-review-value">{{ auditForm.scan_url || '—' }}</span>
+                <span class="wizard-review-value">{{ websiteName }}</span>
+              </div>
+              <div class="wizard-review-item">
+                <span class="wizard-review-label">Pages scanned</span>
+                <span class="wizard-review-value">{{ 1 + extraPaths.length }} ({{ extraPaths.length }} extra)</span>
               </div>
               <div class="wizard-review-item">
                 <span class="wizard-review-label">Business</span>
@@ -1694,6 +1710,7 @@ import { useRoute } from 'vue-router'
 import { useToast } from '@/composables/useToast'
 import { useAppStore } from '@/stores/app'
 import llmRankingApi from '@/api/llm_ranking'
+import websitesApi from '@/api/websites'
 import BaseModal from '@/components/ui/BaseModal.vue'
 import FirstRunLLMRanking from '@/components/llm_ranking/FirstRunLLMRanking.vue'
 import { Line, Bar } from 'vue-chartjs'
@@ -1942,6 +1959,10 @@ const scheduleForm = ref({
 })
 
 const customPromptsText = ref('')
+// Pre-filled from the route's website on mount. The user does NOT enter
+// a URL here — that's the WebsitesListPage's job. We surface the same
+// website that the route is for, plus any sub-paths the user wants to
+// scan as additional context.
 const auditForm = ref({
   business_name: '',
   industry: '',
@@ -1952,8 +1973,66 @@ const auditForm = ref({
   providers: ['claude', 'gpt4', 'gemini', 'perplexity'],
   selectedTopics: [],
   competitors: [],
-  scan_url: '',
 })
+
+// The website attached to ``:websiteId`` — falls back to a direct fetch
+// if the global store doesn't have it (deep link from email, etc.).
+const currentWebsite = ref(null)
+const homepageUrl = computed(() => currentWebsite.value?.url || '')
+const websiteName = computed(() =>
+  currentWebsite.value?.name || currentWebsite.value?.url || 'this website',
+)
+const homepageOrigin = computed(() => {
+  const u = homepageUrl.value
+  if (!u) return ''
+  try {
+    return new URL(u.startsWith('http') ? u : `https://${u}`).origin
+  } catch (_) {
+    return ''
+  }
+})
+
+// Sub-paths the user has opted into for this audit. Stored as full URLs,
+// validated to be on the same origin as the homepage so we can't
+// accidentally turn this into a third-party scrape.
+const extraPaths = ref([])              // [{url, label, error}]
+const extraPathInput = ref('')
+
+function addExtraPath() {
+  const raw = (extraPathInput.value || '').trim()
+  if (!raw) return
+  let full
+  if (raw.startsWith('http://') || raw.startsWith('https://')) {
+    full = raw
+  } else {
+    // Treat as a path or sub-path of the homepage.
+    const path = raw.startsWith('/') ? raw : `/${raw}`
+    full = `${homepageOrigin.value}${path}`
+  }
+  let parsed
+  try {
+    parsed = new URL(full)
+  } catch (_) {
+    toast.error('Not a valid URL or path.')
+    return
+  }
+  if (parsed.origin !== homepageOrigin.value) {
+    toast.error(`Only paths on ${homepageOrigin.value} can be added here.`)
+    return
+  }
+  if (extraPaths.value.some(p => p.url === parsed.href)) {
+    return  // already added
+  }
+  extraPaths.value.push({
+    url: parsed.href,
+    label: parsed.pathname + (parsed.search || '') || '/',
+  })
+  extraPathInput.value = ''
+}
+
+function removeExtraPath(url) {
+  extraPaths.value = extraPaths.value.filter(p => p.url !== url)
+}
 
 // Region catalogue mirrors apps/llm_ranking/services/regions.py. Adding a
 // new entry here requires a backend change too — kept short to make the
@@ -2006,8 +2085,8 @@ const wizardTopics = ref([])
 const generatingTopics = ref(false)
 const competitorInput = ref('')
 const competitorDomainInput = ref('')
-const scanning = ref(false)
-const scanResult = ref(null)
+// scanning + scanResult removed with Step 0 — the wizard no longer
+// scans an arbitrary URL; the website's URL is read from the route.
 
 // ── Context Sources state ──
 const contextUrls = ref([])      // [{url, title, summary, success, scanning, error}]
@@ -2041,8 +2120,11 @@ async function addContextUrl() {
   }
 }
 
+// Step 0 ("Website") was removed in favour of pre-filling from the
+// route's website. The first user-facing step is now the Pages picker —
+// the user opts into which sub-paths of the same domain to scan.
 const wizardSteps = Object.freeze([
-  { id: 'website', label: 'Website' },
+  { id: 'pages', label: 'Pages' },
   { id: 'description', label: 'Description' },
   { id: 'context', label: 'Context Sources' },
   { id: 'topics', label: 'Topics' },
@@ -2051,37 +2133,32 @@ const wizardSteps = Object.freeze([
   { id: 'review', label: 'Review' },
 ])
 
-async function scanDomain() {
-  const url = (auditForm.value.scan_url || '').trim()
-  if (!url) return
-  scanning.value = true
-  scanResult.value = null
-  auditError.value = ''
-  try {
-    const { data } = await llmRankingApi.scanUrl(websiteId, url)
-    const result = data?.data || data
-    scanResult.value = result
-    if (result.success) {
-      // Auto-fill the form from scan results
-      auditForm.value.business_name = result.business_name || auditForm.value.business_name
-      auditForm.value.description = result.description || auditForm.value.description
-      auditForm.value.industry = result.industry || auditForm.value.industry
+// scanDomain() removed — the website's URL is read from the route's
+// website object via ``loadWebsite()`` below. Scan-on-demand for
+// individual sub-paths still happens server-side via ``llmRankingApi.scanUrl``
+// in the Context Sources step (separate from this Pages step).
 
-      // Auto-populate real competitors from LLM
-      if (result.competitors && result.competitors.length) {
-        auditForm.value.competitors = result.competitors.map(c => ({
-          name: c.name || '',
-          domain: c.domain || '',
-        }))
-      }
-
-      // Auto-advance to Description step
-      wizardStep.value = 1
+async function loadWebsite() {
+  // Prefer the global app store (already loaded during initial nav);
+  // fall back to a direct fetch when the user lands here via deep link.
+  const fromStore = activeWebsite.value
+  if (fromStore && fromStore.id === websiteId) {
+    currentWebsite.value = fromStore
+  } else {
+    try {
+      const { data } = await websitesApi.get(websiteId)
+      currentWebsite.value = data?.data || data
+    } catch (_) {
+      currentWebsite.value = null
     }
-  } catch (err) {
-    scanResult.value = { success: false, error: err.displayMessage || 'Scan failed. Please try again.' }
-  } finally {
-    scanning.value = false
+  }
+  // Pre-fill the audit form from the loaded website so the user
+  // doesn't have to re-type business name / industry / description.
+  const w = currentWebsite.value
+  if (w) {
+    auditForm.value.business_name = w.name || w.business_name || ''
+    auditForm.value.industry = w.industry || ''
+    auditForm.value.description = w.description || ''
   }
 }
 
@@ -2106,7 +2183,7 @@ async function regenerateTopics() {
       business_name: auditForm.value.business_name,
       description: auditForm.value.description,
       industry: auditForm.value.industry,
-      domain: auditForm.value.scan_url || '',
+      domain: homepageUrl.value || '',
     })
     if (data.topics && data.topics.length) {
       wizardTopics.value = data.topics
@@ -2262,18 +2339,9 @@ function removeCompetitor(name) {
 
 async function wizardNext() {
   auditError.value = ''
-  // Step 0: Website — just need a URL or allow skip
-  if (wizardStep.value === 0) {
-    if (!auditForm.value.scan_url) {
-      auditError.value = 'Enter a domain to scan, or type any URL to continue.'
-      return
-    }
-    // If not yet scanned, scan now
-    if (!scanResult.value) {
-      scanDomain()
-      return
-    }
-  }
+  // Step 0: Pages — homepage is always included, sub-paths are
+  // optional. No gating beyond having a known website (we wouldn't
+  // have rendered the modal if we didn't).
   // Step 1: Description
   if (wizardStep.value === 1) {
     if (!auditForm.value.business_name) { auditError.value = 'Business name is required.'; return }
@@ -3793,14 +3861,20 @@ function openRunAudit() {
     providers: providerHealth.value.providers.filter(p => p.configured).map(p => p.key),
     selectedTopics: [],
     competitors: [],
-    scan_url: '',
+  }
+  // Re-prefill from the loaded website so the user keeps the
+  // pre-populated business name / industry / description.
+  if (currentWebsite.value) {
+    auditForm.value.business_name = currentWebsite.value.name || ''
+    auditForm.value.industry = currentWebsite.value.industry || ''
+    auditForm.value.description = currentWebsite.value.description || ''
   }
   wizardStep.value = 0
   wizardTopics.value = []
   competitorInput.value = ''
   competitorDomainInput.value = ''
-  scanning.value = false
-  scanResult.value = null
+  extraPaths.value = []
+  extraPathInput.value = ''
   contextUrls.value = []
   contextUrlInput.value = ''
   scanningContextUrl.value = false
@@ -3828,7 +3902,15 @@ async function submitAudit() {
       themes: auditForm.value.themes || [],
       keywords: auditForm.value.selectedTopics || [],
       competitors: (auditForm.value.competitors || []).map(c => typeof c === 'string' ? c : c.name),
-      context_urls: contextUrls.value.filter(c => c.success).map(c => c.url),
+      // Same-domain sub-paths from Step 0 ("Pages") and external context
+      // URLs from the Context Sources step both flow into the backend's
+      // ``context_urls`` field; the audit's enrichment treats them
+      // uniformly. Keep external sources first since they're often the
+      // user's most curated picks; sub-paths are supplementary.
+      context_urls: [
+        ...contextUrls.value.filter(c => c.success).map(c => c.url),
+        ...extraPaths.value.map(p => p.url),
+      ],
     }
     if (customPromptsText.value.trim()) {
       payload.custom_prompts = customPromptsText.value.split('\n').map(s => s.trim()).filter(Boolean)
@@ -4088,6 +4170,9 @@ async function deleteSchedule() {
 }
 
 onMounted(() => {
+  // Load the website object first so the audit form is pre-filled
+  // before the user opens the wizard.
+  loadWebsite()
   Promise.all([fetchData(), fetchHistory(), fetchSchedule()]).then(() => {
     loadPromptResults()
     loadUsage()
@@ -6692,4 +6777,73 @@ onBeforeUnmount(() => {
 .pd-comp-name { font-weight: 600; }
 .pd-comp-count { color: var(--text-muted); font-size: 11px; }
 .text-center { text-align: center; }
+
+/* Page context line under the page-subtitle */
+.page-context {
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.page-context-link {
+  margin-left: 8px;
+  font-size: 12px;
+  color: var(--brand-accent, #4F46E5);
+  text-decoration: none;
+}
+.page-context-link:hover { text-decoration: underline; }
+
+/* Pages-to-scan step (Step 0 of the run-audit wizard) */
+.wizard-link-inline {
+  margin-left: 6px;
+  font-size: 12px;
+  color: var(--brand-accent, #4F46E5);
+  text-decoration: none;
+}
+.wizard-link-inline:hover { text-decoration: underline; }
+
+.wizard-pages-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+.wizard-page-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+}
+.wizard-page-row.is-homepage {
+  border-style: dashed;
+  background: var(--bg-base);
+}
+.wizard-page-icon {
+  width: 20px; text-align: center;
+  font-size: 14px;
+  color: var(--text-muted);
+}
+.wizard-page-meta { flex: 1; min-width: 0; }
+.wizard-page-url {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wizard-page-remove {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+.wizard-page-remove:hover {
+  background: var(--bg-base);
+  color: var(--color-danger, #DC2626);
+}
 </style>
