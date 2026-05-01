@@ -599,64 +599,56 @@
         </div>
       </div>
 
-      <!-- Live query ticker (running audits only) -->
-      <div v-if="isAuditRunning && liveResults.length" class="card" style="margin-bottom:24px">
+      <!-- Prompt Activity — chronological per-query record -->
+      <!-- Replaces the old Pipeline Log + Live Results ticker. Shows what
+           we asked, when we asked it, which model answered, and whether
+           the brand was mentioned. Same data is visible during a running
+           audit (partial) and after completion (full). -->
+      <div v-if="promptActivity.length" class="card" style="margin-bottom:24px">
         <div class="card-header">
           <h3 class="card-title">
-            Live results
-            <span class="live-pulse"></span>
-          </h3>
-          <span class="text-xs text-muted">{{ liveResults.length }} response{{ liveResults.length === 1 ? '' : 's' }} so far</span>
-        </div>
-        <div class="live-list">
-          <div
-            v-for="r in liveResults.slice(0, 10)"
-            :key="r.id"
-            class="live-row"
-            :class="{ 'live-hit': r.is_mentioned, 'live-fail': !r.query_succeeded }"
-          >
-            <span class="live-provider">{{ providerLabel(r.provider) }}</span>
-            <span class="live-prompt">{{ r.prompt }}</span>
-            <span v-if="!r.query_succeeded" class="badge badge-danger">API error</span>
-            <span v-else-if="r.is_mentioned" class="badge badge-success">
-              Ranked #{{ r.mention_rank || '—' }}
+            Prompt Activity
+            <span v-if="isAuditRunning" class="text-xs text-muted" style="font-weight:500">
+              · running
             </span>
-            <span v-else class="badge badge-neutral">Not mentioned</span>
-          </div>
+          </h3>
+          <span class="text-xs text-muted">
+            {{ promptActivity.length }} prompt{{ promptActivity.length === 1 ? '' : 's' }}
+            <template v-if="logProgress.total">
+              · {{ logProgress.completed }}/{{ logProgress.total }} queries
+            </template>
+          </span>
         </div>
-      </div>
-
-      <!-- ═══ Pipeline Logs (terminal-style) ═══ -->
-      <div v-if="pipelineLogs.length" class="pipeline-log-card" :class="{ 'is-collapsed': !logsExpanded && !isAuditRunning }" style="margin-bottom:24px">
-        <div class="pipeline-log-header" @click="logsExpanded = !logsExpanded">
-          <div class="pipeline-log-title">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
-              <rect x="2" y="2" width="12" height="12" rx="2"/>
-              <path d="M5 6l2 2-2 2"/>
-              <line x1="9" y1="10" x2="11" y2="10"/>
-            </svg>
-            Pipeline Log
-            <span v-if="isAuditRunning" class="live-pulse"></span>
-          </div>
-          <div class="pipeline-log-meta">
-            <span v-if="logProgress.total" class="text-xs">{{ logProgress.completed }}/{{ logProgress.total }} queries</span>
-            <svg class="pipeline-log-chevron" :class="{ rotated: logsExpanded || isAuditRunning }" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5">
-              <path d="M3 5l3 3 3-3"/>
-            </svg>
-          </div>
+        <div class="prompt-activity-head">
+          <span class="pa-time">Time</span>
+          <span class="pa-provider">Provider</span>
+          <span class="pa-model">Model</span>
+          <span class="pa-prompt">Prompt</span>
+          <span class="pa-status">Status</span>
         </div>
-        <div v-show="logsExpanded || isAuditRunning" class="pipeline-log-body" ref="logScrollRef">
+        <div class="prompt-activity-list">
           <div
-            v-for="(log, idx) in pipelineLogs"
-            :key="idx"
-            class="pipeline-log-entry"
-            :class="'log-' + log.level"
+            v-for="r in promptActivity"
+            :key="r.id || (r.provider + r.prompt + r.created_at)"
+            class="prompt-activity-row"
+            :class="{ 'pa-fail': !r.query_succeeded, 'pa-hit': r.is_mentioned }"
           >
-            <span class="log-time">{{ formatLogTime(log.ts) }}</span>
-            <span class="log-msg">{{ log.msg }}</span>
-          </div>
-          <div v-if="isAuditRunning" class="pipeline-log-cursor">
-            <span class="cursor-blink">▊</span>
+            <span class="pa-time">{{ formatPromptTime(r.created_at) }}</span>
+            <span class="pa-provider">
+              <span class="pa-provider-dot" :style="{ background: providerColor(r.provider) }"></span>
+              {{ providerLabel(r.provider) }}
+            </span>
+            <span class="pa-model" :title="providerModel(r.provider)">
+              {{ providerModel(r.provider) }}
+            </span>
+            <span class="pa-prompt" :title="r.prompt">{{ r.prompt }}</span>
+            <span class="pa-status">
+              <span v-if="!r.query_succeeded" class="badge badge-danger">API error</span>
+              <span v-else-if="r.is_mentioned" class="badge badge-success">
+                Ranked #{{ r.mention_rank || '—' }}
+              </span>
+              <span v-else class="badge badge-neutral">Not mentioned</span>
+            </span>
           </div>
         </div>
       </div>
@@ -2327,59 +2319,65 @@ const isAuditRunning = computed(() => {
   return s === 'running' || s === 'pending'
 })
 
-// Live per-query results: sorted newest-first for the running ticker
-const liveResults = computed(() => {
-  const list = auditDetail.value?.results || []
-  return [...list].reverse()
-})
+// ── Prompt Activity ──────────────────────────────────────────────────────
+//
+// Replaces the old terminal-style Pipeline Log + Live Results ticker. We
+// derive a chronological per-query view directly from auditDetail.results
+// — no separate /logs/ poll. The audit-level status poll already brings
+// new results in, so this card stays in sync without a second timer.
+//
+// Each row shows: time we sent the prompt, provider, the actual model
+// name we hit, the prompt text, and the outcome (mentioned / miss / error).
 
-// ── Pipeline Logs state ──────────────────────────────────────────────────────
-const pipelineLogs = ref([])
-const logsExpanded = ref(true)
-const logScrollRef = ref(null)
-const logProgress = ref({ completed: 0, total: 0 })
-let logPollTimer = null
+// Audit-side provider key -> model identifier sent on the wire. Mirrors
+// the .model attribute on each provider class in apps.llm_ranking.providers.
+// Kept in sync manually — adding a provider here without a backend change
+// is harmless (it just shows the wrong label until corrected).
+const PROVIDER_MODELS = {
+  claude: 'claude-sonnet-4-20250514',
+  gpt4: 'gpt-4o-mini',
+  gemini: 'gemini-1.5-flash',
+  perplexity: 'llama-3.1-sonar-small-128k-online',
+}
 
-function formatLogTime(ts) {
+function providerModel(key) {
+  return PROVIDER_MODELS[key] || key
+}
+
+function providerColor(key) {
+  // Lightweight visual distinguisher — same scheme as the rankings table.
+  const colors = {
+    claude: '#d97706',
+    gpt4: '#10b981',
+    gemini: '#3b82f6',
+    perplexity: '#8b5cf6',
+  }
+  return colors[key] || '#6b7280'
+}
+
+function formatPromptTime(ts) {
   if (!ts) return ''
   const d = new Date(ts)
-  return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  return d.toLocaleTimeString(undefined, {
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  })
 }
 
-async function fetchPipelineLogs(auditId) {
-  if (!auditId) return
-  try {
-    const { data } = await llmRankingApi.auditLogs(websiteId, auditId)
-    const result = data?.data || data
-    pipelineLogs.value = result.logs || []
-    logProgress.value = {
-      completed: result.queries_completed || 0,
-      total: result.total_queries || 0,
-    }
-    // Auto-scroll to bottom
-    nextTick(() => {
-      if (logScrollRef.value) {
-        logScrollRef.value.scrollTop = logScrollRef.value.scrollHeight
-      }
-    })
-  } catch (_) { /* ignore */ }
-}
+// All queries this audit ran, oldest first. Renders the same data
+// during a running audit (partial — fewer rows) and after completion.
+const promptActivity = computed(() => {
+  const list = auditDetail.value?.results || []
+  return [...list].sort((a, b) =>
+    (a.created_at || '').localeCompare(b.created_at || ''),
+  )
+})
 
-function startLogPolling(auditId) {
-  stopLogPolling()
-  if (!auditId) return
-  // Fetch immediately
-  fetchPipelineLogs(auditId)
-  // Then poll every 2s
-  logPollTimer = setInterval(() => fetchPipelineLogs(auditId), 2000)
-}
-
-function stopLogPolling() {
-  if (logPollTimer) {
-    clearInterval(logPollTimer)
-    logPollTimer = null
-  }
-}
+// Progress used by the card subtitle. Stays at 0/0 until the running
+// audit reports its planned total, which is fine.
+const logProgress = computed(() => ({
+  completed: latestAudit.value?.queries_completed || 0,
+  total: latestAudit.value?.total_queries || 0,
+}))
 
 // ── Prompt Intelligence aggregation ─────────────────────────────────────────
 const providerFilter = ref('')
@@ -3711,11 +3709,9 @@ async function submitAudit() {
     auditDetail.value = audit
     showRunForm.value = false
     toast.success('Audit queued. Results will appear once complete.')
-    // Start polling for results + pipeline logs
+    // Status polling brings in new results — the Prompt Activity card
+    // re-renders from auditDetail.results, no separate log poll needed.
     startPolling()
-    pipelineLogs.value = []
-    logsExpanded.value = true
-    startLogPolling(audit.id)
   } catch (err) {
     // Per-user monthly AI spend cap reached — show a friendly modal instead
     // of the generic banner so the user knows what to do.
@@ -3742,15 +3738,8 @@ async function selectAudit(audit) {
   recommendations.value = []
   auditDetail.value = null
 
-  // Load pipeline logs for this audit
-  fetchPipelineLogs(audit.id)
-  if (audit.status === 'running' || audit.status === 'pending') {
-    logsExpanded.value = true
-    startLogPolling(audit.id)
-  } else {
-    stopLogPolling()
-    logsExpanded.value = false
-  }
+  // Pipeline log polling removed — Prompt Activity reads directly from
+  // auditDetail.results, which the status poll keeps fresh.
 
   if (audit.status !== 'completed') return
 
@@ -3791,9 +3780,6 @@ function startPolling() {
     const hasRunning = audits.value.some(a => a.status === 'pending' || a.status === 'running')
     if (!hasRunning) {
       stopPolling()
-      stopLogPolling()
-      // Final log fetch to capture completion summary
-      if (selectedAuditId.value) fetchPipelineLogs(selectedAuditId.value)
       return
     }
     try {
@@ -3978,7 +3964,6 @@ onMounted(() => {
 })
 onBeforeUnmount(() => {
   stopPolling()
-  stopLogPolling()
   document.removeEventListener('click', onDocClick)
 })
 </script>
@@ -5462,29 +5447,6 @@ onBeforeUnmount(() => {
 .pl-node-dot.dot-idle { background: var(--text-muted); }
 .pl-node-dot.dot-off  { background: var(--color-danger, #DC2626); }
 
-/* Audit Log */
-.audit-log-list {
-  display: flex;
-  flex-direction: column;
-  padding: 4px 0 8px;
-  max-height: 400px;
-  overflow-y: auto;
-  font-family: 'SF Mono', 'Fira Code', monospace;
-  font-size: 12px;
-}
-
-.audit-log-row:hover { background: var(--bg-surface); }
-.audit-log-row.log-info { border-left-color: var(--text-muted); }
-.audit-log-row.log-hit  { border-left-color: var(--color-success, #10B981); }
-.audit-log-row.log-miss { border-left-color: var(--text-muted); opacity: 0.7; }
-.audit-log-row.log-fail { border-left-color: var(--color-danger,  #DC2626); }
-.audit-log-row.log-done { border-left-color: var(--brand-accent, #4F46E5); background: rgba(79,70,229,0.04); }
-
-.audit-log-time {
-  color: var(--text-muted);
-  font-weight: 500;
-}
-
 .loading-state { text-align: center; padding: 80px 20px; font-size: var(--font-md); color: var(--text-muted); }
 
 /* Header actions */
@@ -6332,145 +6294,68 @@ onBeforeUnmount(() => {
 }
 
 /* Live ticker (during a running audit) */
-.live-pulse {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--color-success, #34D399);
-  margin-left: 8px;
-  animation: live-pulse-kf 1.3s ease-in-out infinite;
-  vertical-align: middle;
+/* Prompt Activity — chronological per-query record */
+.prompt-activity-head,
+.prompt-activity-row {
+  display: grid;
+  grid-template-columns: 84px 110px 200px 1fr 130px;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  font-size: 13px;
 }
-@keyframes live-pulse-kf {
-  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(52,211,153,0.6); }
-  50%      { opacity: 0.6; box-shadow: 0 0 0 6px rgba(52,211,153,0); }
+.prompt-activity-head {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-color);
+  padding-top: 12px;
+  padding-bottom: 8px;
 }
-.live-list { display: flex; flex-direction: column; gap: 6px; padding: 16px; }
-.live-row {
+.prompt-activity-list {
+  max-height: 480px;
+  overflow-y: auto;
+}
+.prompt-activity-row {
+  border-bottom: 1px solid var(--border-color);
+  border-left: 3px solid transparent;
+}
+.prompt-activity-row:last-child { border-bottom: none; }
+.prompt-activity-row:hover { background: var(--bg-surface); }
+.prompt-activity-row.pa-hit { border-left-color: var(--color-success, #10B981); }
+.prompt-activity-row.pa-fail { border-left-color: var(--color-danger, #DC2626); opacity: 0.85; }
+.pa-time {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.pa-provider {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  border-radius: var(--radius-md);
-  background: var(--bg-base);
-  border: 1px solid var(--border-color);
-  border-left: 3px solid var(--text-muted);
-  font-size: var(--font-sm);
-  animation: live-row-in 0.35s cubic-bezier(0.22, 1, 0.36, 1);
-}
-.live-row.live-hit  { border-left-color: var(--color-success, #34D399); }
-.live-row.live-fail { border-left-color: var(--color-danger, #DC2626); opacity: 0.7; }
-.live-provider {
-  flex-shrink: 0;
-  font-weight: 700;
+  gap: 6px;
+  font-weight: 600;
   color: var(--text-primary);
-  width: 76px;
 }
-.live-prompt {
-  flex: 1;
+.pa-provider-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  display: inline-block;
+}
+.pa-model {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pa-prompt {
   color: var(--text-secondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-@keyframes live-row-in {
-  from { opacity: 0; transform: translateY(-4px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
-/* ═══ Pipeline Log (terminal-style) ═══ */
-.pipeline-log-card {
-  border-radius: var(--radius-lg, 12px);
-  overflow: hidden;
-  border: 1px solid rgba(255,255,255,0.06);
-  background: #0d1117;
-  box-shadow: 0 4px 24px rgba(0,0,0,0.25);
-}
-.pipeline-log-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 16px;
-  background: #161b22;
-  cursor: pointer;
-  user-select: none;
-  border-bottom: 1px solid rgba(255,255,255,0.06);
-}
-.pipeline-log-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  font-weight: 600;
-  color: #e6edf3;
-  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
-}
-.pipeline-log-title svg { stroke: #7d8590; }
-.pipeline-log-meta {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  color: #7d8590;
-}
-.pipeline-log-chevron {
-  transition: transform 0.2s;
-  stroke: #7d8590;
-}
-.pipeline-log-chevron.rotated {
-  transform: rotate(180deg);
-}
-.pipeline-log-body {
-  max-height: 420px;
-  overflow-y: auto;
-  padding: 12px 16px;
-  scroll-behavior: smooth;
-}
-.pipeline-log-body::-webkit-scrollbar { width: 6px; }
-.pipeline-log-body::-webkit-scrollbar-track { background: transparent; }
-.pipeline-log-body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
-.pipeline-log-entry {
-  display: flex;
-  gap: 12px;
-  padding: 3px 0;
-  font-size: 12.5px;
-  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
-  line-height: 1.6;
-  animation: log-entry-in 0.25s ease;
-}
-@keyframes log-entry-in {
-  from { opacity: 0; transform: translateX(-4px); }
-  to   { opacity: 1; transform: translateX(0); }
-}
-.log-time {
-  flex-shrink: 0;
-  color: #484f58;
-  font-size: 11px;
-  min-width: 70px;
-}
-.log-msg {
-  color: #8b949e;
-  word-break: break-word;
-}
-.log-info .log-msg  { color: #8b949e; }
-.log-success .log-msg { color: #3fb950; }
-.log-warn .log-msg { color: #d29922; }
-.log-error .log-msg { color: #f85149; }
-.pipeline-log-cursor {
-  padding: 2px 0;
-}
-.cursor-blink {
-  color: #58a6ff;
-  font-size: 13px;
-  animation: cursor-blink-kf 1s step-end infinite;
-}
-@keyframes cursor-blink-kf {
-  0%, 100% { opacity: 1; }
-  50%      { opacity: 0; }
-}
-.pipeline-log-card.is-collapsed .pipeline-log-header {
-  border-bottom: none;
-}
+.pa-status { text-align: right; }
 
 /* Recommendations */
 .recs-list { display: flex; flex-direction: column; gap: 0; }
