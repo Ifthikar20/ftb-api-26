@@ -131,11 +131,31 @@ class LLMRankingService:
             for p in base_items
         ]
 
+        # Pull grounding from the user's RAG knowledge base so variants are
+        # informed by the real product / use cases, not just the few-line
+        # description. Falls back silently if no chunks have been ingested
+        # yet (first audit on a fresh website).
+        rag_block = ""
+        if user is not None and website is not None:
+            try:
+                from apps.rag.services.retriever import retrieve_context_block
+                rag_query = (
+                    f"buyer questions and use cases for {business_name} "
+                    f"in {industry} — {use_case}"
+                )
+                rag_block = retrieve_context_block(
+                    user=user, website=website, query=rag_query,
+                    top_k=4, max_chars=1800,
+                )
+            except Exception as e:
+                logger.debug("RAG retrieval skipped during prompt generation: %s", e)
+
         # Use Claude to generate additional natural variants
         try:
             import anthropic
             client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
             loc_hint = f"\nLocation: {location}" if location else ""
+            rag_hint = f"\n\n{rag_block}" if rag_block else ""
             resp = client.messages.create(
                 model="claude-sonnet-4-20250514",
                 max_tokens=512,
@@ -147,7 +167,9 @@ class LLMRankingService:
                         f"Business: {business_name}\n"
                         f"Industry: {industry}\n"
                         f"Description: {description}\n"
-                        f"Keywords: {', '.join(keywords)}{loc_hint}\n\n"
+                        f"Keywords: {', '.join(keywords)}{loc_hint}{rag_hint}\n\n"
+                        "Use the knowledge base context above (if any) to ground "
+                        "the questions in real product features and use cases. "
                         "Return ONLY a JSON array of 4 question strings, no other text."
                     ),
                 }],
@@ -559,6 +581,20 @@ class LLMRankingService:
             "status", "total_queries", "queries_completed", "started_at",
             "providers_queried", "audit_logs", "context_urls", "updated_at",
         ])
+
+        # Persist the enrichment block back into the user's knowledge base
+        # so the *next* audit can retrieve from it. This is the
+        # incremental "learning" loop — every audit grows the corpus.
+        if enriched_context:
+            try:
+                from apps.rag.services.ingest_service import ingest_audit_context
+                ingest_audit_context(
+                    user=audit.created_by, website=audit.website,
+                    audit_id=str(audit.id), llm_context=enriched_context,
+                )
+            except Exception as exc:
+                logger.debug("Audit-context RAG ingest skipped: %s", exc)
+
         return {"prompts": prompt_items, "providers": provider_keys}
 
     @staticmethod
@@ -589,9 +625,25 @@ class LLMRankingService:
             if isinstance(c, dict) and c.get("kind") == "_enriched":
                 enriched_context = c.get("text", "")
                 break
+
+        # Per-prompt RAG retrieval — pulls the chunks most relevant to
+        # this specific prompt out of the user's knowledge base and
+        # appends them under the static enrichment context. Falls back
+        # silently when the KB is empty.
+        rag_block = ""
+        try:
+            from apps.rag.services.retriever import retrieve_context_block
+            rag_block = retrieve_context_block(
+                user=audit.created_by, website=audit.website,
+                query=prompt_text, top_k=4, max_chars=2000,
+            )
+        except Exception as exc:
+            logger.debug("RAG retrieval skipped for cell: %s", exc)
+
+        full_context = "\n\n".join(c for c in [enriched_context, rag_block] if c)
         sys_prompt = (
-            build_enriched_system_prompt(SYSTEM_INSTRUCTION, enriched_context)
-            if enriched_context else ""
+            build_enriched_system_prompt(SYSTEM_INSTRUCTION, full_context)
+            if full_context else ""
         )
 
         provider_inst = get_provider(provider)
@@ -894,6 +946,19 @@ class LLMRankingService:
         if enriched_context:
             _audit_log(audit, "🧠 Enriched system prompt ready — Claude will see full business context")
 
+        # Ingest the enrichment back into the user's RAG knowledge base
+        # for future audits to retrieve from. The "learning" loop.
+        if enriched_context:
+            try:
+                from apps.rag.services.ingest_service import ingest_audit_context
+                ingest_audit_context(
+                    user=audit.created_by, website=audit.website,
+                    audit_id=str(audit.id), llm_context=enriched_context,
+                )
+                _audit_log(audit, "📚 Audit context added to knowledge base", "success")
+            except Exception as exc:
+                logger.debug("Audit-context RAG ingest skipped: %s", exc)
+
         # Calculate total queries and set progress tracking
         # Prompts may be structured [{"text": ..., "type": ...}] or flat ["..."]
         prompt_items = []
@@ -941,7 +1006,24 @@ class LLMRankingService:
                     # All providers get the enriched context when available.
                     # user/website/audit_id are passed through so each call's
                     # token usage is attributed to the right user in Settings.
-                    sys_prompt = enriched_system if enriched_context else ""
+                    # Per-prompt RAG retrieval — appends knowledge-base
+                    # chunks most relevant to this specific prompt.
+                    rag_block = ""
+                    try:
+                        from apps.rag.services.retriever import retrieve_context_block
+                        rag_block = retrieve_context_block(
+                            user=audit.created_by, website=audit.website,
+                            query=prompt_text, top_k=4, max_chars=2000,
+                        )
+                    except Exception as _rag_exc:
+                        logger.debug("RAG retrieval skipped: %s", _rag_exc)
+                    if rag_block:
+                        sys_prompt = build_enriched_system_prompt(
+                            SYSTEM_INSTRUCTION,
+                            "\n\n".join(c for c in [enriched_context, rag_block] if c),
+                        )
+                    else:
+                        sys_prompt = enriched_system if enriched_context else ""
                     succeeded, response_text, error = query_fn(
                         prompt_text, sys_prompt,
                         user=audit.created_by, website=audit.website,

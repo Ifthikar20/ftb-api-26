@@ -20,6 +20,7 @@ urlpatterns = [
     path("api/v1/notifications/", include("apps.notifications.api.v1.urls")),
     path("api/v1/billing/", include("apps.billing.api.v1.urls")),
     path("api/v1/llm-ranking/", include("apps.llm_ranking.api.v1.urls")),
+    path("api/v1/rag/", include("apps.rag.api.v1.urls")),
     path("api/v1/social-leads/", include("apps.social_leads.api.v1.urls")),
     path("api/v1/messaging/", include("apps.messaging.api.v1.urls")),
 

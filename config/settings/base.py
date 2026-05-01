@@ -57,6 +57,7 @@ LOCAL_APPS = [
     "apps.notifications",
     "apps.billing",
     "apps.llm_ranking",
+    "apps.rag",
     "apps.compliance",
     "apps.social_leads",
     "apps.messaging",

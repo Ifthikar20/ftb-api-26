@@ -392,6 +392,6 @@ UI ──poll (2s)──> GET /audits/<aid>/logs/?after=<ts>
 
 ## Dependencies
 
-- **Internal:** `websites`, `accounts`, `core` (ai_tracking, permissions, tenant scoping)
+- **Internal:** `websites`, `accounts`, `core` (ai_tracking, permissions, tenant scoping), `rag` (per-user knowledge base for grounded prompt generation and per-prompt retrieval)
 - **External APIs:** Anthropic, OpenAI, Google Generative AI, Perplexity, Google Custom Search
 - **Frontend:** Vue 3, Chart.js + vue-chartjs, axios
