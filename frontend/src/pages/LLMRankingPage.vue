@@ -613,12 +613,59 @@
             </span>
           </h3>
           <span class="text-xs text-muted">
-            {{ promptActivity.length }} prompt{{ promptActivity.length === 1 ? '' : 's' }}
+            {{ filteredPromptActivity.length }}<template v-if="filteredPromptActivity.length !== promptActivity.length">/{{ promptActivity.length }}</template>
+            prompt{{ promptActivity.length === 1 ? '' : 's' }}
             <template v-if="logProgress.total">
               · {{ logProgress.completed }}/{{ logProgress.total }} queries
             </template>
           </span>
         </div>
+
+        <!-- Filters: search, provider, status, sort. Operate on the
+             promptActivity array client-side so the Status poll can
+             continue refreshing the full list underneath without
+             losing the user's filter state. -->
+        <div class="pa-filters">
+          <div class="pa-filter-search">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+              <circle cx="7" cy="7" r="5"/>
+              <path d="M11 11l3 3"/>
+            </svg>
+            <input
+              v-model="paFilters.search"
+              class="pa-filter-input"
+              placeholder="Search prompts..."
+              type="text"
+            />
+          </div>
+          <select v-model="paFilters.provider" class="pa-filter-select">
+            <option value="">All providers</option>
+            <option v-for="key in promptActivityProviders" :key="key" :value="key">
+              {{ providerLabel(key) }}
+            </option>
+          </select>
+          <select v-model="paFilters.status" class="pa-filter-select">
+            <option value="">All status</option>
+            <option value="mentioned">Mentioned</option>
+            <option value="not_mentioned">Not mentioned</option>
+            <option value="error">API error</option>
+          </select>
+          <select v-model="paFilters.sort" class="pa-filter-select">
+            <option value="time_asc">Oldest first</option>
+            <option value="time_desc">Newest first</option>
+            <option value="rank_asc">Best rank first</option>
+            <option value="provider">Group by provider</option>
+          </select>
+          <button
+            v-if="paFiltersActive"
+            class="pa-filter-clear"
+            @click="resetPromptActivityFilters"
+            title="Clear all filters"
+          >
+            Clear
+          </button>
+        </div>
+
         <div class="prompt-activity-head">
           <span class="pa-time">Time</span>
           <span class="pa-provider">Provider</span>
@@ -628,7 +675,7 @@
         </div>
         <div class="prompt-activity-list">
           <div
-            v-for="r in promptActivity"
+            v-for="r in filteredPromptActivity"
             :key="r.id || (r.provider + r.prompt + r.created_at)"
             class="prompt-activity-row"
             :class="{ 'pa-fail': !r.query_succeeded, 'pa-hit': r.is_mentioned }"
@@ -649,6 +696,10 @@
               </span>
               <span v-else class="badge badge-neutral">Not mentioned</span>
             </span>
+          </div>
+          <div v-if="!filteredPromptActivity.length" class="pa-empty">
+            No prompts match the current filters.
+            <button class="pa-filter-clear" @click="resetPromptActivityFilters">Clear filters</button>
           </div>
         </div>
       </div>
@@ -2370,6 +2421,87 @@ const promptActivity = computed(() => {
   return [...list].sort((a, b) =>
     (a.created_at || '').localeCompare(b.created_at || ''),
   )
+})
+
+// ── Prompt Activity filters ─────────────────────────────────────────────
+//
+// Client-side filtering against the full ``promptActivity`` list. The
+// Status poll keeps the underlying array fresh while the user keeps
+// their filter selection — important during a running audit so the
+// view doesn't reset every two seconds.
+const paFilters = ref({
+  search: '',
+  provider: '',
+  status: '',     // '', 'mentioned', 'not_mentioned', 'error'
+  sort: 'time_asc',
+})
+
+const paFiltersActive = computed(() => {
+  const f = paFilters.value
+  return !!(f.search || f.provider || f.status || f.sort !== 'time_asc')
+})
+
+function resetPromptActivityFilters() {
+  paFilters.value = { search: '', provider: '', status: '', sort: 'time_asc' }
+}
+
+// Distinct providers seen in this audit — drives the provider dropdown
+// so the user only sees options that actually have rows.
+const promptActivityProviders = computed(() => {
+  const seen = new Set()
+  for (const r of promptActivity.value) {
+    if (r.provider) seen.add(r.provider)
+  }
+  return Array.from(seen).sort()
+})
+
+const filteredPromptActivity = computed(() => {
+  const f = paFilters.value
+  let rows = promptActivity.value
+
+  if (f.search) {
+    const q = f.search.toLowerCase()
+    rows = rows.filter(r => (r.prompt || '').toLowerCase().includes(q))
+  }
+  if (f.provider) {
+    rows = rows.filter(r => r.provider === f.provider)
+  }
+  if (f.status === 'mentioned') {
+    rows = rows.filter(r => r.query_succeeded && r.is_mentioned)
+  } else if (f.status === 'not_mentioned') {
+    rows = rows.filter(r => r.query_succeeded && !r.is_mentioned)
+  } else if (f.status === 'error') {
+    rows = rows.filter(r => !r.query_succeeded)
+  }
+
+  // Apply sort. ``rows`` is already a fresh copy from the upstream sort
+  // (``promptActivity`` returns a sorted clone) — but our filter chain
+  // returns the same reference, so spread before sorting in place.
+  const sorted = [...rows]
+  switch (f.sort) {
+    case 'time_desc':
+      sorted.reverse()
+      break
+    case 'rank_asc':
+      sorted.sort((a, b) => {
+        const ra = (a.is_mentioned && a.mention_rank) ? a.mention_rank : 999
+        const rb = (b.is_mentioned && b.mention_rank) ? b.mention_rank : 999
+        return ra - rb
+      })
+      break
+    case 'provider':
+      sorted.sort((a, b) => {
+        const p = (a.provider || '').localeCompare(b.provider || '')
+        if (p !== 0) return p
+        return (a.created_at || '').localeCompare(b.created_at || '')
+      })
+      break
+    case 'time_asc':
+    default:
+      // already sorted ascending by created_at
+      break
+  }
+  return sorted
 })
 
 // Progress used by the card subtitle. Stays at 0/0 until the running
@@ -6356,6 +6488,76 @@ onBeforeUnmount(() => {
   text-overflow: ellipsis;
 }
 .pa-status { text-align: right; }
+
+/* Prompt Activity filters */
+.pa-filters {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-base);
+  flex-wrap: wrap;
+}
+.pa-filter-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 200px;
+  max-width: 360px;
+}
+.pa-filter-search svg {
+  position: absolute;
+  left: 10px;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+.pa-filter-input {
+  width: 100%;
+  padding: 6px 10px 6px 30px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  font-size: 13px;
+  color: var(--text-primary);
+}
+.pa-filter-input:focus {
+  outline: none;
+  border-color: var(--brand-accent, #4F46E5);
+}
+.pa-filter-select {
+  padding: 6px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  font-size: 13px;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.pa-filter-clear {
+  padding: 6px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: transparent;
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.pa-filter-clear:hover {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+.pa-empty {
+  padding: 32px 16px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-muted);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
 
 /* Recommendations */
 .recs-list { display: flex; flex-direction: column; gap: 0; }
