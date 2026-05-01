@@ -120,6 +120,38 @@ def _retry_on_transient(max_retries=3, base_delay=1.0):
     return decorator
 
 
+def _dev_bypass_subscription(*, user, plan: str, annual: bool):
+    """
+    Provision a Subscription row that looks like a Stripe-backed one
+    without actually charging. Marked ``stripe_subscription_id`` with a
+    ``dev_bypass_*`` prefix so it's easy to grep for and never confused
+    with a real subscription. Bypass-created rows have no Stripe
+    customer or invoice — webhooks will skip them silently.
+    """
+    import uuid as _uuid
+
+    fake_id = f"dev_bypass_{_uuid.uuid4().hex[:16]}"
+    sub, _created = Subscription.objects.get_or_create(
+        user=user,
+        defaults={"plan": plan, "status": "active", "stripe_subscription_id": fake_id},
+    )
+    # Always (re)flip to active on the requested plan so re-running
+    # checkout in dev moves the user up/down tiers as expected.
+    sub.plan = plan
+    sub.status = "active"
+    if not sub.stripe_subscription_id or not sub.stripe_subscription_id.startswith("dev_bypass_"):
+        sub.stripe_subscription_id = fake_id
+    if hasattr(sub, "billing_period"):
+        sub.billing_period = "annual" if annual else "monthly"
+    sub.save()
+    audit_log(
+        "billing.checkout_dev_bypass", user=user, action="create",
+        resource_type="subscription", resource_id=sub.stripe_subscription_id,
+        metadata={"plan": plan, "annual": annual},
+    )
+    return sub
+
+
 class StripeService:
     # ──────────────────────────────────
     #  Customer Management
@@ -152,17 +184,48 @@ class StripeService:
     # ──────────────────────────────────
 
     @staticmethod
+    @staticmethod
+    def _dev_bypass_checkout(*, user, plan: str, annual: bool, success_url: str) -> str:
+        """Stripe-skipping branch of ``create_checkout_session``.
+
+        Provisions an active Subscription via ``_dev_bypass_subscription``
+        and returns the configured success URL with a sentinel session
+        id so the success-page handler can detect the bypass and skip
+        Stripe-side reconciliation.
+        """
+        _dev_bypass_subscription(user=user, plan=plan, annual=annual)
+        sep = "&" if "?" in success_url else "?"
+        return f"{success_url}{sep}session_id=dev_bypass"
+
     @_retry_on_transient(max_retries=2)
     @with_circuit_breaker()
     def create_checkout_session(*, user, plan: str, annual: bool = False,
                                  success_url: str, cancel_url: str) -> str:
         """Create a Stripe checkout session URL for subscribing."""
-        _init_stripe()
         plan = _resolve_plan(plan)
-        customer_id = StripeService.get_or_create_customer(user=user)
 
+        # ── Dev bypass ────────────────────────────────────────────
+        # When DEBUG=True and either STRIPE_SECRET_KEY or the plan's
+        # price ID isn't configured, we skip Stripe entirely: provision
+        # the user a fake "active" Subscription and return the success
+        # URL directly. Lets the team demo the full
+        # Login → Register → Onboarding → Paywall → Dashboard flow
+        # without standing up a real Stripe account.
+        #
+        # GUARDED: only fires when settings.DEBUG is True. In production
+        # the missing-credentials branch raises ``plan_not_available``
+        # the same way it always has.
         price_map = PLAN_PRICE_IDS_ANNUAL if annual else PLAN_PRICE_IDS
         price_id = price_map.get(plan, "")
+        bypass_enabled = bool(getattr(settings, "DEBUG", False))
+        bypass_required = (not settings.STRIPE_SECRET_KEY) or (not price_id)
+        if bypass_enabled and bypass_required:
+            return StripeService._dev_bypass_checkout(
+                user=user, plan=plan, annual=annual, success_url=success_url,
+            )
+
+        _init_stripe()
+        customer_id = StripeService.get_or_create_customer(user=user)
 
         if not price_id:
             raise GrowthPilotException(

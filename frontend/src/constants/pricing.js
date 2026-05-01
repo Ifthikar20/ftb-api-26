@@ -1,46 +1,32 @@
 // Pricing tiers shown on the paywall.
-// TODO: team decision — replace price IDs with real Stripe price IDs once created.
-// TODO: team decision — finalize feature bullets per tier.
+//
+// Currently we ship a single paid tier ($100 / month, gives Pro access)
+// and a "talk to us" Business tier. Starter has been retired — every
+// new sign-up goes straight to Pro. Re-introducing a lower tier later
+// only requires adding it back to this array.
 
 export const TIERS = [
     {
-        id: 'starter',
-        name: 'Starter',
-        price: 29,
-        priceLabel: '$29',
-        period: '/month',
-        description: 'For solo founders and small sites getting started with AI visibility.',
-        features: [
-            '1 website',
-            '4 LLM providers (Claude, GPT-4, Gemini, Perplexity)',
-            'Weekly audits',
-            '10 prompts per audit',
-            'Email support',
-        ],
-        cta: 'Start with Starter',
-        // TODO: replace with real Stripe price id from dashboard
-        stripePriceId: 'TODO_STRIPE_PRICE_ID_STARTER_29',
-        planCode: 'starter',
-        highlight: false,
-    },
-    {
         id: 'pro',
         name: 'Pro',
-        price: 96,
-        priceLabel: '$96',
+        price: 100,
+        priceLabel: '$100',
         period: '/month',
-        description: 'For growing teams who need competitive intelligence and scheduled monitoring.',
+        description: 'Full access — every LLM provider, scheduled audits, competitor tracking.',
         features: [
             'Up to 5 websites',
-            '4 LLM providers + competitor tracking',
+            '4 LLM providers (Claude, GPT-4, Gemini, Perplexity)',
             'Daily audits',
             '50 prompts per audit',
+            'Competitor tracking + RAG knowledge base',
             'Trend intelligence + recommendations',
             'Priority support',
         ],
-        cta: 'Upgrade to Pro',
-        // TODO: replace with real Stripe price id from dashboard
-        stripePriceId: 'TODO_STRIPE_PRICE_ID_PRO_96',
+        cta: 'Start with Pro',
+        // Set STRIPE_PRO_PRICE_ID in env to point at the live or test
+        // price object. When unset and DEBUG=True the backend grants Pro
+        // access without charging — see ``StripeService.create_checkout_session``.
+        stripePriceId: 'STRIPE_PRO_PRICE_ID',
         planCode: 'pro',
         highlight: true,
     },
@@ -61,7 +47,6 @@ export const TIERS = [
         cta: 'Contact sales',
         stripePriceId: null,
         planCode: 'enterprise',
-        // TODO: team decision — replace with real contact target (calendly link or sales@)
         contactTarget: 'mailto:sales@fetchbot.ai?subject=Business plan inquiry',
         highlight: false,
     },
