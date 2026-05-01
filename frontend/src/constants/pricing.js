@@ -1,31 +1,50 @@
 // Pricing tiers shown on the paywall.
 //
-// Currently we ship a single paid tier ($100 / month, gives Pro access)
-// and a "talk to us" Business tier. Starter has been retired — every
-// new sign-up goes straight to Pro. Re-introducing a lower tier later
-// only requires adding it back to this array.
+// Three tiers: Individual ($45), Pro ($100), Business (contact). The
+// per-tier ``maxPromptsPerAudit`` mirrors core.utils.constants.PLAN_LIMITS
+// — keep in sync with the backend or the dashboard will lie about the
+// cap a user has when their plan changes.
 
 export const TIERS = [
+    {
+        id: 'individual',
+        name: 'Individual',
+        price: 45,
+        priceLabel: '$45',
+        period: '/month',
+        maxPromptsPerAudit: 5,
+        description: 'For solo founders watching one site.',
+        features: [
+            '1 website',
+            '5 prompts per audit',
+            '4 audits / month',
+            'Claude + GPT-4',
+            'Email support',
+        ],
+        cta: 'Start with Individual',
+        // Backend reads STRIPE_INDIVIDUAL_PRICE_ID from env.
+        stripePriceId: 'STRIPE_INDIVIDUAL_PRICE_ID',
+        planCode: 'individual',
+        highlight: false,
+    },
     {
         id: 'pro',
         name: 'Pro',
         price: 100,
         priceLabel: '$100',
         period: '/month',
-        description: 'Full access — every LLM provider, scheduled audits, competitor tracking.',
+        maxPromptsPerAudit: 15,
+        description: 'Full access — every LLM provider and competitor tracking.',
         features: [
             'Up to 5 websites',
-            '4 LLM providers (Claude, GPT-4, Gemini, Perplexity)',
+            '15 prompts per audit',
             'Daily audits',
-            '50 prompts per audit',
+            '4 LLM providers (Claude, GPT-4, Gemini, Perplexity)',
             'Competitor tracking + RAG knowledge base',
             'Trend intelligence + recommendations',
             'Priority support',
         ],
-        cta: 'Start with Pro',
-        // Set STRIPE_PRO_PRICE_ID in env to point at the live or test
-        // price object. When unset and DEBUG=True the backend grants Pro
-        // access without charging — see ``StripeService.create_checkout_session``.
+        cta: 'Upgrade to Pro',
         stripePriceId: 'STRIPE_PRO_PRICE_ID',
         planCode: 'pro',
         highlight: true,
@@ -36,9 +55,12 @@ export const TIERS = [
         price: null,
         priceLabel: 'Custom',
         period: '',
+        maxPromptsPerAudit: 50,
         description: 'Dedicated support, custom integrations, and unlimited scale.',
         features: [
             'Unlimited websites',
+            '50+ prompts per audit',
+            'Unlimited audits',
             'SSO, SAML, audit logs',
             'Custom prompt packs',
             'API access + white-label',

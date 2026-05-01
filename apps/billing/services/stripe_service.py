@@ -26,17 +26,23 @@ from core.logging.audit_logger import audit_log
 
 logger = logging.getLogger("billing")
 
-# ── Stripe Price IDs — 3-tier model ($29 starter / $96 pro / custom enterprise) ──
-# TODO: create prices in Stripe dashboard, then set these env vars before paywall goes live.
+# ── Stripe Price IDs — 3-tier model (Individual $45 / Pro $100 / custom Enterprise) ──
+# Set these in the Stripe dashboard, then export the env vars.
+# When DEBUG=True and either env var is unset, ``create_checkout_session``
+# falls back to the local dev bypass (see _dev_bypass_subscription).
 PLAN_PRICE_IDS = {
-    "starter": getattr(settings, "STRIPE_STARTER_PRICE_ID", ""),
+    "individual": getattr(settings, "STRIPE_INDIVIDUAL_PRICE_ID", ""),
     "pro": getattr(settings, "STRIPE_PRO_PRICE_ID", ""),
+    # Legacy "starter" still resolves so older tests / API clients
+    # don't break — points at the same Individual price.
+    "starter": getattr(settings, "STRIPE_INDIVIDUAL_PRICE_ID", ""),
     # Enterprise is custom — no self-serve checkout
 }
 
 PLAN_PRICE_IDS_ANNUAL = {
-    "starter": getattr(settings, "STRIPE_STARTER_ANNUAL_PRICE_ID", ""),
+    "individual": getattr(settings, "STRIPE_INDIVIDUAL_ANNUAL_PRICE_ID", ""),
     "pro": getattr(settings, "STRIPE_PRO_ANNUAL_PRICE_ID", ""),
+    "starter": getattr(settings, "STRIPE_INDIVIDUAL_ANNUAL_PRICE_ID", ""),
 }
 
 # Legacy mappings for backward compatibility

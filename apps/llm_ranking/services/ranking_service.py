@@ -134,6 +134,15 @@ class LLMRankingService:
 
         use_case = use_case or (keywords[0] if keywords else industry)
 
+        # Per-plan prompt cap. Individual: 5, Pro: 15, Business: 50.
+        # Falls back to the Individual cap when the user has no
+        # subscription so the first-run experience isn't gated.
+        try:
+            from core.utils.constants import max_prompts_for_user
+            cap = max_prompts_for_user(user)
+        except Exception:
+            cap = 5
+
         # Library returns intent-tagged dicts including funnel_stage and a
         # short strategic rationale per prompt. Funnel stage drives the
         # default UI grouping; rationale renders as a sub-line beneath each
@@ -142,7 +151,7 @@ class LLMRankingService:
             industry=industry or "software",
             use_case=use_case,
             location=location,
-            max_prompts=10,
+            max_prompts=cap,
             themes=themes,
             business_name=business_name,
         )
@@ -251,7 +260,12 @@ class LLMRankingService:
             if key not in seen:
                 seen.add(key)
                 deduped.append(item)
-        return deduped[:10]  # cap at 10 prompts per audit
+        # Final cap matches the per-plan limit fetched above. The
+        # PromptLibrary already trimmed to ``cap`` deterministic
+        # prompts, but Claude's 4 variants can push the deduped list
+        # back above the limit — re-trim here so the cap is enforced
+        # regardless of which path produced the prompt.
+        return deduped[:cap]
 
     # ── Per-provider query methods ─────────────────────────────────────────
     #
