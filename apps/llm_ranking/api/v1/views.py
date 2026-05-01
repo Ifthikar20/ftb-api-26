@@ -114,6 +114,7 @@ class LLMRankingAuditListView(TenantScopedListAPIView):
                 use_case=data["use_case"],
                 location=data.get("location", ""),
                 themes=data.get("themes") or None,
+                region=data.get("region", "global"),
                 user=request.user,
                 website=website,
             )
@@ -138,6 +139,7 @@ class LLMRankingAuditListView(TenantScopedListAPIView):
             business_description=business_description,
             industry=industry,
             location=data.get("location", ""),
+            region=data.get("region", "global"),
             keywords=keywords,
             prompts=prompts,
             providers_queried=selected_providers,

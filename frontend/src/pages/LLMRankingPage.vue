@@ -248,6 +248,29 @@
             </div>
           </div>
         </div>
+
+        <!-- Row 3b: Citation Footprint by Country (geo) -->
+        <div v-if="citationFootprint.length" class="card bo-footprint-card" style="margin-bottom:24px">
+          <div class="card-header">
+            <h3 class="card-title">Citation Footprint by Country</h3>
+            <span class="text-xs text-muted">where the LLMs' grounding sources are hosted</span>
+          </div>
+          <div class="bo-footprint-grid">
+            <div v-for="row in citationFootprint" :key="row.country" class="bo-footprint-row">
+              <span class="bo-footprint-flag" :title="row.country">{{ row.flag }}</span>
+              <span class="bo-footprint-name">{{ row.label }}</span>
+              <span class="bo-footprint-bar">
+                <span class="bo-footprint-fill" :style="{ width: row.share + '%' }" />
+              </span>
+              <span class="bo-footprint-num">{{ row.count }}</span>
+              <span class="bo-footprint-pct">{{ row.share }}%</span>
+            </div>
+          </div>
+          <div v-if="latestAudit && latestAudit.region && latestAudit.region !== 'global'"
+               class="text-xs text-muted" style="margin-top:8px">
+            Audit region: <strong>{{ regionLabel(latestAudit.region) }}</strong> — Perplexity grounded its web search in this country; other providers used the geo-flavored prompt.
+          </div>
+        </div>
       </div>
 
       <!-- LLM Systems: compact dropdown -->
@@ -1228,6 +1251,17 @@
             </div>
             <div class="form-group" style="margin-top:12px">
               <label class="form-label">
+                Region
+                <span class="text-muted text-xs">Biases prompts and Perplexity web grounding to this country</span>
+              </label>
+              <select v-model="auditForm.region" class="form-input">
+                <option v-for="opt in REGION_OPTIONS" :key="opt.code" :value="opt.code">
+                  {{ opt.label }}
+                </option>
+              </select>
+            </div>
+            <div class="form-group" style="margin-top:12px">
+              <label class="form-label">
                 Description
                 <span class="text-muted text-xs">Who you serve and what makes you different</span>
               </label>
@@ -1869,6 +1903,7 @@ const auditForm = ref({
   business_name: '',
   industry: '',
   location: '',
+  region: 'global',
   description: '',
   themes: ['recommendation', 'comparison', 'use_case', 'persona'],
   providers: ['claude', 'gpt4', 'gemini', 'perplexity'],
@@ -1876,6 +1911,51 @@ const auditForm = ref({
   competitors: [],
   scan_url: '',
 })
+
+// Region catalogue mirrors apps/llm_ranking/services/regions.py. Adding a
+// new entry here requires a backend change too — kept short to make the
+// drift obvious.
+const REGION_OPTIONS = [
+  { code: 'global', label: 'Global (no geo bias)' },
+  { code: 'us', label: 'United States' },
+  { code: 'ca', label: 'Canada' },
+  { code: 'in', label: 'India' },
+  { code: 'uk', label: 'United Kingdom' },
+  { code: 'de', label: 'Germany' },
+  { code: 'au', label: 'Australia' },
+]
+function regionLabel(code) {
+  const r = REGION_OPTIONS.find(x => x.code === code)
+  return r ? r.label : code
+}
+
+// ISO-2 country code -> human label + flag emoji. Kept short — names match
+// the keys produced by apps.llm_ranking.services.citation_geo.
+const COUNTRY_LABELS = {
+  US: 'United States', CA: 'Canada', GB: 'United Kingdom', IN: 'India',
+  AU: 'Australia', DE: 'Germany', FR: 'France', ES: 'Spain', IT: 'Italy',
+  NL: 'Netherlands', SE: 'Sweden', NO: 'Norway', DK: 'Denmark', FI: 'Finland',
+  PL: 'Poland', BR: 'Brazil', MX: 'Mexico', AR: 'Argentina', JP: 'Japan',
+  KR: 'South Korea', CN: 'China', RU: 'Russia', TR: 'Turkey', IL: 'Israel',
+  AE: 'UAE', SA: 'Saudi Arabia', ZA: 'South Africa', IE: 'Ireland',
+  PT: 'Portugal', CH: 'Switzerland', BE: 'Belgium', AT: 'Austria',
+  NZ: 'New Zealand', SG: 'Singapore', MY: 'Malaysia', ID: 'Indonesia',
+  TH: 'Thailand', VN: 'Vietnam', PH: 'Philippines',
+}
+function countryLabel(code) {
+  return COUNTRY_LABELS[code] || code
+}
+// Flag emoji from ISO-2 by mapping each letter to its Regional Indicator
+// Symbol code point. Pure cosmetic — graceful degrade if the font lacks
+// the glyph.
+function countryFlag(code) {
+  if (!code || code.length !== 2) return ''
+  const offset = 0x1F1A5
+  return String.fromCodePoint(
+    code.toUpperCase().charCodeAt(0) + offset,
+    code.toUpperCase().charCodeAt(1) + offset,
+  )
+}
 
 // ── Wizard state ──
 const wizardStep = ref(0)
@@ -2851,6 +2931,27 @@ const brandRankingRows = computed(() => {
   return rows.map((r, i) => ({ ...r, rank: i + 1 }))
 })
 
+// Citation footprint = country breakdown of all citations in this audit.
+// Rendered in the "Citation Footprint by Country" card. Sorted descending
+// by count, with shares normalized to 100%.
+const citationFootprint = computed(() => {
+  const a = latestAudit.value
+  const counts = (a && a.citation_countries) || {}
+  const entries = Object.entries(counts)
+    .map(([country, count]) => ({ country, count: Number(count) || 0 }))
+    .filter(e => e.count > 0)
+  if (!entries.length) return []
+  const total = entries.reduce((s, e) => s + e.count, 0) || 1
+  entries.sort((a, b) => b.count - a.count)
+  return entries.map(e => ({
+    country: e.country,
+    label: countryLabel(e.country),
+    flag: countryFlag(e.country),
+    count: e.count,
+    share: Math.round(e.count / total * 100),
+  }))
+})
+
 const usingBrandStrengths = computed(() => {
   const a = latestAudit.value
   return !!(a && a.brand_strengths && Object.keys(a.brand_strengths).length > 0)
@@ -3592,6 +3693,7 @@ async function submitAudit() {
       business_description: auditForm.value.description || '',
       industry: auditForm.value.industry,
       location: auditForm.value.location,
+      region: auditForm.value.region || 'global',
       providers: auditForm.value.providers,
       themes: auditForm.value.themes || [],
       keywords: auditForm.value.selectedTopics || [],
@@ -4814,6 +4916,47 @@ onBeforeUnmount(() => {
 .kpi-conf-med  { background: var(--color-warning, #f59e0b); }
 .kpi-conf-low  { background: var(--color-danger, #dc2626); }
 .kpi-sub-muted { opacity: 0.7; margin-left: 4px; }
+
+.bo-footprint-card { padding: 16px; }
+.bo-footprint-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+.bo-footprint-row {
+  display: grid;
+  grid-template-columns: 28px 1fr 2fr 56px 48px;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+}
+.bo-footprint-flag { font-size: 18px; line-height: 1; }
+.bo-footprint-name { color: var(--text-primary); font-weight: 500; }
+.bo-footprint-bar {
+  display: block;
+  height: 8px;
+  background: var(--bg-surface);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.bo-footprint-fill {
+  display: block;
+  height: 100%;
+  background: var(--color-primary, #4f46e5);
+  border-radius: 4px;
+}
+.bo-footprint-num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--text-muted);
+}
+.bo-footprint-pct {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  text-align: right;
+  color: var(--text-primary);
+}
 .bo-brand-avatar, .bo-source-favicon {
   width: 22px;
   height: 22px;

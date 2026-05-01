@@ -280,6 +280,16 @@ Overall Score (0–100) =
 
 **Mention Rate CI:** Wilson score interval at 95% confidence — stays sensible for small sample sizes (n < 30).
 
+## Geographic Regions
+
+An audit is tagged with one of `global`, `us`, `ca`, `in`, `uk`, `de`, `au`. Region selection affects three points in the pipeline:
+
+1. **Prompt flavour** (`services/regions.flavor_prompt`) — appends a region hint to each prompt template before fan-out, so non-grounded providers (Claude, GPT-4, Gemini) bias their answer toward that geo's training-data examples.
+2. **Perplexity web grounding** — when `region != global`, the Perplexity provider passes `web_search_options.user_location.country` to the API so the underlying web search retrieves region-appropriate sources. Other providers ignore this knob.
+3. **Citation country attribution** — `services/citation_geo.attribute_country` maps each citation URL to an ISO-2 country code via ccTLD lookup + a small known-domain table (g2.com → US, yourstory.com → IN, etc.). Per-result counts are persisted on `LLMRankingResult.citation_countries`; the audit-level roll-up `LLMRankingAudit.citation_countries` powers the "Citation Footprint by Country" dashboard card.
+
+The attribution heuristic is intentionally simple (no GeoIP, no DNS resolution). It covers ~80% of common cases at zero infra cost; swap to MaxMind GeoLite2 later without touching call sites — the only consumer is `attribute_country`.
+
 ## Brand Strength Ranking (Plackett-Luce)
 
 The Rankings Table on the dashboard is driven by **Plackett-Luce strengths** rather than raw mention counts. For every response where the target and/or competitors appeared with a position, we treat the ordered list as a partial ranking. We then fit a single per-brand strength `w_i` such that

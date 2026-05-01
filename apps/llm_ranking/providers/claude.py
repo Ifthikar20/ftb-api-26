@@ -17,7 +17,8 @@ class ClaudeProvider(LLMProvider):
     rpm = 40
     burst = 15
 
-    def _call(self, *, prompt: str, system_prompt: str) -> ProviderResult:
+    def _call(self, *, prompt: str, system_prompt: str,
+              region: str = "") -> ProviderResult:
         import anthropic
 
         client = anthropic.Anthropic(api_key=self.api_key)

@@ -98,6 +98,7 @@ class LLMProvider:
         website=None,
         audit_id: str | None = None,
         role: str = "upstream",
+        region: str = "",
     ) -> ProviderResult:
         """
         Run a single prompt against the provider.
@@ -132,7 +133,9 @@ class LLMProvider:
 
         t0 = time.monotonic()
         try:
-            result = self._call(prompt=prompt, system_prompt=system_prompt)
+            result = self._call(
+                prompt=prompt, system_prompt=system_prompt, region=region,
+            )
         except Exception as exc:  # noqa: BLE001 — providers throw a wide variety
             duration_ms = int((time.monotonic() - t0) * 1000)
             logger.warning("Provider %s call failed: %s", self.name, exc)
@@ -158,7 +161,8 @@ class LLMProvider:
 
     # ── To implement in subclasses ────────────────────────────────────────
 
-    def _call(self, *, prompt: str, system_prompt: str) -> ProviderResult:
+    def _call(self, *, prompt: str, system_prompt: str,
+              region: str = "") -> ProviderResult:
         raise NotImplementedError
 
     # ── Centralised cost recording ────────────────────────────────────────

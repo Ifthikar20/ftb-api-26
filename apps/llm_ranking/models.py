@@ -88,6 +88,13 @@ class LLMRankingAudit(TimestampMixin):
     extraction_method = models.CharField(
         max_length=20, choices=EXTRACTION_CHOICES, default=EXTRACTION_HEURISTIC
     )
+    # Geographic region for this audit. "global" means no geo flavoring;
+    # other codes append a region hint to prompts and route Perplexity
+    # web search to that country.
+    region = models.CharField(max_length=10, default="global", db_index=True)
+    # Aggregated citation footprint by country (ISO-2 code -> count).
+    # Built in finalise_audit from each result's citation URLs.
+    citation_countries = models.JSONField(default=dict, blank=True)
     # Schedule: frequency for recurring audit jobs
     SCHEDULE_NONE = ""
     SCHEDULE_DAILY = "daily"
@@ -206,6 +213,10 @@ class LLMRankingResult(TimestampMixin):
     # Which model + prompt version was used to extract structured data
     extraction_model = models.CharField(max_length=100, blank=True)
     extraction_version = models.CharField(max_length=20, blank=True)
+    # Per-result citation country breakdown (ISO-2 -> count). Computed
+    # from this row's citations during aggregation; rolled up into the
+    # audit-level ``citation_countries`` field for the dashboard.
+    citation_countries = models.JSONField(default=dict, blank=True)
     # The intent type of the prompt (recommendation, comparison, persona, etc.)
     # NOTE: computed at runtime from prompt text — no database column needed.
     PROMPT_TYPE_CHOICES = [

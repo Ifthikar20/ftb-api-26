@@ -14,6 +14,15 @@ from django.utils import timezone
 logger = logging.getLogger("apps")
 
 
+def _country_counts_for(citations) -> dict:
+    """Local helper — silently degrades to {} if citation_geo isn't importable."""
+    try:
+        from apps.llm_ranking.services.citation_geo import aggregate_countries
+        return aggregate_countries(citations or [])
+    except Exception:
+        return {}
+
+
 def beta_binomial_mean(
     successes: int, n: int, alpha: float = 2.0, beta: float = 8.0
 ) -> float:
@@ -88,6 +97,7 @@ class LLMRankingService:
                          keywords: list, use_case: str = "",
                          location: str = "",
                          themes: list | None = None,
+                         region: str = "global",
                          user=None, website=None) -> list[dict]:
         """
         Generate discovery prompts from business context.
@@ -206,6 +216,14 @@ class LLMRankingService:
         except Exception as e:
             logger.warning("Prompt generation via Claude failed: %s", e)
 
+        # Apply region flavour to every prompt. ``flavor_prompt`` is a
+        # no-op for the GLOBAL region so existing tests / audits keep
+        # producing identical text.
+        if region and region != "global":
+            from apps.llm_ranking.services.regions import flavor_prompt
+            for item in result_items:
+                item["text"] = flavor_prompt(item["text"], region)
+
         # Deduplicate while preserving order
         seen = set()
         deduped = []
@@ -225,37 +243,45 @@ class LLMRankingService:
 
     @staticmethod
     def _query_claude(prompt: str, system_prompt: str = "",
-                      *, user=None, website=None, audit_id=None) -> tuple[bool, str, str]:
+                      *, user=None, website=None, audit_id=None,
+                      region: str = "") -> tuple[bool, str, str]:
         from apps.llm_ranking.providers import ClaudeProvider
         result = ClaudeProvider().query(
-            prompt, system_prompt, user=user, website=website, audit_id=audit_id,
+            prompt, system_prompt, user=user, website=website,
+            audit_id=audit_id, region=region,
         )
         return result.succeeded, result.text, result.error
 
     @staticmethod
     def _query_openai(prompt: str, system_prompt: str = "",
-                      *, user=None, website=None, audit_id=None) -> tuple[bool, str, str]:
+                      *, user=None, website=None, audit_id=None,
+                      region: str = "") -> tuple[bool, str, str]:
         from apps.llm_ranking.providers import OpenAIProvider
         result = OpenAIProvider().query(
-            prompt, system_prompt, user=user, website=website, audit_id=audit_id,
+            prompt, system_prompt, user=user, website=website,
+            audit_id=audit_id, region=region,
         )
         return result.succeeded, result.text, result.error
 
     @staticmethod
     def _query_gemini(prompt: str, system_prompt: str = "",
-                      *, user=None, website=None, audit_id=None) -> tuple[bool, str, str]:
+                      *, user=None, website=None, audit_id=None,
+                      region: str = "") -> tuple[bool, str, str]:
         from apps.llm_ranking.providers import GeminiProvider
         result = GeminiProvider().query(
-            prompt, system_prompt, user=user, website=website, audit_id=audit_id,
+            prompt, system_prompt, user=user, website=website,
+            audit_id=audit_id, region=region,
         )
         return result.succeeded, result.text, result.error
 
     @staticmethod
     def _query_perplexity(prompt: str, system_prompt: str = "",
-                          *, user=None, website=None, audit_id=None) -> tuple[bool, str, str]:
+                          *, user=None, website=None, audit_id=None,
+                          region: str = "") -> tuple[bool, str, str]:
         from apps.llm_ranking.providers import PerplexityProvider
         result = PerplexityProvider().query(
-            prompt, system_prompt, user=user, website=website, audit_id=audit_id,
+            prompt, system_prompt, user=user, website=website,
+            audit_id=audit_id, region=region,
         )
         return result.succeeded, result.text, result.error
 
@@ -663,6 +689,7 @@ class LLMRankingService:
             prompt_text, sys_prompt,
             user=audit.created_by, website=audit.website,
             audit_id=str(audit.id),
+            region=getattr(audit, "region", "") or "",
         )
 
         analysis = LLMRankingService._empty_analysis()
@@ -698,6 +725,7 @@ class LLMRankingService:
                 "competitors_mentioned": analysis.get("competitors_mentioned", []),
                 "primary_recommendation": analysis.get("primary_recommendation", ""),
                 "citations": analysis.get("citations", []),
+                "citation_countries": _country_counts_for(analysis.get("citations", [])),
                 "extraction_model": analysis.get("extraction_model", ""),
                 "extraction_version": analysis.get("extraction_version", ""),
             },
@@ -770,6 +798,17 @@ class LLMRankingService:
         all_results = list(audit.results.all())
         scores = LLMRankingService.compute_overall_score(all_results)
 
+        # Roll up per-result citation_countries into the audit-level
+        # footprint so the dashboard can chart "where do citations come
+        # from" without re-aggregating on every read.
+        try:
+            from apps.llm_ranking.services.citation_geo import merge_country_counts
+            audit.citation_countries = merge_country_counts(
+                *(r.citation_countries or {} for r in all_results),
+            )
+        except Exception as exc:
+            logger.debug("Citation country roll-up skipped: %s", exc)
+
         # Plackett-Luce strengths across the target + competitors. Powers
         # the Rankings Table on the dashboard with a calibrated cross-
         # response brand strength rather than a raw mention count.
@@ -827,7 +866,7 @@ class LLMRankingService:
 
         audit.save(update_fields=[
             "status", "overall_score", "mention_rate", "mention_rate_smoothed",
-            "avg_mention_rank", "brand_strengths",
+            "avg_mention_rank", "brand_strengths", "citation_countries",
             "mention_rate_ci_lower", "mention_rate_ci_upper",
             "providers_queried", "extraction_method", "completed_at",
             "duration_seconds", "total_tokens", "total_cost_usd",
@@ -1028,6 +1067,7 @@ class LLMRankingService:
                         prompt_text, sys_prompt,
                         user=audit.created_by, website=audit.website,
                         audit_id=str(audit.id),
+                        region=getattr(audit, "region", "") or "",
                     )
                 except Exception as exc:
                     succeeded, response_text, error = False, "", str(exc)
@@ -1091,6 +1131,7 @@ class LLMRankingService:
                     competitors_mentioned=analysis.get("competitors_mentioned", []),
                     primary_recommendation=analysis.get("primary_recommendation", ""),
                     citations=analysis.get("citations", []),
+                    citation_countries=_country_counts_for(analysis.get("citations", [])),
                     extraction_model=analysis.get("extraction_model", ""),
                     extraction_version=analysis.get("extraction_version", ""),
                 )
@@ -1110,6 +1151,15 @@ class LLMRankingService:
         # Compute aggregate scores
         _audit_log(audit, "📊 Computing aggregate scores...")
         scores = LLMRankingService.compute_overall_score(all_results)
+
+        # Audit-level citation footprint (roll-up of per-result counts).
+        try:
+            from apps.llm_ranking.services.citation_geo import merge_country_counts
+            audit.citation_countries = merge_country_counts(
+                *(r.citation_countries or {} for r in all_results),
+            )
+        except Exception as exc:
+            logger.debug("Citation country roll-up skipped: %s", exc)
 
         # Plackett-Luce brand strengths across the target + competitors.
         try:
@@ -1171,7 +1221,7 @@ class LLMRankingService:
 
         audit.save(update_fields=[
             "status", "overall_score", "mention_rate", "mention_rate_smoothed",
-            "avg_mention_rank", "brand_strengths",
+            "avg_mention_rank", "brand_strengths", "citation_countries",
             "mention_rate_ci_lower", "mention_rate_ci_upper",
             "providers_queried", "extraction_method", "completed_at",
             "duration_seconds", "total_tokens", "total_cost_usd", "updated_at",

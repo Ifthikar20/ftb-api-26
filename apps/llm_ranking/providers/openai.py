@@ -11,7 +11,8 @@ class OpenAIProvider(LLMProvider):
     rpm = 200
     burst = 30
 
-    def _call(self, *, prompt: str, system_prompt: str) -> ProviderResult:
+    def _call(self, *, prompt: str, system_prompt: str,
+              region: str = "") -> ProviderResult:
         import openai
 
         client = openai.OpenAI(api_key=self.api_key)
