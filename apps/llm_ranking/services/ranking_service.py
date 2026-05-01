@@ -23,6 +23,25 @@ def _country_counts_for(citations) -> dict:
         return {}
 
 
+# Hard cap on the audit_logs list. Each entry is small (~150 bytes), but
+# without a cap a long-running audit with many retries could push the
+# JSONB column into the megabytes. 1000 entries is far above any
+# legitimate run.
+_MAX_AUDIT_LOG_ENTRIES = 1000
+
+
+def _capped_logs(logs: list) -> list:
+    """Truncate the audit log to the most recent ``_MAX_AUDIT_LOG_ENTRIES``
+    entries, preserving chronological order. Older entries are simply
+    dropped — they're already mirrored to ``logger`` via the logging
+    framework so we lose only the in-band copy."""
+    if not isinstance(logs, list):
+        return []
+    if len(logs) <= _MAX_AUDIT_LOG_ENTRIES:
+        return logs
+    return logs[-_MAX_AUDIT_LOG_ENTRIES:]
+
+
 def beta_binomial_mean(
     successes: int, n: int, alpha: float = 2.0, beta: float = 8.0
 ) -> float:
@@ -545,7 +564,7 @@ class LLMRankingService:
             entry = {"ts": timezone.now().isoformat(), "level": level, "msg": msg}
             logs = list(audit.audit_logs or [])
             logs.append(entry)
-            audit.audit_logs = logs
+            audit.audit_logs = _capped_logs(logs)
 
         _audit_log(f"Starting audit for {audit.business_name} ({audit.industry})")
         _audit_log(f"Selected LLM providers: {', '.join(provider_keys)}")
@@ -862,7 +881,7 @@ class LLMRankingService:
                 f"cost ${float(audit.total_cost_usd):.4f}"
             ),
         })
-        audit.audit_logs = logs
+        audit.audit_logs = _capped_logs(logs)
 
         audit.save(update_fields=[
             "status", "overall_score", "mention_rate", "mention_rate_smoothed",
@@ -893,7 +912,7 @@ class LLMRankingService:
             }
             logs = list(audit_obj.audit_logs or [])
             logs.append(entry)
-            audit_obj.audit_logs = logs
+            audit_obj.audit_logs = _capped_logs(logs)
             try:
                 audit_obj.save(update_fields=["audit_logs", "updated_at"])
             except Exception:

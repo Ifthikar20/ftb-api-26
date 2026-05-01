@@ -94,51 +94,50 @@ def discover_from_sitemap(seed_url: str) -> list[str]:
     base = f"{parsed.scheme}://{parsed.netloc}"
     candidates = [f"{base}/sitemap.xml", f"{base}/sitemap_index.xml"]
 
-    from core.validators.url_safety import is_url_safe
+    from core.validators.safe_http import FetchError, safe_get
 
     urls: list[str] = []
     for sitemap_url in candidates:
-        # SSRF guard — same host as the seed, but do the public-address
-        # check explicitly so a localhost seed cannot smuggle in a fetch.
-        if not is_url_safe(sitemap_url):
-            continue
         try:
-            resp = requests.get(
+            resp = safe_get(
                 sitemap_url,
                 timeout=SITEMAP_TIMEOUT,
+                max_bytes=2_000_000,  # sitemaps can be large but bounded
                 headers={"User-Agent": USER_AGENT},
+                allowed_content_types=(
+                    "application/xml", "text/xml", "text/plain",
+                ),
             )
-            if resp.status_code != 200:
-                continue
-            urls.extend(_parse_sitemap_xml(resp.text))
-            if urls:
-                break
-        except Exception as exc:
-            logger.debug("Sitemap fetch failed for %s: %s", sitemap_url, exc)
+        except FetchError as exc:
+            logger.debug("Sitemap fetch refused/failed for %s: %s", sitemap_url, exc)
+            continue
+        if resp.status_code != 200:
+            continue
+        urls.extend(_parse_sitemap_xml(resp.text))
+        if urls:
+            break
 
     return urls
 
 
 def extract_same_domain_links(page_url: str, expected_domain: str) -> list[str]:
     """Fetch ``page_url`` and return outbound links on the same domain."""
-    from core.validators.url_safety import is_url_safe
+    from core.validators.safe_http import FetchError, safe_get
 
-    if not is_url_safe(page_url):
-        return []
     try:
-        resp = requests.get(
+        resp = safe_get(
             page_url,
             timeout=LINK_FETCH_TIMEOUT,
+            max_bytes=400_000,
             headers={"User-Agent": USER_AGENT},
-            allow_redirects=True,
         )
-        if resp.status_code != 200:
-            return []
-        parser = _LinkExtractor(base_url=resp.url)
-        parser.feed(resp.text[:400_000])
-    except Exception as exc:
-        logger.debug("Link extraction failed for %s: %s", page_url, exc)
+    except FetchError as exc:
+        logger.debug("Link fetch refused/failed for %s: %s", page_url, exc)
         return []
+    if resp.status_code != 200:
+        return []
+    parser = _LinkExtractor(base_url=resp.final_url)
+    parser.feed(resp.text)
 
     links = []
     for link in parser.links:

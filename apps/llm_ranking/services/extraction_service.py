@@ -97,8 +97,16 @@ def _normalise(raw: dict) -> dict:
     if sentiment not in valid_sentiments:
         sentiment = "not_mentioned" if not raw.get("target_mentioned") else "neutral"
 
+    # Hard caps on list sizes — a malformed or hostile LLM response cannot
+    # cause us to write tens of MB of competitor / citation entries into a
+    # single LLMRankingResult row. Reasonable upper bounds for real data:
+    # most responses surface < 20 competitors and < 20 citations.
+    MAX_COMPETITORS = 50
+    MAX_CITATIONS = 50
+    MAX_URL_LEN = 500
+
     competitors = []
-    for c in raw.get("competitors_mentioned") or []:
+    for c in (raw.get("competitors_mentioned") or [])[:MAX_COMPETITORS]:
         if not isinstance(c, dict):
             continue
         name = (c.get("name") or "").strip()
@@ -111,10 +119,11 @@ def _normalise(raw: dict) -> dict:
             "linked": bool(c.get("linked", False)),
         })
 
-    citations = [
-        str(u).strip() for u in (raw.get("citations") or [])
-        if str(u).strip().startswith(("http://", "https://"))
-    ]
+    citations = []
+    for u in (raw.get("citations") or [])[:MAX_CITATIONS]:
+        s = str(u).strip()[:MAX_URL_LEN]
+        if s.startswith(("http://", "https://")):
+            citations.append(s)
 
     primary = raw.get("primary_recommendation")
     primary = str(primary).strip()[:200] if primary else ""

@@ -37,6 +37,14 @@ def fit_plackett_luce(
     brands = sorted({b for r in rankings if r for b in r})
     if not brands:
         return {}
+    # Defensive cap — a hostile / malformed extraction could produce an
+    # arbitrarily long brand list. The MM iteration is O(n*k) per pass
+    # so we cut off any rankings beyond a reasonable horizon. 200 is far
+    # above any real audit and keeps the JSONField bounded.
+    if len(brands) > 200:
+        brands = brands[:200]
+        keep = set(brands)
+        rankings = [[b for b in r if b in keep] for r in rankings]
 
     idx = {b: i for i, b in enumerate(brands)}
     n = len(brands)
