@@ -94,8 +94,14 @@ def discover_from_sitemap(seed_url: str) -> list[str]:
     base = f"{parsed.scheme}://{parsed.netloc}"
     candidates = [f"{base}/sitemap.xml", f"{base}/sitemap_index.xml"]
 
+    from core.validators.url_safety import is_url_safe
+
     urls: list[str] = []
     for sitemap_url in candidates:
+        # SSRF guard — same host as the seed, but do the public-address
+        # check explicitly so a localhost seed cannot smuggle in a fetch.
+        if not is_url_safe(sitemap_url):
+            continue
         try:
             resp = requests.get(
                 sitemap_url,
@@ -115,6 +121,10 @@ def discover_from_sitemap(seed_url: str) -> list[str]:
 
 def extract_same_domain_links(page_url: str, expected_domain: str) -> list[str]:
     """Fetch ``page_url`` and return outbound links on the same domain."""
+    from core.validators.url_safety import is_url_safe
+
+    if not is_url_safe(page_url):
+        return []
     try:
         resp = requests.get(
             page_url,

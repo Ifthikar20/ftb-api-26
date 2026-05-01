@@ -459,12 +459,28 @@ class LLMRankingAuditLogsView(TenantScopedAPIView):
         if after:
             logs = [l for l in logs if l.get("ts", "") > after]
 
+        # Sanitise message bodies before returning. Provider stack traces
+        # occasionally include API keys or internal URLs; redact both
+        # belt-and-braces so a tenant peeking at their own logs cannot
+        # learn anything they shouldn't, and so logs aren't a useful
+        # signal source for an attacker who somehow bypasses tenant scope.
+        from core.validators.url_safety import _redact_log_message
+        sanitised = []
+        for entry in logs:
+            if not isinstance(entry, dict):
+                continue
+            sanitised.append({
+                "ts": entry.get("ts", ""),
+                "level": entry.get("level", "info"),
+                "msg": _redact_log_message(str(entry.get("msg", ""))),
+            })
+
         return Response({
             "audit_id": str(audit.id),
             "status": audit.status,
             "queries_completed": audit.queries_completed,
             "total_queries": audit.total_queries,
-            "logs": logs,
+            "logs": sanitised,
         })
 
 class LLMRankingRecommendationsView(TenantScopedAPIView):

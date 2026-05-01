@@ -441,6 +441,15 @@ def scan_domain(url: str) -> dict:
     }
 
     try:
+        # SSRF guard — refuse private/loopback/metadata addresses before
+        # we touch the network. ``assert_url_safe`` also normalises the
+        # scheme, so use the returned value as the request target.
+        from core.validators.url_safety import UnsafeURLError, assert_url_safe
+        try:
+            url = assert_url_safe(url)
+        except UnsafeURLError as exc:
+            result["error"] = str(exc)
+            return result
         resp = requests.get(
             url,
             timeout=SCAN_TIMEOUT,

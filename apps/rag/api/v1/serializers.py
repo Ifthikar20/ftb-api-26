@@ -32,6 +32,14 @@ class IngestURLSerializer(serializers.Serializer):
     page_cap = serializers.IntegerField(required=False, default=12, min_value=1, max_value=50)
     depth = serializers.IntegerField(required=False, default=1, min_value=0, max_value=2)
 
+    def validate_url(self, value):
+        """SSRF guard — reject loopback / private / metadata addresses."""
+        from core.validators.url_safety import UnsafeURLError, assert_url_safe
+        try:
+            return assert_url_safe(value)
+        except UnsafeURLError as exc:
+            raise serializers.ValidationError(str(exc))
+
 
 class RetrieveSerializer(serializers.Serializer):
     query = serializers.CharField(max_length=2000)

@@ -136,12 +136,26 @@ class RunAuditSerializer(serializers.Serializer):
         default=list,
     )
     # Extra URLs for content enrichment (blogs, product pages, etc.)
+    # Each entry is sanitised via the SSRF guard so a user cannot smuggle
+    # in a fetch of internal services through the audit pipeline.
     context_urls = serializers.ListField(
-        child=serializers.CharField(max_length=500),
+        child=serializers.URLField(max_length=500),
         required=False,
         default=list,
         max_length=5,
     )
+
+    def validate_context_urls(self, urls):
+        from core.validators.url_safety import UnsafeURLError, assert_url_safe
+        cleaned = []
+        for u in urls or []:
+            try:
+                cleaned.append(assert_url_safe(u))
+            except UnsafeURLError as exc:
+                raise serializers.ValidationError(
+                    f"context_url '{u}' rejected: {exc}",
+                )
+        return cleaned
     # Optional themes for prompt generation
     themes = serializers.ListField(
         child=serializers.CharField(max_length=100),
