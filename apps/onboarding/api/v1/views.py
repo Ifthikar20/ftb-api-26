@@ -1,0 +1,105 @@
+"""
+Onboarding API.
+
+Two endpoints, both authenticated:
+
+    POST /api/v1/onboarding/scan/   — preview: scan + describe + competitors
+    POST /api/v1/onboarding/save/   — commit: create the Website row
+
+The scan endpoint is intentionally read-only so the user can iterate on
+URL / description until they're happy before we persist anything.
+"""
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
+from core.resilience import TokenBucket
+
+from apps.onboarding.api.v1.serializers import (
+    OnboardingSaveSerializer,
+    OnboardingScanSerializer,
+)
+from apps.onboarding.services.onboarding_service import (
+    run_onboarding_scan, to_dict,
+)
+
+
+def _scan_bucket(user_id) -> TokenBucket:
+    """Per-user throttle on /scan/. Burst 6, ~12 / minute steady state.
+    Onboarding involves a Claude pass + a Google call so we don't want
+    a frustrated user re-scanning every two seconds to drive cost up."""
+    return TokenBucket(
+        name=f"onboarding-scan:{user_id}",
+        capacity=6,
+        refill_per_second=0.2,
+    )
+
+
+class OnboardingScanView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        if not _scan_bucket(request.user.id).try_acquire():
+            return Response(
+                {"error": "Slow down — too many scans. Try again in a moment."},
+                status=429,
+            )
+        serializer = OnboardingScanSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        url = serializer.validated_data["url"]
+        payload = run_onboarding_scan(url)
+        return Response(to_dict(payload))
+
+
+class OnboardingSaveView(APIView):
+    """Persist the user's confirmed onboarding data into a Website row."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        from apps.websites.services.website_service import WebsiteService
+
+        serializer = OnboardingSaveSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        website = WebsiteService.create(
+            user=request.user,
+            url=data["url"],
+            name=data["business_name"],
+            industry=data.get("industry", "") or "",
+        )
+
+        # Attach the user's edited description + keywords + competitors
+        # straight onto the website row. These are the inputs the LLM
+        # ranking pipeline reads on the first audit.
+        if hasattr(website, "description"):
+            website.description = (data.get("description") or "")[:600]
+        if hasattr(website, "topics"):
+            website.topics = data.get("keywords") or []
+        website.save()
+
+        # Persist competitors via the existing Competitor model. Skipping
+        # silently if the model isn't available (older deploys) — the
+        # user can always add them later.
+        try:
+            from apps.competitors.models import Competitor
+            for c in (data.get("competitors") or [])[:20]:
+                if not isinstance(c, dict):
+                    continue
+                name = (c.get("name") or "").strip()
+                if not name:
+                    continue
+                Competitor.objects.get_or_create(
+                    website=website,
+                    name=name[:200],
+                    defaults={"domain": (c.get("domain") or "")[:200]},
+                )
+        except Exception:
+            pass
+
+        return Response({
+            "website_id": str(website.id),
+            "name": website.name,
+            "url": website.url,
+        }, status=201)
