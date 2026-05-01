@@ -128,6 +128,7 @@ def _try_claude(prompt: str) -> dict | None:
                 model_name="claude-sonnet-4-20250514",
                 input_tokens=resp.usage.input_tokens,
                 output_tokens=resp.usage.output_tokens,
+                metadata={"role": "context_inference"},
             )
         except Exception:
             pass
@@ -150,6 +151,19 @@ def _try_openai(prompt: str) -> dict | None:
             max_tokens=1024,
             messages=[{"role": "user", "content": prompt}],
         )
+        try:
+            from core.ai_tracking import record_usage
+            usage = getattr(resp, "usage", None)
+            if usage:
+                record_usage(
+                    module="llm_ranking",
+                    model_name="gpt-4o-mini",
+                    input_tokens=getattr(usage, "prompt_tokens", 0),
+                    output_tokens=getattr(usage, "completion_tokens", 0),
+                    metadata={"role": "context_inference"},
+                )
+        except Exception:
+            pass
         return _parse_llm_response(resp.choices[0].message.content)
     except Exception as e:
         logger.warning("OpenAI audit context failed: %s", e)

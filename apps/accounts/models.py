@@ -28,6 +28,12 @@ class User(AbstractBaseUser, PermissionsMixin, TimestampMixin):
     onboarding_complete = models.BooleanField(default=False)
     last_daily_brief = models.DateField(null=True, blank=True)
 
+    # Calendar-month spend cap across every AI module. 0 = no cap.
+    monthly_ai_cost_cap_usd = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0,
+        help_text="Per-user monthly AI spend cap in USD. 0 disables the cap.",
+    )
+
     objects = UserManager()
 
     USERNAME_FIELD = "email"
@@ -184,6 +190,7 @@ class AITokenUsage(TimestampMixin):
         ("anthropic", "Anthropic (Claude)"),
         ("openai", "OpenAI (GPT)"),
         ("google", "Google (Gemini)"),
+        ("perplexity", "Perplexity"),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

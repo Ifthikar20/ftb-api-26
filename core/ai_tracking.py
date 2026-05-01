@@ -16,15 +16,49 @@ logger = logging.getLogger(__name__)
 
 
 # ── Pricing (per 1M tokens) ──
-# Updated April 2025 — https://docs.anthropic.com/en/docs/about-claude/models
+# Sources:
+#   Anthropic — https://docs.anthropic.com/en/docs/about-claude/models
+#   OpenAI    — https://openai.com/api/pricing
+#   Google    — https://ai.google.dev/pricing
+#   Perplexity — https://docs.perplexity.ai/docs/pricing
 PRICING = {
+    # Anthropic
     "claude-sonnet-4-20250514": {"input": 3.00, "output": 15.00},
     "claude-3-5-sonnet-20241022": {"input": 3.00, "output": 15.00},
     "claude-sonnet-4-6": {"input": 3.00, "output": 15.00},
     "claude-haiku-4-5-20251001": {"input": 0.80, "output": 4.00},
+    "claude-haiku-4-5": {"input": 0.80, "output": 4.00},
     "claude-3-haiku-20240307": {"input": 0.25, "output": 1.25},
-    # Fallback for unknown models
+    # OpenAI
+    "gpt-4o-mini": {"input": 0.15, "output": 0.60},
+    "gpt-4o": {"input": 2.50, "output": 10.00},
+    "gpt-4-turbo": {"input": 10.00, "output": 30.00},
+    # Google
+    "gemini-1.5-flash": {"input": 0.075, "output": 0.30},
+    "gemini-1.5-pro": {"input": 1.25, "output": 5.00},
+    # Perplexity (Sonar online models)
+    "llama-3.1-sonar-small-128k-online": {"input": 0.20, "output": 0.20},
+    "llama-3.1-sonar-large-128k-online": {"input": 1.00, "output": 1.00},
+    # Fallback for unknown models — conservative estimate
     "default": {"input": 3.00, "output": 15.00},
+}
+
+
+# Map known model names to canonical provider keys used in AITokenUsage.provider.
+MODEL_PROVIDER = {
+    "claude-sonnet-4-20250514": "anthropic",
+    "claude-3-5-sonnet-20241022": "anthropic",
+    "claude-sonnet-4-6": "anthropic",
+    "claude-haiku-4-5-20251001": "anthropic",
+    "claude-haiku-4-5": "anthropic",
+    "claude-3-haiku-20240307": "anthropic",
+    "gpt-4o-mini": "openai",
+    "gpt-4o": "openai",
+    "gpt-4-turbo": "openai",
+    "gemini-1.5-flash": "google",
+    "gemini-1.5-pro": "google",
+    "llama-3.1-sonar-small-128k-online": "perplexity",
+    "llama-3.1-sonar-large-128k-online": "perplexity",
 }
 
 
@@ -70,6 +104,10 @@ def record_usage(
 
         total = input_tokens + output_tokens
         cost = _estimate_cost(model_name, input_tokens, output_tokens)
+        # Auto-derive provider when caller leaves the default — keeps every
+        # row consistent for the centralized "by provider" rollup.
+        if provider == "anthropic" and model_name in MODEL_PROVIDER:
+            provider = MODEL_PROVIDER[model_name]
 
         AITokenUsage.objects.create(
             user=user,
@@ -94,7 +132,13 @@ def record_usage(
 
 
 def get_usage_summary(user=None, days=30):
-    """Get aggregated AI usage stats for a user over the past N days."""
+    """
+    Aggregated AI usage stats across every provider and module for a user.
+
+    Powers the centralized "Overall Usage" panel in Settings. Each row recorded
+    via record_usage() — Lead Finder, Messaging, Analytics, LLM Ranking
+    (upstream + extraction), Competitor Discovery — rolls into the same totals.
+    """
     from django.db.models import Sum, Count
     from django.db.models.functions import TruncDate
     from apps.accounts.models import AITokenUsage
@@ -104,7 +148,6 @@ def get_usage_summary(user=None, days=30):
     if user:
         qs = qs.filter(user=user)
 
-    # Overall totals
     totals = qs.aggregate(
         total_calls=Count("id"),
         total_input=Sum("input_tokens"),
@@ -113,7 +156,6 @@ def get_usage_summary(user=None, days=30):
         total_cost=Sum("estimated_cost_usd"),
     )
 
-    # Per-module breakdown
     by_module = list(
         qs.values("module").annotate(
             calls=Count("id"),
@@ -124,7 +166,6 @@ def get_usage_summary(user=None, days=30):
         ).order_by("-tokens")
     )
 
-    # Per-model breakdown
     by_model = list(
         qs.values("model_name").annotate(
             calls=Count("id"),
@@ -133,7 +174,30 @@ def get_usage_summary(user=None, days=30):
         ).order_by("-tokens")
     )
 
-    # Daily trend (last N days)
+    by_provider = list(
+        qs.values("provider").annotate(
+            calls=Count("id"),
+            tokens=Sum("total_tokens"),
+            cost=Sum("estimated_cost_usd"),
+        ).order_by("-cost")
+    )
+
+    # Role split — bucket every recorded call by metadata.role so the rows
+    # add up to the totals row. Rows lacking a role tag (legacy records and
+    # call sites that pre-date role tagging) bucket as "upstream".
+    by_role_map: dict = {}
+    for row in qs.values("metadata", "total_tokens", "estimated_cost_usd"):
+        role = (row["metadata"] or {}).get("role") or "upstream"
+        bucket = by_role_map.setdefault(
+            role, {"role": role, "calls": 0, "tokens": 0, "cost": 0.0},
+        )
+        bucket["calls"] += 1
+        bucket["tokens"] += row["total_tokens"] or 0
+        bucket["cost"] += float(row["estimated_cost_usd"] or 0)
+    by_role = sorted(by_role_map.values(), key=lambda r: r["cost"], reverse=True)
+    for r in by_role:
+        r["cost"] = round(r["cost"], 6)
+
     daily = list(
         qs.annotate(day=TruncDate("created_at"))
         .values("day")
@@ -144,6 +208,10 @@ def get_usage_summary(user=None, days=30):
         )
         .order_by("day")
     )
+
+    # Cap status — uses User.monthly_ai_cost_cap_usd if set. Compares against
+    # the calendar-month-to-date spend, NOT the rolling window above.
+    cap_status = _cap_status(user) if user else None
 
     return {
         "period_days": days,
@@ -156,5 +224,46 @@ def get_usage_summary(user=None, days=30):
         },
         "by_module": by_module,
         "by_model": by_model,
+        "by_provider": by_provider,
+        "by_role": by_role,
         "daily": daily,
+        "cap_status": cap_status,
     }
+
+
+def _cap_status(user):
+    """Calendar-month-to-date spend vs the user's monthly cap (if any)."""
+    from django.db.models import Sum
+    from apps.accounts.models import AITokenUsage
+
+    now = timezone.now()
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    spent = (
+        AITokenUsage.objects
+        .filter(user=user, created_at__gte=month_start)
+        .aggregate(total=Sum("estimated_cost_usd"))["total"] or 0
+    )
+    spent = float(spent)
+    cap = float(getattr(user, "monthly_ai_cost_cap_usd", 0) or 0)
+    return {
+        "month_start": month_start.isoformat(),
+        "spent_usd": round(spent, 4),
+        "cap_usd": cap,
+        "pct": round(spent / cap * 100, 1) if cap > 0 else None,
+        "exceeded": cap > 0 and spent >= cap,
+    }
+
+
+def month_to_date_cost(user) -> float:
+    """Calendar-month-to-date AI cost for a user. Used by per-module cost guards."""
+    from django.db.models import Sum
+    from apps.accounts.models import AITokenUsage
+
+    now = timezone.now()
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    total = (
+        AITokenUsage.objects
+        .filter(user=user, created_at__gte=month_start)
+        .aggregate(total=Sum("estimated_cost_usd"))["total"] or 0
+    )
+    return float(total)

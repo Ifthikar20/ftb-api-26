@@ -51,6 +51,7 @@ class LLMRankingAuditSerializer(serializers.ModelSerializer):
             "mention_rate_ci_lower", "mention_rate_ci_upper",
             "runs_per_query", "extraction_method", "extraction_method_display",
             "providers_queried", "queries_completed", "total_queries",
+            "total_tokens", "total_cost_usd",
             "started_at", "completed_at", "created_at",
             "results",
         ]
@@ -59,6 +60,7 @@ class LLMRankingAuditSerializer(serializers.ModelSerializer):
             "avg_mention_rank", "mention_rate_ci_lower", "mention_rate_ci_upper",
             "extraction_method", "extraction_method_display",
             "providers_queried", "queries_completed", "total_queries",
+            "total_tokens", "total_cost_usd",
             "started_at", "completed_at", "created_at",
             "results",
         ]
@@ -76,6 +78,7 @@ class LLMRankingAuditListSerializer(serializers.ModelSerializer):
             "overall_score", "mention_rate", "avg_mention_rank",
             "mention_rate_ci_lower", "mention_rate_ci_upper",
             "providers_queried", "queries_completed", "total_queries",
+            "total_tokens", "total_cost_usd",
             "prompts", "context_urls",
             "started_at", "completed_at", "created_at",
         ]

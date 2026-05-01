@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
@@ -55,12 +57,22 @@ class UserProfileSerializer(serializers.ModelSerializer):
     phone = serializers.CharField(source="profile.phone", required=False, allow_blank=True)
     bio = serializers.CharField(source="profile.bio", required=False, allow_blank=True)
 
+    monthly_ai_cost_cap_usd = serializers.DecimalField(
+        max_digits=10, decimal_places=2, required=False,
+        # DRF expects Decimal, not int, here — wrong type silently emits
+        # a UserWarning at boot. Decimal('0') / Decimal('100000') are
+        # cheap and shut the warning up.
+        min_value=Decimal("0"),
+        max_value=Decimal("100000"),
+    )
+
     class Meta:
         model = User
         fields = [
             "id", "email", "full_name", "company_name", "plan",
             "is_email_verified", "onboarding_complete",
             "avatar_url", "timezone", "phone", "bio",
+            "monthly_ai_cost_cap_usd",
             "created_at", "updated_at",
         ]
         read_only_fields = ["id", "email", "plan", "is_email_verified", "created_at", "updated_at"]

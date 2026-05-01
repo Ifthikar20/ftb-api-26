@@ -4,6 +4,7 @@ from . import views
 
 urlpatterns = [
     path("<uuid:website_id>/audits/", views.LLMRankingAuditListView.as_view(), name="llm-ranking-list"),
+    path("<uuid:website_id>/audits/preflight/", views.LLMRankingPreflightView.as_view(), name="llm-ranking-preflight"),
     path("<uuid:website_id>/preview-prompts/", views.LLMRankingPreviewPromptsView.as_view(), name="llm-ranking-preview-prompts"),
     path("<uuid:website_id>/scan-url/", views.ScanURLView.as_view(), name="llm-ranking-scan-url"),
     path("<uuid:website_id>/audits/<uuid:audit_id>/", views.LLMRankingAuditDetailView.as_view(), name="llm-ranking-detail"),
@@ -14,6 +15,7 @@ urlpatterns = [
     path("<uuid:website_id>/audits/<uuid:audit_id>/prompts/", views.LLMRankingPromptResultsView.as_view(), name="llm-ranking-prompt-results"),
     path("<uuid:website_id>/audits/<uuid:audit_id>/providers/<str:provider>/", views.LLMRankingProviderDetailView.as_view(), name="llm-ranking-provider-detail"),
     path("<uuid:website_id>/usage/", views.LLMRankingUsageView.as_view(), name="llm-ranking-usage"),
+    path("<uuid:website_id>/provider-health/", views.LLMRankingProviderHealthView.as_view(), name="llm-ranking-provider-health"),
     path("<uuid:website_id>/history/", views.LLMRankingHistoryView.as_view(), name="llm-ranking-history"),
     path("<uuid:website_id>/schedule/", views.LLMRankingScheduleView.as_view(), name="llm-ranking-schedule"),
 ]

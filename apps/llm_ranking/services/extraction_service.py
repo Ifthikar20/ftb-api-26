@@ -51,7 +51,7 @@ Return JSON only, matching this schema exactly:
 }}"""
 
 
-def _call_haiku(prompt: str) -> str:
+def _call_haiku(prompt: str, *, user=None, website=None, audit_id=None) -> str:
     """Call Claude Haiku and return the raw text response. Raises on failure."""
     import anthropic
     client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
@@ -61,14 +61,21 @@ def _call_haiku(prompt: str) -> str:
         system=EXTRACTION_SYSTEM,
         messages=[{"role": "user", "content": prompt}],
     )
-    # Track token usage
+    # Track token usage — tagged role=extraction so the centralized usage
+    # rollup can split internal parsing cost from upstream provider cost.
     try:
         from core.ai_tracking import record_usage
+        metadata = {"role": "extraction"}
+        if audit_id:
+            metadata["audit_id"] = str(audit_id)
         record_usage(
-            module="llm_ranking_extraction",
+            module="llm_ranking",
             model_name=EXTRACTION_MODEL,
             input_tokens=resp.usage.input_tokens,
             output_tokens=resp.usage.output_tokens,
+            user=user,
+            website=website,
+            metadata=metadata,
         )
     except Exception:
         pass
@@ -146,6 +153,9 @@ class HaikuExtractionService:
         response_text: str,
         brand_name: str,
         keywords: list,
+        user=None,
+        website=None,
+        audit_id=None,
     ) -> dict:
         """Extract structured mention data for `brand_name` from `response_text`.
 
@@ -164,7 +174,9 @@ class HaikuExtractionService:
         )
 
         try:
-            raw_text = _call_haiku(prompt)
+            raw_text = _call_haiku(
+                prompt, user=user, website=website, audit_id=audit_id,
+            )
             parsed = _parse_json_object(raw_text)
             result = _normalise(parsed)
             result["confidence_score"] = 92.0 if result["is_mentioned"] else 95.0
