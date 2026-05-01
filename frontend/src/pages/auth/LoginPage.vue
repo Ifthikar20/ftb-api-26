@@ -1,13 +1,6 @@
 <template>
   <AuthLayout title="Welcome back" subtitle="Sign in to your FetchBot account.">
     <form @submit.prevent="handleLogin" class="auth-form">
-      <div class="beta-banner">
-        <span class="beta-badge">BETA</span>
-        FetchBot is in private beta. New sign-ups are paused — existing users can sign in below.
-      </div>
-      <div v-if="signupClosed" class="form-alert form-alert-info">
-        Sign-ups are temporarily closed during the beta. If you'd like access, please contact us.
-      </div>
       <div v-if="error" class="form-alert form-alert-danger">{{ error }}</div>
 
       <div class="form-group">
@@ -39,7 +32,8 @@
       </button>
 
       <p class="auth-switch">
-        New sign-ups are paused while we're in beta.
+        Don't have an account?
+        <router-link to="/register" style="font-weight: 600;">Create one</router-link>
       </p>
       <p class="auth-switch" style="margin-top: -8px">
         <router-link to="/" style="font-weight: 500;">← Back to Home</router-link>
@@ -63,11 +57,9 @@ const password = ref('')
 const remember = ref(false)
 const loading = ref(false)
 const error = ref('')
-const signupClosed = ref(false)
 
 // Auto-login from run_dev.sh token
 onMounted(async () => {
-  signupClosed.value = route.query.signupClosed === '1'
   const autoToken = route.query.auto_token
   if (autoToken) {
     authStore.accessToken = autoToken
