@@ -49,7 +49,14 @@ class LLMRankingAudit(TimestampMixin):
     # Aggregate scores
     overall_score = models.IntegerField(default=0, db_index=True)  # 0-100
     mention_rate = models.FloatField(default=0.0)   # % of queries where business was mentioned
+    # Beta-Binomial posterior mean for mention rate (Beta(2,8) prior). Used
+    # for scoring so 1/1 doesn't peg the score at 100% on tiny samples.
+    mention_rate_smoothed = models.FloatField(default=0.0)
     avg_mention_rank = models.FloatField(default=0.0)  # avg position when mentioned (lower=better)
+    # Plackett-Luce strengths {brand: 0..1} fit across all rankings in this
+    # audit. The target brand and every competitor that appeared with a
+    # position contribute. Max strength is normalised to 1.0.
+    brand_strengths = models.JSONField(default=dict, blank=True)
     # Which providers were queried
     providers_queried = models.JSONField(default=list)
     # Progress tracking for batch job

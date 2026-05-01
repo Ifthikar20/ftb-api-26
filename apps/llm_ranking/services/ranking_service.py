@@ -14,6 +14,22 @@ from django.utils import timezone
 logger = logging.getLogger("apps")
 
 
+def beta_binomial_mean(
+    successes: int, n: int, alpha: float = 2.0, beta: float = 8.0
+) -> float:
+    """Posterior mean of a Beta-Binomial conjugate update.
+
+    Prior Beta(2, 8) ~ 20% baseline mention rate. The posterior mean
+    ``(alpha + successes) / (alpha + beta + n)`` shrinks small-sample
+    estimates toward the prior so a 1/1 audit doesn't score 100% mention
+    rate. As n grows the result approaches the empirical proportion.
+    Returned as a proportion in [0, 1] (multiply by 100 for percent).
+    """
+    if n < 0:
+        n = 0
+    return (alpha + successes) / (alpha + beta + n)
+
+
 def wilson_ci(successes: int, n: int, z: float = 1.96) -> tuple[float, float]:
     """Return (lower, upper) bounds of a Wilson score 95% CI for a proportion.
 
@@ -366,6 +382,7 @@ class LLMRankingService:
             return {
                 "overall_score": 0,
                 "mention_rate": 0.0,
+                "mention_rate_smoothed": 0.0,
                 "avg_mention_rank": 0.0,
                 "mention_rate_ci_lower": 0.0,
                 "mention_rate_ci_upper": 0.0,
@@ -375,17 +392,24 @@ class LLMRankingService:
         mentioned = [r for r in succeeded if r.is_mentioned]
         mention_rate = len(mentioned) / len(succeeded) * 100 if succeeded else 0.0
 
+        # Smoothed mention rate via Beta-Binomial posterior. Used as the
+        # input to the score so cold-start audits with tiny sample sizes
+        # don't peg the mention component at 40 points.
+        mention_rate_smoothed = beta_binomial_mean(
+            len(mentioned), len(succeeded)
+        ) * 100
+
         ci_low, ci_high = wilson_ci(len(mentioned), len(succeeded))
 
         ranks = [r.mention_rank for r in mentioned if r.mention_rank is not None]
         avg_rank = sum(ranks) / len(ranks) if ranks else 0.0
 
         # Score formula:
-        #   40% mention rate (0-40 pts)
+        #   40% mention rate (0-40 pts) — uses Beta-Binomial smoothed value
         #   30% rank bonus: top-3 mentions add more (0-30 pts)
         #   20% sentiment (positive=20, neutral=10, negative=0)
         #   10% provider coverage bonus (queried ≥3 providers)
-        mention_score = mention_rate * 0.40
+        mention_score = mention_rate_smoothed * 0.40
 
         rank_score = 0.0
         if ranks:
@@ -415,6 +439,7 @@ class LLMRankingService:
         return {
             "overall_score": overall,
             "mention_rate": round(mention_rate, 1),
+            "mention_rate_smoothed": round(mention_rate_smoothed, 1),
             "avg_mention_rank": round(avg_rank, 1),
             "mention_rate_ci_lower": round(ci_low * 100, 1),
             "mention_rate_ci_upper": round(ci_high * 100, 1),
@@ -693,6 +718,19 @@ class LLMRankingService:
         all_results = list(audit.results.all())
         scores = LLMRankingService.compute_overall_score(all_results)
 
+        # Plackett-Luce strengths across the target + competitors. Powers
+        # the Rankings Table on the dashboard with a calibrated cross-
+        # response brand strength rather than a raw mention count.
+        try:
+            from apps.llm_ranking.services.plackett_luce import (
+                fit_plackett_luce, rankings_from_results,
+            )
+            rankings = rankings_from_results(all_results, audit.business_name)
+            audit.brand_strengths = fit_plackett_luce(rankings)
+        except Exception as exc:
+            logger.warning("Plackett-Luce fit failed for audit %s: %s", audit_id, exc)
+            audit.brand_strengths = {}
+
         # Cost roll-up — only rows tagged with this audit's id.
         try:
             from django.db.models import Sum
@@ -714,6 +752,7 @@ class LLMRankingService:
         audit.status = LLMRankingAudit.STATUS_COMPLETED
         audit.overall_score = scores["overall_score"]
         audit.mention_rate = scores["mention_rate"]
+        audit.mention_rate_smoothed = scores["mention_rate_smoothed"]
         audit.avg_mention_rank = scores["avg_mention_rank"]
         audit.mention_rate_ci_lower = scores["mention_rate_ci_lower"]
         audit.mention_rate_ci_upper = scores["mention_rate_ci_upper"]
@@ -735,7 +774,8 @@ class LLMRankingService:
         audit.audit_logs = logs
 
         audit.save(update_fields=[
-            "status", "overall_score", "mention_rate", "avg_mention_rank",
+            "status", "overall_score", "mention_rate", "mention_rate_smoothed",
+            "avg_mention_rank", "brand_strengths",
             "mention_rate_ci_lower", "mention_rate_ci_upper",
             "providers_queried", "extraction_method", "completed_at",
             "duration_seconds", "total_tokens", "total_cost_usd",
@@ -989,6 +1029,23 @@ class LLMRankingService:
         _audit_log(audit, "📊 Computing aggregate scores...")
         scores = LLMRankingService.compute_overall_score(all_results)
 
+        # Plackett-Luce brand strengths across the target + competitors.
+        try:
+            from apps.llm_ranking.services.plackett_luce import (
+                fit_plackett_luce, rankings_from_results,
+            )
+            rankings = rankings_from_results(all_results, audit.business_name)
+            audit.brand_strengths = fit_plackett_luce(rankings)
+            if audit.brand_strengths:
+                _audit_log(
+                    audit,
+                    f"🏅 Brand strengths fit across {len(rankings)} ranked responses",
+                    "success",
+                )
+        except Exception as exc:
+            logger.warning("Plackett-Luce fit failed for audit %s: %s", audit_id, exc)
+            audit.brand_strengths = {}
+
         # Roll up token + cost spend for this audit. We tagged every record
         # with metadata.audit_id, so we can sum exactly the rows this run
         # produced (upstream + extraction + any prompt-generation).
@@ -1008,6 +1065,7 @@ class LLMRankingService:
         audit.status = LLMRankingAudit.STATUS_COMPLETED
         audit.overall_score = scores["overall_score"]
         audit.mention_rate = scores["mention_rate"]
+        audit.mention_rate_smoothed = scores["mention_rate_smoothed"]
         audit.avg_mention_rank = scores["avg_mention_rank"]
         audit.mention_rate_ci_lower = scores["mention_rate_ci_lower"]
         audit.mention_rate_ci_upper = scores["mention_rate_ci_upper"]
@@ -1030,7 +1088,8 @@ class LLMRankingService:
         _audit_log(audit, f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
         audit.save(update_fields=[
-            "status", "overall_score", "mention_rate", "avg_mention_rank",
+            "status", "overall_score", "mention_rate", "mention_rate_smoothed",
+            "avg_mention_rank", "brand_strengths",
             "mention_rate_ci_lower", "mention_rate_ci_upper",
             "providers_queried", "extraction_method", "completed_at",
             "duration_seconds", "total_tokens", "total_cost_usd", "updated_at",

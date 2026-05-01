@@ -322,6 +322,45 @@ class TestComputeOverallScoreCI:
         assert scores["mention_rate_ci_lower"] < 50.0 < scores["mention_rate_ci_upper"]
 
 
+class TestBetaBinomialMean:
+    def test_handles_cold_start(self):
+        from apps.llm_ranking.services.ranking_service import beta_binomial_mean
+        # 1/1 should NOT be 100% — Beta(2,8) prior pulls it down well below 0.5.
+        assert beta_binomial_mean(1, 1) < 0.5
+
+    def test_zero_n_returns_prior_mean(self):
+        from apps.llm_ranking.services.ranking_service import beta_binomial_mean
+        # Prior mean for Beta(2, 8) is 2/10 = 0.2.
+        assert abs(beta_binomial_mean(0, 0) - 0.2) < 1e-9
+
+    def test_approaches_empirical_at_large_n(self):
+        from apps.llm_ranking.services.ranking_service import beta_binomial_mean
+        # With n=100 the posterior should be close to the empirical 80%.
+        assert abs(beta_binomial_mean(80, 100) - 0.80) < 0.05
+
+
+@pytest.mark.django_db
+class TestComputeOverallScoreSmoothed:
+    def test_smoothed_field_present_and_used_for_score(self):
+        audit = LLMRankingAuditFactory()
+        # 1 successful query, 1 mention: raw=100% but smoothed should pull
+        # the mention component well below the 40-pt cap.
+        results = [LLMRankingResultFactory(
+            audit=audit, provider="claude",
+            is_mentioned=True, query_succeeded=True,
+            mention_rank=1,
+            sentiment=LLMRankingResult.SENTIMENT_POSITIVE,
+        )]
+        scores = LLMRankingService.compute_overall_score(results)
+        assert scores["mention_rate"] == 100.0
+        assert "mention_rate_smoothed" in scores
+        assert scores["mention_rate_smoothed"] < 50.0  # heavily shrunk
+
+    def test_empty_results_includes_smoothed_zero(self):
+        scores = LLMRankingService.compute_overall_score([])
+        assert scores["mention_rate_smoothed"] == 0.0
+
+
 # ── Haiku extraction service ──────────────────────────────────────────────────
 
 class TestHaikuExtractionService:

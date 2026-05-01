@@ -47,7 +47,8 @@ class LLMRankingAuditSerializer(serializers.ModelSerializer):
         fields = [
             "id", "status", "status_display",
             "business_name", "business_description", "industry", "location", "keywords",
-            "prompts", "overall_score", "mention_rate", "avg_mention_rank",
+            "prompts", "overall_score", "mention_rate", "mention_rate_smoothed",
+            "avg_mention_rank", "brand_strengths",
             "mention_rate_ci_lower", "mention_rate_ci_upper",
             "runs_per_query", "extraction_method", "extraction_method_display",
             "providers_queried", "queries_completed", "total_queries",
@@ -57,7 +58,8 @@ class LLMRankingAuditSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             "id", "status", "status_display", "overall_score", "mention_rate",
-            "avg_mention_rank", "mention_rate_ci_lower", "mention_rate_ci_upper",
+            "mention_rate_smoothed", "avg_mention_rank", "brand_strengths",
+            "mention_rate_ci_lower", "mention_rate_ci_upper",
             "extraction_method", "extraction_method_display",
             "providers_queried", "queries_completed", "total_queries",
             "total_tokens", "total_cost_usd",
@@ -75,7 +77,8 @@ class LLMRankingAuditListSerializer(serializers.ModelSerializer):
         fields = [
             "id", "status", "status_display",
             "business_name", "industry", "location",
-            "overall_score", "mention_rate", "avg_mention_rank",
+            "overall_score", "mention_rate", "mention_rate_smoothed",
+            "avg_mention_rank", "brand_strengths",
             "mention_rate_ci_lower", "mention_rate_ci_upper",
             "providers_queried", "queries_completed", "total_queries",
             "total_tokens", "total_cost_usd",

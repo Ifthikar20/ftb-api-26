@@ -104,10 +104,22 @@
           <div class="kpi-card">
             <div class="kpi-label">
               Brand Visibility
-              <span class="kpi-info" title="How often you appear when AI assistants are asked about your category">i</span>
+              <span class="kpi-info" title="How often you appear when AI assistants are asked about your category. Smoothed via a Beta(2,8) prior so small-sample audits don't read 100%.">i</span>
             </div>
-            <div class="kpi-value">{{ kpiBrandVisibility.value }}<span class="kpi-unit">%</span></div>
-            <div class="kpi-sub">Based on {{ kpiBrandVisibility.basis }} prompts simulated</div>
+            <div class="kpi-value">
+              <span
+                v-if="visibilityConfidence(kpiBrandVisibility)"
+                class="kpi-conf-dot"
+                :class="`kpi-conf-${visibilityConfidence(kpiBrandVisibility)}`"
+                :title="`Estimate confidence: ${visibilityConfidence(kpiBrandVisibility)} (CI width ${(kpiBrandVisibility.ciHigh - kpiBrandVisibility.ciLow)}%)`"
+              />
+              {{ kpiBrandVisibility.value }}<span class="kpi-unit">%</span>
+            </div>
+            <div class="kpi-sub" v-if="kpiBrandVisibility.ciHigh > 0">
+              95% CI: {{ kpiBrandVisibility.ciLow }}–{{ kpiBrandVisibility.ciHigh }}%
+              <span class="kpi-sub-muted">· raw {{ kpiBrandVisibility.raw }}% · n={{ kpiBrandVisibility.basis }}</span>
+            </div>
+            <div class="kpi-sub" v-else>Based on {{ kpiBrandVisibility.basis }} prompts simulated</div>
           </div>
           <div class="kpi-card">
             <div class="kpi-label">
@@ -161,7 +173,9 @@
             <div class="bo-ranking-head">
               <span class="bo-rh-rank">#</span>
               <span class="bo-rh-name">Competitor</span>
-              <span class="bo-rh-vis">Visibility</span>
+              <span class="bo-rh-vis" :title="usingBrandStrengths ? 'Plackett-Luce brand strength (max=100). Calibrated across all rankings in this audit.' : 'Mention rate across responses.'">
+                {{ usingBrandStrengths ? 'Strength' : 'Visibility' }}
+              </span>
             </div>
             <div class="bo-ranking-list">
               <div v-for="r in brandRankingRows" :key="r.name"
@@ -174,7 +188,15 @@
                   <span class="bo-brand-avatar" :style="{ background: brandColor(r.name) }">{{ r.name[0] }}</span>
                   <span>{{ r.name }} <span v-if="r.is_you" class="bo-you-tag">(You)</span></span>
                 </span>
-                <span class="bo-rh-vis">{{ r.visibility }}%</span>
+                <span class="bo-rh-vis">
+                  <template v-if="usingBrandStrengths && r.strength != null">
+                    <span class="bo-strength-bar">
+                      <span class="bo-strength-fill" :style="{ width: (r.strength * 100) + '%' }" />
+                    </span>
+                    <span class="bo-strength-num">{{ Math.round(r.strength * 100) }}</span>
+                  </template>
+                  <template v-else>{{ r.visibility }}%</template>
+                </span>
               </div>
             </div>
           </div>
@@ -760,9 +782,11 @@
               <div>
                 <div class="step-title">Compute Score</div>
                 <div class="step-desc">
-                  <strong>Mention Rate</strong> (40pts): % of queries where you appear.
+                  <strong>Mention Rate</strong> (40pts): Beta(2,8)-smoothed mention rate &mdash; small samples shrink toward a 20% prior so a 1/1 audit can't peg the score at 100%.
                   <strong>Rank Position</strong> (35pts): Higher rank = more points (rank #1 → 35pts, #5 → 20pts).
                   <strong>Sentiment + Coverage</strong> (25pts): Positive mentions and multi-provider presence boost this.
+                  <br><br>
+                  <strong>Brand strengths</strong> in the rankings table are fit with a Plackett-Luce model across all responses where you and competitors appeared with positions, so they reflect head-to-head dominance rather than raw mention counts.
                 </div>
               </div>
             </div>
@@ -2697,23 +2721,46 @@ function brandColor(name) {
 
 const kpiBrandVisibility = computed(() => {
   const a = latestAudit.value
-  if (!a) return { value: 0, basis: 0 }
+  if (!a) return { value: 0, raw: 0, basis: 0, ciLow: 0, ciHigh: 0 }
   // When a platform filter is set, recompute against just that provider's
-  // responses; otherwise fall back to the audit-level mention_rate.
+  // responses; otherwise fall back to the audit-level smoothed mention_rate.
   if (filters.value.platform && filters.value.platform !== 'all') {
     const results = platformFilteredResults.value.filter(r => r.query_succeeded)
-    if (!results.length) return { value: 0, basis: 0 }
+    if (!results.length) return { value: 0, raw: 0, basis: 0, ciLow: 0, ciHigh: 0 }
     const mentioned = results.filter(r => r.is_mentioned).length
+    const raw = Math.round(mentioned / results.length * 100)
     return {
-      value: Math.round(mentioned / results.length * 100),
+      value: raw,
+      raw,
       basis: results.length,
+      ciLow: 0,
+      ciHigh: 0,
     }
   }
+  // Prefer the Beta-Binomial smoothed value when the backend provides it
+  // (it does for any audit run after the smoothing migration). Falls back
+  // to raw mention_rate for older audits so historical data still renders.
+  const smoothed = a.mention_rate_smoothed
+  const raw = Math.round(a.mention_rate || 0)
   return {
-    value: Math.round(a.mention_rate || 0),
+    value: smoothed != null ? Math.round(smoothed) : raw,
+    raw,
     basis: a.queries_completed || a.total_queries || 0,
+    ciLow: Math.round(a.mention_rate_ci_lower || 0),
+    ciHigh: Math.round(a.mention_rate_ci_upper || 0),
   }
 })
+
+// Confidence tier for the visibility KPI based on CI width. Drives the
+// dot indicator next to the headline number — wide intervals signal a
+// volatile estimate (more queries / providers needed).
+function visibilityConfidence(kpi) {
+  if (!kpi || !(kpi.ciHigh > 0)) return null
+  const width = kpi.ciHigh - kpi.ciLow
+  if (width < 15) return 'high'
+  if (width < 30) return 'med'
+  return 'low'
+}
 
 const kpiCitationShare = computed(() => {
   // When a platform filter is active, derive from the filtered results so
@@ -2759,24 +2806,54 @@ const kpiCitationShare = computed(() => {
 })
 
 const brandRankingRows = computed(() => {
-  // Combine you + competitors from the leaderboard, ranked by visibility.
+  // Combine you + competitors from the leaderboard. When Plackett-Luce
+  // strengths are available on the audit (post-migration), use those as
+  // the primary sort key — it's a calibrated cross-response strength
+  // rather than a raw mention count. Falls back to mention-count
+  // visibility for older audits with no brand_strengths.
   const a = latestAudit.value
   const yourName = a?.business_name || 'You'
   const yourVis = Math.round(a?.mention_rate || 0)
-  const rows = [{ name: yourName, visibility: yourVis, mention_count: 0, is_you: true }]
+  const strengths = a?.brand_strengths || {}
+  const hasStrengths = Object.keys(strengths).length > 0
+
+  const rows = [{
+    name: yourName,
+    visibility: yourVis,
+    strength: strengths[yourName] != null ? strengths[yourName] : null,
+    mention_count: 0,
+    is_you: true,
+  }]
   for (const c of competitorLeaderboard.value || []) {
     rows.push({
       name: c.name,
       visibility: uniquePromptCount.value
         ? Math.round(c.promptCount / uniquePromptCount.value * 100)
         : 0,
+      strength: strengths[c.name] != null ? strengths[c.name] : null,
       mention_count: c.promptCount,
       avg_rank: c.avgRank,
       is_you: false,
     })
   }
-  rows.sort((a, b) => b.visibility - a.visibility)
+  if (hasStrengths) {
+    // Sort by Plackett-Luce strength first, falling back to visibility
+    // for any brand that didn't appear with a position (strength=null).
+    rows.sort((x, y) => {
+      const sx = x.strength != null ? x.strength : -1
+      const sy = y.strength != null ? y.strength : -1
+      if (sx !== sy) return sy - sx
+      return y.visibility - x.visibility
+    })
+  } else {
+    rows.sort((x, y) => y.visibility - x.visibility)
+  }
   return rows.map((r, i) => ({ ...r, rank: i + 1 }))
+})
+
+const usingBrandStrengths = computed(() => {
+  const a = latestAudit.value
+  return !!(a && a.brand_strengths && Object.keys(a.brand_strengths).length > 0)
 })
 
 const kpiBrandRanking = computed(() => {
@@ -3125,11 +3202,15 @@ const auditLogEvents = computed(() => {
   return events
 })
 
-// Score factor breakdown (must sum to ~overall_score)
+// Score factor breakdown (must sum to ~overall_score). The backend
+// scores against the Beta-Binomial smoothed mention rate so we mirror
+// that here when available; older audits without the smoothed value
+// fall back to raw mention_rate so historical breakdowns still render.
 const mentionPts = computed(() => {
   const a = latestAudit.value
   if (!a) return 0
-  return Math.round((a.mention_rate || 0) * 0.4)
+  const rate = a.mention_rate_smoothed != null ? a.mention_rate_smoothed : (a.mention_rate || 0)
+  return Math.round(rate * 0.4)
 })
 const rankPts = computed(() => {
   const a = latestAudit.value
@@ -4697,7 +4778,42 @@ onBeforeUnmount(() => {
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   color: var(--text-primary);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
+.bo-strength-bar {
+  display: inline-block;
+  width: 64px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--bg-surface);
+  overflow: hidden;
+  vertical-align: middle;
+}
+.bo-strength-fill {
+  display: block;
+  height: 100%;
+  background: var(--color-primary, #4f46e5);
+  border-radius: 3px;
+}
+.bo-strength-num {
+  min-width: 24px;
+  text-align: right;
+  font-size: 12px;
+}
+.kpi-conf-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+.kpi-conf-high { background: var(--color-success, #16a34a); }
+.kpi-conf-med  { background: var(--color-warning, #f59e0b); }
+.kpi-conf-low  { background: var(--color-danger, #dc2626); }
+.kpi-sub-muted { opacity: 0.7; margin-left: 4px; }
 .bo-brand-avatar, .bo-source-favicon {
   width: 22px;
   height: 22px;
