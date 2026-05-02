@@ -419,24 +419,52 @@ class LLMRankingAuditRunView(TenantScopedAPIView):
             audit.error_message = ""
             audit.save()
 
-        # Run synchronously in the request thread
+        # Run the audit in a background daemon thread so the request
+        # returns immediately. The frontend already polls
+        # /audits/<id>/ every 5s while the audit is in pending/running
+        # state, so partial results stream in like a campaign rather
+        # than the user staring at an 8-second blocking spinner.
+        #
+        # In dev (CELERY_TASK_ALWAYS_EAGER=True) Celery would also
+        # block the request thread, which is why we spawn a thread
+        # directly. In prod with a real Celery worker we'd queue
+        # run_llm_ranking_audit.delay(audit_id=...) and Celery would
+        # do the same thing across workers; the thread approach is
+        # simpler and works either way without a broker dependency.
+        import threading
         from apps.llm_ranking.services.ranking_service import LLMRankingService
-        try:
-            LLMRankingService.run_audit(audit_id=str(audit.id))
-        except Exception as exc:
-            logger.error("LLM ranking audit %s failed: %s", audit.id, exc)
-            LLMRankingAudit.objects.filter(id=audit.id).update(
-                status=LLMRankingAudit.STATUS_FAILED,
-                error_message=str(exc),
-            )
-            return Response(
-                {"error": f"Audit failed: {exc}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
 
-        # Refresh and return
+        def _run_in_background(audit_id: str) -> None:
+            try:
+                LLMRankingService.run_audit(audit_id=audit_id)
+            except Exception as exc:
+                logger.error("LLM ranking audit %s failed: %s", audit_id, exc)
+                LLMRankingAudit.objects.filter(id=audit_id).update(
+                    status=LLMRankingAudit.STATUS_FAILED,
+                    error_message=str(exc)[:500],
+                )
+
+        # Flip to RUNNING up front so the polling UI shows a running
+        # state on the next tick — without this, there's a 1-2 second
+        # window where status=pending and the frontend wouldn't know
+        # to poll the detail endpoint.
+        LLMRankingAudit.objects.filter(id=audit.id).update(
+            status=LLMRankingAudit.STATUS_RUNNING,
+        )
+        threading.Thread(
+            target=_run_in_background,
+            args=(str(audit.id),),
+            daemon=True,
+            name=f"audit-{audit.id}",
+        ).start()
+
+        # Return the audit immediately. status=running tells the
+        # frontend to start polling /audits/<id>/ for progress.
         audit.refresh_from_db()
-        return Response(LLMRankingAuditListSerializer(audit).data)
+        return Response(
+            LLMRankingAuditListSerializer(audit).data,
+            status=status.HTTP_202_ACCEPTED,
+        )
 
 
 class LLMRankingAuditLogsView(TenantScopedAPIView):
