@@ -316,6 +316,21 @@ class LLMRankingSchedule(TimestampMixin):
     # Scheduling fields
     next_run_at = models.DateTimeField(db_index=True)
     last_run_at = models.DateTimeField(null=True, blank=True)
+    # Resilience fields. ``last_audit`` lets the dispatcher skip while a
+    # previous run is still in flight. ``consecutive_failures`` auto-pauses
+    # the schedule after N failures so we don't keep burning credits on a
+    # broken integration. ``last_failure_at`` surfaces in the UI for
+    # operator triage.
+    last_audit = models.ForeignKey(
+        "LLMRankingAudit", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="+",
+    )
+    consecutive_failures = models.IntegerField(default=0)
+    last_failure_at = models.DateTimeField(null=True, blank=True)
+    # Auto-pause threshold. 3 consecutive failures (default for weekly =
+    # 3 weeks of broken runs) flips is_enabled=False and surfaces a
+    # banner. Operator must explicitly re-enable to resume.
+    auto_pause_threshold = models.IntegerField(default=3)
 
     class Meta:
         db_table = "llm_ranking_schedule"

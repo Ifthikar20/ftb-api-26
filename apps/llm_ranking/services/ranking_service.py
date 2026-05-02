@@ -194,21 +194,46 @@ class LLMRankingService:
             client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
             loc_hint = f"\nLocation: {location}" if location else ""
             rag_hint = f"\n\n{rag_block}" if rag_block else ""
+            existing = "\n".join(f"  - {item['text']}" for item in result_items[:6])
+            # Better variant prompt: explicit role, quality bar, anti-
+            # duplication against the deterministic library set, and a
+            # tighter intent split (decision / comparison / awareness).
+            #
+            # Larger max_tokens so the model has room to think and we
+            # don't truncate the JSON tail. The output stays ~4 short
+            # strings — extra budget is "free" since we don't pay until
+            # the model emits.
             resp = client.messages.create(
                 model="claude-sonnet-4-20250514",
-                max_tokens=512,
+                max_tokens=900,
+                system=(
+                    "You generate buyer-intent prompts that real users would "
+                    "type into ChatGPT, Claude, Gemini, or Perplexity when "
+                    "they're shopping for a product in this category. Each "
+                    "prompt should be the kind of question a buyer asks "
+                    "out loud — natural, specific, and useful for measuring "
+                    "where the brand surfaces in AI answers."
+                ),
                 messages=[{
                     "role": "user",
                     "content": (
-                        f"Generate 4 short questions a buyer would ask an AI assistant "
-                        f"when searching for a product like this:\n\n"
                         f"Business: {business_name}\n"
                         f"Industry: {industry}\n"
                         f"Description: {description}\n"
                         f"Keywords: {', '.join(keywords)}{loc_hint}{rag_hint}\n\n"
-                        "Use the knowledge base context above (if any) to ground "
-                        "the questions in real product features and use cases. "
-                        "Return ONLY a JSON array of 4 question strings, no other text."
+                        f"Existing prompts already covered (do NOT repeat the "
+                        f"phrasing of these):\n{existing or '  (none)'}\n\n"
+                        "Generate exactly 4 NEW prompts that probe different "
+                        "buyer intents:\n"
+                        "  1. Decision (\"which X should I pick for Y?\")\n"
+                        "  2. Comparison (\"X vs Y for {use case}\")\n"
+                        "  3. Specific feature / pain (\"best X that does Z\")\n"
+                        "  4. Persona / context (\"X for a [persona]\")\n\n"
+                        "Each prompt: 8 to 25 words, ends with '?', "
+                        "mentions the industry or a concrete use-case (not "
+                        "the brand name itself), avoids superlatives like "
+                        "'best ever'. Return ONLY a JSON array of 4 "
+                        "question strings, no other text."
                     ),
                 }],
             )
@@ -230,17 +255,35 @@ class LLMRankingService:
             match = _re.search(r"\[.*\]", text, _re.DOTALL)
             if match:
                 ai_prompts = json.loads(match.group())
+                # Quality filter: reject too-short, too-long, missing-?,
+                # or accidentally duplicated variants. ``business_name``
+                # leaks defeat the whole point (LLMs see the brand and
+                # parrot it back), so drop those too.
+                seen_lower = {item["text"].strip().lower() for item in result_items}
+                bn_lower = (business_name or "").strip().lower()
                 for p in ai_prompts:
-                    if isinstance(p, str):
-                        result_items.append({
-                            "text": p.strip(),
-                            "type": "custom",
-                            "funnel_stage": funnel_stage_for("custom"),
-                            "rationale": rationale_for(
-                                "custom", business_name=business_name,
-                                industry=industry, use_case=use_case,
-                            ),
-                        })
+                    if not isinstance(p, str):
+                        continue
+                    text_p = p.strip()
+                    if len(text_p) < 25 or len(text_p) > 220:
+                        continue
+                    if "?" not in text_p:
+                        continue
+                    low = text_p.lower()
+                    if low in seen_lower:
+                        continue
+                    if bn_lower and bn_lower in low:
+                        continue
+                    seen_lower.add(low)
+                    result_items.append({
+                        "text": text_p,
+                        "type": "custom",
+                        "funnel_stage": funnel_stage_for("custom"),
+                        "rationale": rationale_for(
+                            "custom", business_name=business_name,
+                            industry=industry, use_case=use_case,
+                        ),
+                    })
         except Exception as e:
             logger.warning("Prompt generation via Claude failed: %s", e)
 
@@ -1183,6 +1226,15 @@ class LLMRankingService:
                 completed += 1
                 audit.queries_completed = completed
                 audit.save(update_fields=["queries_completed", "updated_at"])
+
+                # Small inter-cell pause so the audit feels paced rather
+                # than burst. 250 ms is invisible to the user but lets
+                # the polling UI show rows arriving one at a time, and
+                # gives the per-provider TokenBucket headroom when the
+                # upstream is rate-limited. Skip sleep on the last cell.
+                import time as _time
+                if completed < total:
+                    _time.sleep(0.25)
 
             provider_results = [r for r in all_results if r.provider == provider]
             prov_mentioned = sum(1 for r in provider_results if r.is_mentioned)

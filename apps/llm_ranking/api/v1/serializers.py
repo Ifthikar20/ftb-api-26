@@ -172,9 +172,15 @@ class LLMRankingScheduleSerializer(serializers.ModelSerializer):
             "id", "is_enabled", "frequency", "frequency_display",
             "business_name", "business_description", "industry", "location",
             "keywords", "providers",
-            "next_run_at", "last_run_at", "created_at",
+            "next_run_at", "last_run_at",
+            "consecutive_failures", "last_failure_at", "auto_pause_threshold",
+            "created_at",
         ]
-        read_only_fields = ["id", "next_run_at", "last_run_at", "created_at"]
+        read_only_fields = [
+            "id", "next_run_at", "last_run_at",
+            "consecutive_failures", "last_failure_at",
+            "created_at",
+        ]
 
 
 class CreateScheduleSerializer(serializers.Serializer):

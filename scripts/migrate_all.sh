@@ -145,6 +145,8 @@ cat <<'NOTE'
   • llm_ranking.0012 — Plackett-Luce brand_strengths + Beta-Binomial
                       mention_rate_smoothed on LLMRankingAudit
   • llm_ranking.0013 — region + citation_countries on Audit + Result
+  • llm_ranking.0014 — schedule resilience (last_audit + failure
+                       tracking + auto-pause threshold)
   • rag.0001       — KnowledgeSource + KnowledgeChunk (initial schema)
   • rag.0002       — index TimestampMixin.created_at (omitted in 0001)
 
