@@ -141,6 +141,7 @@ cat <<'NOTE'
                       mention_rate_smoothed on LLMRankingAudit
   • llm_ranking.0013 — region + citation_countries on Audit + Result
   • rag.0001       — KnowledgeSource + KnowledgeChunk (initial schema)
+  • rag.0002       — index TimestampMixin.created_at (omitted in 0001)
 
   No data migrations are required. Existing Subscription / User rows
   on "starter" continue to resolve via the legacy alias kept in
