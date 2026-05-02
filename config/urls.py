@@ -3,7 +3,7 @@ from django.contrib import admin
 from django.urls import include, path
 from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView, SpectacularSwaggerView
 
-from apps.analytics.api.v1.tracking_views import EmailOpenPixelView, TrackedLinkRedirectView
+from apps.analytics.api.v1.tracking_views import TrackedLinkRedirectView
 
 urlpatterns = [
     path("admin/", admin.site.urls),
@@ -29,9 +29,6 @@ urlpatterns = [
 
     # Tracked link redirect (short URLs — no /api/ prefix intentional)
     path("t/<str:tracking_key>/", TrackedLinkRedirectView.as_view(), name="tracked-link-redirect"),
-
-    # Email tracking pixel (open tracking)
-    path("api/v1/track/open/<uuid:tracking_id>/", EmailOpenPixelView.as_view(), name="email-open-pixel"),
 
     # OpenAPI schema
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),

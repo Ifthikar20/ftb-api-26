@@ -147,11 +147,6 @@ class TrackedLink(TimestampMixin):
     website = models.ForeignKey(
         "websites.Website", on_delete=models.CASCADE, related_name="tracked_links"
     )
-    # Optional link to an email campaign
-    campaign = models.ForeignKey(
-        "leads.EmailCampaign", null=True, blank=True, on_delete=models.SET_NULL,
-        related_name="tracked_links",
-    )
     destination_url = models.URLField(max_length=2000)
     tracking_key = models.CharField(max_length=32, unique=True, db_index=True)
     description = models.CharField(max_length=300, blank=True)
@@ -172,11 +167,6 @@ class LinkClick(TimestampMixin):
     # Visitor may be null for anonymous clicks that we can't tie to a fingerprint
     visitor = models.ForeignKey(
         Visitor, null=True, blank=True, on_delete=models.SET_NULL, related_name="link_clicks"
-    )
-    # Optional back-reference to the campaign recipient (enables full-funnel attribution)
-    campaign_recipient = models.ForeignKey(
-        "leads.CampaignRecipient", null=True, blank=True, on_delete=models.SET_NULL,
-        related_name="link_clicks",
     )
     ip_hash = models.CharField(max_length=64, blank=True)
     user_agent = models.CharField(max_length=500, blank=True)

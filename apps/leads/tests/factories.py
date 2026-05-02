@@ -5,8 +5,6 @@ from factory.django import DjangoModelFactory
 from apps.accounts.tests.factories import UserFactory
 from apps.analytics.models import PageEvent, Visitor
 from apps.leads.models import (
-    CampaignRecipient,
-    EmailCampaign,
     Lead,
     LeadNote,
     LeadSegment,
@@ -95,21 +93,3 @@ class ScoringConfigFactory(DjangoModelFactory):
     threshold = 70
 
 
-class EmailCampaignFactory(DjangoModelFactory):
-    class Meta:
-        model = EmailCampaign
-
-    website = factory.SubFactory(WebsiteFactory)
-    created_by = factory.SubFactory(UserFactory)
-    subject = factory.Sequence(lambda n: f"Campaign {n}")
-    body = "<p>Hello!</p>"
-    status = EmailCampaign.STATUS_DRAFT
-
-
-class CampaignRecipientFactory(DjangoModelFactory):
-    class Meta:
-        model = CampaignRecipient
-
-    campaign = factory.SubFactory(EmailCampaignFactory)
-    lead = factory.SubFactory(LeadFactory)
-    status = CampaignRecipient.STATUS_QUEUED

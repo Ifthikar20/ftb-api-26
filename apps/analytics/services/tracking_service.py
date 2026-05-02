@@ -17,7 +17,7 @@ class TrackingService:
         return secrets.token_urlsafe(9)[:12]
 
     @staticmethod
-    def create_link(*, website, destination_url: str, description: str = "", campaign=None) -> TrackedLink:
+    def create_link(*, website, destination_url: str, description: str = "") -> TrackedLink:
         """Create a new tracked link."""
         key = TrackingService._generate_key()
         # Ensure uniqueness (collision extremely unlikely but handled)
@@ -29,13 +29,12 @@ class TrackingService:
             destination_url=destination_url,
             tracking_key=key,
             description=description,
-            campaign=campaign,
         )
 
     @staticmethod
     def get_link(tracking_key: str) -> TrackedLink:
         """Look up a tracked link by its key."""
-        return TrackedLink.objects.select_related("website", "campaign").get(
+        return TrackedLink.objects.select_related("website").get(
             tracking_key=tracking_key
         )
 
@@ -46,33 +45,15 @@ class TrackingService:
         ip: str = "",
         user_agent: str = "",
         referrer: str = "",
-        tracking_id: str = "",  # CampaignRecipient.tracking_id
     ) -> LinkClick:
-        """
-        Record a click on a tracked link.
-
-        If tracking_id is provided (from a campaign email link), associate the click
-        with the CampaignRecipient for full-funnel attribution.
-        """
+        """Record a click on a tracked link."""
         ip_hash = hashlib.sha256(ip.encode()).hexdigest()[:64] if ip else ""
-
-        campaign_recipient = None
-        if tracking_id:
-            try:
-                from apps.leads.models import CampaignRecipient
-                campaign_recipient = CampaignRecipient.objects.get(tracking_id=tracking_id)
-                # Mark the recipient as clicked
-                from apps.leads.services.campaign_service import CampaignService
-                CampaignService.record_click(tracking_id=str(tracking_id))
-            except Exception:
-                pass
 
         click = LinkClick.objects.create(
             tracked_link=tracked_link,
             ip_hash=ip_hash,
             user_agent=user_agent[:500],
             referrer=referrer[:2000],
-            campaign_recipient=campaign_recipient,
         )
 
         TrackedLink.objects.filter(pk=tracked_link.pk).update(

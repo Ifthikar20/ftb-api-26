@@ -2,32 +2,30 @@
 
 ## Purpose
 
-Lead capture, scoring, segmentation, and email campaign management. Converts anonymous visitors (from the analytics pixel) into scored leads with CRM-like workflow, and enables outbound email campaigns with full-funnel attribution.
+Lead capture, scoring, and segmentation. Converts anonymous visitors
+(from the analytics pixel) into scored leads with CRM-like workflow.
+
+The email-campaign feature was retired when the product narrowed
+focus to LLM Ranking + GEO. `EmailCampaign`, `CampaignRecipient`,
+`MailchimpService`, the Resend / SES senders, and the open-pixel
+endpoint were all removed.
 
 ## Architecture
 
 ```
 Visitor (analytics app)
   │
-  ├── Behavioral scoring (page views, scroll depth, form fills)
-  │     │
-  │     ▼
-  │   Lead created (score >= threshold)
-  │     │
-  │     ├── Assigned to team member
-  │     ├── Status pipeline: new → contacted → qualified → proposal → won/lost
-  │     └── Notes, emails, segments
-  │
-  ├── Email Campaigns
-  │     ├── EmailCampaign (subject, body, segment filter)
-  │     ├── CampaignRecipient (per-lead tracking)
-  │     │     ├── tracking_id → email open pixel
-  │     │     └── TrackedLink clicks → LinkClick attribution
-  │     └── Stats: recipient_count, open_count, click_count
-  │
-  └── Lead Scoring
-        └── ScoringConfig (per-website weights + ML model version)
-              └── Daily rescore via Celery
+  └── Behavioral scoring (page views, scroll depth, form fills)
+        │
+        ▼
+      Lead created (score >= threshold)
+        │
+        ├── Assigned to team member
+        ├── Status pipeline: new → contacted → qualified → proposal → won/lost
+        └── Notes, emails, segments
+
+ScoringConfig (per-website weights + ML model version)
+  └── Daily rescore via Celery
 ```
 
 ## Models
@@ -38,17 +36,17 @@ Visitor (analytics app)
 | `LeadNote` | Team notes on a lead, authored by a user. |
 | `LeadSegment` | Saved filter segments (JSON rules) for grouping leads (e.g., "High-intent from organic search"). |
 | `ScoringConfig` | Per-website scoring configuration: weight overrides (JSON), threshold for lead creation, and ML model version. |
-| `EmailCampaign` | Outbound email campaigns with HTML body, segment targeting, Mailchimp sync, and open/click tracking. |
-| `CampaignRecipient` | Individual recipient tracking within a campaign: queued → sent → opened → clicked → bounced. Each gets a unique `tracking_id` for pixel/link attribution. |
-| `LeadEmail` | Individual emails sent to leads from the platform (outside of campaigns). |
+| `LeadEmail` | Individual emails sent to leads from the platform. |
 
 ## Services
 
 | Service | Purpose |
 |---|---|
 | `LeadScoringService` | Applies scoring weights to visitor behavior data |
-| `MailchimpService` | Syncs campaigns and segments with Mailchimp |
+| `DeduplicationService` | Merges duplicate leads, re-parenting notes + emails |
+| `TimelineService` | Aggregates page events, notes, and emails into a per-lead timeline |
 | `DriveService` | Google Drive integration for lead exports |
+| `OpenClawService` | OpenClaw lead-search integration |
 
 ## Celery Tasks
 
@@ -61,8 +59,6 @@ Visitor (analytics app)
 - **Visitor-first model** — Leads are derived from Visitors (1:1 FK), so all behavioral data is preserved.
 - **Soft delete** — Leads use `SoftDeleteMixin` for GDPR compliance (recoverable deletion).
 - **Configurable scoring** — `ScoringConfig` allows per-website weight tuning and supports ML model versioning for future advanced scoring.
-- **Full-funnel attribution** — CampaignRecipient → TrackedLink → LinkClick chain enables tracking from email send through to website conversion.
-- **Mailchimp sync** — Campaigns can be synced with Mailchimp for delivery, keeping FetchBot as the analytics layer.
 
 ## Dependencies
 

@@ -137,6 +137,10 @@ say "Done. Summary of what this branch added:"
 cat <<'NOTE'
   • accounts.0008  — Plan choices reshape (User + Organization)
   • accounts.0009  — Drop orphan messaging_* tables (app removed)
+  • accounts.0010  — Drop leads_emailcampaign + leads_campaignrecipient
+  • analytics.0008 — Drop FK columns on TrackedLink + LinkClick
+  • leads.0005     — Remove EmailCampaign + CampaignRecipient from
+                     model state (tables dropped in accounts.0010)
   • billing.0005   — Plan choices reshape (Subscription)
   • llm_ranking.0012 — Plackett-Luce brand_strengths + Beta-Binomial
                       mention_rate_smoothed on LLMRankingAudit

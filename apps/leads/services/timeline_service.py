@@ -19,13 +19,12 @@ class TimelineService:
           1. PageEvent (visitor behavior)
           2. LeadNote (team member notes)
           3. LeadEmail (outbound emails)
-          4. CampaignRecipient (campaign interactions)
 
         Returns:
             {"items": [...], "total": int}
         """
         from apps.analytics.models import PageEvent
-        from apps.leads.models import CampaignRecipient, LeadEmail, LeadNote
+        from apps.leads.models import LeadEmail, LeadNote
 
         items = []
 
@@ -82,49 +81,7 @@ class TimelineService:
                 },
             })
 
-        # 4. Campaign interactions
-        recipients = (
-            CampaignRecipient.objects.filter(lead=lead)
-            .select_related("campaign")
-            .order_by("-created_at")
-        )
-        for r in recipients:
-            # Sent event
-            if r.sent_at:
-                items.append({
-                    "type": "campaign",
-                    "subtype": "sent",
-                    "timestamp": r.sent_at.isoformat(),
-                    "title": f"Campaign sent: {r.campaign.subject[:60]}",
-                    "details": {
-                        "campaign_id": r.campaign.id,
-                        "campaign_subject": r.campaign.subject,
-                    },
-                })
-            # Opened event
-            if r.opened_at:
-                items.append({
-                    "type": "campaign",
-                    "subtype": "opened",
-                    "timestamp": r.opened_at.isoformat(),
-                    "title": f"Opened: {r.campaign.subject[:60]}",
-                    "details": {
-                        "campaign_id": r.campaign.id,
-                        "campaign_subject": r.campaign.subject,
-                    },
-                })
-            # Clicked event
-            if r.clicked_at:
-                items.append({
-                    "type": "campaign",
-                    "subtype": "clicked",
-                    "timestamp": r.clicked_at.isoformat(),
-                    "title": f"Clicked: {r.campaign.subject[:60]}",
-                    "details": {
-                        "campaign_id": r.campaign.id,
-                        "campaign_subject": r.campaign.subject,
-                    },
-                })
+        # Email-campaign interactions removed with the campaign feature.
 
         # Sort all items by timestamp descending
         items.sort(key=lambda x: x["timestamp"], reverse=True)
