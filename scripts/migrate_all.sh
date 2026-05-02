@@ -13,7 +13,11 @@
 
 set -euo pipefail
 
-cd "$(dirname "$0")/.."
+# Resolve the repo root from this script's location so the launcher
+# works regardless of where it's invoked from.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+cd "${REPO_ROOT}"
 
 # ── Style helpers ─────────────────────────────────────────────────
 GREEN='\033[0;32m'
@@ -30,8 +34,44 @@ if [[ "${1:-}" == "--check" || "${1:-}" == "-n" ]]; then
 fi
 
 # ── Sanity checks ─────────────────────────────────────────────────
-[[ -f manage.py ]] || fail "Run from the project root (manage.py not found)."
-command -v python >/dev/null || fail "python not on PATH."
+[[ -f manage.py ]] || fail "manage.py not found in ${REPO_ROOT}."
+
+# Activate the project venv. Try the conventional names in order so
+# we work whether the developer used ``.venv`` (PEP 405 style),
+# ``venv`` (most tutorials), or ``env``.
+#
+# If none exist, fall back to whatever python is on PATH and warn
+# loudly — the most likely failure (Anaconda's base env not having
+# django-environ) is exactly what triggered this fix in the first
+# place.
+ACTIVATED=""
+for cand in .venv venv env; do
+    if [[ -f "${REPO_ROOT}/${cand}/bin/activate" ]]; then
+        # shellcheck disable=SC1090
+        source "${REPO_ROOT}/${cand}/bin/activate"
+        ACTIVATED="${cand}"
+        break
+    fi
+done
+if [[ -n "${ACTIVATED}" ]]; then
+    say "venv activated: ${ACTIVATED}/ ($(python --version 2>&1))"
+else
+    warn "No project venv found (tried .venv/, venv/, env/)."
+    warn "Falling back to system Python: $(command -v python || echo 'NONE')"
+    warn "If migrations fail with ModuleNotFoundError, run:"
+    warn "  python -m venv .venv && source .venv/bin/activate \\"
+    warn "    && pip install -r requirements/dev.txt"
+fi
+
+command -v python >/dev/null || fail "python still not on PATH after venv lookup."
+
+# Confirm Django + django-environ are importable up front so the
+# error message is friendly rather than a 30-line traceback later.
+if ! python -c "import django, environ" 2>/dev/null; then
+    fail "Django or django-environ isn't installed in the active Python.
+       Active python: $(command -v python)
+       Try:  pip install -r requirements/dev.txt"
+fi
 
 # Pick up settings the same way run_dev.sh does.
 export DJANGO_SETTINGS_MODULE="${DJANGO_SETTINGS_MODULE:-config.settings.dev}"
@@ -40,7 +80,8 @@ say "Using DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE}"
 
 # ── 1. Show pending migrations ────────────────────────────────────
 say "Checking for pending migrations…"
-python manage.py showmigrations --plan | grep -E '^\[ \]' || true
+PLAN_OUT="$(python manage.py showmigrations --plan 2>&1 || true)"
+echo "${PLAN_OUT}" | grep -E '^\[ \]' || echo "  (none — head is clean)"
 
 # ── 2. Apply all migrations ───────────────────────────────────────
 # Order matters only when an app declares an explicit dependency on
