@@ -63,13 +63,19 @@ class AuditLogMiddleware:
             except (json.JSONDecodeError, UnicodeDecodeError, Exception):
                 pass
 
-        # 1. Always write to text log (synchronous)
+        # 1. Write to text log. Successful GETs are deliberately
+        # logged at DEBUG so the dev console stays readable —
+        # mutations and errors still surface at INFO/WARNING/ERROR.
+        # Set ``LOG_LEVEL=DEBUG`` (or tail the JSON log file) when
+        # full-request audit visibility is needed.
         if response.status_code >= 500:
             audit_logger.error("api_request", extra=log_entry)
         elif response.status_code >= 400:
             audit_logger.warning("api_request", extra=log_entry)
-        else:
+        elif request.method != "GET":
             audit_logger.info("api_request", extra=log_entry)
+        else:
+            audit_logger.debug("api_request", extra=log_entry)
 
         # 2. Write to database (async via Celery) for compliance-grade queries
         # Only log mutating requests and errors to DB to manage volume
