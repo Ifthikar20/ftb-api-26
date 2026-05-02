@@ -23,7 +23,6 @@ urlpatterns = [
     path("api/v1/rag/", include("apps.rag.api.v1.urls")),
     path("api/v1/onboarding/", include("apps.onboarding.api.v1.urls")),
     path("api/v1/social-leads/", include("apps.social_leads.api.v1.urls")),
-    path("api/v1/messaging/", include("apps.messaging.api.v1.urls")),
 
     # Pixel ingestion (high throughput)
     path("api/v1/track/", include("apps.analytics.api.v1.pixel_urls")),

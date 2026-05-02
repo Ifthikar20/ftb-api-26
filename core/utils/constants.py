@@ -48,7 +48,7 @@ PLAN_LIMITS = {
         "tabs": [
             "dashboard", "projects", "analytics", "leads",
             "heatmaps", "keywords",
-            "campaigns", "llm_ranking",
+            "llm_ranking",
             "integrations", "billing", "settings",
         ],
     },
@@ -75,7 +75,7 @@ PLAN_LIMITS = {
         "tabs": [
             "dashboard", "projects", "analytics", "leads",
             "heatmaps", "keywords",
-            "campaigns", "llm_ranking",
+            "llm_ranking",
             "integrations", "billing", "settings",
         ],
     },
@@ -101,7 +101,7 @@ PLAN_LIMITS = {
         "tabs": [
             "dashboard", "projects", "analytics", "leads",
             "heatmaps", "keywords",
-            "campaigns", "llm_ranking",
+            "llm_ranking",
             "integrations", "billing", "settings",
         ],
     },
