@@ -30,11 +30,73 @@
       </div>
     </div>
 
-    <!-- Schedule banner -->
-    <div v-if="schedule && schedule.is_enabled" class="schedule-banner">
-      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 4v4l3 2"/></svg>
-      <span>Auto-audit runs <strong>{{ schedule.frequency_display }}</strong> — next run {{ formatRelative(schedule.next_run_at) }}</span>
-      <button class="btn btn-ghost btn-xs" @click="disableSchedule">Disable</button>
+    <!-- Scheduled audits card (rich: ETA, in-flight, failures, run-now) -->
+    <div v-if="schedule" class="schedule-card">
+      <div class="schedule-card-head">
+        <div class="schedule-card-title">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 4v4l3 2"/></svg>
+          <span>Scheduled audit</span>
+          <span class="schedule-pill" :class="{ paused: !schedule.is_enabled }">
+            {{ schedule.is_enabled ? 'Active' : 'Paused' }}
+          </span>
+        </div>
+        <div class="schedule-card-actions">
+          <button class="btn btn-ghost btn-xs" :disabled="runNowBusy || (scheduleETA && scheduleETA.in_flight)"
+                  @click="runScheduleNow">
+            {{ runNowBusy ? 'Starting…' : (scheduleETA && scheduleETA.in_flight ? 'In flight' : 'Run now') }}
+          </button>
+          <button class="btn btn-ghost btn-xs" @click="showScheduleModal = true">Edit</button>
+          <button class="btn btn-ghost btn-xs" @click="disableSchedule">Disable</button>
+        </div>
+      </div>
+
+      <div class="schedule-card-body">
+        <div class="schedule-cell">
+          <div class="schedule-cell-label">Frequency</div>
+          <div class="schedule-cell-value">{{ schedule.frequency_display }}</div>
+        </div>
+        <div class="schedule-cell">
+          <div class="schedule-cell-label">Next run</div>
+          <div class="schedule-cell-value">{{ formatRelative(schedule.next_run_at) }}</div>
+        </div>
+        <div class="schedule-cell">
+          <div class="schedule-cell-label">Projected duration</div>
+          <div class="schedule-cell-value">
+            {{ scheduleETA && scheduleETA.estimated_duration_seconds
+                ? formatDuration(scheduleETA.estimated_duration_seconds)
+                : '—' }}
+          </div>
+        </div>
+        <div class="schedule-cell">
+          <div class="schedule-cell-label">Coverage</div>
+          <div class="schedule-cell-value">
+            {{ scheduleETA ? `${scheduleETA.n_prompts} prompts × ${scheduleETA.n_providers} providers` : '—' }}
+          </div>
+        </div>
+      </div>
+
+      <div v-if="scheduleETA && scheduleETA.in_flight" class="schedule-progress">
+        <div class="schedule-progress-row">
+          <span>Audit in flight</span>
+          <span>
+            {{ (scheduleETA.in_flight_progress && scheduleETA.in_flight_progress.completed) || 0 }}
+            /
+            {{ (scheduleETA.in_flight_progress && scheduleETA.in_flight_progress.total) || 0 }}
+            cells
+            <template v-if="scheduleETA.in_flight_seconds_remaining != null">
+              · ~{{ formatDuration(scheduleETA.in_flight_seconds_remaining) }} left
+            </template>
+          </span>
+        </div>
+        <div class="schedule-progress-bar">
+          <div class="schedule-progress-fill" :style="{ width: scheduleProgressPct + '%' }"></div>
+        </div>
+      </div>
+
+      <div v-if="scheduleETA && scheduleETA.consecutive_failures > 0" class="schedule-warn">
+        ⚠ {{ scheduleETA.consecutive_failures }} consecutive failure(s).
+        Schedule auto-pauses after a few in a row — check provider keys.
+      </div>
     </div>
 
     <div v-if="loading" class="loading-state">Loading LLM ranking data...</div>
@@ -1974,6 +2036,9 @@ let pollTimer = null
 
 // Schedule state
 const schedule = ref(null)
+const scheduleETA = ref(null)
+const runNowBusy = ref(false)
+let scheduleETATimer = null
 const showScheduleModal = ref(false)
 const savingSchedule = ref(false)
 const scheduleError = ref('')
@@ -4158,9 +4223,65 @@ async function fetchSchedule() {
         frequency: schedule.value.frequency || 'weekly',
         providers: schedule.value.providers?.length ? schedule.value.providers : ['claude', 'gpt4', 'gemini', 'perplexity'],
       }
+      fetchScheduleETA()
+      startScheduleETAPolling()
+    } else {
+      stopScheduleETAPolling()
+      scheduleETA.value = null
     }
   } catch (e) {
     console.error('Schedule fetch error', e)
+  }
+}
+
+async function fetchScheduleETA() {
+  if (!schedule.value) return
+  try {
+    const { data } = await llmRankingApi.scheduleETA(websiteId)
+    scheduleETA.value = data?.data || data || null
+  } catch (e) {
+    // ETA is best-effort — keep stale value rather than wipe
+  }
+}
+
+function startScheduleETAPolling() {
+  stopScheduleETAPolling()
+  scheduleETATimer = setInterval(fetchScheduleETA, 15000)
+}
+function stopScheduleETAPolling() {
+  if (scheduleETATimer) {
+    clearInterval(scheduleETATimer)
+    scheduleETATimer = null
+  }
+}
+
+const scheduleProgressPct = computed(() => {
+  const p = scheduleETA.value && scheduleETA.value.in_flight_progress
+  if (!p || !p.total) return 0
+  return Math.min(100, Math.round((p.completed / p.total) * 100))
+})
+
+function formatDuration(seconds) {
+  if (seconds == null) return '—'
+  const s = Math.max(0, Math.round(seconds))
+  if (s < 90) return `${s}s`
+  if (s < 3600) return `${Math.round(s / 60)}m`
+  if (s < 86400) return `${Math.round(s / 3600)}h`
+  return `${Math.round(s / 86400)}d`
+}
+
+async function runScheduleNow() {
+  if (runNowBusy.value) return
+  runNowBusy.value = true
+  try {
+    await llmRankingApi.runScheduleNow(websiteId)
+    toast.success('Scheduled audit kicked off.')
+    await fetchScheduleETA()
+    fetchData()
+  } catch (err) {
+    toast.error(err.displayMessage || 'Could not start audit now.')
+  } finally {
+    runNowBusy.value = false
   }
 }
 
@@ -4217,6 +4338,7 @@ onMounted(() => {
 })
 onBeforeUnmount(() => {
   stopPolling()
+  stopScheduleETAPolling()
   document.removeEventListener('click', onDocClick)
 })
 </script>
@@ -5729,6 +5851,58 @@ onBeforeUnmount(() => {
 }
 .schedule-banner strong { color: var(--text-primary); }
 .btn-xs { font-size: var(--font-xs); padding: 2px 8px; }
+
+.schedule-card {
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--surface-secondary, #fafafa);
+  padding: 14px 16px;
+  margin-bottom: 20px;
+}
+.schedule-card-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; margin-bottom: 12px;
+}
+.schedule-card-title {
+  display: flex; align-items: center; gap: 8px;
+  font-weight: 600; color: var(--text-primary); font-size: var(--font-sm);
+}
+.schedule-card-actions { display: flex; gap: 6px; }
+.schedule-pill {
+  font-size: var(--font-xs); padding: 2px 8px; border-radius: 999px;
+  background: rgba(34, 197, 94, 0.12); color: rgb(22, 163, 74);
+  border: 1px solid rgba(34, 197, 94, 0.25);
+}
+.schedule-pill.paused {
+  background: rgba(148, 163, 184, 0.18); color: var(--text-secondary);
+  border-color: rgba(148, 163, 184, 0.35);
+}
+.schedule-card-body {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
+}
+@media (max-width: 720px) { .schedule-card-body { grid-template-columns: repeat(2, 1fr); } }
+.schedule-cell-label {
+  font-size: var(--font-xs); color: var(--text-secondary);
+  text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 4px;
+}
+.schedule-cell-value { font-size: var(--font-sm); color: var(--text-primary); font-weight: 600; }
+.schedule-progress { margin-top: 12px; }
+.schedule-progress-row {
+  display: flex; justify-content: space-between;
+  font-size: var(--font-xs); color: var(--text-secondary); margin-bottom: 6px;
+}
+.schedule-progress-bar {
+  height: 6px; background: var(--border-color); border-radius: 999px; overflow: hidden;
+}
+.schedule-progress-fill {
+  height: 100%; background: #FF6A2C; transition: width 0.5s ease;
+}
+.schedule-warn {
+  margin-top: 10px; padding: 8px 10px;
+  font-size: var(--font-xs); color: rgb(180, 83, 9);
+  background: rgba(245, 158, 11, 0.10); border: 1px solid rgba(245, 158, 11, 0.25);
+  border-radius: var(--radius-sm);
+}
 
 /* Score summary */
 .score-main { display: flex; align-items: center; gap: 32px; }

@@ -697,6 +697,26 @@ class LLMRankingService:
             except Exception as exc:
                 logger.debug("Audit-context RAG ingest skipped: %s", exc)
 
+        # Deep DOM scan: structured data (JSON-LD, OG, FAQ, Reviews, pricing,
+        # social) rendered as a markdown business story and pushed into RAG
+        # so per-cell prompts can retrieve grounded facts.
+        try:
+            from apps.llm_ranking.services import business_story
+            result = business_story.gather_and_ingest(
+                url=audit.website.url, audit=audit,
+                user=audit.created_by, website=audit.website,
+            )
+            rendered_len = len(result.get("rendered") or "")
+            if rendered_len:
+                _audit_log(
+                    f"📖 Business story assembled — {rendered_len:,} chars ingested into RAG",
+                    "success",
+                )
+        except Exception as exc:
+            logger.debug("Business-story scan skipped: %s", exc)
+            _audit_log(f"⚠️ Business story scan skipped: {str(exc)[:100]}", "warn")
+
+        audit.save(update_fields=["audit_logs", "updated_at"])
         return {"prompts": prompt_items, "providers": provider_keys}
 
     @staticmethod
@@ -1073,6 +1093,26 @@ class LLMRankingService:
                 _audit_log(audit, "📚 Audit context added to knowledge base", "success")
             except Exception as exc:
                 logger.debug("Audit-context RAG ingest skipped: %s", exc)
+
+        # Deep DOM scan: pull JSON-LD, OG, FAQ, pricing, and social signals
+        # off the homepage, render them as a markdown business story, and
+        # ingest into RAG so per-cell prompts can retrieve grounded facts.
+        try:
+            from apps.llm_ranking.services import business_story
+            story_result = business_story.gather_and_ingest(
+                url=audit.website.url, audit=audit,
+                user=audit.created_by, website=audit.website,
+            )
+            rendered_len = len(story_result.get("rendered") or "")
+            if rendered_len:
+                _audit_log(
+                    audit,
+                    f"📖 Business story assembled — {rendered_len:,} chars ingested into RAG",
+                    "success",
+                )
+        except Exception as exc:
+            logger.debug("Business-story scan skipped: %s", exc)
+            _audit_log(audit, f"⚠️ Business story scan skipped: {str(exc)[:100]}", "warn")
 
         # Calculate total queries and set progress tracking
         # Prompts may be structured [{"text": ..., "type": ...}] or flat ["..."]

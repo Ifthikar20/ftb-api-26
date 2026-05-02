@@ -25,4 +25,6 @@ export default {
     getSchedule: (wid) => api.get(`/llm-ranking/${wid}/schedule/`),
     saveSchedule: (wid, data) => api.post(`/llm-ranking/${wid}/schedule/`, data),
     deleteSchedule: (wid) => api.delete(`/llm-ranking/${wid}/schedule/`),
+    scheduleETA: (wid) => api.get(`/llm-ranking/${wid}/schedule/eta/`),
+    runScheduleNow: (wid) => api.post(`/llm-ranking/${wid}/schedule/run-now/`),
 }
