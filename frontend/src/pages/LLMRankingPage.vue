@@ -278,6 +278,30 @@
         </div>
       </div>
 
+      <!-- ═══ Diagnostics — visual breakdowns of the audit ═══
+           Shows when the audit produced data on at least one prompt.
+           Each component v-if-guards itself for empty data so partial
+           audits (running, single-provider) still render gracefully. -->
+      <div v-if="isAuditComplete && diagnosticsHaveData" class="lr-diagnostics" style="margin-bottom:24px">
+        <PromptHeatmap
+          :results="auditDetail?.results || []"
+          :provider-label="providerLabel"
+          :provider-color="providerColor"
+        />
+        <div class="lr-grid-2" style="margin-bottom:0">
+          <FunnelRadar
+            :results="auditDetail?.results || []"
+            :prompts="latestAudit?.prompts || []"
+            :target-name="latestAudit?.business_name || 'You'"
+            :competitor-name="kpiClosestCompetitor.name || ''"
+          />
+          <ProviderAgreement
+            :results="auditDetail?.results || []"
+            :provider-label="providerLabel"
+          />
+        </div>
+      </div>
+
       <!-- LLM Systems: compact dropdown -->
       <div v-if="audits.length || providerHealth.providers.length" class="lr-systems-bar" style="margin-bottom:24px">
         <div class="card lr-systems-dropdown" @click="showSystemsDropdown = !showSystemsDropdown" style="cursor:pointer">
@@ -1713,6 +1737,9 @@ import llmRankingApi from '@/api/llm_ranking'
 import websitesApi from '@/api/websites'
 import BaseModal from '@/components/ui/BaseModal.vue'
 import FirstRunLLMRanking from '@/components/llm_ranking/FirstRunLLMRanking.vue'
+import PromptHeatmap from '@/components/llm_ranking/PromptHeatmap.vue'
+import FunnelRadar from '@/components/llm_ranking/FunnelRadar.vue'
+import ProviderAgreement from '@/components/llm_ranking/ProviderAgreement.vue'
 import { Line, Bar } from 'vue-chartjs'
 import {
   Chart as ChartJS,
@@ -2433,6 +2460,14 @@ const latestAudit = computed(() => {
 })
 
 const isAuditComplete = computed(() => latestAudit.value?.status === 'completed')
+
+// Diagnostics section gates on having at least one successful result —
+// otherwise the heatmap / radar / scatter would render empty cards.
+const diagnosticsHaveData = computed(() => {
+  const rs = auditDetail.value?.results || []
+  return rs.some(r => r && r.query_succeeded)
+})
+
 const isAuditRunning = computed(() => {
   const s = latestAudit.value?.status
   return s === 'running' || s === 'pending'
@@ -5120,6 +5155,15 @@ onBeforeUnmount(() => {
 .kpi-sub-muted { opacity: 0.7; margin-left: 4px; }
 
 .bo-footprint-card { padding: 16px; }
+
+/* Diagnostics section: heatmap stacks full-width above the
+   radar+scatter row. The inner lr-grid-2 already exists and gives us
+   the two-column behaviour for the lower row. */
+.lr-diagnostics {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
 .bo-footprint-grid {
   display: flex;
   flex-direction: column;
