@@ -17,7 +17,7 @@ class LLMRankingResultSerializer(serializers.ModelSerializer):
             "sentiment", "sentiment_display", "confidence_score",
             "mention_context", "query_succeeded", "error_message",
             "run_id", "is_linked", "competitors_mentioned",
-            "primary_recommendation", "citations",
+            "primary_recommendation", "citations", "citation_countries",
             "extraction_model", "extraction_version",
         ]
         read_only_fields = fields
@@ -47,7 +47,8 @@ class LLMRankingAuditSerializer(serializers.ModelSerializer):
         fields = [
             "id", "status", "status_display",
             "business_name", "business_description", "industry", "location", "keywords",
-            "prompts", "overall_score", "mention_rate", "avg_mention_rank",
+            "region", "prompts", "overall_score", "mention_rate", "mention_rate_smoothed",
+            "avg_mention_rank", "brand_strengths", "citation_countries",
             "mention_rate_ci_lower", "mention_rate_ci_upper",
             "runs_per_query", "extraction_method", "extraction_method_display",
             "providers_queried", "queries_completed", "total_queries",
@@ -57,7 +58,9 @@ class LLMRankingAuditSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             "id", "status", "status_display", "overall_score", "mention_rate",
-            "avg_mention_rank", "mention_rate_ci_lower", "mention_rate_ci_upper",
+            "mention_rate_smoothed", "avg_mention_rank", "brand_strengths",
+            "citation_countries",
+            "mention_rate_ci_lower", "mention_rate_ci_upper",
             "extraction_method", "extraction_method_display",
             "providers_queried", "queries_completed", "total_queries",
             "total_tokens", "total_cost_usd",
@@ -74,8 +77,9 @@ class LLMRankingAuditListSerializer(serializers.ModelSerializer):
         model = LLMRankingAudit
         fields = [
             "id", "status", "status_display",
-            "business_name", "industry", "location",
-            "overall_score", "mention_rate", "avg_mention_rank",
+            "business_name", "industry", "location", "region",
+            "overall_score", "mention_rate", "mention_rate_smoothed",
+            "avg_mention_rank", "brand_strengths", "citation_countries",
             "mention_rate_ci_lower", "mention_rate_ci_upper",
             "providers_queried", "queries_completed", "total_queries",
             "total_tokens", "total_cost_usd",
@@ -105,6 +109,15 @@ class RunAuditSerializer(serializers.Serializer):
         max_length=20,
     )
     use_case = serializers.CharField(max_length=200, required=False, default="", allow_blank=True)
+    # Geographic region for the audit. Drives prompt flavour, Perplexity
+    # web-search location, and citation country attribution. Default is
+    # global (no geo bias).
+    region = serializers.ChoiceField(
+        choices=[
+            "global", "us", "ca", "in", "uk", "de", "au",
+        ],
+        required=False, default="global",
+    )
     # Optionally supply custom prompts instead of auto-generating them
     custom_prompts = serializers.ListField(
         child=serializers.CharField(max_length=500),
@@ -123,12 +136,26 @@ class RunAuditSerializer(serializers.Serializer):
         default=list,
     )
     # Extra URLs for content enrichment (blogs, product pages, etc.)
+    # Each entry is sanitised via the SSRF guard so a user cannot smuggle
+    # in a fetch of internal services through the audit pipeline.
     context_urls = serializers.ListField(
-        child=serializers.CharField(max_length=500),
+        child=serializers.URLField(max_length=500),
         required=False,
         default=list,
         max_length=5,
     )
+
+    def validate_context_urls(self, urls):
+        from core.validators.url_safety import UnsafeURLError, assert_url_safe
+        cleaned = []
+        for u in urls or []:
+            try:
+                cleaned.append(assert_url_safe(u))
+            except UnsafeURLError as exc:
+                raise serializers.ValidationError(
+                    f"context_url '{u}' rejected: {exc}",
+                )
+        return cleaned
     # Optional themes for prompt generation
     themes = serializers.ListField(
         child=serializers.CharField(max_length=100),

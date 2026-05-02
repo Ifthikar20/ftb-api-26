@@ -7,53 +7,65 @@ class Segment(models.TextChoices):
 
 
 class Plan(models.TextChoices):
-    STARTER = "starter", "Starter ($29/mo)"
-    PRO = "pro", "Pro ($96/mo)"
-    ENTERPRISE = "enterprise", "Enterprise"
-    # Legacy aliases for migration compatibility
-    INDIVIDUAL = "individual", "Individual (Legacy)"
+    INDIVIDUAL = "individual", "Individual ($45/mo)"
+    PRO = "pro", "Pro ($100/mo)"
+    ENTERPRISE = "enterprise", "Business / Enterprise"
+    # Legacy aliases for migration compatibility — these still appear
+    # on existing Subscription rows and must keep resolving to a real
+    # plan via PLAN_LIMITS until a backfill migrates them.
+    STARTER = "starter", "Starter (Legacy)"
     GROWTH = "growth", "Growth (Legacy)"
     SCALE = "scale", "Scale (Legacy)"
 
 
 # ── Feature limits per plan ──────────────────────────────────────────
-# Starter = $39/mo (5-day free trial).  Enterprise = custom pricing.
+#
+# ``max_prompts_per_audit`` is the headline LLM-ranking gate — every
+# call to ``LLMRankingService.generate_prompts`` reads this off the
+# user's current plan and caps the prompt list accordingly. Bumping a
+# user's tier widens the cap on the next audit immediately.
 PLAN_LIMITS = {
-    Plan.STARTER: {
+    Plan.INDIVIDUAL: {
         "segment": Segment.INDIVIDUAL,
-        "price_monthly": 29,
-        "price_yearly": 290,
+        "price_monthly": 45,
+        "price_yearly": 450,
         "trial_days": 0,
         "projects": 1,
         "pageviews": 50_000,
         "team_members": 1,
-        "ai_credits_monthly": 100,
+        "ai_credits_monthly": 150,
         "integrations": 3,
-        "competitors": 5,
+        "competitors": 8,
+        "max_prompts_per_audit": 5,
+        "max_audits_per_month": 4,            # weekly cadence cap
+        "providers_allowed": ["claude", "gpt4"],
         "pipeline_builder": True,
         "trend_intelligence": False,
         "sso": False,
         "api_access": False,
         "white_label": False,
         "dedicated_support": False,
-        # Visible tabs
         "tabs": [
             "dashboard", "projects", "analytics", "leads",
             "heatmaps", "keywords",
-            "campaigns", "integrations", "billing", "settings",
+            "campaigns", "llm_ranking",
+            "integrations", "billing", "settings",
         ],
     },
     Plan.PRO: {
         "segment": Segment.INDIVIDUAL,
-        "price_monthly": 96,
-        "price_yearly": 960,
+        "price_monthly": 100,
+        "price_yearly": 1000,
         "trial_days": 0,
         "projects": 5,
         "pageviews": 250_000,
         "team_members": 5,
-        "ai_credits_monthly": 500,
+        "ai_credits_monthly": 600,
         "integrations": 10,
         "competitors": 25,
+        "max_prompts_per_audit": 15,
+        "max_audits_per_month": 30,           # daily cadence cap
+        "providers_allowed": ["claude", "gpt4", "gemini", "perplexity"],
         "pipeline_builder": True,
         "trend_intelligence": True,
         "sso": False,
@@ -73,17 +85,19 @@ PLAN_LIMITS = {
         "price_yearly": -1,
         "projects": -1,
         "pageviews": -1,
-        "team_members": -1,  # based on contract
-        "ai_credits_monthly": -1,  # unlimited
+        "team_members": -1,
+        "ai_credits_monthly": -1,
         "integrations": -1,
         "competitors": -1,
+        "max_prompts_per_audit": 50,
+        "max_audits_per_month": -1,
+        "providers_allowed": ["claude", "gpt4", "gemini", "perplexity"],
         "pipeline_builder": True,
         "trend_intelligence": True,
         "sso": True,
         "api_access": True,
         "white_label": True,
         "dedicated_support": True,
-        # All tabs visible
         "tabs": [
             "dashboard", "projects", "analytics", "leads",
             "heatmaps", "keywords",
@@ -93,10 +107,31 @@ PLAN_LIMITS = {
     },
 }
 
-# Legacy aliases → map to Starter
-PLAN_LIMITS[Plan.INDIVIDUAL] = PLAN_LIMITS[Plan.STARTER]
-PLAN_LIMITS[Plan.GROWTH] = PLAN_LIMITS[Plan.STARTER]
+# Legacy aliases — keep resolving so existing Subscription rows don't
+# 500 on read. Starter maps to Individual (closest match in the new
+# 3-tier model); Growth/Scale follow Starter/Enterprise as before.
+PLAN_LIMITS[Plan.STARTER] = PLAN_LIMITS[Plan.INDIVIDUAL]
+PLAN_LIMITS[Plan.GROWTH] = PLAN_LIMITS[Plan.INDIVIDUAL]
 PLAN_LIMITS[Plan.SCALE] = PLAN_LIMITS[Plan.ENTERPRISE]
+
+
+def max_prompts_for_user(user) -> int:
+    """
+    Return the prompts-per-audit cap for ``user``'s current plan.
+
+    Falls back to the Individual cap when the user has no subscription
+    or the subscription's plan isn't recognised. Never returns 0 — even
+    a user with no subscription can run a tiny 5-prompt audit so the
+    "first run" experience isn't gated.
+    """
+    try:
+        sub = getattr(user, "subscription", None)
+        plan = getattr(sub, "plan", None) if sub else None
+    except Exception:
+        plan = None
+    limits = PLAN_LIMITS.get(plan) or PLAN_LIMITS[Plan.INDIVIDUAL]
+    cap = limits.get("max_prompts_per_audit") or 5
+    return cap if cap > 0 else 50  # treat -1 as "effectively unlimited"
 
 
 class UserRole(models.TextChoices):

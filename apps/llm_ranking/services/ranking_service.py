@@ -14,6 +14,50 @@ from django.utils import timezone
 logger = logging.getLogger("apps")
 
 
+def _country_counts_for(citations) -> dict:
+    """Local helper — silently degrades to {} if citation_geo isn't importable."""
+    try:
+        from apps.llm_ranking.services.citation_geo import aggregate_countries
+        return aggregate_countries(citations or [])
+    except Exception:
+        return {}
+
+
+# Hard cap on the audit_logs list. Each entry is small (~150 bytes), but
+# without a cap a long-running audit with many retries could push the
+# JSONB column into the megabytes. 1000 entries is far above any
+# legitimate run.
+_MAX_AUDIT_LOG_ENTRIES = 1000
+
+
+def _capped_logs(logs: list) -> list:
+    """Truncate the audit log to the most recent ``_MAX_AUDIT_LOG_ENTRIES``
+    entries, preserving chronological order. Older entries are simply
+    dropped — they're already mirrored to ``logger`` via the logging
+    framework so we lose only the in-band copy."""
+    if not isinstance(logs, list):
+        return []
+    if len(logs) <= _MAX_AUDIT_LOG_ENTRIES:
+        return logs
+    return logs[-_MAX_AUDIT_LOG_ENTRIES:]
+
+
+def beta_binomial_mean(
+    successes: int, n: int, alpha: float = 2.0, beta: float = 8.0
+) -> float:
+    """Posterior mean of a Beta-Binomial conjugate update.
+
+    Prior Beta(2, 8) ~ 20% baseline mention rate. The posterior mean
+    ``(alpha + successes) / (alpha + beta + n)`` shrinks small-sample
+    estimates toward the prior so a 1/1 audit doesn't score 100% mention
+    rate. As n grows the result approaches the empirical proportion.
+    Returned as a proportion in [0, 1] (multiply by 100 for percent).
+    """
+    if n < 0:
+        n = 0
+    return (alpha + successes) / (alpha + beta + n)
+
+
 def wilson_ci(successes: int, n: int, z: float = 1.96) -> tuple[float, float]:
     """Return (lower, upper) bounds of a Wilson score 95% CI for a proportion.
 
@@ -72,6 +116,7 @@ class LLMRankingService:
                          keywords: list, use_case: str = "",
                          location: str = "",
                          themes: list | None = None,
+                         region: str = "global",
                          user=None, website=None) -> list[dict]:
         """
         Generate discovery prompts from business context.
@@ -89,6 +134,15 @@ class LLMRankingService:
 
         use_case = use_case or (keywords[0] if keywords else industry)
 
+        # Per-plan prompt cap. Individual: 5, Pro: 15, Business: 50.
+        # Falls back to the Individual cap when the user has no
+        # subscription so the first-run experience isn't gated.
+        try:
+            from core.utils.constants import max_prompts_for_user
+            cap = max_prompts_for_user(user)
+        except Exception:
+            cap = 5
+
         # Library returns intent-tagged dicts including funnel_stage and a
         # short strategic rationale per prompt. Funnel stage drives the
         # default UI grouping; rationale renders as a sub-line beneath each
@@ -97,7 +151,7 @@ class LLMRankingService:
             industry=industry or "software",
             use_case=use_case,
             location=location,
-            max_prompts=10,
+            max_prompts=cap,
             themes=themes,
             business_name=business_name,
         )
@@ -115,11 +169,31 @@ class LLMRankingService:
             for p in base_items
         ]
 
+        # Pull grounding from the user's RAG knowledge base so variants are
+        # informed by the real product / use cases, not just the few-line
+        # description. Falls back silently if no chunks have been ingested
+        # yet (first audit on a fresh website).
+        rag_block = ""
+        if user is not None and website is not None:
+            try:
+                from apps.rag.services.retriever import retrieve_context_block
+                rag_query = (
+                    f"buyer questions and use cases for {business_name} "
+                    f"in {industry} — {use_case}"
+                )
+                rag_block = retrieve_context_block(
+                    user=user, website=website, query=rag_query,
+                    top_k=4, max_chars=1800,
+                )
+            except Exception as e:
+                logger.debug("RAG retrieval skipped during prompt generation: %s", e)
+
         # Use Claude to generate additional natural variants
         try:
             import anthropic
             client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
             loc_hint = f"\nLocation: {location}" if location else ""
+            rag_hint = f"\n\n{rag_block}" if rag_block else ""
             resp = client.messages.create(
                 model="claude-sonnet-4-20250514",
                 max_tokens=512,
@@ -131,7 +205,9 @@ class LLMRankingService:
                         f"Business: {business_name}\n"
                         f"Industry: {industry}\n"
                         f"Description: {description}\n"
-                        f"Keywords: {', '.join(keywords)}{loc_hint}\n\n"
+                        f"Keywords: {', '.join(keywords)}{loc_hint}{rag_hint}\n\n"
+                        "Use the knowledge base context above (if any) to ground "
+                        "the questions in real product features and use cases. "
                         "Return ONLY a JSON array of 4 question strings, no other text."
                     ),
                 }],
@@ -168,6 +244,14 @@ class LLMRankingService:
         except Exception as e:
             logger.warning("Prompt generation via Claude failed: %s", e)
 
+        # Apply region flavour to every prompt. ``flavor_prompt`` is a
+        # no-op for the GLOBAL region so existing tests / audits keep
+        # producing identical text.
+        if region and region != "global":
+            from apps.llm_ranking.services.regions import flavor_prompt
+            for item in result_items:
+                item["text"] = flavor_prompt(item["text"], region)
+
         # Deduplicate while preserving order
         seen = set()
         deduped = []
@@ -176,7 +260,12 @@ class LLMRankingService:
             if key not in seen:
                 seen.add(key)
                 deduped.append(item)
-        return deduped[:10]  # cap at 10 prompts per audit
+        # Final cap matches the per-plan limit fetched above. The
+        # PromptLibrary already trimmed to ``cap`` deterministic
+        # prompts, but Claude's 4 variants can push the deduped list
+        # back above the limit — re-trim here so the cap is enforced
+        # regardless of which path produced the prompt.
+        return deduped[:cap]
 
     # ── Per-provider query methods ─────────────────────────────────────────
     #
@@ -187,37 +276,45 @@ class LLMRankingService:
 
     @staticmethod
     def _query_claude(prompt: str, system_prompt: str = "",
-                      *, user=None, website=None, audit_id=None) -> tuple[bool, str, str]:
+                      *, user=None, website=None, audit_id=None,
+                      region: str = "") -> tuple[bool, str, str]:
         from apps.llm_ranking.providers import ClaudeProvider
         result = ClaudeProvider().query(
-            prompt, system_prompt, user=user, website=website, audit_id=audit_id,
+            prompt, system_prompt, user=user, website=website,
+            audit_id=audit_id, region=region,
         )
         return result.succeeded, result.text, result.error
 
     @staticmethod
     def _query_openai(prompt: str, system_prompt: str = "",
-                      *, user=None, website=None, audit_id=None) -> tuple[bool, str, str]:
+                      *, user=None, website=None, audit_id=None,
+                      region: str = "") -> tuple[bool, str, str]:
         from apps.llm_ranking.providers import OpenAIProvider
         result = OpenAIProvider().query(
-            prompt, system_prompt, user=user, website=website, audit_id=audit_id,
+            prompt, system_prompt, user=user, website=website,
+            audit_id=audit_id, region=region,
         )
         return result.succeeded, result.text, result.error
 
     @staticmethod
     def _query_gemini(prompt: str, system_prompt: str = "",
-                      *, user=None, website=None, audit_id=None) -> tuple[bool, str, str]:
+                      *, user=None, website=None, audit_id=None,
+                      region: str = "") -> tuple[bool, str, str]:
         from apps.llm_ranking.providers import GeminiProvider
         result = GeminiProvider().query(
-            prompt, system_prompt, user=user, website=website, audit_id=audit_id,
+            prompt, system_prompt, user=user, website=website,
+            audit_id=audit_id, region=region,
         )
         return result.succeeded, result.text, result.error
 
     @staticmethod
     def _query_perplexity(prompt: str, system_prompt: str = "",
-                          *, user=None, website=None, audit_id=None) -> tuple[bool, str, str]:
+                          *, user=None, website=None, audit_id=None,
+                          region: str = "") -> tuple[bool, str, str]:
         from apps.llm_ranking.providers import PerplexityProvider
         result = PerplexityProvider().query(
-            prompt, system_prompt, user=user, website=website, audit_id=audit_id,
+            prompt, system_prompt, user=user, website=website,
+            audit_id=audit_id, region=region,
         )
         return result.succeeded, result.text, result.error
 
@@ -366,6 +463,7 @@ class LLMRankingService:
             return {
                 "overall_score": 0,
                 "mention_rate": 0.0,
+                "mention_rate_smoothed": 0.0,
                 "avg_mention_rank": 0.0,
                 "mention_rate_ci_lower": 0.0,
                 "mention_rate_ci_upper": 0.0,
@@ -375,17 +473,24 @@ class LLMRankingService:
         mentioned = [r for r in succeeded if r.is_mentioned]
         mention_rate = len(mentioned) / len(succeeded) * 100 if succeeded else 0.0
 
+        # Smoothed mention rate via Beta-Binomial posterior. Used as the
+        # input to the score so cold-start audits with tiny sample sizes
+        # don't peg the mention component at 40 points.
+        mention_rate_smoothed = beta_binomial_mean(
+            len(mentioned), len(succeeded)
+        ) * 100
+
         ci_low, ci_high = wilson_ci(len(mentioned), len(succeeded))
 
         ranks = [r.mention_rank for r in mentioned if r.mention_rank is not None]
         avg_rank = sum(ranks) / len(ranks) if ranks else 0.0
 
         # Score formula:
-        #   40% mention rate (0-40 pts)
+        #   40% mention rate (0-40 pts) — uses Beta-Binomial smoothed value
         #   30% rank bonus: top-3 mentions add more (0-30 pts)
         #   20% sentiment (positive=20, neutral=10, negative=0)
         #   10% provider coverage bonus (queried ≥3 providers)
-        mention_score = mention_rate * 0.40
+        mention_score = mention_rate_smoothed * 0.40
 
         rank_score = 0.0
         if ranks:
@@ -415,6 +520,7 @@ class LLMRankingService:
         return {
             "overall_score": overall,
             "mention_rate": round(mention_rate, 1),
+            "mention_rate_smoothed": round(mention_rate_smoothed, 1),
             "avg_mention_rank": round(avg_rank, 1),
             "mention_rate_ci_lower": round(ci_low * 100, 1),
             "mention_rate_ci_upper": round(ci_high * 100, 1),
@@ -472,7 +578,7 @@ class LLMRankingService:
             entry = {"ts": timezone.now().isoformat(), "level": level, "msg": msg}
             logs = list(audit.audit_logs or [])
             logs.append(entry)
-            audit.audit_logs = logs
+            audit.audit_logs = _capped_logs(logs)
 
         _audit_log(f"Starting audit for {audit.business_name} ({audit.industry})")
         _audit_log(f"Selected LLM providers: {', '.join(provider_keys)}")
@@ -534,6 +640,20 @@ class LLMRankingService:
             "status", "total_queries", "queries_completed", "started_at",
             "providers_queried", "audit_logs", "context_urls", "updated_at",
         ])
+
+        # Persist the enrichment block back into the user's knowledge base
+        # so the *next* audit can retrieve from it. This is the
+        # incremental "learning" loop — every audit grows the corpus.
+        if enriched_context:
+            try:
+                from apps.rag.services.ingest_service import ingest_audit_context
+                ingest_audit_context(
+                    user=audit.created_by, website=audit.website,
+                    audit_id=str(audit.id), llm_context=enriched_context,
+                )
+            except Exception as exc:
+                logger.debug("Audit-context RAG ingest skipped: %s", exc)
+
         return {"prompts": prompt_items, "providers": provider_keys}
 
     @staticmethod
@@ -564,9 +684,25 @@ class LLMRankingService:
             if isinstance(c, dict) and c.get("kind") == "_enriched":
                 enriched_context = c.get("text", "")
                 break
+
+        # Per-prompt RAG retrieval — pulls the chunks most relevant to
+        # this specific prompt out of the user's knowledge base and
+        # appends them under the static enrichment context. Falls back
+        # silently when the KB is empty.
+        rag_block = ""
+        try:
+            from apps.rag.services.retriever import retrieve_context_block
+            rag_block = retrieve_context_block(
+                user=audit.created_by, website=audit.website,
+                query=prompt_text, top_k=4, max_chars=2000,
+            )
+        except Exception as exc:
+            logger.debug("RAG retrieval skipped for cell: %s", exc)
+
+        full_context = "\n\n".join(c for c in [enriched_context, rag_block] if c)
         sys_prompt = (
-            build_enriched_system_prompt(SYSTEM_INSTRUCTION, enriched_context)
-            if enriched_context else ""
+            build_enriched_system_prompt(SYSTEM_INSTRUCTION, full_context)
+            if full_context else ""
         )
 
         provider_inst = get_provider(provider)
@@ -586,6 +722,7 @@ class LLMRankingService:
             prompt_text, sys_prompt,
             user=audit.created_by, website=audit.website,
             audit_id=str(audit.id),
+            region=getattr(audit, "region", "") or "",
         )
 
         analysis = LLMRankingService._empty_analysis()
@@ -621,6 +758,7 @@ class LLMRankingService:
                 "competitors_mentioned": analysis.get("competitors_mentioned", []),
                 "primary_recommendation": analysis.get("primary_recommendation", ""),
                 "citations": analysis.get("citations", []),
+                "citation_countries": _country_counts_for(analysis.get("citations", [])),
                 "extraction_model": analysis.get("extraction_model", ""),
                 "extraction_version": analysis.get("extraction_version", ""),
             },
@@ -693,6 +831,30 @@ class LLMRankingService:
         all_results = list(audit.results.all())
         scores = LLMRankingService.compute_overall_score(all_results)
 
+        # Roll up per-result citation_countries into the audit-level
+        # footprint so the dashboard can chart "where do citations come
+        # from" without re-aggregating on every read.
+        try:
+            from apps.llm_ranking.services.citation_geo import merge_country_counts
+            audit.citation_countries = merge_country_counts(
+                *(r.citation_countries or {} for r in all_results),
+            )
+        except Exception as exc:
+            logger.debug("Citation country roll-up skipped: %s", exc)
+
+        # Plackett-Luce strengths across the target + competitors. Powers
+        # the Rankings Table on the dashboard with a calibrated cross-
+        # response brand strength rather than a raw mention count.
+        try:
+            from apps.llm_ranking.services.plackett_luce import (
+                fit_plackett_luce, rankings_from_results,
+            )
+            rankings = rankings_from_results(all_results, audit.business_name)
+            audit.brand_strengths = fit_plackett_luce(rankings)
+        except Exception as exc:
+            logger.warning("Plackett-Luce fit failed for audit %s: %s", audit_id, exc)
+            audit.brand_strengths = {}
+
         # Cost roll-up — only rows tagged with this audit's id.
         try:
             from django.db.models import Sum
@@ -714,6 +876,7 @@ class LLMRankingService:
         audit.status = LLMRankingAudit.STATUS_COMPLETED
         audit.overall_score = scores["overall_score"]
         audit.mention_rate = scores["mention_rate"]
+        audit.mention_rate_smoothed = scores["mention_rate_smoothed"]
         audit.avg_mention_rank = scores["avg_mention_rank"]
         audit.mention_rate_ci_lower = scores["mention_rate_ci_lower"]
         audit.mention_rate_ci_upper = scores["mention_rate_ci_upper"]
@@ -732,10 +895,11 @@ class LLMRankingService:
                 f"cost ${float(audit.total_cost_usd):.4f}"
             ),
         })
-        audit.audit_logs = logs
+        audit.audit_logs = _capped_logs(logs)
 
         audit.save(update_fields=[
-            "status", "overall_score", "mention_rate", "avg_mention_rank",
+            "status", "overall_score", "mention_rate", "mention_rate_smoothed",
+            "avg_mention_rank", "brand_strengths", "citation_countries",
             "mention_rate_ci_lower", "mention_rate_ci_upper",
             "providers_queried", "extraction_method", "completed_at",
             "duration_seconds", "total_tokens", "total_cost_usd",
@@ -762,7 +926,7 @@ class LLMRankingService:
             }
             logs = list(audit_obj.audit_logs or [])
             logs.append(entry)
-            audit_obj.audit_logs = logs
+            audit_obj.audit_logs = _capped_logs(logs)
             try:
                 audit_obj.save(update_fields=["audit_logs", "updated_at"])
             except Exception:
@@ -854,6 +1018,19 @@ class LLMRankingService:
         if enriched_context:
             _audit_log(audit, "🧠 Enriched system prompt ready — Claude will see full business context")
 
+        # Ingest the enrichment back into the user's RAG knowledge base
+        # for future audits to retrieve from. The "learning" loop.
+        if enriched_context:
+            try:
+                from apps.rag.services.ingest_service import ingest_audit_context
+                ingest_audit_context(
+                    user=audit.created_by, website=audit.website,
+                    audit_id=str(audit.id), llm_context=enriched_context,
+                )
+                _audit_log(audit, "📚 Audit context added to knowledge base", "success")
+            except Exception as exc:
+                logger.debug("Audit-context RAG ingest skipped: %s", exc)
+
         # Calculate total queries and set progress tracking
         # Prompts may be structured [{"text": ..., "type": ...}] or flat ["..."]
         prompt_items = []
@@ -901,11 +1078,29 @@ class LLMRankingService:
                     # All providers get the enriched context when available.
                     # user/website/audit_id are passed through so each call's
                     # token usage is attributed to the right user in Settings.
-                    sys_prompt = enriched_system if enriched_context else ""
+                    # Per-prompt RAG retrieval — appends knowledge-base
+                    # chunks most relevant to this specific prompt.
+                    rag_block = ""
+                    try:
+                        from apps.rag.services.retriever import retrieve_context_block
+                        rag_block = retrieve_context_block(
+                            user=audit.created_by, website=audit.website,
+                            query=prompt_text, top_k=4, max_chars=2000,
+                        )
+                    except Exception as _rag_exc:
+                        logger.debug("RAG retrieval skipped: %s", _rag_exc)
+                    if rag_block:
+                        sys_prompt = build_enriched_system_prompt(
+                            SYSTEM_INSTRUCTION,
+                            "\n\n".join(c for c in [enriched_context, rag_block] if c),
+                        )
+                    else:
+                        sys_prompt = enriched_system if enriched_context else ""
                     succeeded, response_text, error = query_fn(
                         prompt_text, sys_prompt,
                         user=audit.created_by, website=audit.website,
                         audit_id=str(audit.id),
+                        region=getattr(audit, "region", "") or "",
                     )
                 except Exception as exc:
                     succeeded, response_text, error = False, "", str(exc)
@@ -969,6 +1164,7 @@ class LLMRankingService:
                     competitors_mentioned=analysis.get("competitors_mentioned", []),
                     primary_recommendation=analysis.get("primary_recommendation", ""),
                     citations=analysis.get("citations", []),
+                    citation_countries=_country_counts_for(analysis.get("citations", [])),
                     extraction_model=analysis.get("extraction_model", ""),
                     extraction_version=analysis.get("extraction_version", ""),
                 )
@@ -989,6 +1185,32 @@ class LLMRankingService:
         _audit_log(audit, "📊 Computing aggregate scores...")
         scores = LLMRankingService.compute_overall_score(all_results)
 
+        # Audit-level citation footprint (roll-up of per-result counts).
+        try:
+            from apps.llm_ranking.services.citation_geo import merge_country_counts
+            audit.citation_countries = merge_country_counts(
+                *(r.citation_countries or {} for r in all_results),
+            )
+        except Exception as exc:
+            logger.debug("Citation country roll-up skipped: %s", exc)
+
+        # Plackett-Luce brand strengths across the target + competitors.
+        try:
+            from apps.llm_ranking.services.plackett_luce import (
+                fit_plackett_luce, rankings_from_results,
+            )
+            rankings = rankings_from_results(all_results, audit.business_name)
+            audit.brand_strengths = fit_plackett_luce(rankings)
+            if audit.brand_strengths:
+                _audit_log(
+                    audit,
+                    f"🏅 Brand strengths fit across {len(rankings)} ranked responses",
+                    "success",
+                )
+        except Exception as exc:
+            logger.warning("Plackett-Luce fit failed for audit %s: %s", audit_id, exc)
+            audit.brand_strengths = {}
+
         # Roll up token + cost spend for this audit. We tagged every record
         # with metadata.audit_id, so we can sum exactly the rows this run
         # produced (upstream + extraction + any prompt-generation).
@@ -1008,6 +1230,7 @@ class LLMRankingService:
         audit.status = LLMRankingAudit.STATUS_COMPLETED
         audit.overall_score = scores["overall_score"]
         audit.mention_rate = scores["mention_rate"]
+        audit.mention_rate_smoothed = scores["mention_rate_smoothed"]
         audit.avg_mention_rank = scores["avg_mention_rank"]
         audit.mention_rate_ci_lower = scores["mention_rate_ci_lower"]
         audit.mention_rate_ci_upper = scores["mention_rate_ci_upper"]
@@ -1030,7 +1253,8 @@ class LLMRankingService:
         _audit_log(audit, f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
         audit.save(update_fields=[
-            "status", "overall_score", "mention_rate", "avg_mention_rank",
+            "status", "overall_score", "mention_rate", "mention_rate_smoothed",
+            "avg_mention_rank", "brand_strengths", "citation_countries",
             "mention_rate_ci_lower", "mention_rate_ci_upper",
             "providers_queried", "extraction_method", "completed_at",
             "duration_seconds", "total_tokens", "total_cost_usd", "updated_at",

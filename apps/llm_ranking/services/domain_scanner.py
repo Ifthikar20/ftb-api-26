@@ -441,23 +441,32 @@ def scan_domain(url: str) -> dict:
     }
 
     try:
-        resp = requests.get(
-            url,
-            timeout=SCAN_TIMEOUT,
-            headers={
-                "User-Agent": (
-                    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/120.0.0.0 Safari/537.36"
-                ),
-                "Accept": "text/html,application/xhtml+xml",
-                "Accept-Language": "en-US,en;q=0.9",
-            },
-            allow_redirects=True,
-        )
-        resp.raise_for_status()
+        # All HTTP fetches go through ``safe_get`` — SSRF guard, redirect
+        # re-validation, content-type allowlist, and a streaming body cap.
+        from core.validators.safe_http import FetchError, safe_get
+        try:
+            resp = safe_get(
+                url,
+                timeout=SCAN_TIMEOUT,
+                max_bytes=MAX_BODY_SIZE,
+                headers={
+                    "User-Agent": (
+                        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                        "AppleWebKit/537.36 (KHTML, like Gecko) "
+                        "Chrome/120.0.0.0 Safari/537.36"
+                    ),
+                    "Accept": "text/html,application/xhtml+xml",
+                    "Accept-Language": "en-US,en;q=0.9",
+                },
+            )
+        except FetchError as exc:
+            result["error"] = str(exc)[:200]
+            return result
+        url = resp.final_url
+        if resp.status_code >= 400:
+            result["error"] = f"HTTP error: {resp.status_code}"
+            return result
 
-        # Limit body size
         html = resp.text[:MAX_BODY_SIZE]
 
         parser = DeepExtractor()

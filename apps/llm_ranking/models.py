@@ -49,7 +49,14 @@ class LLMRankingAudit(TimestampMixin):
     # Aggregate scores
     overall_score = models.IntegerField(default=0, db_index=True)  # 0-100
     mention_rate = models.FloatField(default=0.0)   # % of queries where business was mentioned
+    # Beta-Binomial posterior mean for mention rate (Beta(2,8) prior). Used
+    # for scoring so 1/1 doesn't peg the score at 100% on tiny samples.
+    mention_rate_smoothed = models.FloatField(default=0.0)
     avg_mention_rank = models.FloatField(default=0.0)  # avg position when mentioned (lower=better)
+    # Plackett-Luce strengths {brand: 0..1} fit across all rankings in this
+    # audit. The target brand and every competitor that appeared with a
+    # position contribute. Max strength is normalised to 1.0.
+    brand_strengths = models.JSONField(default=dict, blank=True)
     # Which providers were queried
     providers_queried = models.JSONField(default=list)
     # Progress tracking for batch job
@@ -81,6 +88,13 @@ class LLMRankingAudit(TimestampMixin):
     extraction_method = models.CharField(
         max_length=20, choices=EXTRACTION_CHOICES, default=EXTRACTION_HEURISTIC
     )
+    # Geographic region for this audit. "global" means no geo flavoring;
+    # other codes append a region hint to prompts and route Perplexity
+    # web search to that country.
+    region = models.CharField(max_length=10, default="global", db_index=True)
+    # Aggregated citation footprint by country (ISO-2 code -> count).
+    # Built in finalise_audit from each result's citation URLs.
+    citation_countries = models.JSONField(default=dict, blank=True)
     # Schedule: frequency for recurring audit jobs
     SCHEDULE_NONE = ""
     SCHEDULE_DAILY = "daily"
@@ -199,6 +213,10 @@ class LLMRankingResult(TimestampMixin):
     # Which model + prompt version was used to extract structured data
     extraction_model = models.CharField(max_length=100, blank=True)
     extraction_version = models.CharField(max_length=20, blank=True)
+    # Per-result citation country breakdown (ISO-2 -> count). Computed
+    # from this row's citations during aggregation; rolled up into the
+    # audit-level ``citation_countries`` field for the dashboard.
+    citation_countries = models.JSONField(default=dict, blank=True)
     # The intent type of the prompt (recommendation, comparison, persona, etc.)
     # NOTE: computed at runtime from prompt text — no database column needed.
     PROMPT_TYPE_CHOICES = [

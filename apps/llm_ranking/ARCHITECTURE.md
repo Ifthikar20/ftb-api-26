@@ -183,7 +183,7 @@ Celery Task (ai queue)
 
 | Model | Purpose |
 |---|---|
-| `LLMRankingAudit` | A single audit run. Stores business context snapshot (name, description, industry, location, keywords, context_urls), prompts used, progress tracking, aggregate scores, and `audit_logs` (JSON array for live pipeline feed). |
+| `LLMRankingAudit` | A single audit run. Stores business context snapshot (name, description, industry, location, keywords, context_urls), prompts used, progress tracking, aggregate scores, `mention_rate_smoothed` (Beta-Binomial posterior mean), `brand_strengths` (Plackett-Luce strengths {brand: 0..1}), and `audit_logs` (JSON array for live pipeline feed). |
 | `LLMRankingResult` | One response from one LLM for one prompt. Captures `is_mentioned`, `mention_rank`, `sentiment`, `confidence_score`, `mention_context`, `is_linked`, `competitors_mentioned`, `primary_recommendation`, `citations`, `extraction_model`, `extraction_version`. |
 | `LLMRankingSchedule` | Per-website periodic schedule. Stores business context, frequency (weekly/biweekly/monthly), and `next_run_at` for automatic audit creation via Celery Beat. |
 
@@ -256,10 +256,13 @@ review:         1    local:      1 (only if location provided)
 
 ## Scoring Formula
 
+The mention-rate component is computed against the **Beta-Binomial posterior mean** rather than the raw proportion. The prior is `Beta(2, 8)` (~20% baseline mention rate), so an audit with 1/1 mentions yields a posterior mean of `(2+1)/(2+8+1) ≈ 27%` rather than the misleading raw `100%`. As `n` grows the posterior approaches the empirical rate.
+
 ```
 Overall Score (0–100) =
   Mention Rate component (0–40 pts)
-    = mention_rate% × 0.40
+    = mention_rate_smoothed% × 0.40
+    where mention_rate_smoothed = (2 + mentions) / (10 + n) × 100
 
 + Rank Position component (0–30 pts)
     = avg_rank ≤ 1 → 30pts
@@ -276,6 +279,30 @@ Overall Score (0–100) =
 ```
 
 **Mention Rate CI:** Wilson score interval at 95% confidence — stays sensible for small sample sizes (n < 30).
+
+## Geographic Regions
+
+An audit is tagged with one of `global`, `us`, `ca`, `in`, `uk`, `de`, `au`. Region selection affects three points in the pipeline:
+
+1. **Prompt flavour** (`services/regions.flavor_prompt`) — appends a region hint to each prompt template before fan-out, so non-grounded providers (Claude, GPT-4, Gemini) bias their answer toward that geo's training-data examples.
+2. **Perplexity web grounding** — when `region != global`, the Perplexity provider passes `web_search_options.user_location.country` to the API so the underlying web search retrieves region-appropriate sources. Other providers ignore this knob.
+3. **Citation country attribution** — `services/citation_geo.attribute_country` maps each citation URL to an ISO-2 country code via ccTLD lookup + a small known-domain table (g2.com → US, yourstory.com → IN, etc.). Per-result counts are persisted on `LLMRankingResult.citation_countries`; the audit-level roll-up `LLMRankingAudit.citation_countries` powers the "Citation Footprint by Country" dashboard card.
+
+The attribution heuristic is intentionally simple (no GeoIP, no DNS resolution). It covers ~80% of common cases at zero infra cost; swap to MaxMind GeoLite2 later without touching call sites — the only consumer is `attribute_country`.
+
+## Brand Strength Ranking (Plackett-Luce)
+
+The Rankings Table on the dashboard is driven by **Plackett-Luce strengths** rather than raw mention counts. For every response where the target and/or competitors appeared with a position, we treat the ordered list as a partial ranking. We then fit a single per-brand strength `w_i` such that
+
+```
+P(item i ranked first among S) = w_i / Σ_{j ∈ S} w_j
+```
+
+via Hunter's MM iteration (no learning rate, monotone log-likelihood improvement). Strengths are normalised so the leader = 1.0; runners-up reflect their head-to-head dominance, not their raw mention frequency.
+
+Implementation: `services/plackett_luce.py` (pure Python, no NumPy dependency). Persisted on `LLMRankingAudit.brand_strengths` as `{brand: 0..1}`.
+
+**Offline evaluation:** `scripts/eval_ranking.py` reports NDCG@5 and MRR over completed audits, comparing the predicted ranking from `brand_strengths` against the empirical per-prompt ordering.
 
 ---
 
@@ -375,6 +402,6 @@ UI ──poll (2s)──> GET /audits/<aid>/logs/?after=<ts>
 
 ## Dependencies
 
-- **Internal:** `websites`, `accounts`, `core` (ai_tracking, permissions, tenant scoping)
+- **Internal:** `websites`, `accounts`, `core` (ai_tracking, permissions, tenant scoping), `rag` (per-user knowledge base for grounded prompt generation and per-prompt retrieval)
 - **External APIs:** Anthropic, OpenAI, Google Generative AI, Perplexity, Google Custom Search
 - **Frontend:** Vue 3, Chart.js + vue-chartjs, axios

@@ -57,6 +57,8 @@ LOCAL_APPS = [
     "apps.notifications",
     "apps.billing",
     "apps.llm_ranking",
+    "apps.rag",
+    "apps.onboarding",
     "apps.compliance",
     "apps.social_leads",
     "apps.messaging",
@@ -286,6 +288,12 @@ GOOGLE_SEARCH_API_KEY = env("GOOGLE_SEARCH_API_KEY", default="")
 GOOGLE_SEARCH_ENGINE_ID = env("GOOGLE_SEARCH_ENGINE_ID", default="")
 STRIPE_SECRET_KEY = env("STRIPE_SECRET_KEY", default="")
 STRIPE_WEBHOOK_SECRET = env("STRIPE_WEBHOOK_SECRET", default="")
+STRIPE_INDIVIDUAL_PRICE_ID = env("STRIPE_INDIVIDUAL_PRICE_ID", default="")
+STRIPE_PRO_PRICE_ID = env("STRIPE_PRO_PRICE_ID", default="")
+STRIPE_INDIVIDUAL_ANNUAL_PRICE_ID = env("STRIPE_INDIVIDUAL_ANNUAL_PRICE_ID", default="")
+STRIPE_PRO_ANNUAL_PRICE_ID = env("STRIPE_PRO_ANNUAL_PRICE_ID", default="")
+# Legacy aliases — kept so older deploy configs (env vars set in
+# infra/secrets) don't break before they're rotated.
 STRIPE_STARTER_PRICE_ID = env("STRIPE_STARTER_PRICE_ID", default="")
 STRIPE_GROWTH_PRICE_ID = env("STRIPE_GROWTH_PRICE_ID", default="")
 STRIPE_SCALE_PRICE_ID = env("STRIPE_SCALE_PRICE_ID", default="")

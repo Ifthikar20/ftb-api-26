@@ -1,46 +1,51 @@
 // Pricing tiers shown on the paywall.
-// TODO: team decision — replace price IDs with real Stripe price IDs once created.
-// TODO: team decision — finalize feature bullets per tier.
+//
+// Three tiers: Individual ($45), Pro ($100), Business (contact). The
+// per-tier ``maxPromptsPerAudit`` mirrors core.utils.constants.PLAN_LIMITS
+// — keep in sync with the backend or the dashboard will lie about the
+// cap a user has when their plan changes.
 
 export const TIERS = [
     {
-        id: 'starter',
-        name: 'Starter',
-        price: 29,
-        priceLabel: '$29',
+        id: 'individual',
+        name: 'Individual',
+        price: 45,
+        priceLabel: '$45',
         period: '/month',
-        description: 'For solo founders and small sites getting started with AI visibility.',
+        maxPromptsPerAudit: 5,
+        description: 'For solo founders watching one site.',
         features: [
             '1 website',
-            '4 LLM providers (Claude, GPT-4, Gemini, Perplexity)',
-            'Weekly audits',
-            '10 prompts per audit',
+            '5 prompts per audit',
+            '4 audits / month',
+            'Claude + GPT-4',
             'Email support',
         ],
-        cta: 'Start with Starter',
-        // TODO: replace with real Stripe price id from dashboard
-        stripePriceId: 'TODO_STRIPE_PRICE_ID_STARTER_29',
-        planCode: 'starter',
+        cta: 'Start with Individual',
+        // Backend reads STRIPE_INDIVIDUAL_PRICE_ID from env.
+        stripePriceId: 'STRIPE_INDIVIDUAL_PRICE_ID',
+        planCode: 'individual',
         highlight: false,
     },
     {
         id: 'pro',
         name: 'Pro',
-        price: 96,
-        priceLabel: '$96',
+        price: 100,
+        priceLabel: '$100',
         period: '/month',
-        description: 'For growing teams who need competitive intelligence and scheduled monitoring.',
+        maxPromptsPerAudit: 15,
+        description: 'Full access — every LLM provider and competitor tracking.',
         features: [
             'Up to 5 websites',
-            '4 LLM providers + competitor tracking',
+            '15 prompts per audit',
             'Daily audits',
-            '50 prompts per audit',
+            '4 LLM providers (Claude, GPT-4, Gemini, Perplexity)',
+            'Competitor tracking + RAG knowledge base',
             'Trend intelligence + recommendations',
             'Priority support',
         ],
         cta: 'Upgrade to Pro',
-        // TODO: replace with real Stripe price id from dashboard
-        stripePriceId: 'TODO_STRIPE_PRICE_ID_PRO_96',
+        stripePriceId: 'STRIPE_PRO_PRICE_ID',
         planCode: 'pro',
         highlight: true,
     },
@@ -50,9 +55,12 @@ export const TIERS = [
         price: null,
         priceLabel: 'Custom',
         period: '',
+        maxPromptsPerAudit: 50,
         description: 'Dedicated support, custom integrations, and unlimited scale.',
         features: [
             'Unlimited websites',
+            '50+ prompts per audit',
+            'Unlimited audits',
             'SSO, SAML, audit logs',
             'Custom prompt packs',
             'API access + white-label',
@@ -61,7 +69,6 @@ export const TIERS = [
         cta: 'Contact sales',
         stripePriceId: null,
         planCode: 'enterprise',
-        // TODO: team decision — replace with real contact target (calendly link or sales@)
         contactTarget: 'mailto:sales@fetchbot.ai?subject=Business plan inquiry',
         highlight: false,
     },

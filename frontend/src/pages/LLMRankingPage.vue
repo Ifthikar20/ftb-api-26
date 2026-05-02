@@ -13,6 +13,11 @@
           See how AI tools like Claude, GPT-4, Gemini, and Perplexity rank your business
           when users ask them to find a service like yours.
         </p>
+        <p v-if="currentWebsite" class="page-context">
+          Auditing <strong>{{ websiteName }}</strong>
+          <span v-if="homepageUrl" class="text-muted">· {{ homepageUrl }}</span>
+          <a href="/websites/" class="page-context-link">change website</a>
+        </p>
       </div>
       <div class="header-actions">
         <button class="btn btn-secondary btn-sm" @click="showScheduleModal = true">
@@ -104,10 +109,22 @@
           <div class="kpi-card">
             <div class="kpi-label">
               Brand Visibility
-              <span class="kpi-info" title="How often you appear when AI assistants are asked about your category">i</span>
+              <span class="kpi-info" title="How often you appear when AI assistants are asked about your category. Smoothed via a Beta(2,8) prior so small-sample audits don't read 100%.">i</span>
             </div>
-            <div class="kpi-value">{{ kpiBrandVisibility.value }}<span class="kpi-unit">%</span></div>
-            <div class="kpi-sub">Based on {{ kpiBrandVisibility.basis }} prompts simulated</div>
+            <div class="kpi-value">
+              <span
+                v-if="visibilityConfidence(kpiBrandVisibility)"
+                class="kpi-conf-dot"
+                :class="`kpi-conf-${visibilityConfidence(kpiBrandVisibility)}`"
+                :title="`Estimate confidence: ${visibilityConfidence(kpiBrandVisibility)} (CI width ${(kpiBrandVisibility.ciHigh - kpiBrandVisibility.ciLow)}%)`"
+              />
+              {{ kpiBrandVisibility.value }}<span class="kpi-unit">%</span>
+            </div>
+            <div class="kpi-sub" v-if="kpiBrandVisibility.ciHigh > 0">
+              95% CI: {{ kpiBrandVisibility.ciLow }}–{{ kpiBrandVisibility.ciHigh }}%
+              <span class="kpi-sub-muted">· raw {{ kpiBrandVisibility.raw }}% · n={{ kpiBrandVisibility.basis }}</span>
+            </div>
+            <div class="kpi-sub" v-else>Based on {{ kpiBrandVisibility.basis }} prompts simulated</div>
           </div>
           <div class="kpi-card">
             <div class="kpi-label">
@@ -161,7 +178,9 @@
             <div class="bo-ranking-head">
               <span class="bo-rh-rank">#</span>
               <span class="bo-rh-name">Competitor</span>
-              <span class="bo-rh-vis">Visibility</span>
+              <span class="bo-rh-vis" :title="usingBrandStrengths ? 'Plackett-Luce brand strength (max=100). Calibrated across all rankings in this audit.' : 'Mention rate across responses.'">
+                {{ usingBrandStrengths ? 'Strength' : 'Visibility' }}
+              </span>
             </div>
             <div class="bo-ranking-list">
               <div v-for="r in brandRankingRows" :key="r.name"
@@ -174,7 +193,15 @@
                   <span class="bo-brand-avatar" :style="{ background: brandColor(r.name) }">{{ r.name[0] }}</span>
                   <span>{{ r.name }} <span v-if="r.is_you" class="bo-you-tag">(You)</span></span>
                 </span>
-                <span class="bo-rh-vis">{{ r.visibility }}%</span>
+                <span class="bo-rh-vis">
+                  <template v-if="usingBrandStrengths && r.strength != null">
+                    <span class="bo-strength-bar">
+                      <span class="bo-strength-fill" :style="{ width: (r.strength * 100) + '%' }" />
+                    </span>
+                    <span class="bo-strength-num">{{ Math.round(r.strength * 100) }}</span>
+                  </template>
+                  <template v-else>{{ r.visibility }}%</template>
+                </span>
               </div>
             </div>
           </div>
@@ -225,6 +252,53 @@
               </div>
             </div>
           </div>
+        </div>
+
+        <!-- Row 3b: Citation Footprint by Country (geo) -->
+        <div v-if="citationFootprint.length" class="card bo-footprint-card" style="margin-bottom:24px">
+          <div class="card-header">
+            <h3 class="card-title">Citation Footprint by Country</h3>
+            <span class="text-xs text-muted">where the LLMs' grounding sources are hosted</span>
+          </div>
+          <div class="bo-footprint-grid">
+            <div v-for="row in citationFootprint" :key="row.country" class="bo-footprint-row">
+              <span class="bo-footprint-flag" :title="row.country">{{ row.flag }}</span>
+              <span class="bo-footprint-name">{{ row.label }}</span>
+              <span class="bo-footprint-bar">
+                <span class="bo-footprint-fill" :style="{ width: row.share + '%' }" />
+              </span>
+              <span class="bo-footprint-num">{{ row.count }}</span>
+              <span class="bo-footprint-pct">{{ row.share }}%</span>
+            </div>
+          </div>
+          <div v-if="latestAudit && latestAudit.region && latestAudit.region !== 'global'"
+               class="text-xs text-muted" style="margin-top:8px">
+            Audit region: <strong>{{ regionLabel(latestAudit.region) }}</strong> — Perplexity grounded its web search in this country; other providers used the geo-flavored prompt.
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ Diagnostics — visual breakdowns of the audit ═══
+           Shows when the audit produced data on at least one prompt.
+           Each component v-if-guards itself for empty data so partial
+           audits (running, single-provider) still render gracefully. -->
+      <div v-if="isAuditComplete && diagnosticsHaveData" class="lr-diagnostics" style="margin-bottom:24px">
+        <PromptHeatmap
+          :results="auditDetail?.results || []"
+          :provider-label="providerLabel"
+          :provider-color="providerColor"
+        />
+        <div class="lr-grid-2" style="margin-bottom:0">
+          <FunnelRadar
+            :results="auditDetail?.results || []"
+            :prompts="latestAudit?.prompts || []"
+            :target-name="latestAudit?.business_name || 'You'"
+            :competitor-name="kpiClosestCompetitor.name || ''"
+          />
+          <ProviderAgreement
+            :results="auditDetail?.results || []"
+            :provider-label="providerLabel"
+          />
         </div>
       </div>
 
@@ -554,64 +628,107 @@
         </div>
       </div>
 
-      <!-- Live query ticker (running audits only) -->
-      <div v-if="isAuditRunning && liveResults.length" class="card" style="margin-bottom:24px">
+      <!-- Prompt Activity — chronological per-query record -->
+      <!-- Replaces the old Pipeline Log + Live Results ticker. Shows what
+           we asked, when we asked it, which model answered, and whether
+           the brand was mentioned. Same data is visible during a running
+           audit (partial) and after completion (full). -->
+      <div v-if="promptActivity.length" class="card" style="margin-bottom:24px">
         <div class="card-header">
           <h3 class="card-title">
-            Live results
-            <span class="live-pulse"></span>
-          </h3>
-          <span class="text-xs text-muted">{{ liveResults.length }} response{{ liveResults.length === 1 ? '' : 's' }} so far</span>
-        </div>
-        <div class="live-list">
-          <div
-            v-for="r in liveResults.slice(0, 10)"
-            :key="r.id"
-            class="live-row"
-            :class="{ 'live-hit': r.is_mentioned, 'live-fail': !r.query_succeeded }"
-          >
-            <span class="live-provider">{{ providerLabel(r.provider) }}</span>
-            <span class="live-prompt">{{ r.prompt }}</span>
-            <span v-if="!r.query_succeeded" class="badge badge-danger">API error</span>
-            <span v-else-if="r.is_mentioned" class="badge badge-success">
-              Ranked #{{ r.mention_rank || '—' }}
+            Prompt Activity
+            <span v-if="isAuditRunning" class="text-xs text-muted" style="font-weight:500">
+              · running
             </span>
-            <span v-else class="badge badge-neutral">Not mentioned</span>
-          </div>
+          </h3>
+          <span class="text-xs text-muted">
+            {{ filteredPromptActivity.length }}<template v-if="filteredPromptActivity.length !== promptActivity.length">/{{ promptActivity.length }}</template>
+            prompt{{ promptActivity.length === 1 ? '' : 's' }}
+            <template v-if="logProgress.total">
+              · {{ logProgress.completed }}/{{ logProgress.total }} queries
+            </template>
+          </span>
         </div>
-      </div>
 
-      <!-- ═══ Pipeline Logs (terminal-style) ═══ -->
-      <div v-if="pipelineLogs.length" class="pipeline-log-card" :class="{ 'is-collapsed': !logsExpanded && !isAuditRunning }" style="margin-bottom:24px">
-        <div class="pipeline-log-header" @click="logsExpanded = !logsExpanded">
-          <div class="pipeline-log-title">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
-              <rect x="2" y="2" width="12" height="12" rx="2"/>
-              <path d="M5 6l2 2-2 2"/>
-              <line x1="9" y1="10" x2="11" y2="10"/>
+        <!-- Filters: search, provider, status, sort. Operate on the
+             promptActivity array client-side so the Status poll can
+             continue refreshing the full list underneath without
+             losing the user's filter state. -->
+        <div class="pa-filters">
+          <div class="pa-filter-search">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+              <circle cx="7" cy="7" r="5"/>
+              <path d="M11 11l3 3"/>
             </svg>
-            Pipeline Log
-            <span v-if="isAuditRunning" class="live-pulse"></span>
+            <input
+              v-model="paFilters.search"
+              class="pa-filter-input"
+              placeholder="Search prompts..."
+              type="text"
+            />
           </div>
-          <div class="pipeline-log-meta">
-            <span v-if="logProgress.total" class="text-xs">{{ logProgress.completed }}/{{ logProgress.total }} queries</span>
-            <svg class="pipeline-log-chevron" :class="{ rotated: logsExpanded || isAuditRunning }" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5">
-              <path d="M3 5l3 3 3-3"/>
-            </svg>
-          </div>
-        </div>
-        <div v-show="logsExpanded || isAuditRunning" class="pipeline-log-body" ref="logScrollRef">
-          <div
-            v-for="(log, idx) in pipelineLogs"
-            :key="idx"
-            class="pipeline-log-entry"
-            :class="'log-' + log.level"
+          <select v-model="paFilters.provider" class="pa-filter-select">
+            <option value="">All providers</option>
+            <option v-for="key in promptActivityProviders" :key="key" :value="key">
+              {{ providerLabel(key) }}
+            </option>
+          </select>
+          <select v-model="paFilters.status" class="pa-filter-select">
+            <option value="">All status</option>
+            <option value="mentioned">Mentioned</option>
+            <option value="not_mentioned">Not mentioned</option>
+            <option value="error">API error</option>
+          </select>
+          <select v-model="paFilters.sort" class="pa-filter-select">
+            <option value="time_asc">Oldest first</option>
+            <option value="time_desc">Newest first</option>
+            <option value="rank_asc">Best rank first</option>
+            <option value="provider">Group by provider</option>
+          </select>
+          <button
+            v-if="paFiltersActive"
+            class="pa-filter-clear"
+            @click="resetPromptActivityFilters"
+            title="Clear all filters"
           >
-            <span class="log-time">{{ formatLogTime(log.ts) }}</span>
-            <span class="log-msg">{{ log.msg }}</span>
+            Clear
+          </button>
+        </div>
+
+        <div class="prompt-activity-head">
+          <span class="pa-time">Time</span>
+          <span class="pa-provider">Provider</span>
+          <span class="pa-model">Model</span>
+          <span class="pa-prompt">Prompt</span>
+          <span class="pa-status">Status</span>
+        </div>
+        <div class="prompt-activity-list">
+          <div
+            v-for="r in filteredPromptActivity"
+            :key="r.id || (r.provider + r.prompt + r.created_at)"
+            class="prompt-activity-row"
+            :class="{ 'pa-fail': !r.query_succeeded, 'pa-hit': r.is_mentioned }"
+          >
+            <span class="pa-time">{{ formatPromptTime(r.created_at) }}</span>
+            <span class="pa-provider">
+              <span class="pa-provider-dot" :style="{ background: providerColor(r.provider) }"></span>
+              {{ providerLabel(r.provider) }}
+            </span>
+            <span class="pa-model" :title="providerModel(r.provider)">
+              {{ providerModel(r.provider) }}
+            </span>
+            <span class="pa-prompt" :title="r.prompt">{{ r.prompt }}</span>
+            <span class="pa-status">
+              <span v-if="!r.query_succeeded" class="badge badge-danger">API error</span>
+              <span v-else-if="r.is_mentioned" class="badge badge-success">
+                Ranked #{{ r.mention_rank || '—' }}
+              </span>
+              <span v-else class="badge badge-neutral">Not mentioned</span>
+            </span>
           </div>
-          <div v-if="isAuditRunning" class="pipeline-log-cursor">
-            <span class="cursor-blink">▊</span>
+          <div v-if="!filteredPromptActivity.length" class="pa-empty">
+            No prompts match the current filters.
+            <button class="pa-filter-clear" @click="resetPromptActivityFilters">Clear filters</button>
           </div>
         </div>
       </div>
@@ -760,9 +877,11 @@
               <div>
                 <div class="step-title">Compute Score</div>
                 <div class="step-desc">
-                  <strong>Mention Rate</strong> (40pts): % of queries where you appear.
+                  <strong>Mention Rate</strong> (40pts): Beta(2,8)-smoothed mention rate &mdash; small samples shrink toward a 20% prior so a 1/1 audit can't peg the score at 100%.
                   <strong>Rank Position</strong> (35pts): Higher rank = more points (rank #1 → 35pts, #5 → 20pts).
                   <strong>Sentiment + Coverage</strong> (25pts): Positive mentions and multi-provider presence boost this.
+                  <br><br>
+                  <strong>Brand strengths</strong> in the rankings table are fit with a Plackett-Luce model across all responses where you and competitors appeared with positions, so they reflect head-to-head dominance rather than raw mention counts.
                 </div>
               </div>
             </div>
@@ -1130,56 +1249,63 @@
         <!-- Step content -->
         <div class="wizard-content">
 
-          <!-- Step 0: Website — domain scan -->
+          <!-- Step 0: Pages to scan (same domain only) -->
           <div v-if="wizardStep === 0" class="wizard-pane">
-            <h2 class="wizard-pane-title">Enter your website</h2>
-            <p class="wizard-pane-sub">We'll scan your site to auto-fill your business details.</p>
+            <h2 class="wizard-pane-title">Pages to scan</h2>
+            <p class="wizard-pane-sub">
+              We'll scan <strong>{{ websiteName }}</strong> for this audit.
+              Add specific pages you want grounded into the LLMs' context —
+              blog posts, product pages, case studies, etc.
+              <a href="/websites/" class="wizard-link-inline">Switch website →</a>
+            </p>
 
-            <div class="form-group">
-              <label class="form-label">Domain or URL</label>
-              <div class="wizard-scan-row">
-                <input
-                  v-model="auditForm.scan_url"
-                  class="form-input"
-                  placeholder="e.g. acme.com or https://acme.com"
-                  @keydown.enter.prevent="scanDomain"
-                  :disabled="scanning"
-                />
-                <button
-                  class="btn btn-primary btn-sm"
-                  @click="scanDomain"
-                  :disabled="scanning || !auditForm.scan_url"
-                >
-                  {{ scanning ? 'Scanning...' : 'Scan' }}
+            <div class="wizard-pages-list">
+              <!-- Homepage row, always included, can't be removed -->
+              <div class="wizard-page-row is-homepage">
+                <span class="wizard-page-icon">⌂</span>
+                <div class="wizard-page-meta">
+                  <div class="wizard-page-url">{{ homepageUrl || '—' }}</div>
+                  <div class="text-xs text-muted">Homepage · always included</div>
+                </div>
+              </div>
+              <!-- User-added sub-paths -->
+              <div
+                v-for="p in extraPaths"
+                :key="p.url"
+                class="wizard-page-row"
+              >
+                <span class="wizard-page-icon">↳</span>
+                <div class="wizard-page-meta">
+                  <div class="wizard-page-url">{{ p.url }}</div>
+                  <div class="text-xs text-muted">Sub-path · {{ p.label }}</div>
+                </div>
+                <button class="wizard-page-remove" @click="removeExtraPath(p.url)" title="Remove">
+                  ×
                 </button>
               </div>
             </div>
 
-            <!-- Scanning animation -->
-            <div v-if="scanning" class="wizard-scan-progress">
-              <div class="wizard-scan-spinner"></div>
-              <div class="wizard-scan-status">
-                <span class="wizard-scan-status-text">Analyzing {{ auditForm.scan_url }}...</span>
-                <span class="text-xs text-muted">Extracting business info, competitors, and ranking topics via AI</span>
+            <div class="form-group" style="margin-top:12px">
+              <label class="form-label">Add a page</label>
+              <div class="wizard-scan-row">
+                <input
+                  v-model="extraPathInput"
+                  class="form-input"
+                  :placeholder="`/blog or ${homepageOrigin}/products/...`"
+                  @keydown.enter.prevent="addExtraPath"
+                />
+                <button
+                  class="btn btn-primary btn-sm"
+                  @click="addExtraPath"
+                  :disabled="!extraPathInput.trim()"
+                >
+                  Add
+                </button>
               </div>
-            </div>
-
-            <!-- Scan result preview -->
-            <div v-if="scanResult && !scanning" class="wizard-scan-result" :class="{ 'is-error': !scanResult.success }">
-              <div v-if="scanResult.success" class="wizard-scan-success">
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="#10b981">
-                  <circle cx="8" cy="8" r="8"/>
-                  <path d="M5 8l2 2 4-4" stroke="#fff" stroke-width="1.5" fill="none"/>
-                </svg>
-                <div>
-                  <div class="wizard-scan-name">{{ scanResult.business_name || scanResult.domain }}</div>
-                  <div class="text-xs text-muted">{{ scanResult.description ? scanResult.description.slice(0, 100) + '...' : 'Description extracted' }}</div>
-                </div>
-              </div>
-              <div v-else class="wizard-scan-error">
-                <span class="text-sm" style="color:var(--color-danger, #EF4444)">{{ scanResult.error || 'Could not scan this domain.' }}</span>
-                <p class="text-xs text-muted" style="margin-top:4px">You can fill in the details manually on the next step.</p>
-              </div>
+              <p class="text-xs text-muted" style="margin-top:6px">
+                Paths must be on <strong>{{ homepageOrigin || 'this domain' }}</strong>.
+                External URLs go in the next step's Context Sources.
+              </p>
             </div>
           </div>
 
@@ -1201,6 +1327,17 @@
                 <label class="form-label">Location <span class="text-muted">(optional)</span></label>
                 <input v-model="auditForm.location" class="form-input" placeholder="e.g. New York, US" />
               </div>
+            </div>
+            <div class="form-group" style="margin-top:12px">
+              <label class="form-label">
+                Region
+                <span class="text-muted text-xs">Biases prompts and Perplexity web grounding to this country</span>
+              </label>
+              <select v-model="auditForm.region" class="form-input">
+                <option v-for="opt in REGION_OPTIONS" :key="opt.code" :value="opt.code">
+                  {{ opt.label }}
+                </option>
+              </select>
             </div>
             <div class="form-group" style="margin-top:12px">
               <label class="form-label">
@@ -1433,7 +1570,11 @@
             <div class="wizard-review-grid">
               <div class="wizard-review-item">
                 <span class="wizard-review-label">Website</span>
-                <span class="wizard-review-value">{{ auditForm.scan_url || '—' }}</span>
+                <span class="wizard-review-value">{{ websiteName }}</span>
+              </div>
+              <div class="wizard-review-item">
+                <span class="wizard-review-label">Pages scanned</span>
+                <span class="wizard-review-value">{{ 1 + extraPaths.length }} ({{ extraPaths.length }} extra)</span>
               </div>
               <div class="wizard-review-item">
                 <span class="wizard-review-label">Business</span>
@@ -1593,8 +1734,12 @@ import { useRoute } from 'vue-router'
 import { useToast } from '@/composables/useToast'
 import { useAppStore } from '@/stores/app'
 import llmRankingApi from '@/api/llm_ranking'
+import websitesApi from '@/api/websites'
 import BaseModal from '@/components/ui/BaseModal.vue'
 import FirstRunLLMRanking from '@/components/llm_ranking/FirstRunLLMRanking.vue'
+import PromptHeatmap from '@/components/llm_ranking/PromptHeatmap.vue'
+import FunnelRadar from '@/components/llm_ranking/FunnelRadar.vue'
+import ProviderAgreement from '@/components/llm_ranking/ProviderAgreement.vue'
 import { Line, Bar } from 'vue-chartjs'
 import {
   Chart as ChartJS,
@@ -1841,17 +1986,125 @@ const scheduleForm = ref({
 })
 
 const customPromptsText = ref('')
+// Pre-filled from the route's website on mount. The user does NOT enter
+// a URL here — that's the WebsitesListPage's job. We surface the same
+// website that the route is for, plus any sub-paths the user wants to
+// scan as additional context.
 const auditForm = ref({
   business_name: '',
   industry: '',
   location: '',
+  region: 'global',
   description: '',
   themes: ['recommendation', 'comparison', 'use_case', 'persona'],
   providers: ['claude', 'gpt4', 'gemini', 'perplexity'],
   selectedTopics: [],
   competitors: [],
-  scan_url: '',
 })
+
+// The website attached to ``:websiteId`` — falls back to a direct fetch
+// if the global store doesn't have it (deep link from email, etc.).
+const currentWebsite = ref(null)
+const homepageUrl = computed(() => currentWebsite.value?.url || '')
+const websiteName = computed(() =>
+  currentWebsite.value?.name || currentWebsite.value?.url || 'this website',
+)
+const homepageOrigin = computed(() => {
+  const u = homepageUrl.value
+  if (!u) return ''
+  try {
+    return new URL(u.startsWith('http') ? u : `https://${u}`).origin
+  } catch (_) {
+    return ''
+  }
+})
+
+// Sub-paths the user has opted into for this audit. Stored as full URLs,
+// validated to be on the same origin as the homepage so we can't
+// accidentally turn this into a third-party scrape.
+const extraPaths = ref([])              // [{url, label, error}]
+const extraPathInput = ref('')
+
+function addExtraPath() {
+  const raw = (extraPathInput.value || '').trim()
+  if (!raw) return
+  let full
+  if (raw.startsWith('http://') || raw.startsWith('https://')) {
+    full = raw
+  } else {
+    // Treat as a path or sub-path of the homepage.
+    const path = raw.startsWith('/') ? raw : `/${raw}`
+    full = `${homepageOrigin.value}${path}`
+  }
+  let parsed
+  try {
+    parsed = new URL(full)
+  } catch (_) {
+    toast.error('Not a valid URL or path.')
+    return
+  }
+  if (parsed.origin !== homepageOrigin.value) {
+    toast.error(`Only paths on ${homepageOrigin.value} can be added here.`)
+    return
+  }
+  if (extraPaths.value.some(p => p.url === parsed.href)) {
+    return  // already added
+  }
+  extraPaths.value.push({
+    url: parsed.href,
+    label: parsed.pathname + (parsed.search || '') || '/',
+  })
+  extraPathInput.value = ''
+}
+
+function removeExtraPath(url) {
+  extraPaths.value = extraPaths.value.filter(p => p.url !== url)
+}
+
+// Region catalogue mirrors apps/llm_ranking/services/regions.py. Adding a
+// new entry here requires a backend change too — kept short to make the
+// drift obvious.
+const REGION_OPTIONS = [
+  { code: 'global', label: 'Global (no geo bias)' },
+  { code: 'us', label: 'United States' },
+  { code: 'ca', label: 'Canada' },
+  { code: 'in', label: 'India' },
+  { code: 'uk', label: 'United Kingdom' },
+  { code: 'de', label: 'Germany' },
+  { code: 'au', label: 'Australia' },
+]
+function regionLabel(code) {
+  const r = REGION_OPTIONS.find(x => x.code === code)
+  return r ? r.label : code
+}
+
+// ISO-2 country code -> human label + flag emoji. Kept short — names match
+// the keys produced by apps.llm_ranking.services.citation_geo.
+const COUNTRY_LABELS = {
+  US: 'United States', CA: 'Canada', GB: 'United Kingdom', IN: 'India',
+  AU: 'Australia', DE: 'Germany', FR: 'France', ES: 'Spain', IT: 'Italy',
+  NL: 'Netherlands', SE: 'Sweden', NO: 'Norway', DK: 'Denmark', FI: 'Finland',
+  PL: 'Poland', BR: 'Brazil', MX: 'Mexico', AR: 'Argentina', JP: 'Japan',
+  KR: 'South Korea', CN: 'China', RU: 'Russia', TR: 'Turkey', IL: 'Israel',
+  AE: 'UAE', SA: 'Saudi Arabia', ZA: 'South Africa', IE: 'Ireland',
+  PT: 'Portugal', CH: 'Switzerland', BE: 'Belgium', AT: 'Austria',
+  NZ: 'New Zealand', SG: 'Singapore', MY: 'Malaysia', ID: 'Indonesia',
+  TH: 'Thailand', VN: 'Vietnam', PH: 'Philippines',
+}
+function countryLabel(code) {
+  return COUNTRY_LABELS[code] || code
+}
+// Flag emoji from ISO-2 by mapping each letter to its Regional Indicator
+// Symbol code point. Pure cosmetic — graceful degrade if the font lacks
+// the glyph.
+function countryFlag(code) {
+  if (!code || code.length !== 2) return ''
+  const offset = 0x1F1A5
+  return String.fromCodePoint(
+    code.toUpperCase().charCodeAt(0) + offset,
+    code.toUpperCase().charCodeAt(1) + offset,
+  )
+}
 
 // ── Wizard state ──
 const wizardStep = ref(0)
@@ -1859,8 +2112,8 @@ const wizardTopics = ref([])
 const generatingTopics = ref(false)
 const competitorInput = ref('')
 const competitorDomainInput = ref('')
-const scanning = ref(false)
-const scanResult = ref(null)
+// scanning + scanResult removed with Step 0 — the wizard no longer
+// scans an arbitrary URL; the website's URL is read from the route.
 
 // ── Context Sources state ──
 const contextUrls = ref([])      // [{url, title, summary, success, scanning, error}]
@@ -1894,8 +2147,11 @@ async function addContextUrl() {
   }
 }
 
+// Step 0 ("Website") was removed in favour of pre-filling from the
+// route's website. The first user-facing step is now the Pages picker —
+// the user opts into which sub-paths of the same domain to scan.
 const wizardSteps = Object.freeze([
-  { id: 'website', label: 'Website' },
+  { id: 'pages', label: 'Pages' },
   { id: 'description', label: 'Description' },
   { id: 'context', label: 'Context Sources' },
   { id: 'topics', label: 'Topics' },
@@ -1904,37 +2160,32 @@ const wizardSteps = Object.freeze([
   { id: 'review', label: 'Review' },
 ])
 
-async function scanDomain() {
-  const url = (auditForm.value.scan_url || '').trim()
-  if (!url) return
-  scanning.value = true
-  scanResult.value = null
-  auditError.value = ''
-  try {
-    const { data } = await llmRankingApi.scanUrl(websiteId, url)
-    const result = data?.data || data
-    scanResult.value = result
-    if (result.success) {
-      // Auto-fill the form from scan results
-      auditForm.value.business_name = result.business_name || auditForm.value.business_name
-      auditForm.value.description = result.description || auditForm.value.description
-      auditForm.value.industry = result.industry || auditForm.value.industry
+// scanDomain() removed — the website's URL is read from the route's
+// website object via ``loadWebsite()`` below. Scan-on-demand for
+// individual sub-paths still happens server-side via ``llmRankingApi.scanUrl``
+// in the Context Sources step (separate from this Pages step).
 
-      // Auto-populate real competitors from LLM
-      if (result.competitors && result.competitors.length) {
-        auditForm.value.competitors = result.competitors.map(c => ({
-          name: c.name || '',
-          domain: c.domain || '',
-        }))
-      }
-
-      // Auto-advance to Description step
-      wizardStep.value = 1
+async function loadWebsite() {
+  // Prefer the global app store (already loaded during initial nav);
+  // fall back to a direct fetch when the user lands here via deep link.
+  const fromStore = activeWebsite.value
+  if (fromStore && fromStore.id === websiteId) {
+    currentWebsite.value = fromStore
+  } else {
+    try {
+      const { data } = await websitesApi.get(websiteId)
+      currentWebsite.value = data?.data || data
+    } catch (_) {
+      currentWebsite.value = null
     }
-  } catch (err) {
-    scanResult.value = { success: false, error: err.displayMessage || 'Scan failed. Please try again.' }
-  } finally {
-    scanning.value = false
+  }
+  // Pre-fill the audit form from the loaded website so the user
+  // doesn't have to re-type business name / industry / description.
+  const w = currentWebsite.value
+  if (w) {
+    auditForm.value.business_name = w.name || w.business_name || ''
+    auditForm.value.industry = w.industry || ''
+    auditForm.value.description = w.description || ''
   }
 }
 
@@ -1959,7 +2210,7 @@ async function regenerateTopics() {
       business_name: auditForm.value.business_name,
       description: auditForm.value.description,
       industry: auditForm.value.industry,
-      domain: auditForm.value.scan_url || '',
+      domain: homepageUrl.value || '',
     })
     if (data.topics && data.topics.length) {
       wizardTopics.value = data.topics
@@ -2115,18 +2366,9 @@ function removeCompetitor(name) {
 
 async function wizardNext() {
   auditError.value = ''
-  // Step 0: Website — just need a URL or allow skip
-  if (wizardStep.value === 0) {
-    if (!auditForm.value.scan_url) {
-      auditError.value = 'Enter a domain to scan, or type any URL to continue.'
-      return
-    }
-    // If not yet scanned, scan now
-    if (!scanResult.value) {
-      scanDomain()
-      return
-    }
-  }
+  // Step 0: Pages — homepage is always included, sub-paths are
+  // optional. No gating beyond having a known website (we wouldn't
+  // have rendered the modal if we didn't).
   // Step 1: Description
   if (wizardStep.value === 1) {
     if (!auditForm.value.business_name) { auditError.value = 'Business name is required.'; return }
@@ -2218,64 +2460,159 @@ const latestAudit = computed(() => {
 })
 
 const isAuditComplete = computed(() => latestAudit.value?.status === 'completed')
+
+// Diagnostics section gates on having at least one successful result —
+// otherwise the heatmap / radar / scatter would render empty cards.
+const diagnosticsHaveData = computed(() => {
+  const rs = auditDetail.value?.results || []
+  return rs.some(r => r && r.query_succeeded)
+})
+
 const isAuditRunning = computed(() => {
   const s = latestAudit.value?.status
   return s === 'running' || s === 'pending'
 })
 
-// Live per-query results: sorted newest-first for the running ticker
-const liveResults = computed(() => {
-  const list = auditDetail.value?.results || []
-  return [...list].reverse()
-})
+// ── Prompt Activity ──────────────────────────────────────────────────────
+//
+// Replaces the old terminal-style Pipeline Log + Live Results ticker. We
+// derive a chronological per-query view directly from auditDetail.results
+// — no separate /logs/ poll. The audit-level status poll already brings
+// new results in, so this card stays in sync without a second timer.
+//
+// Each row shows: time we sent the prompt, provider, the actual model
+// name we hit, the prompt text, and the outcome (mentioned / miss / error).
 
-// ── Pipeline Logs state ──────────────────────────────────────────────────────
-const pipelineLogs = ref([])
-const logsExpanded = ref(true)
-const logScrollRef = ref(null)
-const logProgress = ref({ completed: 0, total: 0 })
-let logPollTimer = null
+// Audit-side provider key -> model identifier sent on the wire. Mirrors
+// the .model attribute on each provider class in apps.llm_ranking.providers.
+// Kept in sync manually — adding a provider here without a backend change
+// is harmless (it just shows the wrong label until corrected).
+const PROVIDER_MODELS = {
+  claude: 'claude-sonnet-4-20250514',
+  gpt4: 'gpt-4o-mini',
+  gemini: 'gemini-1.5-flash',
+  perplexity: 'llama-3.1-sonar-small-128k-online',
+}
 
-function formatLogTime(ts) {
+function providerModel(key) {
+  return PROVIDER_MODELS[key] || key
+}
+
+function providerColor(key) {
+  // Lightweight visual distinguisher — same scheme as the rankings table.
+  const colors = {
+    claude: '#d97706',
+    gpt4: '#10b981',
+    gemini: '#3b82f6',
+    perplexity: '#8b5cf6',
+  }
+  return colors[key] || '#6b7280'
+}
+
+function formatPromptTime(ts) {
   if (!ts) return ''
   const d = new Date(ts)
-  return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  return d.toLocaleTimeString(undefined, {
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  })
 }
 
-async function fetchPipelineLogs(auditId) {
-  if (!auditId) return
-  try {
-    const { data } = await llmRankingApi.auditLogs(websiteId, auditId)
-    const result = data?.data || data
-    pipelineLogs.value = result.logs || []
-    logProgress.value = {
-      completed: result.queries_completed || 0,
-      total: result.total_queries || 0,
-    }
-    // Auto-scroll to bottom
-    nextTick(() => {
-      if (logScrollRef.value) {
-        logScrollRef.value.scrollTop = logScrollRef.value.scrollHeight
-      }
-    })
-  } catch (_) { /* ignore */ }
+// All queries this audit ran, oldest first. Renders the same data
+// during a running audit (partial — fewer rows) and after completion.
+const promptActivity = computed(() => {
+  const list = auditDetail.value?.results || []
+  return [...list].sort((a, b) =>
+    (a.created_at || '').localeCompare(b.created_at || ''),
+  )
+})
+
+// ── Prompt Activity filters ─────────────────────────────────────────────
+//
+// Client-side filtering against the full ``promptActivity`` list. The
+// Status poll keeps the underlying array fresh while the user keeps
+// their filter selection — important during a running audit so the
+// view doesn't reset every two seconds.
+const paFilters = ref({
+  search: '',
+  provider: '',
+  status: '',     // '', 'mentioned', 'not_mentioned', 'error'
+  sort: 'time_asc',
+})
+
+const paFiltersActive = computed(() => {
+  const f = paFilters.value
+  return !!(f.search || f.provider || f.status || f.sort !== 'time_asc')
+})
+
+function resetPromptActivityFilters() {
+  paFilters.value = { search: '', provider: '', status: '', sort: 'time_asc' }
 }
 
-function startLogPolling(auditId) {
-  stopLogPolling()
-  if (!auditId) return
-  // Fetch immediately
-  fetchPipelineLogs(auditId)
-  // Then poll every 2s
-  logPollTimer = setInterval(() => fetchPipelineLogs(auditId), 2000)
-}
-
-function stopLogPolling() {
-  if (logPollTimer) {
-    clearInterval(logPollTimer)
-    logPollTimer = null
+// Distinct providers seen in this audit — drives the provider dropdown
+// so the user only sees options that actually have rows.
+const promptActivityProviders = computed(() => {
+  const seen = new Set()
+  for (const r of promptActivity.value) {
+    if (r.provider) seen.add(r.provider)
   }
-}
+  return Array.from(seen).sort()
+})
+
+const filteredPromptActivity = computed(() => {
+  const f = paFilters.value
+  let rows = promptActivity.value
+
+  if (f.search) {
+    const q = f.search.toLowerCase()
+    rows = rows.filter(r => (r.prompt || '').toLowerCase().includes(q))
+  }
+  if (f.provider) {
+    rows = rows.filter(r => r.provider === f.provider)
+  }
+  if (f.status === 'mentioned') {
+    rows = rows.filter(r => r.query_succeeded && r.is_mentioned)
+  } else if (f.status === 'not_mentioned') {
+    rows = rows.filter(r => r.query_succeeded && !r.is_mentioned)
+  } else if (f.status === 'error') {
+    rows = rows.filter(r => !r.query_succeeded)
+  }
+
+  // Apply sort. ``rows`` is already a fresh copy from the upstream sort
+  // (``promptActivity`` returns a sorted clone) — but our filter chain
+  // returns the same reference, so spread before sorting in place.
+  const sorted = [...rows]
+  switch (f.sort) {
+    case 'time_desc':
+      sorted.reverse()
+      break
+    case 'rank_asc':
+      sorted.sort((a, b) => {
+        const ra = (a.is_mentioned && a.mention_rank) ? a.mention_rank : 999
+        const rb = (b.is_mentioned && b.mention_rank) ? b.mention_rank : 999
+        return ra - rb
+      })
+      break
+    case 'provider':
+      sorted.sort((a, b) => {
+        const p = (a.provider || '').localeCompare(b.provider || '')
+        if (p !== 0) return p
+        return (a.created_at || '').localeCompare(b.created_at || '')
+      })
+      break
+    case 'time_asc':
+    default:
+      // already sorted ascending by created_at
+      break
+  }
+  return sorted
+})
+
+// Progress used by the card subtitle. Stays at 0/0 until the running
+// audit reports its planned total, which is fine.
+const logProgress = computed(() => ({
+  completed: latestAudit.value?.queries_completed || 0,
+  total: latestAudit.value?.total_queries || 0,
+}))
 
 // ── Prompt Intelligence aggregation ─────────────────────────────────────────
 const providerFilter = ref('')
@@ -2697,23 +3034,46 @@ function brandColor(name) {
 
 const kpiBrandVisibility = computed(() => {
   const a = latestAudit.value
-  if (!a) return { value: 0, basis: 0 }
+  if (!a) return { value: 0, raw: 0, basis: 0, ciLow: 0, ciHigh: 0 }
   // When a platform filter is set, recompute against just that provider's
-  // responses; otherwise fall back to the audit-level mention_rate.
+  // responses; otherwise fall back to the audit-level smoothed mention_rate.
   if (filters.value.platform && filters.value.platform !== 'all') {
     const results = platformFilteredResults.value.filter(r => r.query_succeeded)
-    if (!results.length) return { value: 0, basis: 0 }
+    if (!results.length) return { value: 0, raw: 0, basis: 0, ciLow: 0, ciHigh: 0 }
     const mentioned = results.filter(r => r.is_mentioned).length
+    const raw = Math.round(mentioned / results.length * 100)
     return {
-      value: Math.round(mentioned / results.length * 100),
+      value: raw,
+      raw,
       basis: results.length,
+      ciLow: 0,
+      ciHigh: 0,
     }
   }
+  // Prefer the Beta-Binomial smoothed value when the backend provides it
+  // (it does for any audit run after the smoothing migration). Falls back
+  // to raw mention_rate for older audits so historical data still renders.
+  const smoothed = a.mention_rate_smoothed
+  const raw = Math.round(a.mention_rate || 0)
   return {
-    value: Math.round(a.mention_rate || 0),
+    value: smoothed != null ? Math.round(smoothed) : raw,
+    raw,
     basis: a.queries_completed || a.total_queries || 0,
+    ciLow: Math.round(a.mention_rate_ci_lower || 0),
+    ciHigh: Math.round(a.mention_rate_ci_upper || 0),
   }
 })
+
+// Confidence tier for the visibility KPI based on CI width. Drives the
+// dot indicator next to the headline number — wide intervals signal a
+// volatile estimate (more queries / providers needed).
+function visibilityConfidence(kpi) {
+  if (!kpi || !(kpi.ciHigh > 0)) return null
+  const width = kpi.ciHigh - kpi.ciLow
+  if (width < 15) return 'high'
+  if (width < 30) return 'med'
+  return 'low'
+}
 
 const kpiCitationShare = computed(() => {
   // When a platform filter is active, derive from the filtered results so
@@ -2759,24 +3119,75 @@ const kpiCitationShare = computed(() => {
 })
 
 const brandRankingRows = computed(() => {
-  // Combine you + competitors from the leaderboard, ranked by visibility.
+  // Combine you + competitors from the leaderboard. When Plackett-Luce
+  // strengths are available on the audit (post-migration), use those as
+  // the primary sort key — it's a calibrated cross-response strength
+  // rather than a raw mention count. Falls back to mention-count
+  // visibility for older audits with no brand_strengths.
   const a = latestAudit.value
   const yourName = a?.business_name || 'You'
   const yourVis = Math.round(a?.mention_rate || 0)
-  const rows = [{ name: yourName, visibility: yourVis, mention_count: 0, is_you: true }]
+  const strengths = a?.brand_strengths || {}
+  const hasStrengths = Object.keys(strengths).length > 0
+
+  const rows = [{
+    name: yourName,
+    visibility: yourVis,
+    strength: strengths[yourName] != null ? strengths[yourName] : null,
+    mention_count: 0,
+    is_you: true,
+  }]
   for (const c of competitorLeaderboard.value || []) {
     rows.push({
       name: c.name,
       visibility: uniquePromptCount.value
         ? Math.round(c.promptCount / uniquePromptCount.value * 100)
         : 0,
+      strength: strengths[c.name] != null ? strengths[c.name] : null,
       mention_count: c.promptCount,
       avg_rank: c.avgRank,
       is_you: false,
     })
   }
-  rows.sort((a, b) => b.visibility - a.visibility)
+  if (hasStrengths) {
+    // Sort by Plackett-Luce strength first, falling back to visibility
+    // for any brand that didn't appear with a position (strength=null).
+    rows.sort((x, y) => {
+      const sx = x.strength != null ? x.strength : -1
+      const sy = y.strength != null ? y.strength : -1
+      if (sx !== sy) return sy - sx
+      return y.visibility - x.visibility
+    })
+  } else {
+    rows.sort((x, y) => y.visibility - x.visibility)
+  }
   return rows.map((r, i) => ({ ...r, rank: i + 1 }))
+})
+
+// Citation footprint = country breakdown of all citations in this audit.
+// Rendered in the "Citation Footprint by Country" card. Sorted descending
+// by count, with shares normalized to 100%.
+const citationFootprint = computed(() => {
+  const a = latestAudit.value
+  const counts = (a && a.citation_countries) || {}
+  const entries = Object.entries(counts)
+    .map(([country, count]) => ({ country, count: Number(count) || 0 }))
+    .filter(e => e.count > 0)
+  if (!entries.length) return []
+  const total = entries.reduce((s, e) => s + e.count, 0) || 1
+  entries.sort((a, b) => b.count - a.count)
+  return entries.map(e => ({
+    country: e.country,
+    label: countryLabel(e.country),
+    flag: countryFlag(e.country),
+    count: e.count,
+    share: Math.round(e.count / total * 100),
+  }))
+})
+
+const usingBrandStrengths = computed(() => {
+  const a = latestAudit.value
+  return !!(a && a.brand_strengths && Object.keys(a.brand_strengths).length > 0)
 })
 
 const kpiBrandRanking = computed(() => {
@@ -3125,11 +3536,15 @@ const auditLogEvents = computed(() => {
   return events
 })
 
-// Score factor breakdown (must sum to ~overall_score)
+// Score factor breakdown (must sum to ~overall_score). The backend
+// scores against the Beta-Binomial smoothed mention rate so we mirror
+// that here when available; older audits without the smoothed value
+// fall back to raw mention_rate so historical breakdowns still render.
 const mentionPts = computed(() => {
   const a = latestAudit.value
   if (!a) return 0
-  return Math.round((a.mention_rate || 0) * 0.4)
+  const rate = a.mention_rate_smoothed != null ? a.mention_rate_smoothed : (a.mention_rate || 0)
+  return Math.round(rate * 0.4)
 })
 const rankPts = computed(() => {
   const a = latestAudit.value
@@ -3481,14 +3896,20 @@ function openRunAudit() {
     providers: providerHealth.value.providers.filter(p => p.configured).map(p => p.key),
     selectedTopics: [],
     competitors: [],
-    scan_url: '',
+  }
+  // Re-prefill from the loaded website so the user keeps the
+  // pre-populated business name / industry / description.
+  if (currentWebsite.value) {
+    auditForm.value.business_name = currentWebsite.value.name || ''
+    auditForm.value.industry = currentWebsite.value.industry || ''
+    auditForm.value.description = currentWebsite.value.description || ''
   }
   wizardStep.value = 0
   wizardTopics.value = []
   competitorInput.value = ''
   competitorDomainInput.value = ''
-  scanning.value = false
-  scanResult.value = null
+  extraPaths.value = []
+  extraPathInput.value = ''
   contextUrls.value = []
   contextUrlInput.value = ''
   scanningContextUrl.value = false
@@ -3511,11 +3932,20 @@ async function submitAudit() {
       business_description: auditForm.value.description || '',
       industry: auditForm.value.industry,
       location: auditForm.value.location,
+      region: auditForm.value.region || 'global',
       providers: auditForm.value.providers,
       themes: auditForm.value.themes || [],
       keywords: auditForm.value.selectedTopics || [],
       competitors: (auditForm.value.competitors || []).map(c => typeof c === 'string' ? c : c.name),
-      context_urls: contextUrls.value.filter(c => c.success).map(c => c.url),
+      // Same-domain sub-paths from Step 0 ("Pages") and external context
+      // URLs from the Context Sources step both flow into the backend's
+      // ``context_urls`` field; the audit's enrichment treats them
+      // uniformly. Keep external sources first since they're often the
+      // user's most curated picks; sub-paths are supplementary.
+      context_urls: [
+        ...contextUrls.value.filter(c => c.success).map(c => c.url),
+        ...extraPaths.value.map(p => p.url),
+      ],
     }
     if (customPromptsText.value.trim()) {
       payload.custom_prompts = customPromptsText.value.split('\n').map(s => s.trim()).filter(Boolean)
@@ -3528,11 +3958,9 @@ async function submitAudit() {
     auditDetail.value = audit
     showRunForm.value = false
     toast.success('Audit queued. Results will appear once complete.')
-    // Start polling for results + pipeline logs
+    // Status polling brings in new results — the Prompt Activity card
+    // re-renders from auditDetail.results, no separate log poll needed.
     startPolling()
-    pipelineLogs.value = []
-    logsExpanded.value = true
-    startLogPolling(audit.id)
   } catch (err) {
     // Per-user monthly AI spend cap reached — show a friendly modal instead
     // of the generic banner so the user knows what to do.
@@ -3559,15 +3987,8 @@ async function selectAudit(audit) {
   recommendations.value = []
   auditDetail.value = null
 
-  // Load pipeline logs for this audit
-  fetchPipelineLogs(audit.id)
-  if (audit.status === 'running' || audit.status === 'pending') {
-    logsExpanded.value = true
-    startLogPolling(audit.id)
-  } else {
-    stopLogPolling()
-    logsExpanded.value = false
-  }
+  // Pipeline log polling removed — Prompt Activity reads directly from
+  // auditDetail.results, which the status poll keeps fresh.
 
   if (audit.status !== 'completed') return
 
@@ -3608,9 +4029,6 @@ function startPolling() {
     const hasRunning = audits.value.some(a => a.status === 'pending' || a.status === 'running')
     if (!hasRunning) {
       stopPolling()
-      stopLogPolling()
-      // Final log fetch to capture completion summary
-      if (selectedAuditId.value) fetchPipelineLogs(selectedAuditId.value)
       return
     }
     try {
@@ -3787,6 +4205,9 @@ async function deleteSchedule() {
 }
 
 onMounted(() => {
+  // Load the website object first so the audit form is pre-filled
+  // before the user opens the wizard.
+  loadWebsite()
   Promise.all([fetchData(), fetchHistory(), fetchSchedule()]).then(() => {
     loadPromptResults()
     loadUsage()
@@ -3795,7 +4216,6 @@ onMounted(() => {
 })
 onBeforeUnmount(() => {
   stopPolling()
-  stopLogPolling()
   document.removeEventListener('click', onDocClick)
 })
 </script>
@@ -4697,6 +5117,91 @@ onBeforeUnmount(() => {
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   color: var(--text-primary);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.bo-strength-bar {
+  display: inline-block;
+  width: 64px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--bg-surface);
+  overflow: hidden;
+  vertical-align: middle;
+}
+.bo-strength-fill {
+  display: block;
+  height: 100%;
+  background: var(--color-primary, #4f46e5);
+  border-radius: 3px;
+}
+.bo-strength-num {
+  min-width: 24px;
+  text-align: right;
+  font-size: 12px;
+}
+.kpi-conf-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+.kpi-conf-high { background: var(--color-success, #16a34a); }
+.kpi-conf-med  { background: var(--color-warning, #f59e0b); }
+.kpi-conf-low  { background: var(--color-danger, #dc2626); }
+.kpi-sub-muted { opacity: 0.7; margin-left: 4px; }
+
+.bo-footprint-card { padding: 16px; }
+
+/* Diagnostics section: heatmap stacks full-width above the
+   radar+scatter row. The inner lr-grid-2 already exists and gives us
+   the two-column behaviour for the lower row. */
+.lr-diagnostics {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.bo-footprint-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+.bo-footprint-row {
+  display: grid;
+  grid-template-columns: 28px 1fr 2fr 56px 48px;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+}
+.bo-footprint-flag { font-size: 18px; line-height: 1; }
+.bo-footprint-name { color: var(--text-primary); font-weight: 500; }
+.bo-footprint-bar {
+  display: block;
+  height: 8px;
+  background: var(--bg-surface);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.bo-footprint-fill {
+  display: block;
+  height: 100%;
+  background: var(--color-primary, #4f46e5);
+  border-radius: 4px;
+}
+.bo-footprint-num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--text-muted);
+}
+.bo-footprint-pct {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  text-align: right;
+  color: var(--text-primary);
 }
 .bo-brand-avatar, .bo-source-favicon {
   width: 22px;
@@ -5202,29 +5707,6 @@ onBeforeUnmount(() => {
 .pl-node-dot.dot-on   { background: var(--color-success, #10B981); }
 .pl-node-dot.dot-idle { background: var(--text-muted); }
 .pl-node-dot.dot-off  { background: var(--color-danger, #DC2626); }
-
-/* Audit Log */
-.audit-log-list {
-  display: flex;
-  flex-direction: column;
-  padding: 4px 0 8px;
-  max-height: 400px;
-  overflow-y: auto;
-  font-family: 'SF Mono', 'Fira Code', monospace;
-  font-size: 12px;
-}
-
-.audit-log-row:hover { background: var(--bg-surface); }
-.audit-log-row.log-info { border-left-color: var(--text-muted); }
-.audit-log-row.log-hit  { border-left-color: var(--color-success, #10B981); }
-.audit-log-row.log-miss { border-left-color: var(--text-muted); opacity: 0.7; }
-.audit-log-row.log-fail { border-left-color: var(--color-danger,  #DC2626); }
-.audit-log-row.log-done { border-left-color: var(--brand-accent, #4F46E5); background: rgba(79,70,229,0.04); }
-
-.audit-log-time {
-  color: var(--text-muted);
-  font-weight: 500;
-}
 
 .loading-state { text-align: center; padding: 80px 20px; font-size: var(--font-md); color: var(--text-muted); }
 
@@ -6073,144 +6555,137 @@ onBeforeUnmount(() => {
 }
 
 /* Live ticker (during a running audit) */
-.live-pulse {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--color-success, #34D399);
-  margin-left: 8px;
-  animation: live-pulse-kf 1.3s ease-in-out infinite;
-  vertical-align: middle;
+/* Prompt Activity — chronological per-query record */
+.prompt-activity-head,
+.prompt-activity-row {
+  display: grid;
+  grid-template-columns: 84px 110px 200px 1fr 130px;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  font-size: 13px;
 }
-@keyframes live-pulse-kf {
-  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(52,211,153,0.6); }
-  50%      { opacity: 0.6; box-shadow: 0 0 0 6px rgba(52,211,153,0); }
+.prompt-activity-head {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-color);
+  padding-top: 12px;
+  padding-bottom: 8px;
 }
-.live-list { display: flex; flex-direction: column; gap: 6px; padding: 16px; }
-.live-row {
+.prompt-activity-list {
+  max-height: 480px;
+  overflow-y: auto;
+}
+.prompt-activity-row {
+  border-bottom: 1px solid var(--border-color);
+  border-left: 3px solid transparent;
+}
+.prompt-activity-row:last-child { border-bottom: none; }
+.prompt-activity-row:hover { background: var(--bg-surface); }
+.prompt-activity-row.pa-hit { border-left-color: var(--color-success, #10B981); }
+.prompt-activity-row.pa-fail { border-left-color: var(--color-danger, #DC2626); opacity: 0.85; }
+.pa-time {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.pa-provider {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  border-radius: var(--radius-md);
-  background: var(--bg-base);
-  border: 1px solid var(--border-color);
-  border-left: 3px solid var(--text-muted);
-  font-size: var(--font-sm);
-  animation: live-row-in 0.35s cubic-bezier(0.22, 1, 0.36, 1);
-}
-.live-row.live-hit  { border-left-color: var(--color-success, #34D399); }
-.live-row.live-fail { border-left-color: var(--color-danger, #DC2626); opacity: 0.7; }
-.live-provider {
-  flex-shrink: 0;
-  font-weight: 700;
+  gap: 6px;
+  font-weight: 600;
   color: var(--text-primary);
-  width: 76px;
 }
-.live-prompt {
-  flex: 1;
+.pa-provider-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  display: inline-block;
+}
+.pa-model {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pa-prompt {
   color: var(--text-secondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-@keyframes live-row-in {
-  from { opacity: 0; transform: translateY(-4px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
+.pa-status { text-align: right; }
 
-/* ═══ Pipeline Log (terminal-style) ═══ */
-.pipeline-log-card {
-  border-radius: var(--radius-lg, 12px);
-  overflow: hidden;
-  border: 1px solid rgba(255,255,255,0.06);
-  background: #0d1117;
-  box-shadow: 0 4px 24px rgba(0,0,0,0.25);
-}
-.pipeline-log-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 16px;
-  background: #161b22;
-  cursor: pointer;
-  user-select: none;
-  border-bottom: 1px solid rgba(255,255,255,0.06);
-}
-.pipeline-log-title {
+/* Prompt Activity filters */
+.pa-filters {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 13px;
-  font-weight: 600;
-  color: #e6edf3;
-  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-base);
+  flex-wrap: wrap;
 }
-.pipeline-log-title svg { stroke: #7d8590; }
-.pipeline-log-meta {
+.pa-filter-search {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 10px;
-  color: #7d8590;
+  flex: 1;
+  min-width: 200px;
+  max-width: 360px;
 }
-.pipeline-log-chevron {
-  transition: transform 0.2s;
-  stroke: #7d8590;
+.pa-filter-search svg {
+  position: absolute;
+  left: 10px;
+  color: var(--text-muted);
+  pointer-events: none;
 }
-.pipeline-log-chevron.rotated {
-  transform: rotate(180deg);
-}
-.pipeline-log-body {
-  max-height: 420px;
-  overflow-y: auto;
-  padding: 12px 16px;
-  scroll-behavior: smooth;
-}
-.pipeline-log-body::-webkit-scrollbar { width: 6px; }
-.pipeline-log-body::-webkit-scrollbar-track { background: transparent; }
-.pipeline-log-body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
-.pipeline-log-entry {
-  display: flex;
-  gap: 12px;
-  padding: 3px 0;
-  font-size: 12.5px;
-  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
-  line-height: 1.6;
-  animation: log-entry-in 0.25s ease;
-}
-@keyframes log-entry-in {
-  from { opacity: 0; transform: translateX(-4px); }
-  to   { opacity: 1; transform: translateX(0); }
-}
-.log-time {
-  flex-shrink: 0;
-  color: #484f58;
-  font-size: 11px;
-  min-width: 70px;
-}
-.log-msg {
-  color: #8b949e;
-  word-break: break-word;
-}
-.log-info .log-msg  { color: #8b949e; }
-.log-success .log-msg { color: #3fb950; }
-.log-warn .log-msg { color: #d29922; }
-.log-error .log-msg { color: #f85149; }
-.pipeline-log-cursor {
-  padding: 2px 0;
-}
-.cursor-blink {
-  color: #58a6ff;
+.pa-filter-input {
+  width: 100%;
+  padding: 6px 10px 6px 30px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
   font-size: 13px;
-  animation: cursor-blink-kf 1s step-end infinite;
+  color: var(--text-primary);
 }
-@keyframes cursor-blink-kf {
-  0%, 100% { opacity: 1; }
-  50%      { opacity: 0; }
+.pa-filter-input:focus {
+  outline: none;
+  border-color: var(--brand-accent, #4F46E5);
 }
-.pipeline-log-card.is-collapsed .pipeline-log-header {
-  border-bottom: none;
+.pa-filter-select {
+  padding: 6px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  font-size: 13px;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.pa-filter-clear {
+  padding: 6px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: transparent;
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.pa-filter-clear:hover {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+.pa-empty {
+  padding: 32px 16px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-muted);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
 }
 
 /* Recommendations */
@@ -6346,4 +6821,73 @@ onBeforeUnmount(() => {
 .pd-comp-name { font-weight: 600; }
 .pd-comp-count { color: var(--text-muted); font-size: 11px; }
 .text-center { text-align: center; }
+
+/* Page context line under the page-subtitle */
+.page-context {
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.page-context-link {
+  margin-left: 8px;
+  font-size: 12px;
+  color: var(--brand-accent, #4F46E5);
+  text-decoration: none;
+}
+.page-context-link:hover { text-decoration: underline; }
+
+/* Pages-to-scan step (Step 0 of the run-audit wizard) */
+.wizard-link-inline {
+  margin-left: 6px;
+  font-size: 12px;
+  color: var(--brand-accent, #4F46E5);
+  text-decoration: none;
+}
+.wizard-link-inline:hover { text-decoration: underline; }
+
+.wizard-pages-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+.wizard-page-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+}
+.wizard-page-row.is-homepage {
+  border-style: dashed;
+  background: var(--bg-base);
+}
+.wizard-page-icon {
+  width: 20px; text-align: center;
+  font-size: 14px;
+  color: var(--text-muted);
+}
+.wizard-page-meta { flex: 1; min-width: 0; }
+.wizard-page-url {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wizard-page-remove {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+.wizard-page-remove:hover {
+  background: var(--bg-base);
+  color: var(--color-danger, #DC2626);
+}
 </style>

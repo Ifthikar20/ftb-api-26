@@ -11,7 +11,8 @@ class GeminiProvider(LLMProvider):
     rpm = 15
     burst = 10
 
-    def _call(self, *, prompt: str, system_prompt: str) -> ProviderResult:
+    def _call(self, *, prompt: str, system_prompt: str,
+              region: str = "") -> ProviderResult:
         import google.generativeai as genai
 
         genai.configure(api_key=self.api_key)
