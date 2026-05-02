@@ -13,7 +13,7 @@ class Subscription(TimestampMixin):
     )
     stripe_customer_id = models.CharField(max_length=100, unique=True, blank=True)
     stripe_subscription_id = models.CharField(max_length=100, unique=True, blank=True, null=True)
-    plan = models.CharField(max_length=20, choices=Plan.choices, default=Plan.STARTER)
+    plan = models.CharField(max_length=20, choices=Plan.choices, default=Plan.INDIVIDUAL)
     status = models.CharField(
         max_length=20, choices=SubscriptionStatus.choices, default=SubscriptionStatus.TRIALING
     )

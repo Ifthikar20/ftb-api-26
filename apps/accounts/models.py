@@ -17,7 +17,7 @@ class User(AbstractBaseUser, PermissionsMixin, TimestampMixin):
     email = models.EmailField(unique=True, db_index=True)
     full_name = models.CharField(max_length=200)
     company_name = models.CharField(max_length=200, blank=True)
-    plan = models.CharField(max_length=20, choices=Plan.choices, default=Plan.STARTER)
+    plan = models.CharField(max_length=20, choices=Plan.choices, default=Plan.INDIVIDUAL)
     segment = models.CharField(
         max_length=20, choices=Segment.choices, default=Segment.INDIVIDUAL
     )

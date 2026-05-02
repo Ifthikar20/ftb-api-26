@@ -4083,8 +4083,9 @@ async function fetchHistory() {
 }
 
 async function fetchProviderHealth() {
+  if (!websiteId) return
   try {
-    const { data } = await llmRankingApi.providerHealth()
+    const { data } = await llmRankingApi.providerHealth(websiteId)
     providerHealth.value = data?.data || data || { providers: [], configured_count: 0, total: 0 }
   } catch (e) {
     console.error('Provider health fetch error', e)
