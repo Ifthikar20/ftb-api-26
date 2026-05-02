@@ -1069,7 +1069,7 @@ class LLMRankingService:
             plabel = PROVIDER_LABELS.get(provider, provider)
             _audit_log(audit, f"━━━ Querying {plabel} ━━━")
 
-            for prompt_item in prompt_items:
+            for prompt_index, prompt_item in enumerate(prompt_items):
                 prompt_text = prompt_item["text"]
                 prompt_short = prompt_text[:80] + ('...' if len(prompt_text) > 80 else '')
                 _audit_log(audit, f"📤 → {plabel}: \"{prompt_short}\"")
@@ -1147,26 +1147,35 @@ class LLMRankingService:
                         "extraction_version": "",
                     }
 
-                result = LLMRankingResult.objects.create(
+                # Idempotent write keyed on the same unique tuple the
+                # chord-based path uses — (audit, prompt_index, provider,
+                # run_id=0). Switching from objects.create to
+                # update_or_create lets the legacy synchronous path
+                # tolerate re-runs without slamming into the
+                # uq_llm_result_audit_prompt_provider_run constraint.
+                result, _ = LLMRankingResult.objects.update_or_create(
                     audit=audit,
+                    prompt_index=prompt_index,
                     provider=provider,
-                    prompt=prompt_text,
-
-                    response_text=response_text,
-                    is_mentioned=analysis["is_mentioned"],
-                    mention_rank=analysis["mention_rank"],
-                    sentiment=analysis["sentiment"],
-                    confidence_score=analysis["confidence_score"],
-                    mention_context=analysis["mention_context"],
-                    query_succeeded=succeeded,
-                    error_message=error,
-                    is_linked=analysis.get("is_linked", False),
-                    competitors_mentioned=analysis.get("competitors_mentioned", []),
-                    primary_recommendation=analysis.get("primary_recommendation", ""),
-                    citations=analysis.get("citations", []),
-                    citation_countries=_country_counts_for(analysis.get("citations", [])),
-                    extraction_model=analysis.get("extraction_model", ""),
-                    extraction_version=analysis.get("extraction_version", ""),
+                    run_id=0,
+                    defaults={
+                        "prompt": prompt_text,
+                        "response_text": response_text,
+                        "is_mentioned": analysis["is_mentioned"],
+                        "mention_rank": analysis["mention_rank"],
+                        "sentiment": analysis["sentiment"],
+                        "confidence_score": analysis["confidence_score"],
+                        "mention_context": analysis["mention_context"],
+                        "query_succeeded": succeeded,
+                        "error_message": error,
+                        "is_linked": analysis.get("is_linked", False),
+                        "competitors_mentioned": analysis.get("competitors_mentioned", []),
+                        "primary_recommendation": analysis.get("primary_recommendation", ""),
+                        "citations": analysis.get("citations", []),
+                        "citation_countries": _country_counts_for(analysis.get("citations", [])),
+                        "extraction_model": analysis.get("extraction_model", ""),
+                        "extraction_version": analysis.get("extraction_version", ""),
+                    },
                 )
                 all_results.append(result)
 
