@@ -3,14 +3,12 @@ from rest_framework import status
 from rest_framework.response import Response
 
 from apps.leads.api.v1.serializers import (
-    CampaignRecipientSerializer,
-    EmailCampaignSerializer,
     LeadNoteSerializer,
     LeadSegmentSerializer,
     LeadSerializer,
     ScoringConfigSerializer,
 )
-from apps.leads.models import EmailCampaign, LeadSegment, ScoringConfig
+from apps.leads.models import LeadSegment, ScoringConfig
 from apps.leads.services.lead_service import LeadService
 from core.views import TenantScopedAPIView, TenantScopedListAPIView
 
@@ -194,199 +192,6 @@ class LeadEmailView(TenantScopedAPIView):
         return Response(emails)
 
 
-# ── Email Campaigns ──────────────────────────────────────────────────────────
-
-class CampaignListView(TenantScopedListAPIView):
-    """List and create email campaigns for a website."""
-
-    def get(self, request, website_id):
-        self.get_website(website_id)
-        from apps.leads.services.campaign_service import CampaignService
-
-        campaigns = CampaignService.list(website_id=website_id)
-        return self.paginated_response(campaigns, EmailCampaignSerializer)
-
-    def post(self, request, website_id):
-        website = self.get_website(website_id)
-        serializer = EmailCampaignSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        from apps.leads.services.campaign_service import CampaignService
-
-        campaign = CampaignService.create(
-            website=website,
-            created_by=request.user,
-            name=serializer.validated_data.get("name", ""),
-            subject=serializer.validated_data["subject"],
-            body=serializer.validated_data["body"],
-            from_name=serializer.validated_data.get("from_name", ""),
-            from_email=serializer.validated_data.get("from_email", ""),
-            segment=serializer.validated_data.get("segment"),
-            canva_design_url=serializer.validated_data.get("canva_design_url", ""),
-            is_ab_test=serializer.validated_data.get("is_ab_test", False),
-            subject_b=serializer.validated_data.get("subject_b", ""),
-            body_b=serializer.validated_data.get("body_b", ""),
-            ab_split_ratio=serializer.validated_data.get("ab_split_ratio", 50),
-        )
-        return Response(EmailCampaignSerializer(campaign).data, status=status.HTTP_201_CREATED)
-
-
-class CampaignDetailView(TenantScopedAPIView):
-    """Retrieve, update, or delete a campaign."""
-
-    def _get_campaign(self, website_id, campaign_id):
-        self.get_website(website_id)
-        from apps.leads.services.campaign_service import CampaignService
-        return CampaignService.get(website_id=website_id, campaign_id=campaign_id)
-
-    def get(self, request, website_id, campaign_id):
-        campaign = self._get_campaign(website_id, campaign_id)
-        return Response(EmailCampaignSerializer(campaign).data)
-
-    def put(self, request, website_id, campaign_id):
-        campaign = self._get_campaign(website_id, campaign_id)
-        if campaign.status not in (EmailCampaign.STATUS_DRAFT, EmailCampaign.STATUS_FAILED):
-            return Response(
-                {"error": "Only draft or failed campaigns can be edited."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        serializer = EmailCampaignSerializer(campaign, data=request.data, partial=True)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        return Response(EmailCampaignSerializer(campaign).data)
-
-    def delete(self, request, website_id, campaign_id):
-        campaign = self._get_campaign(website_id, campaign_id)
-        if campaign.status == EmailCampaign.STATUS_SENDING:
-            return Response(
-                {"error": "Cannot delete a campaign that is currently sending."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        campaign.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
-
-
-class CampaignSendView(TenantScopedAPIView):
-    """Trigger sending a campaign."""
-
-    def post(self, request, website_id, campaign_id):
-        self.get_website(website_id)
-        from apps.leads.services.campaign_service import CampaignService
-
-        campaign = CampaignService.get(website_id=website_id, campaign_id=campaign_id)
-        try:
-            campaign = CampaignService.send(campaign=campaign, sent_by=request.user)
-        except ValueError as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        return Response(EmailCampaignSerializer(campaign).data)
-
-
-class CampaignStatsView(TenantScopedAPIView):
-    """Get detailed stats for a sent campaign."""
-
-    def get(self, request, website_id, campaign_id):
-        self.get_website(website_id)
-        from apps.leads.services.campaign_service import CampaignService
-
-        campaign = CampaignService.get(website_id=website_id, campaign_id=campaign_id)
-        stats = CampaignService.get_stats(campaign=campaign)
-
-        # Pull live Mailchimp stats if available
-        if campaign.mailchimp_campaign_id:
-            try:
-                from apps.leads.services.mailchimp_service import MailchimpService
-                from apps.websites.models import Integration
-
-                integration = Integration.objects.get(
-                    website_id=website_id, type="mailchimp", is_active=True
-                )
-                mc_stats = MailchimpService.get_campaign_report(
-                    integration=integration,
-                    mailchimp_campaign_id=campaign.mailchimp_campaign_id,
-                )
-                stats["mailchimp"] = mc_stats
-            except Exception:
-                pass
-
-        return Response(stats)
-
-
-class CampaignRecipientsView(TenantScopedListAPIView):
-    """List recipients for a campaign."""
-
-    def get(self, request, website_id, campaign_id):
-        self.get_website(website_id)
-        from apps.leads.models import CampaignRecipient
-        from apps.leads.services.campaign_service import CampaignService
-
-        campaign = CampaignService.get(website_id=website_id, campaign_id=campaign_id)
-        recipients = CampaignRecipient.objects.filter(campaign=campaign).select_related("lead")
-        return self.paginated_response(recipients, CampaignRecipientSerializer)
-
-
-class CampaignPreviewRecipientsView(TenantScopedAPIView):
-    """Preview recipient count for a campaign before sending."""
-
-    def get(self, request, website_id):
-        self.get_website(website_id)
-        from apps.leads.services.campaign_service import CampaignService
-
-        segment_id = request.query_params.get("segment_id")
-        count = CampaignService.preview_recipients(
-            website_id=website_id,
-            segment_id=segment_id,
-        )
-
-        # Detect which provider will be used and estimate cost
-        provider = "sendgrid"
-        cost_per_1k = 0.50  # SendGrid fallback estimate
-        try:
-            from apps.leads.services.resend_service import resend_configured
-            if resend_configured():
-                provider = "resend"
-                cost_per_1k = 0.40  # Resend Pro: $20/50k
-        except ImportError:
-            try:
-                from apps.leads.services.ses_service import ses_configured
-                if ses_configured():
-                    provider = "ses"
-                    cost_per_1k = 0.10
-            except ImportError:
-                pass
-
-        estimated_cost = round(count * cost_per_1k / 1000, 4)
-        return Response({
-            "recipient_count": count,
-            "estimated_cost_usd": estimated_cost,
-            "cost_per_1k": cost_per_1k,
-            "provider": provider,
-        })
-
-
-class CampaignAIGenerateView(TenantScopedAPIView):
-    """Generate email body HTML using AI."""
-
-    def post(self, request, website_id):
-        website = self.get_website(website_id)
-        prompt = request.data.get("prompt", "").strip()
-        if not prompt:
-            return Response(
-                {"error": "A prompt is required."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        from apps.leads.services.campaign_service import CampaignService
-
-        body_html = CampaignService.generate_email_body(
-            prompt=prompt,
-            website_name=website.name,
-        )
-        if not body_html:
-            return Response(
-                {"error": "AI generation failed. Check API key configuration."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        return Response({"body_html": body_html})
-
 
 # ── Tracked Links ─────────────────────────────────────────────────────────────
 
@@ -411,21 +216,11 @@ class TrackedLinkListView(TenantScopedListAPIView):
             return Response({"error": "destination_url is required."}, status=status.HTTP_400_BAD_REQUEST)
 
         from apps.analytics.services.tracking_service import TrackingService
-        from apps.leads.models import EmailCampaign
-
-        campaign = None
-        campaign_id = request.data.get("campaign_id")
-        if campaign_id:
-            try:
-                campaign = EmailCampaign.objects.get(id=campaign_id, website=website)
-            except EmailCampaign.DoesNotExist:
-                pass
 
         link = TrackingService.create_link(
             website=website,
             destination_url=destination_url,
             description=request.data.get("description", ""),
-            campaign=campaign,
         )
         return Response(_serialize_tracked_link(link), status=status.HTTP_201_CREATED)
 
@@ -485,7 +280,6 @@ def _serialize_tracked_link(link) -> dict:
         "description": link.description,
         "click_count": link.click_count,
         "conversion_count": link.conversion_count,
-        "campaign_id": link.campaign_id,
         "created_at": link.created_at,
         "short_url": f"/t/{link.tracking_key}/",
     }

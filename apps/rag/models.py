@@ -91,9 +91,12 @@ class KnowledgeSource(TimestampMixin):
                 name="uq_rag_source_user_website_url",
             ),
         ]
+        # Explicit index names match the hand-written 0001_initial
+        # migration so Django's autodetector doesn't propose a no-op
+        # rename migration on every makemigrations.
         indexes = [
-            models.Index(fields=["user", "website"]),
-            models.Index(fields=["website", "kind"]),
+            models.Index(fields=["user", "website"], name="rag_kn_sou_user_website_idx"),
+            models.Index(fields=["website", "kind"], name="rag_kn_sou_website_kind_idx"),
         ]
 
     def __str__(self):
@@ -136,8 +139,8 @@ class KnowledgeChunk(TimestampMixin):
         db_table = "rag_knowledge_chunk"
         ordering = ["source", "chunk_index"]
         indexes = [
-            models.Index(fields=["user", "website"]),
-            models.Index(fields=["source", "chunk_index"]),
+            models.Index(fields=["user", "website"], name="rag_kn_chk_user_website_idx"),
+            models.Index(fields=["source", "chunk_index"], name="rag_kn_chk_source_idx_idx"),
         ]
 
     def __str__(self):

@@ -29,8 +29,14 @@ try:
 except ImportError:
     pass
 
-# Simpler logging in dev
-LOGGING["loggers"]["django"]["level"] = "INFO"  # noqa: F405
+# Simpler logging in dev — quiet the per-request noise from django.server,
+# django_structlog (request_started / request_finished), and the audit
+# middleware's INFO-level GET log so the console is readable. Errors,
+# warnings, and our own apps logger still surface.
+LOGGING["loggers"]["django"]["level"] = "WARNING"  # noqa: F405
+LOGGING["loggers"]["django.server"] = {"handlers": ["console"], "level": "WARNING"}  # noqa: F405
+LOGGING["loggers"]["django_structlog"] = {"handlers": ["console"], "level": "WARNING"}  # noqa: F405
+LOGGING["loggers"]["audit"]["level"] = "WARNING"  # noqa: F405
 
 # Run Celery tasks synchronously in dev (no Redis/worker needed)
 CELERY_TASK_ALWAYS_EAGER = True

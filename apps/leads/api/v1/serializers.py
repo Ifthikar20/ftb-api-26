@@ -1,8 +1,6 @@
 from rest_framework import serializers
 
 from apps.leads.models import (
-    CampaignRecipient,
-    EmailCampaign,
     Lead,
     LeadNote,
     LeadSegment,
@@ -48,35 +46,3 @@ class ScoringConfigSerializer(serializers.ModelSerializer):
         model = ScoringConfig
         fields = ["id", "weights", "threshold", "ml_model_version", "updated_at"]
         read_only_fields = ["id", "updated_at"]
-
-
-class EmailCampaignSerializer(serializers.ModelSerializer):
-    open_rate = serializers.FloatField(read_only=True)
-    click_rate = serializers.FloatField(read_only=True)
-    created_by_name = serializers.CharField(source="created_by.full_name", read_only=True)
-
-    class Meta:
-        model = EmailCampaign
-        fields = [
-            "id", "name", "subject", "body", "from_name", "from_email",
-            "status", "segment", "canva_design_url",
-            "is_ab_test", "subject_b", "body_b", "ab_split_ratio",
-            "sent_at", "recipient_count", "open_count", "click_count",
-            "open_rate", "click_rate", "mailchimp_campaign_id",
-            "created_by_name", "created_at", "updated_at",
-        ]
-        read_only_fields = [
-            "id", "status", "sent_at", "recipient_count", "open_count", "click_count",
-            "open_rate", "click_rate", "mailchimp_campaign_id", "created_by_name",
-            "created_at", "updated_at",
-        ]
-
-
-class CampaignRecipientSerializer(serializers.ModelSerializer):
-    lead_email = serializers.EmailField(source="lead.email", read_only=True)
-    lead_name = serializers.CharField(source="lead.name", read_only=True)
-
-    class Meta:
-        model = CampaignRecipient
-        fields = ["id", "lead", "lead_email", "lead_name", "status", "sent_at", "opened_at", "clicked_at"]
-        read_only_fields = ["id", "lead_email", "lead_name", "status", "sent_at", "opened_at", "clicked_at"]

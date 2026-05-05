@@ -419,24 +419,52 @@ class LLMRankingAuditRunView(TenantScopedAPIView):
             audit.error_message = ""
             audit.save()
 
-        # Run synchronously in the request thread
+        # Run the audit in a background daemon thread so the request
+        # returns immediately. The frontend already polls
+        # /audits/<id>/ every 5s while the audit is in pending/running
+        # state, so partial results stream in like a campaign rather
+        # than the user staring at an 8-second blocking spinner.
+        #
+        # In dev (CELERY_TASK_ALWAYS_EAGER=True) Celery would also
+        # block the request thread, which is why we spawn a thread
+        # directly. In prod with a real Celery worker we'd queue
+        # run_llm_ranking_audit.delay(audit_id=...) and Celery would
+        # do the same thing across workers; the thread approach is
+        # simpler and works either way without a broker dependency.
+        import threading
         from apps.llm_ranking.services.ranking_service import LLMRankingService
-        try:
-            LLMRankingService.run_audit(audit_id=str(audit.id))
-        except Exception as exc:
-            logger.error("LLM ranking audit %s failed: %s", audit.id, exc)
-            LLMRankingAudit.objects.filter(id=audit.id).update(
-                status=LLMRankingAudit.STATUS_FAILED,
-                error_message=str(exc),
-            )
-            return Response(
-                {"error": f"Audit failed: {exc}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
 
-        # Refresh and return
+        def _run_in_background(audit_id: str) -> None:
+            try:
+                LLMRankingService.run_audit(audit_id=audit_id)
+            except Exception as exc:
+                logger.error("LLM ranking audit %s failed: %s", audit_id, exc)
+                LLMRankingAudit.objects.filter(id=audit_id).update(
+                    status=LLMRankingAudit.STATUS_FAILED,
+                    error_message=str(exc)[:500],
+                )
+
+        # Flip to RUNNING up front so the polling UI shows a running
+        # state on the next tick — without this, there's a 1-2 second
+        # window where status=pending and the frontend wouldn't know
+        # to poll the detail endpoint.
+        LLMRankingAudit.objects.filter(id=audit.id).update(
+            status=LLMRankingAudit.STATUS_RUNNING,
+        )
+        threading.Thread(
+            target=_run_in_background,
+            args=(str(audit.id),),
+            daemon=True,
+            name=f"audit-{audit.id}",
+        ).start()
+
+        # Return the audit immediately. status=running tells the
+        # frontend to start polling /audits/<id>/ for progress.
         audit.refresh_from_db()
-        return Response(LLMRankingAuditListSerializer(audit).data)
+        return Response(
+            LLMRankingAuditListSerializer(audit).data,
+            status=status.HTTP_202_ACCEPTED,
+        )
 
 
 class LLMRankingAuditLogsView(TenantScopedAPIView):
@@ -1150,3 +1178,113 @@ class LLMRankingScheduleView(TenantScopedAPIView):
         if not deleted:
             return Response(status=status.HTTP_404_NOT_FOUND)
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class LLMRankingScheduleETAView(TenantScopedAPIView):
+    """
+    GET — projected ETA for the next scheduled audit on this website.
+
+    Returns next_run_at, seconds_until_run, projected duration, and
+    whether a run is currently in flight (with progress). The frontend
+    Schedule banner uses this to show a live countdown + remaining-time
+    estimate when an audit is mid-run.
+    """
+
+    def get(self, request, website_id):
+        self.get_website(website_id)
+        try:
+            schedule = LLMRankingSchedule.objects.select_related(
+                "website", "last_audit",
+            ).get(website_id=website_id)
+        except LLMRankingSchedule.DoesNotExist:
+            return Response(
+                {"error": "No schedule configured for this website."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        from apps.llm_ranking.services.eta_service import schedule_eta
+        return Response(schedule_eta(schedule))
+
+
+class LLMRankingScheduleRunNowView(TenantScopedAPIView):
+    """
+    POST — immediately dispatch the schedule's next audit, ignoring
+    next_run_at. Idempotent: refuses to start a second audit when one
+    is already in flight for this schedule.
+
+    Useful as a "test" button next to the schedule editor and for
+    operator triage when an auto-paused schedule has been re-enabled.
+    """
+
+    def post(self, request, website_id):
+        website = self.get_website(website_id)
+        try:
+            schedule = LLMRankingSchedule.objects.select_related(
+                "website", "last_audit",
+            ).get(website_id=website_id)
+        except LLMRankingSchedule.DoesNotExist:
+            return Response(
+                {"error": "No schedule configured for this website."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        prev = schedule.last_audit
+        if prev and prev.status in (
+            LLMRankingAudit.STATUS_PENDING, LLMRankingAudit.STATUS_RUNNING,
+        ):
+            return Response(
+                {"error": "An audit from this schedule is still running.",
+                 "audit_id": str(prev.id)},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        # Generate the prompts and create the audit row inline so the
+        # caller gets the audit_id back to poll.
+        from apps.llm_ranking.services.ranking_service import LLMRankingService
+        from apps.llm_ranking.providers import PROVIDERS as PROV_REGISTRY
+
+        prompts = LLMRankingService.generate_prompts(
+            business_name=schedule.business_name,
+            industry=schedule.industry,
+            description=schedule.business_description,
+            keywords=schedule.keywords,
+            location=schedule.location,
+            user=schedule.created_by,
+            website=website,
+        )
+        requested = schedule.providers or list(PROV_REGISTRY.keys())
+        selected = [
+            k for k in requested
+            if k in PROV_REGISTRY
+            and getattr(settings, PROV_REGISTRY[k].api_key_setting, "")
+        ] or ["claude"]
+
+        audit = LLMRankingAudit.objects.create(
+            website=website,
+            created_by=schedule.created_by,
+            business_name=schedule.business_name,
+            business_description=schedule.business_description,
+            industry=schedule.industry,
+            location=schedule.location,
+            keywords=schedule.keywords,
+            prompts=prompts,
+            providers_queried=selected,
+        )
+
+        # Reset failure counter on a manual run — the operator is
+        # explicitly retrying, so the auto-pause gate should reset too.
+        schedule.last_audit = audit
+        schedule.consecutive_failures = 0
+        schedule.last_failure_at = None
+        schedule.save(update_fields=[
+            "last_audit", "consecutive_failures", "last_failure_at", "updated_at",
+        ])
+
+        from apps.llm_ranking.tasks import run_llm_ranking_audit
+        run_llm_ranking_audit.delay(audit_id=str(audit.id))
+
+        return Response(
+            {"audit_id": str(audit.id),
+             "schedule_id": str(schedule.id),
+             "queued": True},
+            status=status.HTTP_202_ACCEPTED,
+        )

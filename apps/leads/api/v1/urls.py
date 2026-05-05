@@ -19,14 +19,6 @@ urlpatterns = [
     path("<uuid:website_id>/<uuid:lead_id>/timeline/", views.LeadTimelineView.as_view(), name="lead-timeline"),
     path("<uuid:website_id>/ai-search/", views.AILeadFinderView.as_view(), name="lead-ai-search"),
     path("<uuid:website_id>/<uuid:lead_id>/email/", views.LeadEmailView.as_view(), name="lead-email"),
-    # Campaigns
-    path("<uuid:website_id>/campaigns/", views.CampaignListView.as_view(), name="campaign-list"),
-    path("<uuid:website_id>/campaigns/preview-recipients/", views.CampaignPreviewRecipientsView.as_view(), name="campaign-preview-recipients"),
-    path("<uuid:website_id>/campaigns/ai-generate/", views.CampaignAIGenerateView.as_view(), name="campaign-ai-generate"),
-    path("<uuid:website_id>/campaigns/<int:campaign_id>/", views.CampaignDetailView.as_view(), name="campaign-detail"),
-    path("<uuid:website_id>/campaigns/<int:campaign_id>/send/", views.CampaignSendView.as_view(), name="campaign-send"),
-    path("<uuid:website_id>/campaigns/<int:campaign_id>/stats/", views.CampaignStatsView.as_view(), name="campaign-stats"),
-    path("<uuid:website_id>/campaigns/<int:campaign_id>/recipients/", views.CampaignRecipientsView.as_view(), name="campaign-recipients"),
     # Tracked links
     path("<uuid:website_id>/tracked-links/", views.TrackedLinkListView.as_view(), name="tracked-link-list"),
     path("<uuid:website_id>/tracked-links/<uuid:link_id>/", views.TrackedLinkDetailView.as_view(), name="tracked-link-detail"),

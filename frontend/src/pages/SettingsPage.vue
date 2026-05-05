@@ -344,15 +344,21 @@ function barHeight(tokens) {
 async function loadUsage() {
   usageLoading.value = true
   try {
-    const token = authStore.token || localStorage.getItem('access_token')
+    // Use the auth store's accessToken (the previous code referenced
+    // ``authStore.token`` which doesn't exist — the store exports
+    // ``accessToken`` — so the request silently 401'd and the Usage
+    // card stayed empty).
+    const token = authStore.accessToken || localStorage.getItem('access_token')
     const res = await fetch(`/api/v1/auth/me/ai-usage/?days=${usagePeriod.value}`, {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
     })
     if (res.ok) {
       usage.value = await res.json()
       // Seed the cap input from server so the Save button can detect changes.
       const cap = usage.value?.cap_status?.cap_usd
       if (typeof cap === 'number') capInput.value = cap
+    } else {
+      console.warn('AI usage fetch returned', res.status)
     }
   } catch (e) {
     console.error('Failed to load AI usage', e)

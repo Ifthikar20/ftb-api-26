@@ -111,9 +111,21 @@ FREQUENCY_DELTAS = {
 def dispatch_scheduled_audits() -> None:
     """
     Celery Beat task: check all enabled LLMRankingSchedule records
-    whose next_run_at has passed, create an audit, and advance the schedule.
+    whose ``next_run_at`` has passed, create an audit, and advance
+    the schedule.
 
-    Runs every 15 minutes via beat_schedule.
+    Runs every 15 minutes via ``beat_schedule``.
+
+    Resilience guarantees:
+      • If the previous audit is still pending/running, do NOT enqueue
+        a second one — just bump ``next_run_at`` so we re-check next
+        cycle. Avoids stacking duplicates when a slow audit overruns
+        its cadence.
+      • Track ``consecutive_failures`` and auto-pause the schedule
+        once it crosses ``auto_pause_threshold``. Operator can re-
+        enable explicitly.
+      • Per-user monthly AI spend cap is checked first — skip + advance
+        rather than burn credits while the cap is held.
     """
     from django.utils import timezone
 
@@ -124,15 +136,26 @@ def dispatch_scheduled_audits() -> None:
     due = LLMRankingSchedule.objects.filter(
         is_enabled=True,
         next_run_at__lte=now,
-    ).select_related("website")
+    ).select_related("website", "last_audit")
 
     for schedule in due:
         try:
-            # Per-user monthly AI spend cap. The on-demand audit path enforces
-            # this in the API view; scheduled runs would otherwise bypass it
-            # and silently push the user over their cap. Skip and advance the
-            # schedule so we re-check next cycle.
             cap_user = schedule.created_by
+
+            # ── 1. Skip if previous run still in flight ──────────────
+            prev = schedule.last_audit
+            if prev and prev.status in (
+                LLMRankingAudit.STATUS_PENDING,
+                LLMRankingAudit.STATUS_RUNNING,
+            ):
+                logger.info(
+                    "Skipping scheduled audit for %s: previous audit %s "
+                    "still %s.", schedule.website.name, prev.id, prev.status,
+                )
+                _bump_next_run(schedule, now)
+                continue
+
+            # ── 2. Spend-cap check ────────────────────────────────────
             cap = float(getattr(cap_user, "monthly_ai_cost_cap_usd", 0) or 0)
             if cap > 0:
                 from core.ai_tracking import month_to_date_cost
@@ -143,13 +166,10 @@ def dispatch_scheduled_audits() -> None:
                         "($%.2f / $%.2f).",
                         schedule.website.name, cap_user.id, spent, cap,
                     )
-                    # Advance next_run_at so we don't tight-loop checking it.
-                    delta = FREQUENCY_DELTAS.get(schedule.frequency, timedelta(weeks=1))
-                    schedule.next_run_at = now + delta
-                    schedule.save(update_fields=["next_run_at", "updated_at"])
+                    _bump_next_run(schedule, now)
                     continue
 
-            # Generate prompts for the scheduled audit
+            # ── 3. Generate + filter providers ────────────────────────
             prompts = LLMRankingService.generate_prompts(
                 business_name=schedule.business_name,
                 industry=schedule.industry,
@@ -159,10 +179,6 @@ def dispatch_scheduled_audits() -> None:
                 user=cap_user,
                 website=schedule.website,
             )
-
-            # Filter requested providers down to those that are both
-            # implemented and configured. Mirrors the API path so a schedule
-            # saved with stale provider keys cannot queue dead cells.
             from apps.llm_ranking.providers import PROVIDERS
             from django.conf import settings as _settings
             requested = schedule.providers or list(PROVIDERS.keys())
@@ -184,14 +200,21 @@ def dispatch_scheduled_audits() -> None:
                 providers_queried=selected_providers,
             )
 
-            # Queue the audit execution
+            # Queue execution + record the audit on the schedule so the
+            # next dispatch cycle can detect it's still in flight.
             run_llm_ranking_audit.delay(audit_id=str(audit.id))
 
-            # Advance the schedule
+            # Advance + reset failure counter (success path).
             delta = FREQUENCY_DELTAS.get(schedule.frequency, timedelta(weeks=1))
             schedule.last_run_at = now
             schedule.next_run_at = now + delta
-            schedule.save(update_fields=["last_run_at", "next_run_at", "updated_at"])
+            schedule.last_audit = audit
+            schedule.consecutive_failures = 0
+            schedule.last_failure_at = None
+            schedule.save(update_fields=[
+                "last_run_at", "next_run_at", "last_audit",
+                "consecutive_failures", "last_failure_at", "updated_at",
+            ])
 
             logger.info(
                 "Scheduled LLM audit created for %s (schedule=%s, next=%s)",
@@ -203,3 +226,36 @@ def dispatch_scheduled_audits() -> None:
                 "Failed to dispatch scheduled LLM audit for schedule %s: %s",
                 schedule.id, exc,
             )
+            _record_failure(schedule, now)
+
+
+def _bump_next_run(schedule, now) -> None:
+    """Advance next_run_at without recording success or failure."""
+    delta = FREQUENCY_DELTAS.get(schedule.frequency, timedelta(weeks=1))
+    schedule.next_run_at = now + delta
+    schedule.save(update_fields=["next_run_at", "updated_at"])
+
+
+def _record_failure(schedule, now) -> None:
+    """
+    Increment ``consecutive_failures``; auto-pause the schedule when
+    the counter crosses ``auto_pause_threshold``. Always advance
+    ``next_run_at`` so a transient error doesn't tight-loop the
+    dispatcher.
+    """
+    schedule.consecutive_failures = (schedule.consecutive_failures or 0) + 1
+    schedule.last_failure_at = now
+    delta = FREQUENCY_DELTAS.get(schedule.frequency, timedelta(weeks=1))
+    schedule.next_run_at = now + delta
+    update_fields = [
+        "consecutive_failures", "last_failure_at",
+        "next_run_at", "updated_at",
+    ]
+    if schedule.consecutive_failures >= (schedule.auto_pause_threshold or 3):
+        schedule.is_enabled = False
+        update_fields.append("is_enabled")
+        logger.warning(
+            "Auto-pausing schedule %s after %d consecutive failures.",
+            schedule.id, schedule.consecutive_failures,
+        )
+    schedule.save(update_fields=update_fields)

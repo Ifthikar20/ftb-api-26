@@ -11,7 +11,7 @@ from collections import defaultdict
 from django.db import transaction
 from django.db.models import Count, Max
 
-from apps.leads.models import CampaignRecipient, Lead, LeadEmail, LeadNote
+from apps.leads.models import Lead, LeadEmail, LeadNote
 from core.logging.audit_logger import audit_log
 
 logger = logging.getLogger("apps")
@@ -76,16 +76,6 @@ class DeduplicationService:
             # Re-parent related objects
             LeadNote.objects.filter(lead=dup).update(lead=primary)
             LeadEmail.objects.filter(lead=dup).update(lead=primary)
-
-            # Campaign recipients — skip if primary already has one for the same campaign
-            for recipient in CampaignRecipient.objects.filter(lead=dup):
-                if not CampaignRecipient.objects.filter(
-                    campaign=recipient.campaign, lead=primary
-                ).exists():
-                    recipient.lead = primary
-                    recipient.save(update_fields=["lead"])
-                else:
-                    recipient.delete()
 
             # Fill empty fields from duplicate
             for field in ("name", "company", "source", "email"):
