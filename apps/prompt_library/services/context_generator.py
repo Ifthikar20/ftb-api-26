@@ -21,7 +21,20 @@ from apps.prompt_library.services.template_parser import extract_variables
 
 logger = logging.getLogger("apps")
 
-ALLOWED_STYLES = {"story", "question", "comparison", "local", "how_to", "listicle"}
+ALLOWED_STYLES = {
+    "story",          # multi-sentence anecdote
+    "question",       # direct, single-sentence
+    "comparison",     # X vs Y
+    "local",          # mentions place / route / time
+    "how_to",         # instructional
+    "listicle",       # ranking-style
+    "recommendation", # asking for picks
+    "skeptical",      # doubting a claim
+    "discovery",      # 'I just heard / saw...'
+    "problem",        # frustrated user trying to fix something
+    "verification",   # 'is X legit?'
+    "experience",     # first-person 'I tried X'
+}
 ALLOWED_BUCKETS = {"category", "comparison", "problem", "local"}
 
 _SYSTEM = (
@@ -46,17 +59,29 @@ _USER_TEMPLATE = (
     "places, or persona details — invent them if needed (5-10 different "
     "made-up business names is fine; reuse them across prompts to feel like "
     "the same neighbourhood).\n\n"
-    "Mix styles: 7 stories (multi-sentence, anecdotal), 6 questions (one-line, "
-    "natural), 4 problems (frustrated user trying to figure something out), "
-    "3 local-flavored (mention streets, intersections, time-of-day).\n\n"
+    "MIX LENGTHS DELIBERATELY:\n"
+    "- 4 short prompts (one sentence, ≤ 15 words, terse)\n"
+    "- 8 medium prompts (2 sentences, 15-30 words)\n"
+    "- 8 long prompts (3-4 sentences, 30-60 words, anecdotal, conversational, "
+    "with side comments and personal context)\n\n"
+    "MIX STYLES across the {count} items. Use as many of these styles as "
+    "possible: story, question, comparison, local, how_to, recommendation, "
+    "skeptical, discovery, problem, verification, experience. Aim for at "
+    "least 7 different style values.\n\n"
     'CONTEXT: """{context_text}"""\n\n'
     "Output strict JSON: a list of {count} objects, each with these keys:\n"
     "  prompt_text    (string — the full, concrete prompt text. No placeholders.)\n"
-    "  style          (one of: story, question, comparison, local, how_to, listicle)\n"
+    "  style          (one of: story, question, comparison, local, how_to, "
+    "listicle, recommendation, skeptical, discovery, problem, verification, "
+    "experience)\n"
     "  intent_bucket  (one of: category, comparison, problem, local)\n"
     "  trend_score    (integer 0-100; your best estimate of how popular / "
     "trending this question is on Google right now, where 100 = extremely "
-    "common search intent and 0 = obscure niche)\n\n"
+    "common search intent and 0 = obscure niche)\n"
+    "  keywords       (array of 3-6 short EXACT substrings from prompt_text "
+    "that are the MOST demand-driving phrases — neighbourhood, brand, "
+    "category-specific terminology, distinctive adjectives in quotes. "
+    "Each substring MUST appear verbatim in prompt_text.)\n\n"
     "Return ONLY the JSON array, no commentary."
 )
 
@@ -110,6 +135,13 @@ def _fallback_single(context_text: str) -> list[dict]:
         f"Has anyone here actually checked out the spots involved in: "
         f"{ctx[:240]}? Looking for honest takes."
     )
+    word_count = len([w for w in prompt_text.split() if w])
+    if word_count <= 14:
+        length_band = "short"
+    elif word_count <= 30:
+        length_band = "medium"
+    else:
+        length_band = "long"
     return [
         {
             "template_text": prompt_text,
@@ -119,6 +151,9 @@ def _fallback_single(context_text: str) -> list[dict]:
             "style": "question",
             "intent_bucket": "category",
             "trend_score": 50,
+            "keywords": [],
+            "word_count": word_count,
+            "length_band": length_band,
         }
     ]
 
@@ -146,6 +181,37 @@ def _normalise_item(raw: Any) -> dict | None:
     # Variables are extracted defensively — concrete prompts won't have any,
     # but if the model slips in a {{ slot }} we still capture it for storage.
     template_variables = extract_variables(prompt_text)
+    # Keywords: keep only those that actually appear in the prompt text. The
+    # frontend highlights them; nothing else, so verbatim match is the safest
+    # contract.
+    raw_keywords = raw.get("keywords") or []
+    if isinstance(raw_keywords, str):
+        raw_keywords = [raw_keywords]
+    keywords: list[str] = []
+    seen: set[str] = set()
+    lower_prompt = prompt_text.lower()
+    for kw in raw_keywords:
+        if not isinstance(kw, str):
+            continue
+        kw = kw.strip().strip("\"'")
+        if len(kw) < 2 or kw.lower() not in lower_prompt:
+            continue
+        key = kw.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        keywords.append(kw)
+        if len(keywords) >= 8:
+            break
+    # Word + length band — server-side so the frontend filter is just a
+    # simple equality check.
+    word_count = len([w for w in prompt_text.split() if w])
+    if word_count <= 14:
+        length_band = "short"
+    elif word_count <= 30:
+        length_band = "medium"
+    else:
+        length_band = "long"
     return {
         # Legacy fields kept for storage/compat with the existing Prompt model.
         "template_text": prompt_text,
@@ -156,6 +222,9 @@ def _normalise_item(raw: Any) -> dict | None:
         "style": style,
         "intent_bucket": bucket,
         "trend_score": trend_score,
+        "keywords": keywords,
+        "word_count": word_count,
+        "length_band": length_band,
     }
 
 

@@ -43,16 +43,33 @@
         </AirButton>
       </div>
 
-      <div v-if="generatedPrompts.length" class="mb-3 flex flex-wrap items-center gap-2">
-        <span class="pl-filter-label">Style:</span>
-        <AirChip
-          v-for="s in generatedStyleFilters"
-          :key="'gs-' + s.value"
-          as="button"
-          size="sm"
-          :variant="s.value === generatedStyleFilter ? 'primary' : 'neutral'"
-          @click="generatedStyleFilter = s.value"
-        >{{ s.label }}</AirChip>
+      <div v-if="generatedPrompts.length" class="pl-filters-stack">
+        <div class="pl-filter-row">
+          <span class="pl-filter-label">Style</span>
+          <div class="pl-filter-chips">
+            <AirChip
+              v-for="s in generatedStyleFilters"
+              :key="'gs-' + s.value"
+              as="button"
+              size="sm"
+              :variant="s.value === generatedStyleFilter ? 'primary' : 'neutral'"
+              @click="generatedStyleFilter = s.value"
+            >{{ s.label }}</AirChip>
+          </div>
+        </div>
+        <div class="pl-filter-row">
+          <span class="pl-filter-label">Length</span>
+          <div class="pl-filter-chips">
+            <AirChip
+              v-for="l in generatedLengthFilters"
+              :key="'gl-' + l.value"
+              as="button"
+              size="sm"
+              :variant="l.value === generatedLengthFilter ? 'primary' : 'neutral'"
+              @click="generatedLengthFilter = l.value"
+            >{{ l.label }}</AirChip>
+          </div>
+        </div>
       </div>
 
       <AirCard size="md" :padded="false">
@@ -147,7 +164,7 @@
                     <AirChip size="xs" variant="neutral">{{ titleCaseStyle(p.style) }}</AirChip>
                   </td>
                   <td class="pl-td pl-td-prompt">
-                    <span class="pl-prompt-text">{{ p.prompt_text || p.template_text }}</span>
+                    <span class="pl-prompt-text" v-html="renderHighlighted(p.prompt_text || p.template_text, p.keywords)"></span>
                   </td>
                   <td class="pl-td">
                     <div class="flex items-center gap-2">
@@ -216,7 +233,7 @@
                     </div>
                     <div class="pl-detail-prompt">
                       <div class="pl-detail-label mb-1">Full prompt</div>
-                      <p class="pl-detail-fulltext">{{ p.prompt_text || p.template_text }}</p>
+                      <p class="pl-detail-fulltext" v-html="renderHighlighted(p.prompt_text || p.template_text, p.keywords)"></p>
                     </div>
                     <div class="pl-detail-actions">
                       <AirButton variant="ghost" size="sm" @click.stop="onRemoveGenerated(p)">Skip</AirButton>
@@ -347,10 +364,32 @@ const generatedStyleFilters = [
   { value: '', label: 'All' },
   { value: 'story', label: 'Story' },
   { value: 'question', label: 'Question' },
+  { value: 'recommendation', label: 'Recommendation' },
+  { value: 'skeptical', label: 'Skeptical' },
   { value: 'comparison', label: 'Comparison' },
   { value: 'local', label: 'Local' },
   { value: 'how_to', label: 'How-to' },
+  { value: 'discovery', label: 'Discovery' },
+  { value: 'problem', label: 'Problem' },
+  { value: 'verification', label: 'Verification' },
+  { value: 'experience', label: 'Experience' },
+  { value: 'listicle', label: 'Listicle' },
 ]
+
+const generatedLengthFilter = ref('')
+const generatedLengthFilters = [
+  { value: '', label: 'All' },
+  { value: 'short', label: 'Short' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'long', label: 'Long' },
+]
+function lengthBandOf(p) {
+  if (p.length_band) return p.length_band
+  const wc = (p.prompt_text || p.template_text || '').trim().split(/\s+/).filter(Boolean).length
+  if (wc <= 14) return 'short'
+  if (wc <= 30) return 'medium'
+  return 'long'
+}
 
 const expandedResult = ref(null)
 function toggleExpand(uid) { expandedResult.value = expandedResult.value === uid ? null : uid }
@@ -373,6 +412,9 @@ const filteredGeneratedPrompts = computed(() => {
   let rows = generatedPrompts.value
   if (generatedStyleFilter.value) {
     rows = rows.filter(p => p.style === generatedStyleFilter.value)
+  }
+  if (generatedLengthFilter.value) {
+    rows = rows.filter(p => lengthBandOf(p) === generatedLengthFilter.value)
   }
   const { key, dir } = resultsSort.value
   const factor = dir === 'asc' ? 1 : -1
@@ -443,6 +485,46 @@ function renderTemplate(template) {
     /\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g,
     (_m, name) => `<span class="pl-var-chip">${_escapeHtml(name)}</span>`
   )
+}
+
+/**
+ * Render `text` with each phrase in `keywords` wrapped in a highlight span.
+ * Case-insensitive. Longer phrases take priority so 'kettle-boiling or just
+ * steaming' wins over 'kettle' alone. Builds the output by walking the raw
+ * string once and escape-encoding only the non-keyword chunks, so we can't
+ * accidentally inject HTML into the user's keywords.
+ */
+function renderHighlighted(text, keywords) {
+  if (!text) return ''
+  if (!keywords || !keywords.length) return _escapeHtml(text)
+  const sorted = [...keywords].filter(Boolean).sort((a, b) => b.length - a.length)
+  const lower = text.toLowerCase()
+  const ranges = []
+  for (const raw of sorted) {
+    const kw = String(raw).trim()
+    if (kw.length < 2) continue
+    const target = kw.toLowerCase()
+    let idx = 0
+    while (true) {
+      const pos = lower.indexOf(target, idx)
+      if (pos === -1) break
+      const end = pos + target.length
+      const overlaps = ranges.some(r => pos < r.end && end > r.start)
+      if (!overlaps) ranges.push({ start: pos, end })
+      idx = pos + 1
+    }
+  }
+  if (!ranges.length) return _escapeHtml(text)
+  ranges.sort((a, b) => a.start - b.start)
+  let out = ''
+  let cursor = 0
+  for (const r of ranges) {
+    if (r.start > cursor) out += _escapeHtml(text.slice(cursor, r.start))
+    out += `<mark class="pl-mark">${_escapeHtml(text.slice(r.start, r.end))}</mark>`
+    cursor = r.end
+  }
+  if (cursor < text.length) out += _escapeHtml(text.slice(cursor))
+  return out
 }
 
 let _genUid = 0
@@ -821,7 +903,26 @@ watch(websiteId, loadVariables)
 }
 .pl-control:focus-visible { border-color: var(--brand-accent); box-shadow: 0 0 0 3px var(--brand-accent-glow); }
 .pl-eyebrow { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); margin-bottom: 4px; }
-.pl-filter-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); }
+.pl-filter-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  width: 60px;
+  padding-top: 6px;
+}
+.pl-filters-stack { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
+.pl-filter-row { display: flex; align-items: flex-start; gap: 12px; }
+.pl-filter-chips { display: flex; flex-wrap: wrap; gap: 6px; flex: 1; }
+
+:deep(.pl-mark) {
+  background: linear-gradient(180deg, transparent 25%, #fff3a8 25%, #fff3a8 95%, transparent 95%);
+  color: var(--text-primary);
+  padding: 0 2px;
+  border-radius: 2px;
+  font-weight: 500;
+}
 .pl-divider { display: inline-block; width: 1px; height: 16px; background: var(--border-color); margin: 0 6px; }
 .pl-stat-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; }
 .pl-stat-val { font-size: 22px; font-weight: 600; color: var(--text-primary); margin-top: 4px; font-variant-numeric: tabular-nums; }
