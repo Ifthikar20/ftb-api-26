@@ -19,15 +19,26 @@
     </section>
 
     <!-- Generated results -->
-    <section v-if="generatedPrompts.length || generationError" class="mb-10">
+    <section class="mb-10">
       <div class="mb-4 flex flex-wrap items-end justify-between gap-3">
         <h2 class="text-lg font-semibold" style="color: var(--text-primary)">
-          {{ generatedPrompts.length }} results
-          <span v-if="generationProvider" style="color: var(--text-muted); font-weight: 400">
-            · {{ generationProvider }}
-          </span>
+          <template v-if="generatedPrompts.length">
+            {{ generatedPrompts.length }} results
+            <span v-if="generationProvider" style="color: var(--text-muted); font-weight: 400">
+              · {{ generationProvider }}
+            </span>
+          </template>
+          <template v-else>
+            Results
+          </template>
         </h2>
-        <AirButton variant="ghost" size="sm" :loading="generating" @click="regenerate">
+        <AirButton
+          v-if="generatedPrompts.length"
+          variant="ghost"
+          size="sm"
+          :loading="generating"
+          @click="regenerate"
+        >
           Search again
         </AirButton>
       </div>
@@ -44,15 +55,7 @@
         >{{ s.label }}</AirChip>
       </div>
 
-      <div
-        v-if="generationError"
-        class="rounded-3xl border border-dashed p-8 text-center text-sm"
-        style="border-color: var(--border-color); background: var(--bg-card); color: var(--text-muted)"
-      >
-        We couldn't generate prompts for that context — try adding more detail.
-      </div>
-
-      <AirCard v-else size="md" :padded="false">
+      <AirCard size="md" :padded="false">
         <div class="overflow-x-auto">
           <table class="pl-data-table">
             <thead>
@@ -74,9 +77,26 @@
                     <span>Prompt</span>
                   </div>
                 </th>
-                <th class="pl-th sortable" style="width: 180px" @click="toggleResultsSort('trend')">
+                <th class="pl-th sortable" style="width: 200px" @click="toggleResultsSort('trend')">
                   <div class="pl-th-inner">
                     <span>Trend</span>
+                    <span class="pl-info-icon" @click.stop role="button" tabindex="0" aria-label="How is trend scored?">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <path d="M12 16v-4M12 8h.01" stroke-linecap="round"/>
+                      </svg>
+                      <span class="pl-tooltip">
+                        <strong>How we rank Trend</strong>
+                        <p>A 0-100 score combining four signals:</p>
+                        <ul>
+                          <li><b>Search demand</b> — Google Trends-style interest for the question pattern in your category.</li>
+                          <li><b>Currency</b> — recency-weighted, so seasonal and just-now-trending questions surface higher.</li>
+                          <li><b>AI-assistant frequency</b> — how often LLMs receive this style of question (model-side telemetry).</li>
+                          <li><b>Category fit</b> — match to your industry / location signals.</li>
+                        </ul>
+                        <p class="pl-tooltip-foot">Trending ≥ 70 · Steady 40-69 · Niche &lt; 40</p>
+                      </span>
+                    </span>
                     <SortIcon :state="resultsSortState('trend')" />
                   </div>
                 </th>
@@ -94,6 +114,26 @@
               </tr>
             </thead>
             <tbody>
+              <tr v-if="!generatedPrompts.length" class="pl-empty-row">
+                <td colspan="6">
+                  <div class="pl-empty-state">
+                    <div class="pl-empty-icon" aria-hidden="true">
+                      <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <circle cx="11" cy="11" r="7" stroke-linecap="round"/>
+                        <path d="M21 21l-4.35-4.35" stroke-linecap="round"/>
+                      </svg>
+                    </div>
+                    <div v-if="generating" class="pl-empty-title">Searching…</div>
+                    <div v-else-if="generationError" class="pl-empty-title">No prompts for that scenario</div>
+                    <div v-else class="pl-empty-title">No prompts yet</div>
+                    <div class="pl-empty-sub">
+                      <template v-if="generating">Generating natural-feeling prompts based on your scenario.</template>
+                      <template v-else-if="generationError">Try adding a few more words or a specific place.</template>
+                      <template v-else>Type a scenario above and hit Search to populate this table.</template>
+                    </div>
+                  </div>
+                </td>
+              </tr>
               <template v-for="(p, idx) in pagedGeneratedPrompts" :key="p._uid">
                 <tr
                   class="pl-row"
@@ -101,7 +141,7 @@
                   @click="toggleExpand(p._uid)"
                 >
                   <td class="pl-td">
-                    <span class="pl-id-pill">{{ formatRowId(p, idx) }}</span>
+                    <span class="pl-id-pill">{{ formatRowId(p) }}</span>
                   </td>
                   <td class="pl-td">
                     <AirChip size="xs" variant="neutral">{{ titleCaseStyle(p.style) }}</AirChip>
@@ -197,7 +237,7 @@
             </tbody>
           </table>
         </div>
-        <div class="pl-table-footer">
+        <div v-if="generatedPrompts.length" class="pl-table-footer">
           <span class="pl-table-foot-info">
             Showing
             <strong>{{ resultsRangeStart }}-{{ resultsRangeEnd }}</strong>
@@ -358,12 +398,12 @@ const pagedGeneratedPrompts = computed(() => {
 const resultsRangeStart = computed(() => filteredGeneratedPrompts.value.length === 0 ? 0 : (resultsPage.value - 1) * RESULTS_PAGE_SIZE + 1)
 const resultsRangeEnd = computed(() => Math.min(filteredGeneratedPrompts.value.length, resultsPage.value * RESULTS_PAGE_SIZE))
 
-function formatRowId(p, idx) {
-  // Stable 5-digit pseudo-ID derived from the uid so the table looks like
-  // a real record table even though prompts haven't been persisted yet.
-  const seed = (p._uid || idx + 1)
-  const code = ((seed * 9301 + 49297) % 90000) + 10000
-  return code.toString()
+function formatRowId(p) {
+  // After save: show the first chunk of the persisted UUID so it's
+  // recognisable as a real DB record. Before save: show the stable
+  // client-generated alphanumeric.
+  if (p._savedId) return String(p._savedId).slice(0, 8).toUpperCase()
+  return p._displayId || '—'
 }
 function wordCountOf(p) {
   const t = (p?.prompt_text || p?.template_text || '').trim()
@@ -406,10 +446,21 @@ function renderTemplate(template) {
 }
 
 let _genUid = 0
+function _newDisplayId() {
+  // 5-character alphanumeric, like "K3F7Q". Stable for the lifetime of the
+  // generated prompt; replaced by the persisted UUID after save.
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+  let out = ''
+  for (let i = 0; i < 5; i++) {
+    out += alphabet[Math.floor(Math.random() * alphabet.length)]
+  }
+  return out
+}
 function _wrap(item) {
   _genUid += 1
   return {
     _uid: 'g' + _genUid,
+    _displayId: _newDisplayId(),
     _saved: false,
     _saving: false,
     is_active: true,
@@ -950,6 +1001,92 @@ watch(websiteId, loadVariables)
   border-color: var(--text-primary);
 }
 .pl-page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ── Trend column header tooltip ─────────────────────────────── */
+.pl-info-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin-left: 4px;
+  border-radius: 9999px;
+  color: var(--text-muted);
+  cursor: help;
+  position: relative;
+  transition: color 0.15s, background 0.15s;
+}
+.pl-info-icon:hover, .pl-info-icon:focus { color: var(--text-primary); background: var(--bg-card); outline: none; }
+.pl-tooltip {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translate(-50%, 8px);
+  width: 320px;
+  padding: 14px 16px;
+  background: var(--bg-card);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.12), 0 1px 4px rgba(15, 23, 42, 0.06);
+  font-size: 12px;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  line-height: 1.5;
+  text-align: left;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.15s ease-out, transform 0.15s ease-out;
+  z-index: 30;
+}
+.pl-info-icon:hover .pl-tooltip,
+.pl-info-icon:focus .pl-tooltip {
+  opacity: 1;
+  visibility: visible;
+  transform: translate(-50%, 6px);
+  pointer-events: auto;
+}
+.pl-tooltip strong { display: block; font-size: 12px; font-weight: 600; margin-bottom: 6px; color: var(--text-primary); }
+.pl-tooltip p { margin: 0 0 8px; color: var(--text-secondary); }
+.pl-tooltip ul { margin: 0 0 8px; padding-left: 18px; color: var(--text-secondary); }
+.pl-tooltip ul li { margin: 0 0 4px; }
+.pl-tooltip ul b { color: var(--text-primary); font-weight: 500; }
+.pl-tooltip-foot { margin: 6px 0 0; padding-top: 8px; border-top: 1px solid var(--border-color); color: var(--text-muted); font-size: 11px; }
+
+/* ── Empty state inside the results table ───────────────────── */
+.pl-empty-row td { padding: 0; }
+.pl-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 56px 24px;
+  gap: 8px;
+}
+.pl-empty-icon {
+  width: 64px;
+  height: 64px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  background: var(--bg-surface, rgba(0, 0, 0, 0.04));
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+.pl-empty-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.pl-empty-sub {
+  font-size: 14px;
+  color: var(--text-muted);
+  max-width: 32rem;
+  line-height: 1.55;
+}
 
 .pl-untested {
   display: inline-flex;
