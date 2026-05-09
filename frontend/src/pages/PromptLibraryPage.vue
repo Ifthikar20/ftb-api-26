@@ -144,7 +144,26 @@
 
 
       <AirCard size="md" :padded="false">
-        <div class="overflow-x-auto">
+        <!-- Empty / loading / error state — rendered outside the table so
+             there's no horizontal scrollbar when there's nothing to show -->
+        <div v-if="!generatedPrompts.length" class="pl-empty-state">
+          <div class="pl-empty-icon" aria-hidden="true">
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <circle cx="11" cy="11" r="7" stroke-linecap="round"/>
+              <path d="M21 21l-4.35-4.35" stroke-linecap="round"/>
+            </svg>
+          </div>
+          <div v-if="generating" class="pl-empty-title">Searching…</div>
+          <div v-else-if="generationError" class="pl-empty-title">No prompts for that scenario</div>
+          <div v-else class="pl-empty-title">No prompts yet</div>
+          <div class="pl-empty-sub">
+            <template v-if="generating">Generating natural-feeling prompts based on your scenario.</template>
+            <template v-else-if="generationError">Try adding a few more words or a specific place.</template>
+            <template v-else>Type a scenario above and hit Search to populate this table.</template>
+          </div>
+        </div>
+
+        <div v-else class="pl-table-wrap">
           <table class="pl-data-table">
             <thead>
               <tr>
@@ -202,26 +221,6 @@
               </tr>
             </thead>
             <tbody>
-              <tr v-if="!generatedPrompts.length" class="pl-empty-row">
-                <td colspan="6">
-                  <div class="pl-empty-state">
-                    <div class="pl-empty-icon" aria-hidden="true">
-                      <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                        <circle cx="11" cy="11" r="7" stroke-linecap="round"/>
-                        <path d="M21 21l-4.35-4.35" stroke-linecap="round"/>
-                      </svg>
-                    </div>
-                    <div v-if="generating" class="pl-empty-title">Searching…</div>
-                    <div v-else-if="generationError" class="pl-empty-title">No prompts for that scenario</div>
-                    <div v-else class="pl-empty-title">No prompts yet</div>
-                    <div class="pl-empty-sub">
-                      <template v-if="generating">Generating natural-feeling prompts based on your scenario.</template>
-                      <template v-else-if="generationError">Try adding a few more words or a specific place.</template>
-                      <template v-else>Type a scenario above and hit Search to populate this table.</template>
-                    </div>
-                  </div>
-                </td>
-              </tr>
               <template v-for="(p, idx) in pagedGeneratedPrompts" :key="p._uid">
                 <tr
                   class="pl-row"
@@ -1541,6 +1540,11 @@ watch(websiteId, loadVariables)
 .pl-row:hover { background: var(--bg-surface, rgba(0, 0, 0, 0.02)); }
 .pl-row.is-expanded { background: var(--bg-surface, rgba(0, 0, 0, 0.02)); }
 
+.pl-table-wrap {
+  /* Only show the horizontal scrollbar if the table actually overflows on
+     a small viewport. The table fills its container otherwise. */
+  overflow-x: auto;
+}
 .pl-data-table {
   width: 100%;
   border-collapse: separate;
@@ -1782,7 +1786,6 @@ watch(websiteId, loadVariables)
 .pl-tooltip-foot { margin: 6px 0 0; padding-top: 8px; border-top: 1px solid var(--border-color); color: var(--text-muted); font-size: 11px; }
 
 /* ── Empty state inside the results table ───────────────────── */
-.pl-empty-row td { padding: 0; }
 .pl-empty-state {
   display: flex;
   flex-direction: column;
