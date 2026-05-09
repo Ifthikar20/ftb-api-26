@@ -1715,53 +1715,6 @@ function copyEmbed() {
 .al-empty-sub { font-size: 11px; color: var(--text-muted); margin: 0; line-height: 1.5; }
 .al-empty-sub strong { color: var(--text-secondary); }
 
-/* ── Competitor Tracking Card ─────────────────────────────────────────── */
-.ct-card { }
-.ct-list { display: flex; flex-direction: column; gap: 5px; margin-bottom: 10px; }
-.ct-row {
-  display: flex; align-items: center; gap: 10px;
-  padding: 9px 11px; border: 1px solid var(--border-color);
-  border-radius: var(--radius-md); background: var(--bg-surface);
-  transition: border-color 0.15s;
-}
-.ct-row:hover { border-color: rgba(99,102,241,0.3); }
-.ct-favicon { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.ct-info { flex: 1; min-width: 0; }
-.ct-name { display: block; font-size: 12px; font-weight: 700; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ct-domain { font-size: 10px; color: var(--text-muted); }
-.ct-status { font-size: 9px; color: var(--text-muted); flex-shrink: 0; display: none; }
-@media (min-width: 500px) { .ct-status { display: block; } }
-.ct-last-check { }
-.ct-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
-.ct-refresh-btn {
-  display: flex; align-items: center; gap: 4px;
-  padding: 4px 10px; border-radius: var(--radius-full);
-  border: 1px solid var(--border-color);
-  background: var(--bg-card); color: var(--text-secondary);
-  font-size: 10px; font-weight: 600; cursor: pointer; transition: all 0.15s;
-}
-.ct-refresh-btn:hover:not(:disabled) { border-color: var(--brand-accent); color: var(--brand-accent); }
-.ct-refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.ct-refreshing { opacity: 0.7; pointer-events: none; }
-.ct-spin { animation: spin 0.8s linear infinite; }
-.ct-compare-row { margin: 6px 0; }
-.ct-compare-btn {
-  display: inline-flex; align-items: center; gap: 5px;
-  padding: 5px 14px; border-radius: var(--radius-full);
-  border: 1px solid var(--border-color); background: var(--bg-surface);
-  color: var(--text-secondary); font-size: 11px; font-weight: 600;
-  cursor: pointer; transition: all 0.15s;
-}
-.ct-compare-btn:hover:not(:disabled) { border-color: var(--brand-accent); color: var(--brand-accent); background: rgba(99,102,241,0.04); }
-.ct-compare-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-.ct-overlap-table { margin-top: 8px; }
-.ct-kw-cell { font-size: 11px; font-weight: 600; color: var(--text-primary); max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ct-us-col { }
-.ct-us-label { font-size: 10px; font-weight: 800; color: var(--brand-accent); }
-.ct-rank-delta { display: block; font-size: 8px; font-weight: 700; margin-top: 1px; text-transform: uppercase; letter-spacing: 0.03em; }
-.ct-delta-win { color: #16a34a; }
-.ct-delta-lose { color: #dc2626; }
-
 /* ── Historical Rank Charts Card ──────────────────────────────────────── */
 .hc-card { }
 .hc-controls { margin-bottom: 14px; }
