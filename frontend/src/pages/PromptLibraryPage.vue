@@ -67,54 +67,163 @@
 
       <AirCard v-else size="md" :padded="false">
         <div class="overflow-x-auto">
-          <table class="w-full text-left text-sm">
+          <table class="pl-data-table">
             <thead>
-              <tr style="border-bottom: 1px solid var(--border-color)">
-                <th class="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider" style="color: var(--text-muted); width: 56px">#</th>
-                <th class="px-3 py-3 text-[11px] font-semibold uppercase tracking-wider" style="color: var(--text-muted)">Prompt</th>
-                <th class="px-3 py-3 text-[11px] font-semibold uppercase tracking-wider" style="color: var(--text-muted); width: 90px">Style</th>
-                <th class="px-3 py-3 text-[11px] font-semibold uppercase tracking-wider" style="color: var(--text-muted); width: 160px">Trend</th>
-                <th class="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wider" style="color: var(--text-muted); width: 110px">Action</th>
+              <tr>
+                <th class="pl-th sortable" style="width: 110px" @click="toggleResultsSort('id')">
+                  <div class="pl-th-inner">
+                    <span>ID</span>
+                    <SortIcon :state="resultsSortState('id')" />
+                  </div>
+                </th>
+                <th class="pl-th sortable" style="width: 120px" @click="toggleResultsSort('style')">
+                  <div class="pl-th-inner">
+                    <span>Style</span>
+                    <SortIcon :state="resultsSortState('style')" />
+                  </div>
+                </th>
+                <th class="pl-th">
+                  <div class="pl-th-inner">
+                    <span>Prompt</span>
+                  </div>
+                </th>
+                <th class="pl-th sortable" style="width: 180px" @click="toggleResultsSort('trend')">
+                  <div class="pl-th-inner">
+                    <span>Trend</span>
+                    <SortIcon :state="resultsSortState('trend')" />
+                  </div>
+                </th>
+                <th class="pl-th sortable" style="width: 140px" @click="toggleResultsSort('status')">
+                  <div class="pl-th-inner">
+                    <span>Status</span>
+                    <SortIcon :state="resultsSortState('status')" />
+                  </div>
+                </th>
+                <th class="pl-th text-right" style="width: 130px">
+                  <div class="pl-th-inner justify-end">
+                    <span>Action</span>
+                  </div>
+                </th>
               </tr>
             </thead>
             <tbody>
-              <tr
-                v-for="(p, idx) in filteredGeneratedPrompts"
-                :key="p._uid"
-                class="pl-row"
-                style="border-top: 1px solid var(--border-color)"
-              >
-                <td class="px-4 py-3 align-top tabular-nums" style="color: var(--text-muted)">{{ idx + 1 }}</td>
-                <td class="px-3 py-3 align-top" style="color: var(--text-primary); max-width: 56rem">
-                  <div class="leading-relaxed">{{ p.prompt_text || p.template_text }}</div>
-                </td>
-                <td class="px-3 py-3 align-top">
-                  <AirChip size="xs" variant="neutral">{{ titleCaseStyle(p.style) }}</AirChip>
-                </td>
-                <td class="px-3 py-3 align-top">
-                  <div class="flex items-center gap-2">
-                    <div class="pl-trend-bar">
-                      <div class="pl-trend-fill" :class="trendBarClass(p.trend_score)" :style="{ width: (p.trend_score || 0) + '%' }"></div>
+              <template v-for="(p, idx) in pagedGeneratedPrompts" :key="p._uid">
+                <tr
+                  class="pl-row"
+                  :class="{ 'is-expanded': expandedResult === p._uid }"
+                  @click="toggleExpand(p._uid)"
+                >
+                  <td class="pl-td">
+                    <span class="pl-id-pill">{{ formatRowId(p, idx) }}</span>
+                  </td>
+                  <td class="pl-td">
+                    <AirChip size="xs" variant="neutral">{{ titleCaseStyle(p.style) }}</AirChip>
+                  </td>
+                  <td class="pl-td pl-td-prompt">
+                    <span class="pl-prompt-text">{{ p.prompt_text || p.template_text }}</span>
+                  </td>
+                  <td class="pl-td">
+                    <div class="flex items-center gap-2">
+                      <div class="pl-trend-bar">
+                        <div class="pl-trend-fill" :class="trendBarClass(p.trend_score)" :style="{ width: (p.trend_score || 0) + '%' }"></div>
+                      </div>
+                      <span class="text-xs tabular-nums" style="color: var(--text-secondary); min-width: 1.75rem">{{ p.trend_score ?? '—' }}</span>
+                      <span class="text-[10px] uppercase tracking-wider" style="color: var(--text-muted)">{{ trendLabel(p.trend_score) }}</span>
                     </div>
-                    <span class="text-xs tabular-nums" style="color: var(--text-secondary); min-width: 1.75rem">{{ p.trend_score ?? '—' }}</span>
-                    <span class="text-[10px] uppercase tracking-wider" style="color: var(--text-muted)">{{ trendLabel(p.trend_score) }}</span>
-                  </div>
-                </td>
-                <td class="px-3 py-3 align-top text-right">
-                  <AirButton
-                    v-if="!p._saved"
-                    variant="primary"
-                    size="sm"
-                    :loading="!!p._saving"
-                    @click="onSaveGenerated(p)"
-                  >
-                    Save
-                  </AirButton>
-                  <AirChip v-else size="sm" variant="success">Saved</AirChip>
-                </td>
-              </tr>
+                  </td>
+                  <td class="pl-td">
+                    <span v-if="p._saved" class="pl-status-pill is-signed">Saved</span>
+                    <span v-else class="pl-status-pill is-pending">Untested</span>
+                  </td>
+                  <td class="pl-td text-right" @click.stop>
+                    <div class="pl-action-row">
+                      <AirButton
+                        v-if="!p._saved"
+                        variant="primary"
+                        size="sm"
+                        :loading="!!p._saving"
+                        @click="onSaveGenerated(p)"
+                      >
+                        Save
+                      </AirButton>
+                      <button class="pl-expand-toggle" :aria-expanded="expandedResult === p._uid" @click.stop="toggleExpand(p._uid)" aria-label="Toggle details">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" :style="{ transform: expandedResult === p._uid ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.18s' }">
+                          <path d="M6 9l6 6 6-6" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+                <tr v-if="expandedResult === p._uid" class="pl-detail-row">
+                  <td colspan="6" class="pl-detail-cell">
+                    <div class="pl-detail-grid">
+                      <div class="pl-detail-block">
+                        <div class="pl-detail-label">Source</div>
+                        <div class="pl-detail-value">{{ generationProvider || 'deepseek' }}</div>
+                      </div>
+                      <div class="pl-detail-block">
+                        <div class="pl-detail-label">Intent</div>
+                        <div class="pl-detail-value">{{ titleCaseStyle(p.intent_bucket) }}</div>
+                      </div>
+                      <div class="pl-detail-block">
+                        <div class="pl-detail-label">Style</div>
+                        <div class="pl-detail-value">{{ titleCaseStyle(p.style) }}</div>
+                      </div>
+                      <div class="pl-detail-block">
+                        <div class="pl-detail-label">Words</div>
+                        <div class="pl-detail-value">{{ wordCountOf(p) }}</div>
+                      </div>
+                      <div class="pl-detail-block">
+                        <div class="pl-detail-label">Trend score</div>
+                        <div class="pl-detail-value">{{ p.trend_score ?? '—' }} / 100 · <span style="color: var(--text-muted)">{{ trendLabel(p.trend_score) }}</span></div>
+                      </div>
+                      <div class="pl-detail-block">
+                        <div class="pl-detail-label">Variables</div>
+                        <div class="pl-detail-value">
+                          <span v-if="!p.template_variables || !p.template_variables.length" style="color: var(--text-muted)">None — fully concrete</span>
+                          <span v-else>
+                            <AirChip v-for="v in p.template_variables" :key="v" size="xs" variant="info" class="mr-1">{{ v }}</AirChip>
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="pl-detail-prompt">
+                      <div class="pl-detail-label mb-1">Full prompt</div>
+                      <p class="pl-detail-fulltext">{{ p.prompt_text || p.template_text }}</p>
+                    </div>
+                    <div class="pl-detail-actions">
+                      <AirButton variant="ghost" size="sm" @click.stop="onRemoveGenerated(p)">Skip</AirButton>
+                      <AirButton
+                        v-if="!p._saved"
+                        variant="primary"
+                        size="sm"
+                        :loading="!!p._saving"
+                        @click.stop="onSaveGenerated(p)"
+                      >
+                        Save to my prompts
+                      </AirButton>
+                      <AirChip v-else size="sm" variant="success">Saved</AirChip>
+                    </div>
+                  </td>
+                </tr>
+              </template>
             </tbody>
           </table>
+        </div>
+        <div class="pl-table-footer">
+          <span class="pl-table-foot-info">
+            Showing
+            <strong>{{ resultsRangeStart }}-{{ resultsRangeEnd }}</strong>
+            of {{ filteredGeneratedPrompts.length }}
+          </span>
+          <div class="pl-pagination">
+            <button class="pl-page-btn" :disabled="resultsPage === 1" @click="resultsPage = Math.max(1, resultsPage - 1)" aria-label="Previous page">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <button class="pl-page-btn" :disabled="resultsPage >= resultsPageCount" @click="resultsPage = Math.min(resultsPageCount, resultsPage + 1)" aria-label="Next page">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+          </div>
         </div>
       </AirCard>
     </section>
@@ -332,6 +441,7 @@ import ContextInputCard from '@/components/prompt_library/ContextInputCard.vue'
 import VariablesPanel from '@/components/prompt_library/VariablesPanel.vue'
 import NewPromptModal from '@/components/prompt_library/NewPromptModal.vue'
 import SmokeTestResult from '@/components/prompt_library/SmokeTestResult.vue'
+import SortIcon from '@/components/prompt_library/SortIcon.vue'
 
 const route = useRoute()
 const toast = useToast()
@@ -386,10 +496,63 @@ const generatedStyleFilters = [
   { value: 'how_to', label: 'How-to' },
 ]
 
+const expandedResult = ref(null)
+function toggleExpand(uid) { expandedResult.value = expandedResult.value === uid ? null : uid }
+
+const resultsSort = ref({ key: 'trend', dir: 'desc' })
+function toggleResultsSort(key) {
+  if (resultsSort.value.key === key) {
+    resultsSort.value.dir = resultsSort.value.dir === 'asc' ? 'desc' : 'asc'
+  } else {
+    resultsSort.value = { key, dir: key === 'trend' ? 'desc' : 'asc' }
+  }
+  resultsPage.value = 1
+}
+function resultsSortState(key) {
+  if (resultsSort.value.key !== key) return null
+  return resultsSort.value.dir
+}
+
 const filteredGeneratedPrompts = computed(() => {
-  if (!generatedStyleFilter.value) return generatedPrompts.value
-  return generatedPrompts.value.filter(p => p.style === generatedStyleFilter.value)
+  let rows = generatedPrompts.value
+  if (generatedStyleFilter.value) {
+    rows = rows.filter(p => p.style === generatedStyleFilter.value)
+  }
+  const { key, dir } = resultsSort.value
+  const factor = dir === 'asc' ? 1 : -1
+  return [...rows].sort((a, b) => {
+    let av, bv
+    if (key === 'trend') { av = a.trend_score ?? 0; bv = b.trend_score ?? 0 }
+    else if (key === 'style') { av = a.style || ''; bv = b.style || '' }
+    else if (key === 'status') { av = a._saved ? 1 : 0; bv = b._saved ? 1 : 0 }
+    else { av = a._uid; bv = b._uid }
+    if (av < bv) return -1 * factor
+    if (av > bv) return 1 * factor
+    return 0
+  })
 })
+
+const RESULTS_PAGE_SIZE = 10
+const resultsPage = ref(1)
+const resultsPageCount = computed(() => Math.max(1, Math.ceil(filteredGeneratedPrompts.value.length / RESULTS_PAGE_SIZE)))
+const pagedGeneratedPrompts = computed(() => {
+  const start = (resultsPage.value - 1) * RESULTS_PAGE_SIZE
+  return filteredGeneratedPrompts.value.slice(start, start + RESULTS_PAGE_SIZE)
+})
+const resultsRangeStart = computed(() => filteredGeneratedPrompts.value.length === 0 ? 0 : (resultsPage.value - 1) * RESULTS_PAGE_SIZE + 1)
+const resultsRangeEnd = computed(() => Math.min(filteredGeneratedPrompts.value.length, resultsPage.value * RESULTS_PAGE_SIZE))
+
+function formatRowId(p, idx) {
+  // Stable 5-digit pseudo-ID derived from the uid so the table looks like
+  // a real record table even though prompts haven't been persisted yet.
+  const seed = (p._uid || idx + 1)
+  const code = ((seed * 9301 + 49297) % 90000) + 10000
+  return code.toString()
+}
+function wordCountOf(p) {
+  const t = (p?.prompt_text || p?.template_text || '').trim()
+  return t ? t.split(/\s+/).filter(Boolean).length : 0
+}
 
 function trendBarClass(score) {
   const s = Number(score) || 0
@@ -793,8 +956,169 @@ watch(websiteId, loadVariables)
 .pl-stagger-leave-active { transition: opacity 0.2s ease; }
 .pl-stagger-leave-to { opacity: 0; }
 
-.pl-row { transition: background 0.12s ease-out; }
+.pl-row { transition: background 0.12s ease-out; cursor: pointer; }
 .pl-row:hover { background: var(--bg-surface, rgba(0, 0, 0, 0.02)); }
+.pl-row.is-expanded { background: var(--bg-surface, rgba(0, 0, 0, 0.02)); }
+
+.pl-data-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  text-align: left;
+  font-size: 14px;
+  color: var(--text-primary);
+}
+.pl-th {
+  padding: 14px 16px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  letter-spacing: 0;
+  text-transform: none;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-surface, rgba(0, 0, 0, 0.02));
+}
+.pl-th.sortable { cursor: pointer; user-select: none; }
+.pl-th.sortable:hover { color: var(--text-primary); }
+.pl-th-inner { display: inline-flex; align-items: center; gap: 6px; }
+.pl-th-inner.justify-end { justify-content: flex-end; }
+
+.pl-td {
+  padding: 16px;
+  vertical-align: middle;
+  border-top: 1px solid var(--border-color);
+}
+.pl-td-prompt { max-width: 56rem; }
+.pl-prompt-text {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.55;
+}
+
+.pl-id-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 14px;
+  border-radius: 9999px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-card);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+  letter-spacing: 0.02em;
+}
+
+.pl-status-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 12px;
+  border-radius: 9999px;
+  font-size: 12px;
+  font-weight: 500;
+}
+.pl-status-pill.is-pending {
+  background: rgba(180, 83, 9, 0.10);
+  color: var(--color-warning, #b45309);
+}
+.pl-status-pill.is-signed {
+  background: rgba(16, 185, 129, 0.12);
+  color: var(--color-success, #059669);
+}
+
+.pl-action-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: flex-end;
+}
+.pl-expand-toggle {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.pl-expand-toggle:hover { background: var(--bg-surface); color: var(--text-primary); }
+
+.pl-detail-row { background: var(--bg-surface, rgba(0, 0, 0, 0.025)); }
+.pl-detail-cell { padding: 20px 24px; border-top: 1px solid var(--border-color); }
+.pl-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 18px 28px;
+  margin-bottom: 18px;
+}
+.pl-detail-block { display: flex; flex-direction: column; gap: 4px; }
+.pl-detail-label {
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+.pl-detail-value {
+  font-size: 14px;
+  color: var(--text-primary);
+}
+.pl-detail-prompt {
+  border-top: 1px solid var(--border-color);
+  padding-top: 16px;
+  margin-bottom: 16px;
+}
+.pl-detail-fulltext {
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--text-primary);
+  margin: 0;
+}
+.pl-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  border-top: 1px solid var(--border-color);
+  padding-top: 16px;
+  justify-content: flex-end;
+}
+
+.pl-table-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-top: 1px solid var(--border-color);
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.pl-table-foot-info strong { color: var(--text-primary); font-weight: 500; }
+.pl-pagination { display: flex; gap: 6px; }
+.pl-page-btn {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: 9999px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.pl-page-btn:hover:not(:disabled) {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  border-color: var(--text-primary);
+}
+.pl-page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .pl-untested {
   display: inline-flex;
