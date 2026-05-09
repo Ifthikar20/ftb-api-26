@@ -70,33 +70,35 @@
           <table class="w-full text-left text-sm">
             <thead>
               <tr style="border-bottom: 1px solid var(--border-color)">
-                <th class="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider" style="color: var(--text-muted); width: 110px">Style</th>
-                <th class="px-3 py-3 text-[11px] font-semibold uppercase tracking-wider" style="color: var(--text-muted); width: 140px">Trend</th>
+                <th class="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider" style="color: var(--text-muted); width: 56px">#</th>
                 <th class="px-3 py-3 text-[11px] font-semibold uppercase tracking-wider" style="color: var(--text-muted)">Prompt</th>
-                <th class="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wider" style="color: var(--text-muted); width: 130px">Action</th>
+                <th class="px-3 py-3 text-[11px] font-semibold uppercase tracking-wider" style="color: var(--text-muted); width: 90px">Style</th>
+                <th class="px-3 py-3 text-[11px] font-semibold uppercase tracking-wider" style="color: var(--text-muted); width: 160px">Trend</th>
+                <th class="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wider" style="color: var(--text-muted); width: 110px">Action</th>
               </tr>
             </thead>
             <tbody>
               <tr
-                v-for="p in filteredGeneratedPrompts"
+                v-for="(p, idx) in filteredGeneratedPrompts"
                 :key="p._uid"
                 class="pl-row"
                 style="border-top: 1px solid var(--border-color)"
               >
-                <td class="px-4 py-3 align-top">
-                  <AirChip size="xs" variant="primary">{{ titleCaseStyle(p.style) }}</AirChip>
+                <td class="px-4 py-3 align-top tabular-nums" style="color: var(--text-muted)">{{ idx + 1 }}</td>
+                <td class="px-3 py-3 align-top" style="color: var(--text-primary); max-width: 56rem">
+                  <div class="leading-relaxed">{{ p.prompt_text || p.template_text }}</div>
+                </td>
+                <td class="px-3 py-3 align-top">
+                  <AirChip size="xs" variant="neutral">{{ titleCaseStyle(p.style) }}</AirChip>
                 </td>
                 <td class="px-3 py-3 align-top">
                   <div class="flex items-center gap-2">
                     <div class="pl-trend-bar">
                       <div class="pl-trend-fill" :class="trendBarClass(p.trend_score)" :style="{ width: (p.trend_score || 0) + '%' }"></div>
                     </div>
-                    <span class="text-xs tabular-nums" style="color: var(--text-secondary)">{{ p.trend_score ?? '—' }}</span>
+                    <span class="text-xs tabular-nums" style="color: var(--text-secondary); min-width: 1.75rem">{{ p.trend_score ?? '—' }}</span>
+                    <span class="text-[10px] uppercase tracking-wider" style="color: var(--text-muted)">{{ trendLabel(p.trend_score) }}</span>
                   </div>
-                  <div class="mt-1 text-[10px] uppercase tracking-wider" style="color: var(--text-muted)">{{ trendLabel(p.trend_score) }}</div>
-                </td>
-                <td class="px-3 py-3 align-top" style="color: var(--text-primary)">
-                  <div class="leading-snug" v-html="renderTemplate(p.template_text)"></div>
                 </td>
                 <td class="px-3 py-3 align-top text-right">
                   <AirButton

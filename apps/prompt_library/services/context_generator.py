@@ -27,29 +27,33 @@ ALLOWED_BUCKETS = {"category", "comparison", "problem", "local"}
 _SYSTEM = (
     "You are a senior researcher who writes natural-feeling questions people "
     "ask AI assistants like ChatGPT, Claude, Gemini, and Perplexity in real "
-    "life. Your questions should sound like something a real person typed — "
-    "first-person, conversational, sometimes meandering. They should NOT "
-    "sound like SEO listicle prompts (no 'best X 2026', 'top 10 Y').\n\n"
-    "You write each prompt as a TEMPLATE using `{{ variable }}` placeholders "
-    "for the parts that vary across businesses (company name, location, "
-    "product, etc). Variable names use snake_case.\n\n"
-    "Reasonable variable names to reuse where applicable: company_name, "
-    "brand, location, location_hint, location_information, core_idea, "
-    "product_category, sales_item, audience, time_of_day, persona, "
-    "source_medium."
+    "life. Your prompts should sound like something a real person typed — "
+    "first-person, conversational, sometimes meandering, sometimes terse. "
+    "They should NOT sound like SEO listicle headlines (no 'best X 2026', "
+    "'top 10 Y'). They should feel like overheard chatter, group-chat asks, "
+    "Reddit posts, or driving-around questions.\n\n"
+    "Each prompt MUST be CONCRETE. Invent or recall plausible business names, "
+    "real-sounding locations, persona details, and specific contexts based on "
+    "the user's input. Do NOT use placeholder syntax like '{{ company_name }}' "
+    "or 'Brand X'. Use specific (invented if needed) names like 'Dave's Bagels' "
+    "or 'Morningside Bakery'.\n\n"
+    "Mix tones: skeptical, curious, frustrated, excited, gossipy, lazy."
 )
 
 _USER_TEMPLATE = (
-    "Generate {count} DISTINCT prompts inspired by the following user context. "
-    "Mix styles: 8 stories, 5 questions, 4 problems, 3 local-flavored. Vary "
-    "length (short crisp questions to multi-sentence stories). Each prompt "
-    "should feel NATURAL and HUMAN.\n\n"
+    "Generate {count} DISTINCT, fully-concrete prompts inspired by the user "
+    "context below. Each prompt should reference plausible specific names, "
+    "places, or persona details — invent them if needed (5-10 different "
+    "made-up business names is fine; reuse them across prompts to feel like "
+    "the same neighbourhood).\n\n"
+    "Mix styles: 7 stories (multi-sentence, anecdotal), 6 questions (one-line, "
+    "natural), 4 problems (frustrated user trying to figure something out), "
+    "3 local-flavored (mention streets, intersections, time-of-day).\n\n"
     'CONTEXT: """{context_text}"""\n\n'
     "Output strict JSON: a list of {count} objects, each with these keys:\n"
-    "  template_text  (string with {{{{ var }}}} slots)\n"
+    "  prompt_text    (string — the full, concrete prompt text. No placeholders.)\n"
     "  style          (one of: story, question, comparison, local, how_to, listicle)\n"
     "  intent_bucket  (one of: category, comparison, problem, local)\n"
-    "  preview_text   (the template filled with plausible values inferred from CONTEXT)\n"
     "  trend_score    (integer 0-100; your best estimate of how popular / "
     "trending this question is on Google right now, where 100 = extremely "
     "common search intent and 0 = obscure niche)\n\n"
@@ -96,18 +100,24 @@ def _extract_json_array(text: str) -> list[Any]:
 
 
 def _fallback_single(context_text: str) -> list[dict]:
-    """Deterministic safety net so the UI always has at least one card."""
-    template = (
-        "I keep hearing about {{ company_name }} in {{ location }}. "
-        "Is it legit?"
+    """Deterministic safety net so the UI always has at least one row.
+
+    Uses the user's context verbatim (truncated) so the result is at least
+    contextually relevant when the synthesis provider is unavailable.
+    """
+    ctx = (context_text or "").strip() or "this scenario"
+    prompt_text = (
+        f"Has anyone here actually checked out the spots involved in: "
+        f"{ctx[:240]}? Looking for honest takes."
     )
     return [
         {
-            "template_text": template,
-            "template_variables": extract_variables(template),
+            "template_text": prompt_text,
+            "template_variables": [],
+            "prompt_text": prompt_text,
+            "preview_text": prompt_text,
             "style": "question",
             "intent_bucket": "category",
-            "preview_text": (context_text or "Tell me about this place.").strip()[:200],
             "trend_score": 50,
         }
     ]
@@ -116,8 +126,11 @@ def _fallback_single(context_text: str) -> list[dict]:
 def _normalise_item(raw: Any) -> dict | None:
     if not isinstance(raw, dict):
         return None
-    template_text = str(raw.get("template_text") or "").strip()
-    if len(template_text) < 10:
+    # Accept either the new concrete-prompt schema (prompt_text) or the older
+    # template-with-placeholders schema (template_text) so older callers and
+    # offline fixtures keep working.
+    prompt_text = str(raw.get("prompt_text") or raw.get("template_text") or "").strip()
+    if len(prompt_text) < 10:
         return None
     style = str(raw.get("style") or "question").strip().lower()
     if style not in ALLOWED_STYLES:
@@ -125,18 +138,23 @@ def _normalise_item(raw: Any) -> dict | None:
     bucket = str(raw.get("intent_bucket") or "category").strip().lower()
     if bucket not in ALLOWED_BUCKETS:
         bucket = "category"
-    preview_text = str(raw.get("preview_text") or "").strip()
     try:
         trend_score = int(raw.get("trend_score", 50))
     except (TypeError, ValueError):
         trend_score = 50
     trend_score = max(0, min(100, trend_score))
+    # Variables are extracted defensively — concrete prompts won't have any,
+    # but if the model slips in a {{ slot }} we still capture it for storage.
+    template_variables = extract_variables(prompt_text)
     return {
-        "template_text": template_text,
-        "template_variables": extract_variables(template_text),
+        # Legacy fields kept for storage/compat with the existing Prompt model.
+        "template_text": prompt_text,
+        "template_variables": template_variables,
+        "preview_text": prompt_text,
+        # Primary field the new UI surfaces.
+        "prompt_text": prompt_text,
         "style": style,
         "intent_bucket": bucket,
-        "preview_text": preview_text or template_text,
         "trend_score": trend_score,
     }
 
