@@ -9,9 +9,12 @@ import VariableChip from './VariableChip.vue'
 const props = defineProps({
   prompt: { type: Object, required: true },
   variables: { type: Object, default: () => ({}) },
+  actionMode: { type: String, default: 'manage' }, // 'manage' | 'save'
+  saved: { type: Boolean, default: false },
+  saving: { type: Boolean, default: false },
 })
 
-const emit = defineEmits(['select', 'edit', 'smoke-test', 'disable', 'delete', 'preview', 'request-edit-variables'])
+const emit = defineEmits(['select', 'edit', 'smoke-test', 'disable', 'delete', 'preview', 'request-edit-variables', 'save', 'remove'])
 
 const menuOpen = ref(false)
 
@@ -126,7 +129,24 @@ const runsLabel = computed(() => {
       <span v-if="!lastUsedLabel && !runsLabel">No runs yet</span>
     </div>
 
-    <div class="pc-actions" @click.stop>
+    <div v-if="actionMode === 'save'" class="pc-actions" @click.stop>
+      <AirChip v-if="saved" variant="success" size="sm">Saved</AirChip>
+      <AirButton
+        v-if="!saved"
+        variant="primary"
+        size="sm"
+        :loading="saving"
+        @click="emit('save', prompt)"
+      >Save to my prompts</AirButton>
+      <AirButton
+        v-else
+        variant="ghost"
+        size="sm"
+        @click="emit('remove', prompt)"
+      >Remove</AirButton>
+    </div>
+
+    <div v-else class="pc-actions" @click.stop>
       <AirButton variant="ghost" size="sm" @click="emit('preview', prompt)">Preview filled</AirButton>
       <AirButton variant="ghost" size="sm" @click="emit('edit', prompt)">Edit</AirButton>
       <div class="pc-kebab-wrap">

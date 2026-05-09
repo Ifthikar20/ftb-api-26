@@ -7,8 +7,8 @@
           Prompt Library
         </h1>
         <p class="mt-1 max-w-2xl text-sm" style="color: var(--text-secondary)">
-          Demand-side prompts — what real users ask AI assistants in your category.
-          Add your own templates or generate a starter set.
+          Describe a real-world scenario. We'll generate prompts that AI assistants
+          are likely to be asked about you.
         </p>
       </div>
       <div class="flex items-center gap-2">
@@ -22,8 +22,77 @@
       </div>
     </header>
 
-    <!-- Industry strip -->
-    <section class="mb-6">
+    <!-- Context input -->
+    <section class="mb-8">
+      <ContextInputCard
+        v-model="contextInput"
+        :loading="generating"
+        @generate="onGenerate"
+      />
+    </section>
+
+    <!-- Generated results -->
+    <section v-if="generatedPrompts.length || generationError" class="mb-10">
+      <div class="mb-4 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h2 class="text-lg font-semibold" style="color: var(--text-primary)">
+            {{ generatedPrompts.length }} prompts generated
+            <span v-if="generationProvider" style="color: var(--text-muted); font-weight: 400">
+              · powered by {{ generationProvider }}
+            </span>
+          </h2>
+          <p class="mt-1 text-xs" style="color: var(--text-muted)">
+            Save the ones that match how real people would ask AI about you.
+          </p>
+        </div>
+        <AirButton variant="ghost" size="sm" :loading="generating" @click="regenerate">
+          Generate more
+        </AirButton>
+      </div>
+
+      <div v-if="generatedPrompts.length" class="mb-3 flex flex-wrap items-center gap-2">
+        <span class="pl-filter-label">Style:</span>
+        <AirChip
+          v-for="s in generatedStyleFilters"
+          :key="'gs-' + s.value"
+          as="button"
+          size="sm"
+          :variant="s.value === generatedStyleFilter ? 'primary' : 'neutral'"
+          @click="generatedStyleFilter = s.value"
+        >{{ s.label }}</AirChip>
+      </div>
+
+      <div
+        v-if="generationError"
+        class="rounded-3xl border border-dashed p-8 text-center text-sm"
+        style="border-color: var(--border-color); background: var(--bg-card); color: var(--text-muted)"
+      >
+        We couldn't generate prompts for that context — try adding more detail.
+      </div>
+
+      <transition-group v-else name="pl-stagger" tag="div" class="grid gap-6 grid-cols-1 md:grid-cols-2 xl:grid-cols-3">
+        <PromptCard
+          v-for="(p, idx) in filteredGeneratedPrompts"
+          :key="p._uid"
+          :prompt="p"
+          :variables="resolvedVariables"
+          action-mode="save"
+          :saved="!!p._saved"
+          :saving="!!p._saving"
+          :style="{ transitionDelay: (idx * 30) + 'ms' }"
+          @save="onSaveGenerated"
+          @remove="onRemoveGenerated"
+        />
+      </transition-group>
+    </section>
+
+    <!-- Saved prompts browse -->
+    <section v-if="websiteId" class="mb-2">
+      <h2 class="mb-3 text-lg font-semibold" style="color: var(--text-primary)">My saved prompts</h2>
+    </section>
+
+    <!-- Industry strip (legacy filter aid) -->
+    <section v-if="false" class="mb-6">
       <div class="mb-3 flex flex-wrap items-end gap-3">
         <div class="flex-1 min-w-[16rem]">
           <label class="pl-eyebrow">Industry</label>
@@ -131,21 +200,18 @@
       </AirCard>
     </div>
 
-    <!-- Empty: no industry -->
+    <!-- Empty: saved prompts list -->
     <div
-      v-else-if="!industrySlug"
-      class="flex flex-col items-center justify-center rounded-3xl border border-dashed px-8 py-16 text-center"
-      style="border-color: var(--border-color); background: var(--bg-card)"
+      v-else-if="!prompts.length && websiteId"
+      class="rounded-3xl border border-dashed p-8 text-center text-sm"
+      style="border-color: var(--border-color); background: var(--bg-card); color: var(--text-muted)"
     >
-      <h3 class="text-lg font-semibold" style="color: var(--text-primary)">Pick an industry to start browsing</h3>
-      <p class="mt-2 max-w-md text-sm" style="color: var(--text-secondary)">
-        Select your industry above to see real prompts mined from that category.
-      </p>
+      Your saved prompts will appear here.
     </div>
 
-    <!-- Empty: no prompts at all -->
+    <!-- Legacy empty -->
     <div
-      v-else-if="!prompts.length"
+      v-else-if="false && !prompts.length"
       class="flex flex-col items-center justify-center rounded-3xl border border-dashed px-8 py-16 text-center"
       style="border-color: var(--border-color); background: var(--bg-card)"
     >
@@ -229,6 +295,7 @@ import AirChip from '@/components/ui/AirChip.vue'
 import AirButton from '@/components/ui/AirButton.vue'
 import BaseModal from '@/components/ui/BaseModal.vue'
 import PromptCard from '@/components/prompt_library/PromptCard.vue'
+import ContextInputCard from '@/components/prompt_library/ContextInputCard.vue'
 import VariablesPanel from '@/components/prompt_library/VariablesPanel.vue'
 import NewPromptModal from '@/components/prompt_library/NewPromptModal.vue'
 import SmokeTestResult from '@/components/prompt_library/SmokeTestResult.vue'
@@ -269,6 +336,99 @@ const smokeOpen = ref(false)
 const smokeResult = ref(null)
 const activeSmokePromptId = ref(null)
 const synthesizing = ref(false)
+
+// ── Context-driven generation state ──
+const contextInput = ref('')
+const generating = ref(false)
+const generatedPrompts = ref([]) // { _uid, _saved, _saving, template_text, ... }
+const generationProvider = ref('')
+const generationError = ref(false)
+const generatedStyleFilter = ref('')
+const generatedStyleFilters = [
+  { value: '', label: 'All' },
+  { value: 'story', label: 'Story' },
+  { value: 'question', label: 'Question' },
+  { value: 'comparison', label: 'Comparison' },
+  { value: 'local', label: 'Local' },
+  { value: 'how_to', label: 'How-to' },
+]
+
+const filteredGeneratedPrompts = computed(() => {
+  if (!generatedStyleFilter.value) return generatedPrompts.value
+  return generatedPrompts.value.filter(p => p.style === generatedStyleFilter.value)
+})
+
+let _genUid = 0
+function _wrap(item) {
+  _genUid += 1
+  return {
+    _uid: 'g' + _genUid,
+    _saved: false,
+    _saving: false,
+    is_active: true,
+    ...item,
+  }
+}
+
+async function onGenerate(text) {
+  generating.value = true
+  generationError.value = false
+  try {
+    const { data } = await promptLibrary.generateFromContext({
+      context: text,
+      count: 20,
+      persist: false,
+    })
+    const payload = data?.data || data || {}
+    const items = Array.isArray(payload.generated) ? payload.generated : []
+    generatedPrompts.value = items.map(_wrap)
+    generationProvider.value = payload.provider || ''
+    if (!items.length) generationError.value = true
+  } catch (e) {
+    generatedPrompts.value = []
+    generationProvider.value = ''
+    generationError.value = true
+    toast.error(e.displayMessage || 'Generation failed.')
+  } finally {
+    generating.value = false
+  }
+}
+
+function regenerate() {
+  if (!contextInput.value || generating.value) return
+  onGenerate(contextInput.value.trim())
+}
+
+async function onSaveGenerated(prompt) {
+  if (!websiteId.value) {
+    toast.error('Pick a website first to save prompts.')
+    return
+  }
+  prompt._saving = true
+  try {
+    const payload = {
+      template_text: prompt.template_text,
+      style: prompt.style,
+      intent_bucket: prompt.intent_bucket,
+      text: prompt.preview_text || prompt.template_text,
+    }
+    const { data } = await promptLibrary.savePromptToWebsite(websiteId.value, payload)
+    const saved = data?.data || data
+    prompt._saved = true
+    prompt._savedId = saved?.id || null
+    toast.success('Saved to your prompts.')
+    loadPrompts()
+  } catch (e) {
+    toast.error(e.displayMessage || 'Could not save.')
+  } finally {
+    prompt._saving = false
+  }
+}
+
+function onRemoveGenerated(prompt) {
+  // Local-only: drop from the saved-state UI; persisted row stays in DB.
+  prompt._saved = false
+}
 
 const variablesMap = ref({})  // { name: value }
 
@@ -379,13 +539,10 @@ async function loadIndustries() {
 }
 
 async function loadPrompts() {
-  if (!industrySlug.value) {
-    prompts.value = []
-    return
-  }
   loading.value = true
   try {
-    const params = { limit: 200, industry: industrySlug.value }
+    const params = { limit: 200 }
+    if (industrySlug.value) params.industry = industrySlug.value
     if (debouncedSearch.value) params.search = debouncedSearch.value
     const { data } = await promptLibrary.getPrompts(params)
     const rows = data?.data?.results || data?.results || data?.data || data || []
@@ -523,6 +680,7 @@ const Sparkline = {
 onMounted(async () => {
   await loadIndustries()
   await loadVariables()
+  await loadPrompts()
 })
 
 watch([industrySlug, debouncedSearch], loadPrompts)
@@ -552,4 +710,10 @@ watch(websiteId, loadVariables)
   animation: pl-pulse 1.4s ease-in-out infinite;
 }
 @keyframes pl-pulse { 0%, 100% { opacity: 0.4 } 50% { opacity: 0.7 } }
+
+.pl-stagger-enter-active { transition: opacity 0.35s ease, transform 0.35s ease; }
+.pl-stagger-enter-from { opacity: 0; transform: translateY(8px); }
+.pl-stagger-enter-to { opacity: 1; transform: translateY(0); }
+.pl-stagger-leave-active { transition: opacity 0.2s ease; }
+.pl-stagger-leave-to { opacity: 0; }
 </style>

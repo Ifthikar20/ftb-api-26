@@ -51,6 +51,12 @@ export default {
     synthesize: (payload) =>
         api.post('/prompt-library/prompts/synthesize/', payload),
 
+    generateFromContext: (payload) =>
+        api.post('/prompt-library/prompts/generate-from-context/', payload),
+
+    savePromptToWebsite: (websiteId, payload) =>
+        api.post(`/prompt-library/websites/${websiteId}/prompts/`, payload),
+
     getVariables: (websiteId) =>
         api.get(`/prompt-library/websites/${websiteId}/variables/`),
 
