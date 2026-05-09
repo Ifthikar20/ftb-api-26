@@ -23,10 +23,6 @@ urlpatterns = [
     path("<uuid:website_id>/keywords/alerts/", keyword_views.KeywordAlertListView.as_view(), name="keywords-alerts"),
     path("<uuid:website_id>/keywords/alerts/events/", keyword_views.KeywordAlertEventListView.as_view(), name="keywords-alert-events"),
     path("<uuid:website_id>/keywords/alerts/<uuid:alert_id>/", keyword_views.KeywordAlertDetailView.as_view(), name="keywords-alert-detail"),
-    path("<uuid:website_id>/competitors/", keyword_views.CompetitorListView.as_view(), name="competitors-list"),
-    path("<uuid:website_id>/competitors/overlap/", keyword_views.CompetitorOverlapView.as_view(), name="competitors-overlap"),
-    path("<uuid:website_id>/competitors/<uuid:competitor_id>/", keyword_views.CompetitorDetailView.as_view(), name="competitors-detail"),
-    path("<uuid:website_id>/competitors/<uuid:competitor_id>/refresh/", keyword_views.CompetitorRefreshView.as_view(), name="competitors-refresh"),
     path("<uuid:website_id>/keywords/", keyword_views.KeywordListCreateView.as_view(), name="keywords-list-create"),
     path("<uuid:website_id>/keywords/<uuid:keyword_id>/history/", keyword_views.KeywordHistoryView.as_view(), name="keyword-history"),
 

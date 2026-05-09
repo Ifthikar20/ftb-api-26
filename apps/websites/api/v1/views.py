@@ -328,11 +328,5 @@ class OnboardingAssistView(APIView):
 
             result["topics"] = unique_topics[:10]
 
-        elif action == "competitors":
-            # Try to discover competitors automatically
-            from apps.competitors.services.discovery_service import DiscoveryService
-            discovered = DiscoveryService.auto_detect(website=website)
-            result["competitors"] = discovered
-
         return Response(result)
 

@@ -83,70 +83,13 @@
             <label class="form-label">Industry <span class="text-muted">(optional)</span></label>
             <input v-model="newSite.industry" class="form-input" placeholder="SaaS, E-commerce, etc." />
           </div>
-          <button class="btn btn-primary btn-wizard-continue" :disabled="!newSite.name || !newSite.url" @click="goToCompetitors">
+          <button class="btn btn-primary btn-wizard-continue" :disabled="!newSite.name || !newSite.url" @click="wizardStep = 2">
             Continue
           </button>
         </div>
 
-        <!-- Step 2: AI Competitors -->
+        <!-- Step 2: Topic Source -->
         <div v-if="wizardStep === 2" class="wizard-body">
-          <h2 class="wizard-title">Your AI competitors</h2>
-          <p class="wizard-subtitle">
-            We found these brands appearing alongside yours in AI answers. You can track up to
-            {{ competitorLimit }}. Remove any that aren't relevant or add your own.
-          </p>
-
-          <div v-if="detectingCompetitors" class="competitor-loading">
-            <div class="spinner"></div>
-            <span>Scanning AI answers for brands appearing alongside {{ displayDomain }}...</span>
-          </div>
-
-          <div v-else class="competitor-list">
-            <div v-for="(c, i) in competitors" :key="c.domain" class="competitor-row">
-              <div class="competitor-favicon" :style="{ background: c.color }">
-                {{ c.domain[0].toUpperCase() }}
-              </div>
-              <span class="competitor-domain">{{ c.domain }}</span>
-              <button class="competitor-remove" @click="removeCompetitor(i)" aria-label="Remove">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-                </svg>
-              </button>
-            </div>
-
-            <div v-if="!competitors.length" class="competitor-empty">
-              No competitors added yet. Add one below to get started.
-            </div>
-          </div>
-
-          <div class="competitor-add-row">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-            </svg>
-            <input
-              v-model="newCompetitorInput"
-              class="competitor-add-input"
-              placeholder="Add a competitor (e.g. example.com)"
-              @keyup.enter="addCompetitor"
-            />
-            <button v-if="newCompetitorInput.trim()" class="competitor-add-btn" @click="addCompetitor">Add</button>
-          </div>
-
-          <button class="btn btn-primary btn-wizard-continue" :disabled="detectingCompetitors" @click="wizardStep = 3">
-            Continue
-          </button>
-
-          <div class="wizard-dots">
-            <span class="dot" :class="{ active: wizardStep >= 1 }"></span>
-            <span class="dot" :class="{ active: wizardStep >= 2 }"></span>
-            <span class="dot" :class="{ active: wizardStep >= 3 }"></span>
-            <span class="dot" :class="{ active: wizardStep >= 4 }"></span>
-            <span class="dot" :class="{ active: wizardStep >= 5 }"></span>
-          </div>
-        </div>
-
-        <!-- Step 3: Topic Source -->
-        <div v-if="wizardStep === 3" class="wizard-body">
           <h2 class="wizard-title">How should we find topics?</h2>
           <p class="wizard-subtitle">Choose how you'd like to discover topics for your project.</p>
 
@@ -207,7 +150,7 @@
 
           <button
             class="btn btn-primary btn-wizard-continue"
-            @click="wizardStep = 4"
+            @click="wizardStep = 3"
           >
             Continue
           </button>
@@ -219,12 +162,11 @@
             <span class="dot" :class="{ active: wizardStep >= 2 }"></span>
             <span class="dot" :class="{ active: wizardStep >= 3 }"></span>
             <span class="dot" :class="{ active: wizardStep >= 4 }"></span>
-            <span class="dot" :class="{ active: wizardStep >= 5 }"></span>
           </div>
         </div>
 
-        <!-- Step 4: Platform Type -->
-        <div v-if="wizardStep === 4" class="wizard-body">
+        <!-- Step 3: Platform Type -->
+        <div v-if="wizardStep === 3" class="wizard-body">
           <h2 class="wizard-title">Choose your platform</h2>
           <p class="wizard-subtitle">What platform is your website built on? This helps us optimize tracking and integrations.</p>
           <div class="platform-grid">
@@ -238,15 +180,15 @@
             </div>
           </div>
           <div class="wizard-nav">
-            <button class="btn btn-secondary" @click="wizardStep = 3">Back</button>
+            <button class="btn btn-secondary" @click="wizardStep = 2">Back</button>
             <button class="btn btn-primary" :disabled="!newSite.platform_type" @click="createAndGoToPixel">
               {{ adding ? 'Creating...' : 'Continue' }}
             </button>
           </div>
         </div>
 
-        <!-- Step 5: Pixel Installation -->
-        <div v-if="wizardStep === 5" class="wizard-body">
+        <!-- Step 4: Pixel Installation -->
+        <div v-if="wizardStep === 4" class="wizard-body">
           <div v-if="newSite.platform_type === 'shopify'" class="pixel-instructions">
             <div class="pixel-icon" style="background: #96bf48"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg></div>
             <h4>Shopify Integration</h4>
@@ -324,7 +266,6 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useAppStore } from '@/stores/app'
 import websitesApi from '@/api/websites'
-import competitorsApi from '@/api/competitors'
 
 import { useRouter } from 'vue-router'
 
@@ -343,88 +284,13 @@ const createdSite = ref(null)
 const copied = ref(false)
 const newSite = reactive({ name: '', url: '', industry: '', platform_type: 'custom' })
 
-const TOTAL_STEPS = 5
-const competitorLimit = 10
+const TOTAL_STEPS = 4
 
-// Step 2: AI Competitors
-const competitors = ref([])
-const newCompetitorInput = ref('')
-const detectingCompetitors = ref(false)
-
-// Step 3: Topic Source
+// Step 2: Topic Source
 const topicSource = ref('ai')
 // GSC OAuth flow lives in Settings -> Integrations once a real handler
 // exists in the integrations app; the wizard only captures the user's
 // preferred topic-discovery method.
-
-const COMPETITOR_COLORS = ['#111', '#1A1A1A', '#0F766E', '#0EA5E9', '#F59E0B', '#7C3AED', '#DC2626']
-
-const displayDomain = computed(() => {
-  try {
-    const u = new URL(newSite.url)
-    return u.hostname.replace(/^www\./, '')
-  } catch {
-    return newSite.url || 'your site'
-  }
-})
-
-function normalizeDomain(raw) {
-  if (!raw) return ''
-  let s = raw.trim().toLowerCase()
-  s = s.replace(/^https?:\/\//, '').replace(/^www\./, '')
-  s = s.split('/')[0]
-  return s
-}
-
-async function goToCompetitors() {
-  wizardStep.value = 2
-  if (competitors.value.length) return
-  detectingCompetitors.value = true
-  try {
-    // Real LLM-based suggestion — POSTs to /api/v1/competitors/suggest/.
-    // Returns an empty list if Claude can't produce parseable JSON or if
-    // ANTHROPIC_API_KEY isn't configured. The UI must render an empty
-    // state in that case rather than fall back to seed data.
-    const { data } = await competitorsApi.suggest({
-      name: newSite.name,
-      industry: newSite.industry,
-      url: newSite.url,
-      description: '',
-    })
-    const suggested = data?.data?.suggested || data?.suggested || []
-    competitors.value = suggested.map((entry, i) => ({
-      domain: entry.domain,
-      name: entry.name || entry.domain,
-      reason: entry.reason || '',
-      color: COMPETITOR_COLORS[i % COMPETITOR_COLORS.length],
-    }))
-  } catch (err) {
-    console.error('Competitor suggest failed', err)
-    competitors.value = []
-  } finally {
-    detectingCompetitors.value = false
-  }
-}
-
-function addCompetitor() {
-  const domain = normalizeDomain(newCompetitorInput.value)
-  if (!domain) return
-  if (competitors.value.some(c => c.domain === domain)) {
-    newCompetitorInput.value = ''
-    return
-  }
-  if (competitors.value.length >= competitorLimit) return
-  competitors.value.push({
-    domain,
-    color: COMPETITOR_COLORS[competitors.value.length % COMPETITOR_COLORS.length],
-  })
-  newCompetitorInput.value = ''
-}
-
-function removeCompetitor(i) {
-  competitors.value.splice(i, 1)
-}
-
 
 const platforms = [
   { id: 'shopify', name: 'Shopify', desc: 'E-commerce on Shopify', color: '#96bf48', icon: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg>' },
@@ -522,9 +388,6 @@ function openWizard() {
   newSite.url = ''
   newSite.industry = ''
   newSite.platform_type = 'custom'
-  competitors.value = []
-  newCompetitorInput.value = ''
-  detectingCompetitors.value = false
   topicSource.value = 'ai'
   showAddModal.value = true
 }
@@ -674,116 +537,6 @@ function openWizard() {
   transition: background 0.2s;
 }
 .wizard-dots .dot.active { background: var(--brand-accent, #4F46E5); }
-
-/* Competitor list */
-.competitor-loading {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 24px;
-  border-radius: 12px;
-  border: 1px solid var(--border-color);
-  font-size: 14px;
-  color: var(--text-secondary);
-}
-.spinner {
-  width: 18px;
-  height: 18px;
-  border: 2px solid var(--border-color);
-  border-top-color: var(--brand-accent, #4F46E5);
-  border-radius: 50%;
-  animation: spin 0.7s linear infinite;
-}
-@keyframes spin { to { transform: rotate(360deg); } }
-
-.competitor-list {
-  border: 1px solid var(--border-color);
-  border-radius: 12px;
-  overflow: hidden;
-  background: var(--bg-base, #fff);
-  max-height: 280px;
-  overflow-y: auto;
-}
-.competitor-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--border-color);
-}
-.competitor-row:last-child { border-bottom: none; }
-.competitor-favicon {
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-  font-weight: 700;
-  font-size: 13px;
-  flex-shrink: 0;
-}
-.competitor-domain {
-  flex: 1;
-  font-size: 14px;
-  color: var(--text-primary);
-  font-weight: 500;
-}
-.competitor-remove {
-  width: 28px;
-  height: 28px;
-  border: none;
-  background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 6px;
-  transition: all 0.15s;
-}
-.competitor-remove:hover {
-  background: var(--bg-surface);
-  color: var(--color-danger, #DC2626);
-}
-.competitor-empty {
-  padding: 24px;
-  text-align: center;
-  font-size: 13px;
-  color: var(--text-muted);
-}
-
-.competitor-add-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 4px 0;
-  color: var(--brand-accent, #4F46E5);
-}
-.competitor-add-input {
-  flex: 1;
-  border: none;
-  background: transparent;
-  font-size: 14px;
-  color: var(--text-primary);
-  outline: none;
-  padding: 6px 0;
-}
-.competitor-add-input::placeholder {
-  color: var(--brand-accent, #4F46E5);
-  font-weight: 500;
-}
-.competitor-add-btn {
-  padding: 4px 12px;
-  background: var(--brand-accent, #4F46E5);
-  color: #fff;
-  border: none;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-}
 
 /* Topic Source */
 .topic-source-list {

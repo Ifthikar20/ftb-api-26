@@ -77,38 +77,6 @@ class AuditLogMiddleware:
         else:
             audit_logger.debug("api_request", extra=log_entry)
 
-        # 2. Write to database (async via Celery) for compliance-grade queries
-        # Only log mutating requests and errors to DB to manage volume
-        if request.method in ("POST", "PUT", "PATCH", "DELETE") or response.status_code >= 400:
-            try:
-                from apps.compliance.tasks import write_audit_log
-
-                db_kwargs = {
-                    "event": f"api.{request.method.lower()}",
-                    "action": "api_call",
-                    "method": request.method,
-                    "path": request.path[:500],
-                    "status_code": response.status_code,
-                    "duration_ms": round(duration_ms, 2),
-                    "success": response.status_code < 400,
-                    "request_id": request_id,
-                    "user_agent": user_agent,
-                    "metadata": metadata,
-                }
-
-                if ip_address:
-                    db_kwargs["ip_address"] = ip_address
-                if user_id:
-                    db_kwargs["user_id"] = user_id
-                if user_email:
-                    db_kwargs["user_email"] = user_email
-                if response.status_code >= 400:
-                    db_kwargs["error_message"] = f"HTTP {response.status_code}"
-
-                write_audit_log.delay(**db_kwargs)
-            except Exception:
-                pass  # Never break the request cycle
-
         return response
 
     @staticmethod

@@ -22,7 +22,6 @@ app.conf.task_routes = {
     "apps.websites.tasks.deliver_webhook": {"queue": "webhooks"},
     # integrations / OAuth
     "apps.websites.tasks.refresh_expiring_tokens": {"queue": "integrations"},
-    "apps.competitors.tasks.*": {"queue": "integrations"},
     # AI / LLM
     "apps.llm_ranking.tasks.*": {"queue": "ai"},
     # Analytics scan + trend tasks (hit external APIs, can be slow)
@@ -41,10 +40,6 @@ app.conf.beat_schedule = {
         "schedule": crontab(minute=0, hour=3),
     },
     # ── Weekly ──
-    "competitor-crawl": {
-        "task": "apps.competitors.tasks.crawl_all_competitors",
-        "schedule": crontab(minute=0, hour=1, day_of_week=1),
-    },
     "weekly-reports": {
         "task": "apps.notifications.tasks.send_weekly_reports",
         "schedule": crontab(minute=0, hour=9, day_of_week=1),

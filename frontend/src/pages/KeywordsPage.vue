@@ -663,103 +663,6 @@
           </div>
         </div>
 
-        <!-- Competitor Tracking -->
-        <div v-if="cardId === 'competitor_tracking'" class="card feature-card ct-card">
-          <div class="fc-head">
-            <div class="fc-icon">
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="5" cy="5.5" r="2.5"/><circle cx="11" cy="5.5" r="2.5"/><path d="M5 8v5M11 8v5M8 9v4"/></svg>
-            </div>
-            <div class="fc-title-wrap">
-              <h3 class="fc-title">Competitor Tracking</h3>
-              <p class="fc-sub">Rank comparison against competitor domains</p>
-            </div>
-            <div style="display:flex;align-items:center;gap:6px">
-              <button class="al-add-btn" @click="showAddCompetitorModal = true">
-                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg>
-                Add
-              </button>
-              <button class="fc-remove" @click="removeCard(cardId)" title="Remove">×</button>
-            </div>
-          </div>
-          <div class="fc-body">
-
-            <!-- Competitors list -->
-            <div v-if="competitors.length" class="ct-list">
-              <div v-for="c in competitors" :key="c.id" class="ct-row">
-                <div class="ct-favicon">
-                  <img :src="`https://www.google.com/s2/favicons?domain=${c.domain}&sz=20`" width="16" height="16" :alt="c.domain" @error="$event.target.style.display='none'" />
-                </div>
-                <div class="ct-info">
-                  <span class="ct-name">{{ c.name || c.domain }}</span>
-                  <span class="ct-domain">{{ c.domain }}</span>
-                </div>
-                <div class="ct-status" v-if="c.last_checked_at">
-                  <span class="ct-last-check">Checked {{ formatDate(c.last_checked_at) }}</span>
-                </div>
-                <div class="ct-actions">
-                  <button class="ct-refresh-btn" @click="refreshCompetitor(c.id)" :disabled="competitorLoading === c.id" :class="{ 'ct-refreshing': competitorLoading === c.id }">
-                    <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" stroke-width="1.8" :class="{ 'ct-spin': competitorLoading === c.id }"><path d="M10 5.5a4.5 4.5 0 11-3.1-4.28"/><path d="M10 1v3H7"/></svg>
-                    {{ competitorLoading === c.id ? 'Checking' : 'Refresh' }}
-                  </button>
-                  <button class="al-delete-btn" @click="deleteCompetitor(c.id)">
-                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="2" y1="2" x2="10" y2="10"/><line x1="10" y1="2" x2="2" y2="10"/></svg>
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div v-if="!competitors.length" class="al-empty-state">
-              <div class="al-empty-icon">
-                <svg width="28" height="28" viewBox="0 0 28 28" fill="none" stroke="var(--text-muted)" stroke-width="1.2"><circle cx="10" cy="10" r="5"/><circle cx="20" cy="10" r="5"/><path d="M10 15v8M20 15v8M15 17v6"/></svg>
-              </div>
-              <p class="al-empty-text">No competitors tracked yet.</p>
-              <p class="al-empty-sub">Click <strong>Add</strong> to compare your rankings side-by-side.</p>
-            </div>
-
-            <!-- Overlap comparison table -->
-            <div v-if="competitors.length" class="ct-compare-row">
-              <button class="ct-compare-btn" @click="loadCompetitorOverlap" :disabled="!competitors.length">
-                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="1" width="4" height="10" rx="1"/><rect x="7" y="1" width="4" height="10" rx="1"/></svg>
-                Compare rankings
-              </button>
-            </div>
-
-            <div v-if="competitorOverlap" class="ct-overlap-table">
-              <div class="al-section-label" style="margin-top:14px">
-                <span>Side-by-side ranking comparison</span>
-              </div>
-              <div class="table-responsive">
-                <table class="data-table data-table-sm">
-                  <thead>
-                    <tr>
-                      <th>Keyword</th>
-                      <th class="text-center ct-us-col">
-                        <span class="ct-us-label">Us</span>
-                      </th>
-                      <th v-for="c in competitorOverlap.competitors" :key="c.id" class="text-center">{{ c.name }}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-for="row in competitorOverlap.keywords" :key="row.keyword">
-                      <td class="ct-kw-cell">{{ row.keyword }}</td>
-                      <td class="text-center">
-                        <span class="rank-badge" :class="rankClass(row.our_rank)">{{ row.our_rank || '--' }}</span>
-                      </td>
-                      <td v-for="c in row.competitors" :key="c.id" class="text-center">
-                        <span class="rank-badge" :class="rankClass(c.rank)">{{ c.rank || '--' }}</span>
-                        <span v-if="row.our_rank && c.rank" class="ct-rank-delta" :class="c.rank > row.our_rank ? 'ct-delta-win' : c.rank < row.our_rank ? 'ct-delta-lose' : ''">
-                          {{ c.rank > row.our_rank ? 'ahead' : c.rank < row.our_rank ? 'behind' : 'tied' }}
-                        </span>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-          </div>
-        </div>
-
         <!-- Historical Trend Charts -->
         <div v-if="cardId === 'history_charts'" class="card feature-card hc-card" style="grid-column: span 2">
           <div class="fc-head">
@@ -901,26 +804,6 @@
       </div>
     </Teleport>
 
-    <!-- Add Competitor Modal -->
-    <Teleport to="body">
-      <div v-if="showAddCompetitorModal" class="modal-overlay" @click.self="showAddCompetitorModal = false">
-        <div class="modal-card">
-          <h3 class="modal-title">Add Competitor</h3>
-          <div class="modal-body">
-            <label class="form-label">Domain</label>
-            <input v-model="newCompetitor.domain" class="form-input" placeholder="e.g. competitor.com" autofocus />
-            <label class="form-label" style="margin-top:12px">Label (optional)</label>
-            <input v-model="newCompetitor.name" class="form-input" placeholder="e.g. Main rival" />
-            <p v-if="addCompetitorError" class="text-danger text-sm" style="margin-top:8px">{{ addCompetitorError }}</p>
-          </div>
-          <div class="modal-actions">
-            <button class="btn btn-secondary" @click="showAddCompetitorModal = false">Cancel</button>
-            <button class="btn btn-primary" @click="addCompetitor" :disabled="addingCompetitor">{{ addingCompetitor ? 'Adding...' : 'Add' }}</button>
-          </div>
-        </div>
-      </div>
-    </Teleport>
-
     <!-- Add Platform Post Modal -->
     <Teleport to="body">
       <div v-if="showAddPostModal" class="modal-overlay" @click.self="showAddPostModal = false">
@@ -1023,15 +906,6 @@ const addingAlert = ref(false)
 const addAlertError = ref('')
 const newAlert = ref({ tracked_keyword_id: '', threshold: 3, direction: 'any', notification_method: 'email' })
 
-// Competitors
-const competitors = ref([])
-const competitorOverlap = ref(null)
-const competitorLoading = ref(null)
-const showAddCompetitorModal = ref(false)
-const addingCompetitor = ref(false)
-const addCompetitorError = ref('')
-const newCompetitor = ref({ domain: '', name: '' })
-
 // History chart
 const selectedChartKws = ref([])
 const chartLoading = ref(false)
@@ -1084,7 +958,6 @@ const availableCards = [
   { id: 'scan_schedule', name: 'DOM Scan Schedule', desc: 'Configure automatic keyword re-scanning intervals', icon: 'SC' },
   { id: 'platform_comparison', name: 'Platform Comparison', desc: 'Compare site keywords vs LinkedIn, X, and other posts', icon: 'PC' },
   { id: 'keyword_alerts', name: 'Keyword Alerts', desc: 'Get notified when keywords move more than N positions', icon: 'AL' },
-  { id: 'competitor_tracking', name: 'Competitor Tracking', desc: 'Track how competitors rank for your keywords', icon: 'CT' },
   { id: 'history_charts', name: 'Historical Charts', desc: 'Visualize keyword rank trends over time', icon: 'HC' },
 ]
 
@@ -1218,32 +1091,6 @@ async function deleteAlert(aid) {
   try { await analyticsApi.deleteAlert(props.websiteId, aid); await loadAlerts() } catch (e) {}
 }
 
-// Competitor functions
-async function loadCompetitors() {
-  try { const res = await analyticsApi.getCompetitors(props.websiteId); competitors.value = res.data || [] } catch (e) {}
-}
-async function addCompetitor() {
-  addingCompetitor.value = true; addCompetitorError.value = ''
-  try {
-    await analyticsApi.addCompetitor(props.websiteId, newCompetitor.value)
-    await loadCompetitors()
-    showAddCompetitorModal.value = false
-    newCompetitor.value = { domain: '', name: '' }
-  } catch (e) { addCompetitorError.value = e?.response?.data?.error || 'Failed to add competitor' }
-  finally { addingCompetitor.value = false }
-}
-async function deleteCompetitor(cid) {
-  try { await analyticsApi.deleteCompetitor(props.websiteId, cid); await loadCompetitors(); competitorOverlap.value = null } catch (e) {}
-}
-async function refreshCompetitor(cid) {
-  competitorLoading.value = cid
-  try { await analyticsApi.refreshCompetitor(props.websiteId, cid) } catch (e) {}
-  finally { competitorLoading.value = null }
-}
-async function loadCompetitorOverlap() {
-  try { const res = await analyticsApi.getCompetitorOverlap(props.websiteId); competitorOverlap.value = res.data } catch (e) {}
-}
-
 // Export comparison
 function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob)
@@ -1359,7 +1206,7 @@ onMounted(async () => {
   try { const res = await analyticsApi.keywordScan(props.websiteId); const d = res.data?.data || res.data || {}; if (d.score != null) scanData.value = d } catch (e) {}
   // Fetch embed code
   try { const res = await analyticsApi.seoEmbed(props.websiteId); embedCode.value = res.data?.data?.embed_code || '' } catch (e) {}
-  await Promise.all([loadScanConfig(), loadPlatformPosts(), loadAlerts(), loadCompetitors()])
+  await Promise.all([loadScanConfig(), loadPlatformPosts(), loadAlerts()])
   loading.value = false
 })
 

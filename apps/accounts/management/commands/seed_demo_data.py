@@ -233,55 +233,6 @@ class Command(BaseCommand):
                 )
         self.stdout.write(f"  Leads: {len(lead_data)} created")
 
-        # ── Competitors ──
-        from apps.competitors.models import Competitor, CompetitorChange, KeywordGap
-
-        comp_data = [
-            {"name": "CompetitorX", "competitor_url": "https://competitorx.com", "estimated_traffic": 45000, "domain_authority": 62, "threat_level": "high"},
-            {"name": "RivalCo", "competitor_url": "https://rivalco.io", "estimated_traffic": 28000, "domain_authority": 48, "threat_level": "medium"},
-            {"name": "MarketPro", "competitor_url": "https://marketpro.com", "estimated_traffic": 65000, "domain_authority": 71, "threat_level": "critical"},
-            {"name": "GrowthStack", "competitor_url": "https://growthstack.dev", "estimated_traffic": 12000, "domain_authority": 35, "threat_level": "low"},
-        ]
-        created_competitors = []
-        for cd in comp_data:
-            comp, _ = Competitor.objects.get_or_create(
-                website=website,
-                competitor_url=cd["competitor_url"],
-                defaults=cd,
-            )
-            created_competitors.append(comp)
-
-        changes = [
-            {"change_type": "new_page", "detail": {"url": "/blog/growth-hacking", "title": "Growth Hacking Guide"}},
-            {"change_type": "ranking_change", "detail": {"keyword": "marketing automation", "old_rank": 12, "new_rank": 5}},
-            {"change_type": "content_update", "detail": {"url": "/pricing", "changes": "Added enterprise tier"}},
-            {"change_type": "new_page", "detail": {"url": "/features/ai-assistant", "title": "AI Assistant Launch"}},
-            {"change_type": "pricing_change", "detail": {"old_price": "$49/mo", "new_price": "$59/mo", "plan": "Pro"}},
-        ]
-        for i, ch in enumerate(changes):
-            CompetitorChange.objects.get_or_create(
-                competitor=created_competitors[i % len(created_competitors)],
-                change_type=ch["change_type"],
-                detected_at=now - timedelta(days=i, hours=random.randint(0, 12)),
-                defaults={"detail": ch["detail"]},
-            )
-
-        gap_keywords = [
-            {"keyword": "growth hacking tools", "your_rank": None, "search_volume": 8200, "difficulty": 45, "opportunity_score": 0.85},
-            {"keyword": "marketing automation", "your_rank": 18, "search_volume": 22000, "difficulty": 72, "opportunity_score": 0.6},
-            {"keyword": "seo audit tool", "your_rank": 8, "search_volume": 14000, "difficulty": 58, "opportunity_score": 0.72},
-            {"keyword": "competitor analysis", "your_rank": 25, "search_volume": 9800, "difficulty": 52, "opportunity_score": 0.78},
-            {"keyword": "lead scoring software", "your_rank": None, "search_volume": 5400, "difficulty": 38, "opportunity_score": 0.9},
-            {"keyword": "website analytics", "your_rank": 14, "search_volume": 33000, "difficulty": 82, "opportunity_score": 0.5},
-        ]
-        for gk in gap_keywords:
-            comp_ranks = {c.name: random.randint(1, 20) for c in created_competitors[:3]}
-            KeywordGap.objects.get_or_create(
-                website=website,
-                keyword=gk["keyword"],
-                defaults={**gk, "competitor_ranks": comp_ranks},
-            )
-        self.stdout.write(f"  Competitors: {len(comp_data)} + {len(changes)} changes + {len(gap_keywords)} keyword gaps")
 
         # ── Notifications ──
         from apps.notifications.models import Notification

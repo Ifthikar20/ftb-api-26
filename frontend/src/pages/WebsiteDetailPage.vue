@@ -42,10 +42,6 @@
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-7 8-7s8 3 8 7"/></svg>
             <span class="font-semibold">Leads</span>
           </div>
-          <div class="nav-tile" @click="$router.push(`/competitors/${id}`)">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="6" width="7" height="14" rx="1.5"/><rect x="14" y="3" width="7" height="17" rx="1.5"/></svg>
-            <span class="font-semibold">Competitors</span>
-          </div>
         </div>
       </div>
 
