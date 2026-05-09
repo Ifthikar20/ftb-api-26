@@ -1,64 +1,62 @@
 <template>
-  <tr class="border-b border-gray-100 align-top">
-    <td class="px-3 py-2 text-sm text-gray-900">{{ fact.subject }}</td>
-    <td class="px-3 py-2 text-sm text-gray-700">{{ fact.predicate }}</td>
-    <td class="px-3 py-2 text-sm text-gray-700">{{ fact.object }}</td>
-    <td class="px-3 py-2">
-      <div class="flex items-center gap-2">
-        <div class="h-2 w-20 overflow-hidden rounded-full bg-gray-100">
-          <div class="h-full bg-indigo-500" :style="{ width: pct + '%' }"></div>
+  <AirCard size="md" interactive class="fact-card flex h-full flex-col">
+    <div class="mb-3 flex items-start justify-between gap-3">
+      <div class="min-w-0">
+        <div class="text-[15px] font-semibold leading-snug" style="color: var(--text-primary)">
+          {{ fact.subject }}
         </div>
-        <span class="text-xs text-gray-500">{{ pct }}%</span>
+        <div class="mt-1 text-[13px] leading-relaxed" style="color: var(--text-secondary)">
+          <span class="font-medium" style="color: var(--text-primary)">{{ fact.predicate }}</span>
+          <span class="mx-1.5" style="color: var(--text-muted)">·</span>
+          <span>{{ fact.object }}</span>
+        </div>
       </div>
-    </td>
-    <td class="px-3 py-2">
-      <span
-        class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
-        :class="statusClass"
-      >
-        {{ statusLabel }}
-      </span>
-    </td>
-    <td class="px-3 py-2 text-sm">
-      <a
-        v-if="fact.source_url"
-        :href="fact.source_url"
-        target="_blank"
-        rel="noopener noreferrer"
-        class="text-indigo-700 hover:underline"
-      >
-        Source
-      </a>
-      <span v-else class="text-xs text-gray-400">—</span>
-    </td>
-    <td class="px-3 py-2">
-      <div v-if="isPending" class="flex flex-wrap gap-1">
-        <button
-          class="rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs text-emerald-800 hover:bg-emerald-100"
-          @click="$emit('approve', fact)"
-        >
-          Approve
-        </button>
-        <button
-          class="rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-xs text-rose-800 hover:bg-rose-100"
-          @click="$emit('reject', fact)"
-        >
-          Reject
-        </button>
-        <button
-          class="rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 hover:bg-gray-50"
-          @click="$emit('edit-click', fact)"
-        >
-          Edit
-        </button>
+      <AirChip :variant="statusVariant" size="xs">{{ statusLabel }}</AirChip>
+    </div>
+
+    <div class="mt-auto flex flex-col gap-3 pt-4" style="border-top: 1px solid var(--border-color)">
+      <div class="flex items-center gap-2">
+        <span class="text-[10px] font-semibold uppercase tracking-wider" style="color: var(--text-muted)">
+          Confidence
+        </span>
+        <div class="h-1.5 flex-1 overflow-hidden rounded-full" style="background: var(--border-color)">
+          <div class="h-full rounded-full" :style="{ width: pct + '%', background: 'var(--brand-accent)' }"></div>
+        </div>
+        <span class="tabular-nums text-xs" style="color: var(--text-secondary)">{{ pct }}%</span>
       </div>
-      <span v-else class="text-xs text-gray-400">—</span>
-    </td>
-  </tr>
+
+      <div class="flex items-center justify-between gap-2">
+        <a
+          v-if="fact.source_url"
+          :href="fact.source_url"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="inline-flex items-center gap-1 text-xs font-medium hover:underline"
+          style="color: var(--brand-accent)"
+          @click.stop
+        >
+          Source
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+            <path d="M3 7l4-4M4 3h3v3" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        </a>
+        <span v-else class="text-xs" style="color: var(--text-muted)">No source</span>
+
+        <div v-if="isPending" class="flex flex-wrap gap-2">
+          <AirButton variant="outline" size="xs" @click.stop="$emit('edit-click', fact)">Edit</AirButton>
+          <AirButton variant="ghost" size="xs" @click.stop="$emit('reject', fact)">Reject</AirButton>
+          <AirButton variant="primary" size="xs" @click.stop="$emit('approve', fact)">Approve</AirButton>
+        </div>
+      </div>
+    </div>
+  </AirCard>
 </template>
 
 <script setup>
 import { computed } from 'vue'
+import AirCard from '@/components/ui/AirCard.vue'
+import AirButton from '@/components/ui/AirButton.vue'
+import AirChip from '@/components/ui/AirChip.vue'
 
 const props = defineProps({
   fact: { type: Object, required: true },
@@ -66,14 +64,14 @@ const props = defineProps({
 
 defineEmits(['approve', 'reject', 'edit-click'])
 
-const STATUS_STYLES = {
-  pending: 'bg-amber-100 text-amber-800',
-  approved: 'bg-emerald-100 text-emerald-800',
-  rejected: 'bg-zinc-100 text-zinc-700',
-  auto: 'bg-blue-100 text-blue-800',
+const STATUS_VARIANT = {
+  pending: 'warning',
+  approved: 'success',
+  rejected: 'neutral',
+  auto: 'info',
 }
 
-const statusClass = computed(() => STATUS_STYLES[props.fact.status] || STATUS_STYLES.pending)
+const statusVariant = computed(() => STATUS_VARIANT[props.fact.status] || 'warning')
 
 const statusLabel = computed(() => {
   const s = props.fact.status || 'pending'

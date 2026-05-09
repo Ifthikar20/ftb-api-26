@@ -20,13 +20,14 @@ from rest_framework.views import APIView
 
 from apps.llm_ranking.models import LLMRankingAudit
 from apps.prompt_library.api.v1.serializers import (
+    BrandPromptSerializer,
     IndustrySerializer,
     PreviewSampleRequestSerializer,
     PromptSampleRunSerializer,
     PromptSerializer,
     UseLibrarySampleRequestSerializer,
 )
-from apps.prompt_library.models import Industry, Prompt, PromptSampleRun
+from apps.prompt_library.models import BrandPrompt, Industry, Prompt, PromptSampleRun
 from apps.prompt_library.services.sampler_service import sample_prompts_for_audit
 from apps.websites.services.website_service import WebsiteService
 from core.interceptors.pagination import StandardPagination
@@ -142,3 +143,59 @@ class GetAuditSampleView(APIView):
         if sample_run is None:
             return Response({"sample_run": None})
         return Response({"sample_run": PromptSampleRunSerializer(sample_run).data})
+
+
+class IndustryTrendView(APIView):
+    """Return cached Google Trends data for an industry."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, slug):
+        from apps.prompt_library.services.trends_service import get_trend_payload
+
+        industry = get_object_or_404(Industry, slug=slug, is_active=True)
+        return Response(get_trend_payload(industry))
+
+
+class WebsiteBrandPromptsView(APIView):
+    """List or add brand prompts for a website."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, website_id):
+        website = WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        qs = (
+            BrandPrompt.objects.filter(website=website)
+            .select_related("prompt", "prompt__industry")
+            .order_by("-created_at")
+        )
+        return Response(BrandPromptSerializer(qs, many=True).data)
+
+    def post(self, request, website_id):
+        website = WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        serializer = BrandPromptSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        prompt = get_object_or_404(
+            Prompt, id=serializer.validated_data["prompt_id"], is_active=True
+        )
+        bp, created = BrandPrompt.objects.get_or_create(
+            website=website,
+            prompt=prompt,
+            defaults={"notes": serializer.validated_data.get("notes", "")},
+        )
+        return Response(
+            BrandPromptSerializer(bp).data,
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )
+
+
+class BrandPromptDetailView(APIView):
+    """Delete a single brand prompt entry."""
+
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, brand_prompt_id):
+        bp = get_object_or_404(BrandPrompt, id=brand_prompt_id)
+        WebsiteService.get_for_user(user=request.user, website_id=bp.website_id)
+        bp.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)

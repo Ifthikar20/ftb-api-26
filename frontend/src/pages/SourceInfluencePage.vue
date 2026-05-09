@@ -1,50 +1,68 @@
 <template>
-  <div class="si-page">
+  <div class="mx-auto max-w-7xl px-6 py-8">
     <!-- Header -->
-    <div id="si-header" class="si-header">
-      <div class="si-title-block">
-        <h1 class="si-title">Source Influence</h1>
-        <p class="si-subtitle" v-if="websiteName">{{ websiteName }}</p>
+    <header id="si-header" class="mb-6 flex flex-wrap items-start justify-between gap-4">
+      <div>
+        <h1 class="text-2xl font-semibold tracking-tight" style="color: var(--text-primary)">
+          Source Influence
+        </h1>
+        <p v-if="websiteName" class="mt-1 text-sm" style="color: var(--text-secondary)">
+          {{ websiteName }}
+        </p>
       </div>
-      <div id="si-controls" class="si-controls">
-        <div class="si-segmented" role="group" aria-label="Period">
-          <button
+      <div id="si-controls" class="flex flex-wrap items-center gap-2">
+        <div class="flex flex-wrap items-center gap-2">
+          <AirChip
             v-for="opt in periodOptions"
             :key="opt.value"
-            class="si-seg-btn"
-            :class="{ active: periodDays === opt.value }"
+            as="button"
+            size="sm"
+            :variant="periodDays === opt.value ? 'primary' : 'neutral'"
             @click="periodDays = opt.value"
           >
             {{ opt.label }}
-          </button>
+          </AirChip>
         </div>
-        <div class="si-segmented" role="group" aria-label="Provider">
-          <button
+        <span class="hidden h-4 w-px sm:block" style="background: var(--border-color)" aria-hidden="true"></span>
+        <div class="flex flex-wrap items-center gap-2">
+          <AirChip
             v-for="opt in providerOptions"
             :key="opt.value || 'all'"
-            class="si-seg-btn"
-            :class="{ active: providerFilter === opt.value }"
+            as="button"
+            size="sm"
+            :variant="providerFilter === opt.value ? 'primary' : 'neutral'"
             @click="providerFilter = opt.value"
           >
             {{ opt.label }}
-          </button>
+          </AirChip>
         </div>
       </div>
-    </div>
+    </header>
 
-    <div v-if="loading" class="si-loading">Loading source influence…</div>
+    <div v-if="loading" class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div
+        v-for="i in 4"
+        :key="i"
+        class="h-28 animate-pulse rounded-2xl"
+        style="background: var(--bg-card); border: 1px solid var(--border-color)"
+      ></div>
+    </div>
 
     <template v-else>
       <!-- Empty state -->
-      <div v-if="totalCitations === 0" class="si-empty">
-        <div class="si-empty-illus">
-          <svg width="80" height="80" viewBox="0 0 80 80" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="40" cy="40" r="30" stroke-dasharray="4 4"/>
-            <path d="M28 40h24M40 28v24" stroke-linecap="round"/>
+      <div
+        v-if="totalCitations === 0"
+        class="flex flex-col items-center justify-center rounded-3xl border border-dashed px-8 py-16 text-center"
+        style="border-color: var(--border-color); background: var(--bg-card)"
+      >
+        <div class="mb-4" style="color: var(--text-muted)">
+          <svg width="64" height="64" viewBox="0 0 80 80" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="40" cy="40" r="30" stroke-dasharray="4 4" />
+            <path d="M28 40h24M40 28v24" stroke-linecap="round" />
           </svg>
         </div>
-        <h2 class="si-empty-title">No citations yet</h2>
-        <p class="si-empty-copy">
+        <h2 class="text-lg font-semibold" style="color: var(--text-primary)">No citations yet</h2>
+        <p class="mt-2 max-w-md text-sm" style="color: var(--text-secondary)">
           Run an audit to start tracking which sources LLMs cite for your category.
         </p>
         <AirButton
@@ -52,6 +70,7 @@
           :to="`/llm-ranking/${websiteId}`"
           variant="primary"
           size="md"
+          class="mt-6"
         >
           Run new audit
         </AirButton>
@@ -59,93 +78,147 @@
 
       <template v-else>
         <!-- Top stat row -->
-        <div id="si-stats" class="si-stats">
-          <div class="si-stat">
-            <div class="si-stat-label">Total citations</div>
-            <div class="si-stat-value">{{ totalCitations.toLocaleString() }}</div>
-            <div class="si-stat-sub">over last {{ periodDays }} days</div>
-          </div>
-          <div class="si-stat">
-            <div class="si-stat-label">Unique domains</div>
-            <div class="si-stat-value">{{ uniqueDomains.toLocaleString() }}</div>
-            <div class="si-stat-sub">distinct apex domains</div>
-          </div>
-          <div class="si-stat">
-            <div class="si-stat-label">Your-site share</div>
-            <div class="si-stat-value">{{ pct(yourSiteShare) }}<span class="si-stat-unit">%</span></div>
-            <div class="si-stat-sub">{{ yourSiteCount }} citations</div>
-          </div>
-          <div class="si-stat">
-            <div class="si-stat-label">Competitor share</div>
-            <div class="si-stat-value">{{ pct(competitorShare) }}<span class="si-stat-unit">%</span></div>
-            <div class="si-stat-sub">{{ competitorCount }} citations</div>
-          </div>
-        </div>
+        <section
+          id="si-stats"
+          class="mb-8 grid grid-cols-2 gap-4 md:grid-cols-4"
+        >
+          <AirCard size="md">
+            <AirCardSubtitle class="text-xs uppercase tracking-wide">Total citations</AirCardSubtitle>
+            <div class="mt-1 text-2xl font-semibold tabular-nums" style="color: var(--text-primary)">
+              {{ totalCitations.toLocaleString() }}
+            </div>
+            <div class="mt-1 text-xs" style="color: var(--text-muted)">
+              over last {{ periodDays }} days
+            </div>
+          </AirCard>
+          <AirCard size="md">
+            <AirCardSubtitle class="text-xs uppercase tracking-wide">Unique domains</AirCardSubtitle>
+            <div class="mt-1 text-2xl font-semibold tabular-nums" style="color: var(--text-primary)">
+              {{ uniqueDomains.toLocaleString() }}
+            </div>
+            <div class="mt-1 text-xs" style="color: var(--text-muted)">distinct apex domains</div>
+          </AirCard>
+          <AirCard size="md">
+            <AirCardSubtitle class="text-xs uppercase tracking-wide">Your-site share</AirCardSubtitle>
+            <div class="mt-1 flex items-baseline gap-1">
+              <span class="text-2xl font-semibold tabular-nums" style="color: var(--text-primary)">
+                {{ pct(yourSiteShare) }}
+              </span>
+              <span class="text-sm" style="color: var(--text-muted)">%</span>
+            </div>
+            <div class="mt-1 text-xs" style="color: var(--text-muted)">
+              {{ yourSiteCount }} citations
+            </div>
+          </AirCard>
+          <AirCard size="md">
+            <AirCardSubtitle class="text-xs uppercase tracking-wide">Competitor share</AirCardSubtitle>
+            <div class="mt-1 flex items-baseline gap-1">
+              <span class="text-2xl font-semibold tabular-nums" style="color: var(--text-primary)">
+                {{ pct(competitorShare) }}
+              </span>
+              <span class="text-sm" style="color: var(--text-muted)">%</span>
+            </div>
+            <div class="mt-1 text-xs" style="color: var(--text-muted)">
+              {{ competitorCount }} citations
+            </div>
+          </AirCard>
+        </section>
 
         <!-- Per-provider breakdown cards -->
-        <div id="si-providers" class="si-section">
-          <h2 class="si-section-title">Source mix by provider</h2>
-          <div v-if="!providerCards.length" class="si-card si-empty-inline">
+        <section id="si-providers" class="mb-10">
+          <h2 class="mb-4 text-lg font-semibold" style="color: var(--text-primary)">
+            Source mix by provider
+          </h2>
+          <div
+            v-if="!providerCards.length"
+            class="rounded-2xl border border-dashed px-6 py-10 text-center text-sm"
+            style="border-color: var(--border-color); color: var(--text-muted)"
+          >
             No per-provider rollups for this window yet.
           </div>
-          <div v-for="card in providerCards" :key="card.provider" class="si-card">
-            <div class="si-card-head">
-              <div>
-                <div class="si-card-title">{{ providerLabel(card.provider) }}</div>
-                <div class="si-card-sub">{{ card.total.toLocaleString() }} citations</div>
+          <div v-else class="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <AirCard v-for="card in providerCards" :key="card.provider" size="md" interactive>
+              <div class="mb-3 flex items-start justify-between gap-3">
+                <div>
+                  <div class="text-[15px] font-semibold" style="color: var(--text-primary)">
+                    {{ providerLabel(card.provider) }}
+                  </div>
+                  <div class="text-xs" style="color: var(--text-muted)">
+                    {{ card.total.toLocaleString() }} citations
+                  </div>
+                </div>
+                <AirButton
+                  variant="link"
+                  size="sm"
+                  @click.stop="card.expanded = !card.expanded"
+                >
+                  {{ card.expanded ? 'Hide top domains' : 'View top domains' }}
+                </AirButton>
               </div>
-              <button class="si-link-btn" @click="card.expanded = !card.expanded">
-                {{ card.expanded ? 'Hide top domains' : 'View top domains' }}
-              </button>
-            </div>
-            <SourceBreakdownBar :breakdown="card.breakdown" :height="14" />
-            <p class="si-card-line" v-if="card.topClass">
-              Top source: <strong>{{ titleCase(card.topClass.source_class) }}</strong>
-              ({{ pct(card.topClass.share) }}%)
-            </p>
-            <div v-if="card.expanded" class="si-domains-mini">
-              <table class="si-table">
-                <thead>
-                  <tr>
-                    <th>Domain</th>
-                    <th class="num">Count</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="d in card.top_domains.slice(0, 10)" :key="d.apex_domain">
-                    <td>{{ d.apex_domain }}</td>
-                    <td class="num">{{ d.count }}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
+              <SourceBreakdownBar :breakdown="card.breakdown" :height="14" />
+              <p v-if="card.topClass" class="mt-3 text-xs" style="color: var(--text-secondary)">
+                Top source:
+                <strong style="color: var(--text-primary)">{{ titleCase(card.topClass.source_class) }}</strong>
+                ({{ pct(card.topClass.share) }}%)
+              </p>
+              <div
+                v-if="card.expanded"
+                class="mt-4 rounded-xl"
+                style="background: var(--bg-surface); border: 1px solid var(--border-color)"
+              >
+                <table class="w-full text-left text-sm">
+                  <thead>
+                    <tr>
+                      <th class="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider" style="color: var(--text-muted)">
+                        Domain
+                      </th>
+                      <th class="px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-wider" style="color: var(--text-muted)">
+                        Count
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr
+                      v-for="d in card.top_domains.slice(0, 10)"
+                      :key="d.apex_domain"
+                      style="border-top: 1px solid var(--border-color)"
+                    >
+                      <td class="px-3 py-2" style="color: var(--text-primary)">{{ d.apex_domain }}</td>
+                      <td class="px-3 py-2 text-right tabular-nums" style="color: var(--text-secondary)">
+                        {{ d.count }}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </AirCard>
           </div>
-        </div>
+        </section>
 
-        <!-- Top domains table -->
-        <div class="si-section">
-          <h2 class="si-section-title">Top domains</h2>
-          <div class="si-card">
-            <table class="si-table">
+        <!-- Top domains card -->
+        <section class="mb-10">
+          <h2 class="mb-4 text-lg font-semibold" style="color: var(--text-primary)">Top domains</h2>
+          <AirCard size="md" :padded="false">
+            <table class="w-full text-left text-sm">
               <thead>
-                <tr>
-                  <th @click="toggleSort('apex_domain')" class="sortable">
+                <tr style="border-bottom: 1px solid var(--border-color)">
+                  <th class="cursor-pointer px-4 py-3 text-[11px] font-semibold uppercase tracking-wider" style="color: var(--text-muted)" @click="toggleSort('apex_domain')">
                     Domain
                     <span v-if="sortKey === 'apex_domain'">{{ sortDir === 'desc' ? '↓' : '↑' }}</span>
                   </th>
-                  <th @click="toggleSort('source_class')" class="sortable">
+                  <th class="cursor-pointer px-4 py-3 text-[11px] font-semibold uppercase tracking-wider" style="color: var(--text-muted)" @click="toggleSort('source_class')">
                     Source class
                     <span v-if="sortKey === 'source_class'">{{ sortDir === 'desc' ? '↓' : '↑' }}</span>
                   </th>
-                  <th class="num sortable" @click="toggleSort('count')">
+                  <th class="cursor-pointer px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-wider" style="color: var(--text-muted)" @click="toggleSort('count')">
                     Count
                     <span v-if="sortKey === 'count'">{{ sortDir === 'desc' ? '↓' : '↑' }}</span>
                   </th>
-                  <th class="num sortable" @click="toggleSort('share')">
+                  <th class="cursor-pointer px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-wider" style="color: var(--text-muted)" @click="toggleSort('share')">
                     Share
                     <span v-if="sortKey === 'share'">{{ sortDir === 'desc' ? '↓' : '↑' }}</span>
                   </th>
-                  <th class="sortable" @click="toggleSort('type')">
+                  <th class="cursor-pointer px-4 py-3 text-[11px] font-semibold uppercase tracking-wider" style="color: var(--text-muted)" @click="toggleSort('type')">
                     Type
                     <span v-if="sortKey === 'type'">{{ sortDir === 'desc' ? '↓' : '↑' }}</span>
                   </th>
@@ -155,65 +228,86 @@
                 <tr
                   v-for="row in visibleDomains"
                   :key="row.apex_domain"
-                  class="clickable"
+                  class="cursor-pointer transition-colors"
+                  style="border-top: 1px solid var(--border-color)"
                   @click="openDomainDrawer(row)"
+                  @mouseover="(e) => e.currentTarget.style.background='var(--bg-card-hover)'"
+                  @mouseleave="(e) => e.currentTarget.style.background=''"
                 >
-                  <td>{{ row.apex_domain }}</td>
-                  <td>
+                  <td class="px-4 py-3" style="color: var(--text-primary)">{{ row.apex_domain }}</td>
+                  <td class="px-4 py-3">
                     <SourceClassBadge :source_class="row.source_class || 'other'" />
                   </td>
-                  <td class="num">{{ row.count }}</td>
-                  <td class="num">{{ pct(row.share) }}%</td>
-                  <td>
-                    <span v-if="row.is_target" class="si-pill si-pill-you">Your site</span>
-                    <span v-else-if="row.is_competitor" class="si-pill si-pill-comp">Competitor</span>
-                    <span v-else class="si-pill si-pill-other">Other</span>
+                  <td class="px-4 py-3 text-right tabular-nums" style="color: var(--text-secondary)">
+                    {{ row.count }}
+                  </td>
+                  <td class="px-4 py-3 text-right tabular-nums" style="color: var(--text-secondary)">
+                    {{ pct(row.share) }}%
+                  </td>
+                  <td class="px-4 py-3">
+                    <AirChip v-if="row.is_target" variant="success" size="xs">Your site</AirChip>
+                    <AirChip v-else-if="row.is_competitor" variant="warning" size="xs">Competitor</AirChip>
+                    <AirChip v-else variant="neutral" size="xs">Other</AirChip>
                   </td>
                 </tr>
               </tbody>
             </table>
-            <div class="si-table-foot">
-              <span class="si-muted">
+            <div
+              class="flex items-center justify-between px-4 py-3"
+              style="border-top: 1px solid var(--border-color)"
+            >
+              <span class="text-xs" style="color: var(--text-muted)">
                 Showing {{ Math.min(visibleDomains.length, sortedDomains.length) }}
                 of {{ sortedDomains.length }}
               </span>
-              <button
+              <AirButton
                 v-if="domainLimit < sortedDomains.length"
-                class="si-link-btn"
+                variant="link"
+                size="sm"
                 @click="domainLimit += 30"
               >
                 Show more
-              </button>
+              </AirButton>
             </div>
-          </div>
-        </div>
+          </AirCard>
+        </section>
 
         <!-- Recommendations -->
-        <div id="si-recs" class="si-section">
-          <h2 class="si-section-title">Recommendations</h2>
-          <div class="si-recs">
-            <div v-for="(rec, i) in recommendations" :key="i" class="si-rec-card">
-              <div class="si-rec-icon" aria-hidden="true">
-                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-                  <circle cx="10" cy="10" r="8"/>
-                  <path d="M10 6v5M10 13.5h.01" stroke-linecap="round"/>
-                </svg>
-              </div>
-              <div class="si-rec-body">
-                <div class="si-rec-headline">{{ rec.headline }}</div>
-                <p class="si-rec-desc" v-html="rec.description"></p>
-                <AirButton
-                  v-if="rec.cta"
-                  variant="outline"
-                  size="sm"
-                  @click="rec.action && rec.action()"
+        <section id="si-recs" class="mb-10">
+          <h2 class="mb-4 text-lg font-semibold" style="color: var(--text-primary)">
+            Recommendations
+          </h2>
+          <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <AirCard v-for="(rec, i) in recommendations" :key="i" size="md" interactive>
+              <div class="flex items-start gap-3">
+                <div
+                  class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
+                  :style="{ background: 'var(--brand-accent-glow)', color: 'var(--brand-accent)' }"
                 >
-                  {{ rec.cta }}
-                </AirButton>
+                  <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                    <circle cx="10" cy="10" r="8" />
+                    <path d="M10 6v5M10 13.5h.01" stroke-linecap="round" />
+                  </svg>
+                </div>
+                <div class="min-w-0 flex-1">
+                  <div class="text-sm font-semibold" style="color: var(--text-primary)">
+                    {{ rec.headline }}
+                  </div>
+                  <p class="mt-1 text-[13px] leading-relaxed" style="color: var(--text-secondary)" v-html="rec.description"></p>
+                  <AirButton
+                    v-if="rec.cta"
+                    variant="outline"
+                    size="sm"
+                    class="mt-3"
+                    @click="rec.action && rec.action()"
+                  >
+                    {{ rec.cta }}
+                  </AirButton>
+                </div>
               </div>
-            </div>
+            </AirCard>
           </div>
-        </div>
+        </section>
       </template>
     </template>
 
@@ -237,6 +331,10 @@ import SourceClassBadge from '@/components/citations/SourceClassBadge.vue'
 import SourceBreakdownBar from '@/components/citations/SourceBreakdownBar.vue'
 import OnboardingTooltip from '@/components/OnboardingTooltip.vue'
 import AirButton from '@/components/ui/AirButton.vue'
+import AirCard from '@/components/ui/AirCard.vue'
+import AirCardSubtitle from '@/components/ui/AirCardSubtitle.vue'
+import AirChip from '@/components/ui/AirChip.vue'
+import CitationsDrawer from '@/components/citations/CitationsDrawer.vue'
 
 const tourSteps = [
   {
@@ -270,7 +368,6 @@ const tourSteps = [
     position: 'top',
   },
 ]
-import CitationsDrawer from '@/components/citations/CitationsDrawer.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -358,7 +455,6 @@ async function load() {
 onMounted(load)
 watch([periodDays, providerFilter], load)
 
-// Aggregated breakdown across snapshots (since each snapshot is per-provider).
 const aggregateBreakdown = computed(() => {
   const out = {}
   let total = 0
@@ -392,7 +488,6 @@ const aggregatedDomains = computed(() => {
       map.set(key, existing)
     }
   }
-  // Cross-reference with citation rows for is_target/is_competitor/source_class.
   const meta = new Map()
   for (const c of recentCitations.value) {
     const key = c.apex_domain
@@ -425,22 +520,10 @@ const aggregatedDomains = computed(() => {
 
 const uniqueDomains = computed(() => aggregatedDomains.value.length)
 
-const yourSiteCount = computed(() => {
-  const b = aggregateBreakdown.value.breakdown
-  return b.your_site?.count || 0
-})
-const yourSiteShare = computed(() => {
-  const b = aggregateBreakdown.value.breakdown
-  return b.your_site?.share || 0
-})
-const competitorCount = computed(() => {
-  const b = aggregateBreakdown.value.breakdown
-  return b.competitor_site?.count || 0
-})
-const competitorShare = computed(() => {
-  const b = aggregateBreakdown.value.breakdown
-  return b.competitor_site?.share || 0
-})
+const yourSiteCount = computed(() => aggregateBreakdown.value.breakdown.your_site?.count || 0)
+const yourSiteShare = computed(() => aggregateBreakdown.value.breakdown.your_site?.share || 0)
+const competitorCount = computed(() => aggregateBreakdown.value.breakdown.competitor_site?.count || 0)
+const competitorShare = computed(() => aggregateBreakdown.value.breakdown.competitor_site?.share || 0)
 
 const providerCards = computed(() => {
   const grouped = new Map()
@@ -482,14 +565,6 @@ const providerCards = computed(() => {
     card.topClass = topClass
   }
   return Array.from(grouped.values()).sort((a, b) => b.total - a.total)
-})
-
-const domainSort = computed({
-  get: () => ({ key: sortKey.value, dir: sortDir.value }),
-  set: (v) => {
-    sortKey.value = v.key
-    sortDir.value = v.dir
-  },
 })
 
 function _typeRank(row) {
@@ -545,7 +620,6 @@ const recommendations = computed(() => {
   const cShare = competitorShare.value
   const blogShare = b.blog?.share || 0
   const redditShare = b.reddit?.share || 0
-  // Approximate "your-site reddit citations" by looking at recent citations.
   const yourSiteRedditCount = recentCitations.value.filter(
     (c) => c.is_target && c.source_class === 'reddit',
   ).length
@@ -600,182 +674,3 @@ function filterByClass(cls) {
   drawerOpen.value = true
 }
 </script>
-
-<style scoped>
-.si-page {
-  padding: 24px;
-  max-width: 1200px;
-  margin: 0 auto;
-}
-.si-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 16px;
-  margin-bottom: 24px;
-  flex-wrap: wrap;
-}
-.si-title {
-  font-size: 22px;
-  font-weight: 600;
-  margin: 0;
-  color: var(--text-primary, #111);
-}
-.si-subtitle {
-  margin: 4px 0 0;
-  color: var(--text-muted, #6b7280);
-  font-size: 13px;
-}
-.si-controls {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-.si-segmented {
-  display: inline-flex;
-  border: 1px solid var(--border, #e5e7eb);
-  border-radius: 6px;
-  overflow: hidden;
-  background: var(--bg-elevated, #fff);
-}
-.si-seg-btn {
-  background: transparent;
-  border: 0;
-  padding: 6px 12px;
-  font-size: 12px;
-  cursor: pointer;
-  color: var(--text-secondary, #4b5563);
-}
-.si-seg-btn.active {
-  background: var(--accent, #ec4899);
-  color: white;
-}
-.si-loading {
-  padding: 40px;
-  text-align: center;
-  color: var(--text-muted, #6b7280);
-}
-.si-empty {
-  padding: 60px 20px;
-  text-align: center;
-  border: 1px dashed var(--border, #e5e7eb);
-  border-radius: 12px;
-  background: var(--bg-elevated, #fff);
-}
-.si-empty-illus { color: var(--text-muted, #9ca3af); margin-bottom: 12px; }
-.si-empty-title { font-size: 18px; font-weight: 600; margin: 0 0 6px; }
-.si-empty-copy { color: var(--text-muted, #6b7280); margin: 0 0 16px; }
-.si-stats {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
-  margin-bottom: 24px;
-}
-.si-stat {
-  background: var(--bg-elevated, #fff);
-  border: 1px solid var(--border, #e5e7eb);
-  border-radius: 10px;
-  padding: 14px 16px;
-}
-.si-stat-label { font-size: 12px; color: var(--text-muted, #6b7280); }
-.si-stat-value {
-  font-size: 22px;
-  font-weight: 600;
-  color: var(--text-primary, #111);
-  margin-top: 4px;
-}
-.si-stat-unit { font-size: 13px; font-weight: 500; color: var(--text-muted, #6b7280); margin-left: 2px; }
-.si-stat-sub { font-size: 11px; color: var(--text-muted, #6b7280); margin-top: 2px; }
-.si-section { margin-bottom: 32px; }
-.si-section-title { font-size: 16px; font-weight: 600; margin: 0 0 12px; }
-.si-card {
-  background: var(--bg-elevated, #fff);
-  border: 1px solid var(--border, #e5e7eb);
-  border-radius: 10px;
-  padding: 16px;
-  margin-bottom: 12px;
-}
-.si-card-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 8px;
-  gap: 12px;
-}
-.si-card-title { font-size: 14px; font-weight: 600; }
-.si-card-sub { font-size: 12px; color: var(--text-muted, #6b7280); }
-.si-card-line { font-size: 12px; color: var(--text-secondary, #4b5563); margin: 8px 0 0; }
-.si-domains-mini { margin-top: 12px; }
-.si-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.si-table th, .si-table td {
-  padding: 8px 12px;
-  text-align: left;
-  border-bottom: 1px solid var(--border, #f1f5f9);
-}
-.si-table th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted, #6b7280); }
-.si-table th.num, .si-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
-.si-table th.sortable { cursor: pointer; user-select: none; }
-.si-table tr.clickable { cursor: pointer; }
-.si-table tr.clickable:hover { background: var(--bg-hover, #f9fafb); }
-.si-pill {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 500;
-}
-.si-pill-you { background: #d1fae5; color: #065f46; }
-.si-pill-comp { background: #fef3c7; color: #92400e; }
-.si-pill-other { background: #f1f5f9; color: #475569; }
-.si-table-foot {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding-top: 12px;
-}
-.si-muted { color: var(--text-muted, #6b7280); font-size: 12px; }
-.si-link-btn {
-  background: transparent;
-  border: 0;
-  color: var(--accent, #ec4899);
-  font-size: 12px;
-  cursor: pointer;
-  padding: 0;
-}
-.si-link-btn:hover { text-decoration: underline; }
-.si-recs { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
-.si-rec-card {
-  background: var(--bg-elevated, #fff);
-  border: 1px solid var(--border, #e5e7eb);
-  border-radius: 10px;
-  padding: 16px;
-  display: flex;
-  gap: 12px;
-}
-.si-rec-icon { color: var(--accent, #ec4899); flex-shrink: 0; }
-.si-rec-headline { font-weight: 600; font-size: 13px; margin-bottom: 4px; }
-.si-rec-desc { font-size: 13px; color: var(--text-secondary, #4b5563); margin: 0 0 10px; line-height: 1.5; }
-.si-btn-primary {
-  display: inline-block;
-  background: var(--accent, #ec4899);
-  color: white;
-  padding: 8px 14px;
-  border-radius: 6px;
-  font-size: 13px;
-  text-decoration: none;
-  font-weight: 500;
-}
-.si-btn-secondary {
-  background: transparent;
-  color: var(--accent, #ec4899);
-  border: 1px solid var(--accent, #ec4899);
-  padding: 5px 10px;
-  border-radius: 6px;
-  font-size: 12px;
-  cursor: pointer;
-}
-.si-empty-inline { color: var(--text-muted, #6b7280); font-size: 13px; }
-@media (max-width: 800px) {
-  .si-stats { grid-template-columns: repeat(2, 1fr); }
-}
-</style>

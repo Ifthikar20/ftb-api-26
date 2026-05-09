@@ -5,6 +5,8 @@ import api from './client'
 export default {
     getIndustries: () => api.get('/prompt-library/industries/'),
 
+    getIndustryTrends: (slug) => api.get(`/prompt-library/industries/${slug}/trends/`),
+
     getPrompts: (params) => api.get('/prompt-library/prompts/', { params }),
 
     previewSample: (payload) =>
@@ -15,4 +17,16 @@ export default {
 
     getAuditSample: (auditId) =>
         api.get(`/prompt-library/audits/${auditId}/sample/`),
+
+    listBrandPrompts: (websiteId) =>
+        api.get(`/prompt-library/websites/${websiteId}/brand-prompts/`),
+
+    addBrandPrompt: (websiteId, promptId, notes = '') =>
+        api.post(`/prompt-library/websites/${websiteId}/brand-prompts/`, {
+            prompt_id: promptId,
+            notes,
+        }),
+
+    removeBrandPrompt: (brandPromptId) =>
+        api.delete(`/prompt-library/brand-prompts/${brandPromptId}/`),
 }

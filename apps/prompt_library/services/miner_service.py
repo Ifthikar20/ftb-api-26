@@ -45,55 +45,122 @@ def _classify_intent(text: str) -> str:
     return IntentBucket.CATEGORY
 
 
-class RedditMiner(BaseMiner):
-    """Mines top questions from subreddits aligned to the industry slug.
+# industry slug -> subreddits to mine. Curated from the live subreddit
+# index; missing slugs fall back to a literal slug-as-subreddit attempt.
+SUBREDDIT_MAP: dict[str, list[str]] = {
+    "saas-crm": ["CRM", "salesforce", "hubspot"],
+    "saas-analytics": ["analytics", "dataengineering", "ProductManagement"],
+    "saas-devtools": ["devops", "kubernetes", "webdev"],
+    "e-commerce-dtc": ["shopify", "ecommerce", "FulfillmentByAmazon"],
+    "e-commerce-marketplaces": ["FulfillmentByAmazon", "AmazonSeller", "Etsy"],
+    "education-edtech": ["edtech", "Teachers", "homeschool"],
+    "financial-services": ["personalfinance", "investing", "FinancialPlanning"],
+    "food-beverage": ["AskCulinary", "Cooking", "Coffee"],
+    "healthcare-telemedicine": ["AskDocs", "medicine", "HealthInsurance"],
+    "hospitality-travel": ["travel", "awardtravel", "solotravel"],
+    "insurance": ["Insurance", "personalfinance"],
+    "legal-services": ["legaladvice", "smallbusiness", "Entrepreneur"],
+    "local-services-hvac": ["HVAC", "homeowners"],
+    "local-services-health-wellness": ["fitness", "yoga", "running"],
+    "local-services-home-services": ["HomeImprovement", "Plumbing", "DIY"],
+    "manufacturing-industrial": ["Manufacturing", "engineering"],
+    "media-publishing": ["podcasting", "newsletters", "youtubers"],
+    "nonprofit": ["nonprofit", "fundraising"],
+    "professional-services-consulting": ["consulting", "smallbusiness"],
+    "real-estate": ["RealEstate", "FirstTimeHomeBuyer", "Mortgages"],
+}
 
-    Uses praw if it is installed and ``REDDIT_CLIENT_ID`` /
-    ``REDDIT_CLIENT_SECRET`` are configured. Otherwise falls back to
-    Reddit's public ``.json`` endpoints via ``requests``.
+
+def _truncate(text: str, limit: int = 600) -> str:
+    text = (text or "").strip()
+    if len(text) <= limit:
+        return text
+    cut = text[:limit].rsplit(" ", 1)[0]
+    return cut + "…"
+
+
+class RedditMiner(BaseMiner):
+    """Mine question-shaped posts from subreddits relevant to each industry.
+
+    Uses Reddit's public ``.json`` endpoint — no auth required, just a
+    User-Agent. Authenticated PRAW path can be added later when
+    ``REDDIT_CLIENT_ID``/``_SECRET`` are set; for now the unauthenticated
+    public endpoint is sufficient and rate-limit friendly under our
+    daily-cron volumes.
     """
 
     source = PromptSource.REDDIT
+    USER_AGENT = "growthpilot-prompt-miner/0.2"
 
     def fetch_questions(self, industry, limit: int) -> list[dict]:
-        client_id = getattr(settings, "REDDIT_CLIENT_ID", "")
-        client_secret = getattr(settings, "REDDIT_CLIENT_SECRET", "")
-        if not client_id or not client_secret:
-            logger.warning("RedditMiner: credentials missing, no-op")
-            return []
         try:
             import requests
         except ImportError:  # pragma: no cover
             logger.warning("RedditMiner: requests not available")
             return []
-        # Use the public JSON endpoint — keeps the dependency surface
-        # small and avoids carrying praw across deployments.
+
+        subreddits = SUBREDDIT_MAP.get(industry.slug) or [industry.slug.replace("-", "")]
         results: list[dict] = []
-        subreddit = industry.slug.replace("-", "")
-        try:
-            resp = requests.get(
-                f"https://www.reddit.com/r/{subreddit}/top.json",
-                params={"limit": min(limit, 100), "t": "month"},
-                headers={"User-Agent": "growthpilot-prompt-miner/0.1"},
-                timeout=10,
-            )
+        per_sub = max(5, limit // max(1, len(subreddits)))
+
+        for sub in subreddits:
+            if len(results) >= limit:
+                break
+            try:
+                resp = requests.get(
+                    f"https://www.reddit.com/r/{sub}/top.json",
+                    params={"limit": min(per_sub, 100), "t": "month"},
+                    headers={"User-Agent": self.USER_AGENT},
+                    timeout=10,
+                )
+            except Exception as exc:
+                logger.warning("RedditMiner: GET r/%s failed: %s", sub, exc)
+                continue
             if resp.status_code != 200:
-                return []
+                logger.warning("RedditMiner: r/%s -> HTTP %s", sub, resp.status_code)
+                continue
             for child in resp.json().get("data", {}).get("children", []):
-                d = child.get("data", {})
-                title = (d.get("title") or "").strip()
-                if not title or "?" not in title:
-                    continue
-                results.append({
-                    "text": title,
-                    "source_url": "https://www.reddit.com" + d.get("permalink", ""),
-                    "intent_bucket": _classify_intent(title),
-                })
                 if len(results) >= limit:
                     break
-        except Exception as exc:
-            logger.warning("RedditMiner failed: %s", exc)
+                d = child.get("data", {})
+                title = (d.get("title") or "").strip()
+                if not title:
+                    continue
+                # We want "question-shaped" posts. Question marks are the
+                # cheapest signal; "how", "why", "best", "vs" catch the
+                # ones that don't bother with punctuation.
+                lower = title.lower()
+                looks_like_question = (
+                    "?" in title
+                    or lower.startswith(("how ", "why ", "what ", "where ", "when ", "is ", "are ", "should "))
+                    or " vs " in lower
+                    or "best " in lower
+                )
+                if not looks_like_question:
+                    continue
+                selftext = _truncate(d.get("selftext") or "", 600)
+                permalink = d.get("permalink", "") or ""
+                results.append({
+                    "text": title,
+                    "excerpt": selftext,
+                    "source_url": ("https://www.reddit.com" + permalink) if permalink else "",
+                    "intent_bucket": _classify_intent(title),
+                    "demand_score": _score_to_demand(d.get("score") or 0),
+                })
         return results
+
+
+def _score_to_demand(reddit_score: int) -> float:
+    """Map a Reddit upvote count to a 0..1 demand_score.
+
+    Reddit scores have a long tail. log10 keeps a 100-upvote thread
+    visibly above a 10-upvote one without letting a 5000-upvote outlier
+    saturate the bar.
+    """
+    import math
+    if reddit_score <= 0:
+        return 0.1
+    return min(1.0, 0.1 + math.log10(reddit_score + 1) / 4.0)
 
 
 class SerpApiMiner(BaseMiner):
@@ -249,17 +316,32 @@ def mine_for_industry(
             text = (row.get("text") or "").strip()
             if not text:
                 continue
+            defaults = {
+                "text": text,
+                "intent_bucket": row.get("intent_bucket") or IntentBucket.CATEGORY,
+                "source": miner.source,
+                "source_url": row.get("source_url", "") or "",
+                "excerpt": row.get("excerpt", "") or "",
+            }
+            if "demand_score" in row and row["demand_score"] is not None:
+                defaults["demand_score"] = float(row["demand_score"])
             obj, was_created = Prompt.objects.get_or_create(
                 industry=industry,
                 text_hash=text_hash(text),
-                defaults={
-                    "text": text,
-                    "intent_bucket": row.get("intent_bucket") or IntentBucket.CATEGORY,
-                    "source": miner.source,
-                    "source_url": row.get("source_url", "") or "",
-                },
+                defaults=defaults,
             )
             if was_created:
                 created += 1
+            else:
+                # Backfill excerpt + URL on existing rows that pre-date the field.
+                changed = False
+                if not obj.excerpt and defaults["excerpt"]:
+                    obj.excerpt = defaults["excerpt"]
+                    changed = True
+                if not obj.source_url and defaults["source_url"]:
+                    obj.source_url = defaults["source_url"]
+                    changed = True
+                if changed:
+                    obj.save(update_fields=["excerpt", "source_url", "updated_at"])
         summary[source] = created
     return summary

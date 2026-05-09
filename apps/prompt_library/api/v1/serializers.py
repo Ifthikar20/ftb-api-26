@@ -4,6 +4,7 @@ from __future__ import annotations
 from rest_framework import serializers
 
 from apps.prompt_library.models import (
+    BrandPrompt,
     Industry,
     Prompt,
     PromptSampleEntry,
@@ -28,6 +29,7 @@ class PromptSerializer(serializers.ModelSerializer):
             "industry",
             "industry_slug",
             "text",
+            "excerpt",
             "intent_bucket",
             "language",
             "source",
@@ -81,3 +83,13 @@ class PromptSampleRunSerializer(serializers.ModelSerializer):
             .order_by("rank")
         )
         return PromptSampleEntrySerializer(qs, many=True).data
+
+
+class BrandPromptSerializer(serializers.ModelSerializer):
+    prompt = PromptSerializer(read_only=True)
+    prompt_id = serializers.UUIDField(write_only=True)
+
+    class Meta:
+        model = BrandPrompt
+        fields = ("id", "website", "prompt", "prompt_id", "notes", "created_at")
+        read_only_fields = ("id", "website", "created_at")

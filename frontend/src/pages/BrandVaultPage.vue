@@ -43,28 +43,19 @@
     </section>
 
     <!-- Filter bar -->
-    <section id="bv-filters" class="mb-4 flex flex-wrap items-center gap-2">
-      <select
-        v-model="filters.status"
-        class="rounded-md border border-gray-200 bg-white px-2 py-1.5 text-sm"
-      >
+    <section id="bv-filters" class="mb-6 flex flex-wrap items-center gap-2">
+      <select v-model="filters.status" class="bv-filter">
         <option value="">All statuses</option>
         <option value="pending">Pending</option>
         <option value="approved">Approved</option>
         <option value="rejected">Rejected</option>
         <option value="auto">Auto-approved</option>
       </select>
-      <select
-        v-model="filters.product_line"
-        class="rounded-md border border-gray-200 bg-white px-2 py-1.5 text-sm"
-      >
+      <select v-model="filters.product_line" class="bv-filter">
         <option value="">All product lines</option>
         <option v-for="pl in productLines" :key="pl" :value="pl">{{ pl }}</option>
       </select>
-      <select
-        v-model="filters.topic"
-        class="rounded-md border border-gray-200 bg-white px-2 py-1.5 text-sm"
-      >
+      <select v-model="filters.topic" class="bv-filter">
         <option value="">All topics</option>
         <option v-for="t in topics" :key="t" :value="t">{{ t }}</option>
       </select>
@@ -72,47 +63,41 @@
         v-model="searchInput"
         type="search"
         placeholder="Search facts..."
-        class="ml-auto w-64 rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm"
+        class="bv-filter ml-auto w-64"
       />
     </section>
 
-    <!-- Facts table -->
-    <section class="rounded-lg border border-gray-200 bg-white">
-      <div v-if="loading" class="p-8 text-center text-sm text-gray-500">Loading facts...</div>
+    <!-- Facts grid -->
+    <section>
+      <div v-if="loading" class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div
+          v-for="i in 6"
+          :key="i"
+          class="h-44 animate-pulse rounded-2xl"
+          style="background: var(--bg-card); border: 1px solid var(--border-color)"
+        ></div>
+      </div>
       <div
         v-else-if="!facts.length"
-        class="p-10 text-center text-sm text-gray-500"
+        class="flex flex-col items-center justify-center rounded-3xl border border-dashed px-8 py-16 text-center"
+        style="border-color: var(--border-color); background: var(--bg-card)"
       >
-        No facts yet. Click <strong>Re-extract</strong> to mine your knowledge base.
+        <p class="text-sm" style="color: var(--text-secondary)">
+          No facts yet. Click <strong style="color: var(--text-primary)">Re-extract</strong> to mine your knowledge base.
+        </p>
       </div>
-      <table v-else class="w-full text-left">
-        <thead class="bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
-          <tr>
-            <th class="px-3 py-2">Subject</th>
-            <th class="px-3 py-2">Predicate</th>
-            <th class="px-3 py-2">Object</th>
-            <th class="px-3 py-2">Confidence</th>
-            <th class="px-3 py-2">Status</th>
-            <th class="px-3 py-2">Source</th>
-            <th class="px-3 py-2">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          <FactRow
-            v-for="fact in facts"
-            :key="fact.id"
-            :fact="fact"
-            @approve="onApprove"
-            @reject="onReject"
-            @edit-click="onEditClick"
-          />
-        </tbody>
-      </table>
-      <div
-        v-if="facts.length && hasMore"
-        class="flex justify-center border-t border-gray-100 px-3 py-3"
-      >
-        <AirButton variant="secondary" size="sm" :loading="loadingMore" :disabled="loadingMore" @click="loadMore">
+      <div v-else class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <FactRow
+          v-for="fact in facts"
+          :key="fact.id"
+          :fact="fact"
+          @approve="onApprove"
+          @reject="onReject"
+          @edit-click="onEditClick"
+        />
+      </div>
+      <div v-if="facts.length && hasMore" class="mt-6 flex justify-center">
+        <AirButton variant="secondary" size="md" :loading="loadingMore" :disabled="loadingMore" @click="loadMore">
           {{ loadingMore ? 'Loading...' : 'Load more' }}
         </AirButton>
       </div>
@@ -335,3 +320,23 @@ watch([
   debouncedSearch,
 ], loadFacts)
 </script>
+
+<style scoped>
+.bv-filter {
+  border-radius: 9999px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  padding: 0.5rem 0.875rem;
+  font-size: 0.8125rem;
+  outline: none;
+  transition: border-color 150ms ease-out, box-shadow 150ms ease-out;
+}
+.bv-filter:hover {
+  border-color: var(--border-hover);
+}
+.bv-filter:focus-visible {
+  border-color: var(--brand-accent);
+  box-shadow: 0 0 0 3px var(--brand-accent-glow);
+}
+</style>

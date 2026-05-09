@@ -180,27 +180,29 @@ select.form-input {
   color: var(--color-danger);
 }
 
-/* ── Cards — Clean modern design ── */
+/* ── Cards — Airbnb-inspired rounded surface with hover lift ── */
 .card {
   background: var(--bg-card);
-  border: none;
-  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-color);
+  border-radius: 1rem; /* 16px — matches AirCard md */
   padding: 24px;
-  box-shadow: var(--shadow-card);
-  transition: box-shadow var(--transition-base);
+  box-shadow: var(--shadow-sm);
+  transition: transform 150ms ease-out, box-shadow 150ms ease-out, border-color 150ms ease-out;
 }
 
 .card:hover {
-  box-shadow: var(--shadow-card-hover);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+  border-color: var(--border-hover);
 }
 
 [data-theme="dark"] .card {
   box-shadow: none;
-  border: 1px solid var(--border-color);
 }
 
 [data-theme="dark"] .card:hover {
   border-color: var(--border-hover);
+  box-shadow: var(--shadow-md);
 }
 
 .card-header {

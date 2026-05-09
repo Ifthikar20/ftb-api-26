@@ -1,27 +1,24 @@
 <template>
-  <div class="p-6">
+  <div class="mx-auto max-w-7xl px-6 py-8">
     <!-- Header -->
     <header id="acc-header" class="mb-6 flex flex-wrap items-start justify-between gap-3">
       <div>
-        <h1 class="text-2xl font-semibold text-gray-900">Accuracy</h1>
-        <p v-if="websiteName" class="text-sm text-gray-500">{{ websiteName }}</p>
+        <h1 class="text-2xl font-semibold tracking-tight" style="color: var(--text-primary)">Accuracy</h1>
+        <p v-if="websiteName" class="mt-1 text-sm" style="color: var(--text-secondary)">{{ websiteName }}</p>
       </div>
       <div class="flex flex-wrap items-center gap-2">
-        <div class="inline-flex overflow-hidden rounded-md border border-gray-200 bg-white">
-          <button
-            v-for="opt in periodOptions"
-            :key="opt.value"
-            class="px-3 py-1.5 text-xs"
-            :class="periodDays === opt.value ? 'bg-pink-500 text-white' : 'text-gray-600 hover:bg-gray-50'"
-            @click="periodDays = opt.value"
-          >
-            {{ opt.label }}
-          </button>
-        </div>
-        <select
-          v-model="providerFilter"
-          class="rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs"
+        <AirChip
+          v-for="opt in periodOptions"
+          :key="opt.value"
+          as="button"
+          size="sm"
+          :variant="periodDays === opt.value ? 'primary' : 'neutral'"
+          @click="periodDays = opt.value"
         >
+          {{ opt.label }}
+        </AirChip>
+        <span class="hidden h-4 w-px sm:block" style="background: var(--border-color)" aria-hidden="true"></span>
+        <select v-model="providerFilter" class="acc-filter">
           <option v-for="p in providerOptions" :key="p.value || 'all'" :value="p.value">
             {{ p.label }}
           </option>
@@ -29,16 +26,24 @@
       </div>
     </header>
 
-    <div v-if="loading" class="p-8 text-center text-sm text-gray-500">Loading accuracy data...</div>
+    <div v-if="loading" class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div
+        v-for="i in 4"
+        :key="i"
+        class="h-28 animate-pulse rounded-2xl"
+        style="background: var(--bg-card); border: 1px solid var(--border-color)"
+      ></div>
+    </div>
 
     <template v-else>
       <!-- Empty state -->
       <div
         v-if="accuracy.total_claims === 0"
-        class="rounded-lg border border-dashed border-gray-300 bg-white p-10 text-center"
+        class="flex flex-col items-center justify-center rounded-3xl border border-dashed px-8 py-16 text-center"
+        style="border-color: var(--border-color); background: var(--bg-card)"
       >
-        <h2 class="text-base font-semibold text-gray-900">No claims tracked yet</h2>
-        <p class="mt-2 text-sm text-gray-500">
+        <h2 class="text-lg font-semibold" style="color: var(--text-primary)">No claims tracked yet</h2>
+        <p class="mt-2 max-w-md text-sm" style="color: var(--text-secondary)">
           Run an audit to start tracking accuracy.
         </p>
         <AirButton
@@ -46,7 +51,7 @@
           :to="`/llm-ranking/${websiteId}`"
           variant="primary"
           size="md"
-          class="mt-4"
+          class="mt-6"
         >
           Run new audit
         </AirButton>
@@ -54,41 +59,46 @@
 
       <template v-else>
         <!-- Stat row -->
-        <section id="acc-stats" class="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
+        <section id="acc-stats" class="mb-6 grid grid-cols-2 gap-4 md:grid-cols-4">
           <AirCard size="md">
             <AirCardSubtitle class="text-xs uppercase tracking-wide">Total claims</AirCardSubtitle>
-            <div class="mt-1 text-2xl font-semibold" style="color: var(--text-primary)">
+            <div class="mt-1 text-2xl font-semibold tabular-nums" style="color: var(--text-primary)">
               {{ accuracy.total_claims.toLocaleString() }}
             </div>
           </AirCard>
           <AirCard size="md">
             <AirCardSubtitle class="text-xs uppercase tracking-wide">Verified</AirCardSubtitle>
-            <div class="mt-1 text-2xl font-semibold" style="color: var(--color-success)">
+            <div class="mt-1 text-2xl font-semibold tabular-nums" style="color: var(--color-success)">
               {{ accuracy.verified.toLocaleString() }}
             </div>
           </AirCard>
           <AirCard size="md">
             <AirCardSubtitle class="text-xs uppercase tracking-wide">Mismatched</AirCardSubtitle>
-            <div class="mt-1 text-2xl font-semibold" style="color: var(--color-danger)">
+            <div class="mt-1 text-2xl font-semibold tabular-nums" style="color: var(--color-danger)">
               {{ accuracy.mismatched.toLocaleString() }}
             </div>
           </AirCard>
           <AirCard size="md">
             <AirCardSubtitle class="text-xs uppercase tracking-wide">Accuracy rate</AirCardSubtitle>
-            <div class="mt-1 text-2xl font-semibold" style="color: var(--text-primary)">
-              {{ accuracyPct }}<span class="text-sm" style="color: var(--text-secondary)">%</span>
+            <div class="mt-1 flex items-baseline gap-1">
+              <span class="text-2xl font-semibold tabular-nums" style="color: var(--text-primary)">
+                {{ accuracyPct }}
+              </span>
+              <span class="text-sm" style="color: var(--text-muted)">%</span>
             </div>
           </AirCard>
         </section>
 
         <!-- Severity breakdown bar -->
-        <section id="acc-severity" class="mb-6 rounded-lg border border-gray-200 bg-white p-4">
-          <h2 class="mb-3 text-sm font-semibold text-gray-900">Mismatches by severity</h2>
-          <div v-if="severityTotal === 0" class="text-xs text-gray-500">
+        <AirCard id="acc-severity" size="md" class="mb-6">
+          <h2 class="mb-3 text-sm font-semibold" style="color: var(--text-primary)">
+            Mismatches by severity
+          </h2>
+          <div v-if="severityTotal === 0" class="text-xs" style="color: var(--text-muted)">
             No mismatches in this window.
           </div>
           <div v-else>
-            <div class="flex h-3 w-full overflow-hidden rounded-md border border-gray-100">
+            <div class="flex h-3 w-full overflow-hidden rounded-full" style="background: var(--border-color)">
               <div
                 v-for="seg in severitySegments"
                 :key="seg.severity"
@@ -98,23 +108,25 @@
                 :title="`${seg.label}: ${seg.count} (${seg.percent}%)`"
               ></div>
             </div>
-            <div class="mt-2 flex flex-wrap gap-3 text-xs">
+            <div class="mt-3 flex flex-wrap gap-3 text-xs">
               <span
                 v-for="seg in severitySegments"
                 :key="seg.severity + '-l'"
-                class="inline-flex items-center gap-1"
+                class="inline-flex items-center gap-1.5"
               >
                 <SeverityBadge :severity="seg.severity" />
-                <span class="text-gray-500">{{ seg.count }}</span>
+                <span style="color: var(--text-muted)">{{ seg.count }}</span>
               </span>
             </div>
           </div>
-        </section>
+        </AirCard>
 
         <!-- Trend chart -->
-        <section class="mb-6 rounded-lg border border-gray-200 bg-white p-4">
-          <h2 class="mb-3 text-sm font-semibold text-gray-900">Mismatches over time, by severity</h2>
-          <div v-if="!trendData.length" class="text-xs text-gray-500">
+        <AirCard size="md" class="mb-8">
+          <h2 class="mb-3 text-sm font-semibold" style="color: var(--text-primary)">
+            Mismatches over time, by severity
+          </h2>
+          <div v-if="!trendData.length" class="text-xs" style="color: var(--text-muted)">
             Trend data will appear once more audits run.
           </div>
           <template v-else>
@@ -132,21 +144,21 @@
                 stroke-width="2"
               />
             </svg>
-            <div class="mt-2 flex flex-wrap gap-3 text-xs">
+            <div class="mt-3 flex flex-wrap gap-3 text-xs">
               <span
                 v-for="line in trendLines"
                 :key="line.severity + '-leg'"
-                class="inline-flex items-center gap-1"
+                class="inline-flex items-center gap-1.5"
               >
                 <span class="inline-block h-2 w-3 rounded-sm" :style="{ background: line.stroke }"></span>
-                <span class="capitalize text-gray-600">{{ line.severity }}</span>
+                <span class="capitalize" style="color: var(--text-secondary)">{{ line.severity }}</span>
               </span>
             </div>
           </template>
-        </section>
+        </AirCard>
 
         <!-- Severity quick-filter chips -->
-        <section class="mb-3 flex flex-wrap items-center gap-2">
+        <section class="mb-5 flex flex-wrap items-center gap-2">
           <AirChip
             as="button"
             :variant="mmFilters.severity === '' ? 'primary' : 'neutral'"
@@ -183,90 +195,96 @@
             size="sm"
             @click="mmFilters.severity = mmFilters.severity === 'info' ? '' : 'info'"
           >Info</AirChip>
-          <select
-            v-model="mmFilters.type"
-            class="rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs"
-          >
+          <span class="hidden h-4 w-px sm:block" style="background: var(--border-color)" aria-hidden="true"></span>
+          <select v-model="mmFilters.type" class="acc-filter">
             <option value="">All types</option>
             <option v-for="t in mismatchTypes" :key="t" :value="t">{{ t }}</option>
           </select>
-          <select
-            v-model="mmFilters.product_line"
-            class="rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs"
-          >
+          <select v-model="mmFilters.product_line" class="acc-filter">
             <option value="">All product lines</option>
             <option v-for="pl in productLineOptions" :key="pl" :value="pl">{{ pl }}</option>
           </select>
-          <input
-            v-model="mmFilters.since"
-            type="date"
-            class="rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs"
-          />
-          <label class="inline-flex items-center gap-1 text-xs text-gray-600">
+          <input v-model="mmFilters.since" type="date" class="acc-filter" />
+          <label class="inline-flex items-center gap-1.5 text-xs" style="color: var(--text-secondary)">
             <input v-model="mmFilters.includeDismissed" type="checkbox" />
             Show dismissed
           </label>
         </section>
 
         <!-- Mismatch list -->
-        <section id="acc-mismatches" class="rounded-lg border border-gray-200 bg-white">
-          <div v-if="mismatchesLoading" class="p-6 text-center text-sm text-gray-500">
+        <section id="acc-mismatches">
+          <div
+            v-if="mismatchesLoading"
+            class="rounded-2xl border p-6 text-center text-sm"
+            style="border-color: var(--border-color); background: var(--bg-card); color: var(--text-muted)"
+          >
             Loading mismatches...
           </div>
           <div
             v-else-if="!mismatches.length"
-            class="p-10 text-center text-sm text-gray-500"
+            class="rounded-3xl border border-dashed p-10 text-center text-sm"
+            style="border-color: var(--border-color); background: var(--bg-card); color: var(--text-muted)"
           >
             No mismatches match these filters.
           </div>
-          <ul v-else class="divide-y divide-gray-100">
-            <li
+          <div v-else class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <AirCard
               v-for="mm in mismatches"
               :key="mm.id"
-              class="flex flex-wrap items-start gap-3 px-4 py-3 hover:bg-gray-50 cursor-pointer transition-colors"
-              :class="mm.dismissed ? 'opacity-60' : ''"
+              size="md"
+              interactive
+              :class="['flex h-full flex-col', mm.dismissed ? 'opacity-60' : '']"
               @click="openMismatch(mm)"
             >
-              <div class="flex shrink-0 flex-col gap-1">
+              <div class="mb-3 flex flex-wrap items-center gap-2">
                 <SeverityBadge :severity="mm.severity" />
-                <span class="text-xs text-gray-500">{{ mm.mismatch_type || '—' }}</span>
+                <AirChip variant="neutral" size="xs">{{ mm.mismatch_type || '—' }}</AirChip>
               </div>
-              <div class="min-w-0 flex-1">
-                <p
-                  class="line-clamp-2 text-sm text-gray-800"
-                  :class="mm.dismissed ? 'line-through text-gray-400' : ''"
-                >
-                  {{ mm.claim?.text || '—' }}
-                </p>
-                <p
-                  v-if="mm.dismissed && mm.dismissal_reason"
-                  class="mt-0.5 text-xs italic text-gray-500"
-                >
-                  Dismissed: {{ mm.dismissal_reason }}
-                </p>
-                <p v-if="mm.matched_fact" class="mt-1 truncate text-xs text-gray-500">
-                  Vault: {{ mm.matched_fact.subject }} · {{ mm.matched_fact.predicate }} · {{ mm.matched_fact.object }}
-                </p>
-                <p v-else class="mt-1 text-xs italic text-gray-400">
-                  No matching fact in vault
-                </p>
-              </div>
-              <div class="flex shrink-0 flex-col items-end gap-1 text-xs text-gray-500">
-                <span>{{ mm.claim?.provider || '—' }}</span>
-                <span>{{ formatDate(mm.created_at) }}</span>
-                <AirButton variant="ghost" size="xs" @click.stop="openMismatch(mm)">
+              <p
+                class="text-[15px] font-medium leading-snug line-clamp-3"
+                :style="{
+                  color: mm.dismissed ? 'var(--text-muted)' : 'var(--text-primary)',
+                  textDecoration: mm.dismissed ? 'line-through' : 'none',
+                }"
+              >
+                {{ mm.claim?.text || '—' }}
+              </p>
+              <p
+                v-if="mm.dismissed && mm.dismissal_reason"
+                class="mt-2 text-xs italic"
+                style="color: var(--text-muted)"
+              >
+                Dismissed: {{ mm.dismissal_reason }}
+              </p>
+              <p
+                v-if="mm.matched_fact"
+                class="mt-2 line-clamp-2 text-xs"
+                style="color: var(--text-secondary)"
+              >
+                <span class="font-medium" style="color: var(--text-primary)">Vault:</span>
+                {{ mm.matched_fact.subject }} · {{ mm.matched_fact.predicate }} · {{ mm.matched_fact.object }}
+              </p>
+              <p v-else class="mt-2 text-xs italic" style="color: var(--text-muted)">
+                No matching fact in vault
+              </p>
+              <div
+                class="mt-auto flex items-center justify-between gap-2 pt-4"
+                style="border-top: 1px solid var(--border-color)"
+              >
+                <div class="flex flex-col text-xs" style="color: var(--text-muted)">
+                  <span>{{ mm.claim?.provider || '—' }}</span>
+                  <span>{{ formatDate(mm.created_at) }}</span>
+                </div>
+                <AirButton variant="outline" size="sm" @click.stop="openMismatch(mm)">
                   View
                 </AirButton>
               </div>
-            </li>
-          </ul>
-          <div
-            v-if="mismatches.length && mmHasMore"
-            class="flex justify-center border-t border-gray-100 px-3 py-3"
-          >
+            </AirCard>
+          </div>
+          <div v-if="mismatches.length && mmHasMore" class="mt-6 flex justify-center">
             <AirButton
               variant="secondary"
-              size="sm"
+              size="md"
               :loading="mmLoadingMore"
               :disabled="mmLoadingMore"
               @click="loadMoreMismatches"
@@ -564,3 +582,23 @@ watch(
   loadMismatches,
 )
 </script>
+
+<style scoped>
+.acc-filter {
+  border-radius: 9999px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  padding: 0.4rem 0.8rem;
+  font-size: 0.75rem;
+  outline: none;
+  transition: border-color 150ms ease-out, box-shadow 150ms ease-out;
+}
+.acc-filter:hover {
+  border-color: var(--border-hover);
+}
+.acc-filter:focus-visible {
+  border-color: var(--brand-accent);
+  box-shadow: 0 0 0 3px var(--brand-accent-glow);
+}
+</style>

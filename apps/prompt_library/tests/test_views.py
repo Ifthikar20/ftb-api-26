@@ -6,6 +6,7 @@ from rest_framework.test import APIClient
 
 from apps.accounts.tests.factories import UserFactory
 from apps.llm_ranking.tests.factories import LLMRankingAuditFactory
+from apps.prompt_library.models import BrandPrompt
 from apps.prompt_library.tests.factories import IndustryFactory, PromptFactory
 from apps.websites.tests.factories import WebsiteFactory
 
@@ -98,3 +99,77 @@ def test_get_audit_sample_returns_null_when_missing(auth):
     resp = client.get(f"/api/v1/prompt-library/audits/{audit.id}/sample/")
     assert resp.status_code == 200
     assert resp.json()["sample_run"] is None
+
+
+@pytest.mark.django_db
+def test_add_and_list_brand_prompt(auth):
+    client, _, website = auth
+    industry = IndustryFactory(slug="food-bev")
+    p = PromptFactory(industry=industry, text="Cooking bread pudding at home")
+    add = client.post(
+        f"/api/v1/prompt-library/websites/{website.id}/brand-prompts/",
+        {"prompt_id": str(p.id)},
+        format="json",
+    )
+    assert add.status_code == 201
+    body = add.json()
+    bp_id = body.get("id") or body.get("data", {}).get("id")
+    assert bp_id
+
+    listing = client.get(f"/api/v1/prompt-library/websites/{website.id}/brand-prompts/")
+    assert listing.status_code == 200
+    rows = listing.json()
+    rows = rows.get("data", rows) if isinstance(rows, dict) else rows
+    assert any(r["prompt"]["id"] == str(p.id) for r in rows)
+
+
+@pytest.mark.django_db
+def test_add_brand_prompt_idempotent(auth):
+    client, _, website = auth
+    p = PromptFactory()
+    first = client.post(
+        f"/api/v1/prompt-library/websites/{website.id}/brand-prompts/",
+        {"prompt_id": str(p.id)},
+        format="json",
+    )
+    second = client.post(
+        f"/api/v1/prompt-library/websites/{website.id}/brand-prompts/",
+        {"prompt_id": str(p.id)},
+        format="json",
+    )
+    assert first.status_code == 201
+    assert second.status_code == 200
+    assert BrandPrompt.objects.filter(website=website, prompt=p).count() == 1
+
+
+@pytest.mark.django_db
+def test_remove_brand_prompt(auth):
+    client, _, website = auth
+    p = PromptFactory()
+    add = client.post(
+        f"/api/v1/prompt-library/websites/{website.id}/brand-prompts/",
+        {"prompt_id": str(p.id)},
+        format="json",
+    )
+    bp_id = add.json().get("id") or add.json().get("data", {}).get("id")
+    delete = client.delete(f"/api/v1/prompt-library/brand-prompts/{bp_id}/")
+    assert delete.status_code == 204
+    assert not BrandPrompt.objects.filter(id=bp_id).exists()
+
+
+@pytest.mark.django_db
+def test_brand_prompt_other_user_blocked():
+    industry = IndustryFactory()
+    p = PromptFactory(industry=industry)
+    other_user = UserFactory()
+    other_website = WebsiteFactory(user=other_user)
+
+    intruder = UserFactory()
+    client = APIClient()
+    client.force_authenticate(user=intruder)
+    resp = client.post(
+        f"/api/v1/prompt-library/websites/{other_website.id}/brand-prompts/",
+        {"prompt_id": str(p.id)},
+        format="json",
+    )
+    assert resp.status_code in (403, 404)

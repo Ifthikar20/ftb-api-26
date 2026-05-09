@@ -64,6 +64,7 @@ class Prompt(TimestampMixin):
     language = models.CharField(max_length=8, default="en")
     source = models.CharField(max_length=20, choices=PromptSource.choices)
     source_url = models.URLField(blank=True, max_length=500)
+    excerpt = models.TextField(blank=True)
     demand_score = models.FloatField(default=0.0, db_index=True)
     is_active = models.BooleanField(default=True)
     text_hash = models.CharField(max_length=64, db_index=True)
@@ -97,6 +98,63 @@ class PromptVariation(TimestampMixin):
     class Meta:
         db_table = "prompt_library_promptvariation"
         unique_together = [("parent_prompt", "text_hash")]
+
+
+class IndustryTrend(TimestampMixin):
+    """Cached Google Trends snapshot for a single industry.
+
+    Pulled via :mod:`apps.prompt_library.services.trends_service` and
+    refreshed when older than 24h. We keep the data as JSON arrays
+    rather than per-week rows because consumers always read the whole
+    series at once and pytrends responses are small.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    industry = models.OneToOneField(
+        Industry, related_name="trend", on_delete=models.CASCADE
+    )
+    # interest_over_time: list of {"week": "YYYY-MM-DD", "value": 0..100}
+    interest_over_time = models.JSONField(default=list, blank=True)
+    # top_regions: list of {"code": "US", "name": "United States", "value": 0..100}
+    top_regions = models.JSONField(default=list, blank=True)
+    keyword_used = models.CharField(max_length=120, blank=True)
+    refreshed_at = models.DateTimeField(null=True, blank=True)
+    last_error = models.TextField(blank=True)
+
+    class Meta:
+        db_table = "prompt_library_industrytrend"
+
+    def __str__(self):
+        return f"IndustryTrend({self.industry.slug})"
+
+
+class BrandPrompt(TimestampMixin):
+    """A library prompt a user has added to their website's brand prompt set.
+
+    Merged with library samples when an audit runs so users always test
+    against the prompts they care about. Hard-delete is the correct
+    semantic — removing a row means "stop testing this prompt".
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    website = models.ForeignKey(
+        "websites.Website",
+        related_name="brand_prompts",
+        on_delete=models.CASCADE,
+    )
+    prompt = models.ForeignKey(
+        Prompt, related_name="brand_prompts", on_delete=models.CASCADE
+    )
+    notes = models.TextField(blank=True)
+
+    class Meta:
+        db_table = "prompt_library_brandprompt"
+        unique_together = [("website", "prompt")]
+        indexes = [models.Index(fields=["website", "-created_at"])]
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"BrandPrompt(website={self.website_id}, prompt={self.prompt_id})"
 
 
 class PromptSampleRun(TimestampMixin):
