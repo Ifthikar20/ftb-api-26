@@ -17,14 +17,34 @@ from apps.accounts.services.oauth_service import OAuthService
 from apps.accounts.services.user_service import UserService
 from core.interceptors.throttling import AuthRateThrottle, PasswordResetThrottle
 
-REFRESH_COOKIE_SETTINGS = {
-    "key": "refresh_token",
-    "httponly": True,
-    "secure": True,
-    "samesite": "None",
-    "max_age": 7 * 24 * 60 * 60,
-    "path": "/",
-}
+# Cookie attributes for the JWT refresh token. In production we require
+# Secure + SameSite=None so the cookie crosses domains (frontend ↔ API)
+# safely. In dev (DEBUG=True) modern browsers grant a localhost
+# exemption for Secure, but Vite's proxy + http causes flaky
+# delivery — relax to Secure=False / SameSite=Lax so refresh just
+# works locally and stops kicking users to /login.
+def _refresh_cookie_settings():
+    from django.conf import settings as _settings
+    if getattr(_settings, "DEBUG", False):
+        return {
+            "key": "refresh_token",
+            "httponly": True,
+            "secure": False,
+            "samesite": "Lax",
+            "max_age": 7 * 24 * 60 * 60,
+            "path": "/",
+        }
+    return {
+        "key": "refresh_token",
+        "httponly": True,
+        "secure": True,
+        "samesite": "None",
+        "max_age": 7 * 24 * 60 * 60,
+        "path": "/",
+    }
+
+
+REFRESH_COOKIE_SETTINGS = _refresh_cookie_settings()
 
 
 class RegisterView(APIView):
