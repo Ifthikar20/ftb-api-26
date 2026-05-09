@@ -9,8 +9,41 @@
       </p>
     </header>
 
-    <!-- (filters appear inline next to the section title below) -->
+    <!-- Tab toggle: Search vs Saved -->
+    <div class="pl-tabs" role="tablist">
+      <button
+        class="pl-tab"
+        :class="{ 'is-active': activeTab === 'search' }"
+        role="tab"
+        :aria-selected="activeTab === 'search'"
+        @click="activeTab = 'search'"
+      >
+        Search
+      </button>
+      <button
+        class="pl-tab"
+        :class="{ 'is-active': activeTab === 'saved' }"
+        role="tab"
+        :aria-selected="activeTab === 'saved'"
+        @click="activeTab = 'saved'"
+      >
+        Saved
+        <span v-if="savedTableRef && savedTableRef.count" class="pl-tab-count">
+          {{ savedTableRef.count }}
+        </span>
+      </button>
+    </div>
 
+    <!-- SAVED tab -->
+    <section v-if="activeTab === 'saved'" class="pl-section">
+      <SavedPromptsTable
+        ref="savedTableRef"
+        :website-id="websiteId"
+        @go-search="activeTab = 'search'"
+      />
+    </section>
+
+    <template v-else>
     <!-- Context input -->
     <section class="pl-section pl-section-search">
       <ContextInputCard
@@ -380,6 +413,7 @@
         </div>
       </AirCard>
     </section>
+    </template>
 
     <!-- Slide-out + modal -->
     <VariablesPanel
@@ -424,6 +458,7 @@ import VariablesPanel from '@/components/prompt_library/VariablesPanel.vue'
 import NewPromptModal from '@/components/prompt_library/NewPromptModal.vue'
 import SmokeTestResult from '@/components/prompt_library/SmokeTestResult.vue'
 import SortIcon from '@/components/prompt_library/SortIcon.vue'
+import SavedPromptsTable from '@/components/prompt_library/SavedPromptsTable.vue'
 
 const route = useRoute()
 const toast = useToast()
@@ -431,6 +466,13 @@ const appStore = useAppStore()
 const { activeWebsite } = storeToRefs(appStore)
 
 const websiteId = computed(() => route.params.websiteId || activeWebsite.value?.id || null)
+
+// ── Tab state (Search vs Saved) ──
+const activeTab = ref(route?.query?.tab === 'saved' ? 'saved' : 'search')
+const savedTableRef = ref(null)
+watch(activeTab, (v) => {
+  if (v === 'saved' && savedTableRef.value?.load) savedTableRef.value.load()
+})
 const activeWebsiteName = computed(() => activeWebsite.value?.name || '')
 
 const industries = ref([])
@@ -795,8 +837,10 @@ async function onSaveGenerated(prompt) {
     const saved = data?.data || data
     prompt._saved = true
     prompt._savedId = saved?.id || null
-    toast.success('Saved · view in Saved Prompts →')
+    toast.success('Saved · view in the Saved tab')
     loadPrompts()
+    // If the saved-tab table is mounted, refresh its count + list
+    if (savedTableRef.value?.load) savedTableRef.value.load()
   } catch (e) {
     toast.error(e.displayMessage || 'Could not save.')
   } finally {
@@ -1086,9 +1130,55 @@ watch(websiteId, loadVariables)
   min-height: 100%;
 }
 .pl-page-header {
-  margin-bottom: 32px;
+  margin-bottom: 24px;
   text-align: left;
   max-width: 720px;
+}
+
+/* ── Tabs (Search / Saved) ──────────────────────────────────── */
+.pl-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  background: var(--bg-surface, rgba(0, 0, 0, 0.04));
+  border-radius: 9999px;
+  margin-bottom: 28px;
+}
+.pl-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 18px;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 500;
+  font-family: inherit;
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+.pl-tab:hover { color: var(--text-primary); }
+.pl-tab.is-active {
+  background: var(--bg-card);
+  color: var(--text-primary);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+}
+.pl-tab-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 9999px;
+  background: var(--brand-accent);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 .pl-section { margin-bottom: 32px; }
 .pl-section-search { display: flex; justify-content: center; }

@@ -47,10 +47,6 @@
           <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3h10v10H3z"/><path d="M5 6h6M5 9h4"/></svg></span>
           <span v-if="!appStore.sidebarCollapsed" class="nav-text">Prompts</span>
         </router-link>
-        <router-link :to="savedPromptsRoute" class="nav-link nav-sub" active-class="active" style="--nav-color: #ec4899">
-          <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 14l-4-3-4 3V2h8z" stroke-linejoin="round"/></svg></span>
-          <span v-if="!appStore.sidebarCollapsed" class="nav-text">Saved Prompts</span>
-        </router-link>
         <router-link :to="sourceInfluenceRoute" class="nav-link nav-sub" active-class="active" style="--nav-color: #ec4899">
           <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 13h12"/><rect x="3" y="8" width="2" height="5"/><rect x="7" y="5" width="2" height="8"/><rect x="11" y="2" width="2" height="11"/></svg></span>
           <span v-if="!appStore.sidebarCollapsed" class="nav-text">Source Influence</span>
@@ -434,7 +430,6 @@ const pageKey = computed(() => `${route.name || 'page'}-${route.params.websiteId
 const analyticsRoute = computed(() => websiteId.value ? `/analytics/${websiteId.value}` : '/websites')
 const llmRankingRoute = computed(() => websiteId.value ? `/llm-ranking/${websiteId.value}` : '/websites')
 const promptLibraryRoute = computed(() => websiteId.value ? `/llm-ranking/${websiteId.value}/prompts` : '/websites')
-const savedPromptsRoute = computed(() => websiteId.value ? `/llm-ranking/${websiteId.value}/saved-prompts` : '/websites')
 const sourceInfluenceRoute = computed(() => websiteId.value ? `/llm-ranking/${websiteId.value}/source-influence` : '/websites')
 const brandVaultRoute = computed(() => websiteId.value ? `/llm-ranking/${websiteId.value}/brand-vault` : '/websites')
 const accuracyRoute = computed(() => websiteId.value ? `/llm-ranking/${websiteId.value}/accuracy` : '/websites')
