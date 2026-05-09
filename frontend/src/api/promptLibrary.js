@@ -29,4 +29,37 @@ export default {
 
     removeBrandPrompt: (brandPromptId) =>
         api.delete(`/prompt-library/brand-prompts/${brandPromptId}/`),
+
+    // Prompt Library v2: redesigned card grid surface.
+    createWebsitePrompt: (websiteId, payload) =>
+        api.post(`/prompt-library/websites/${websiteId}/prompts/`, payload),
+
+    preview: (promptId, websiteId) =>
+        api.get(`/prompt-library/prompts/${promptId}/preview/`, {
+            params: websiteId ? { website: websiteId } : {},
+        }),
+
+    effectiveness: (promptId) =>
+        api.get(`/prompt-library/prompts/${promptId}/effectiveness/`),
+
+    autoTemplate: (rawText) =>
+        api.post('/prompt-library/prompts/auto-template/', { raw_text: rawText }),
+
+    smokeTest: (promptId, payload) =>
+        api.post(`/prompt-library/prompts/${promptId}/smoke-test/`, payload),
+
+    synthesize: (payload) =>
+        api.post('/prompt-library/prompts/synthesize/', payload),
+
+    getVariables: (websiteId) =>
+        api.get(`/prompt-library/websites/${websiteId}/variables/`),
+
+    updateVariables: (websiteId, variables) =>
+        api.put(`/prompt-library/websites/${websiteId}/variables/`, { variables }),
+
+    enable: (promptId) =>
+        api.post(`/prompt-library/prompts/${promptId}/enable/`),
+
+    disable: (promptId) =>
+        api.post(`/prompt-library/prompts/${promptId}/disable/`),
 }

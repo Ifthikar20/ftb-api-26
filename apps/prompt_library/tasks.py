@@ -33,3 +33,17 @@ def compute_demand_scores() -> int:
     from apps.prompt_library.services.scoring_service import refresh_all_scores
 
     return refresh_all_scores()
+
+
+@shared_task(name="apps.prompt_library.tasks.refresh_effectiveness_scores")
+def refresh_effectiveness_scores() -> int:
+    """Refresh effectiveness_score for every active prompt.
+
+    Pulls from ``LLMRankingResult`` rows linked via the ``source_prompt``
+    foreign key. See :mod:`apps.prompt_library.services.effectiveness`.
+    """
+    from apps.prompt_library.services.effectiveness import (
+        refresh_all_effectiveness_scores,
+    )
+
+    return refresh_all_effectiveness_scores()

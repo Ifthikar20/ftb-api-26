@@ -194,4 +194,5 @@ class LLMProvider:
             "gpt4": "openai",
             "gemini": "google",
             "perplexity": "perplexity",
+            "deepseek": "deepseek",
         }.get(self.name, self.name)

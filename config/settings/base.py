@@ -299,6 +299,16 @@ FIELD_ENCRYPTION_KEY = env("FIELD_ENCRYPTION_KEY", default="")
 # ── EXTERNAL SERVICES ──
 OPENAI_API_KEY = env("OPENAI_API_KEY", default="")
 ANTHROPIC_API_KEY = env("ANTHROPIC_API_KEY", default="")
+# DeepSeek is used ONLY for offline tooling: prompt synthesis,
+# auto-templating raw user text, and on-demand smoke tests. It is NEVER
+# used to answer real audit prompts (those still go through the four
+# canonical providers: claude, gpt4, gemini, perplexity). The key may be
+# empty — every code path that uses DeepSeek must fall back gracefully.
+DEEPSEEK_API_KEY = env("DEEPSEEK_API_KEY", default="")
+PROMPT_SYNTHESIS_PROVIDER = env(
+    "PROMPT_SYNTHESIS_PROVIDER",
+    default=("deepseek" if env("DEEPSEEK_API_KEY", default="") else "anthropic"),
+)
 GOOGLE_SEARCH_API_KEY = env("GOOGLE_SEARCH_API_KEY", default="")
 GOOGLE_SEARCH_ENGINE_ID = env("GOOGLE_SEARCH_ENGINE_ID", default="")
 STRIPE_SECRET_KEY = env("STRIPE_SECRET_KEY", default="")
