@@ -51,6 +51,14 @@
           <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 13h12"/><rect x="3" y="8" width="2" height="5"/><rect x="7" y="5" width="2" height="8"/><rect x="11" y="2" width="2" height="11"/></svg></span>
           <span v-if="!appStore.sidebarCollapsed" class="nav-text">Source Influence</span>
         </router-link>
+        <router-link :to="brandVaultRoute" class="nav-link nav-sub" active-class="active" style="--nav-color: #ec4899">
+          <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 4l5-2 5 2v5c0 3-2.5 5-5 6-2.5-1-5-3-5-6V4z"/><path d="M6 8l1.5 1.5L10 7"/></svg></span>
+          <span v-if="!appStore.sidebarCollapsed" class="nav-text">Brand Vault</span>
+        </router-link>
+        <router-link :to="accuracyRoute" class="nav-link nav-sub" active-class="active" style="--nav-color: #ec4899">
+          <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M5 8l2 2 4-4"/></svg></span>
+          <span v-if="!appStore.sidebarCollapsed" class="nav-text">Accuracy</span>
+        </router-link>
 
         <router-link to="/app/integrations" class="nav-link" exact-active-class="active" style="--nav-color: #22c55e">
           <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M10 13a5 5 0 007.5.5l3-3a5 5 0 00-7-7l-1.5 1.5"/><path d="M14 11a5 5 0 00-7.5-.5l-3 3a5 5 0 007 7l1.5-1.5"/></svg></span>
@@ -411,6 +419,8 @@ const analyticsRoute = computed(() => websiteId.value ? `/analytics/${websiteId.
 const llmRankingRoute = computed(() => websiteId.value ? `/llm-ranking/${websiteId.value}` : '/websites')
 const promptLibraryRoute = computed(() => websiteId.value ? `/llm-ranking/${websiteId.value}/prompts` : '/websites')
 const sourceInfluenceRoute = computed(() => websiteId.value ? `/llm-ranking/${websiteId.value}/source-influence` : '/websites')
+const brandVaultRoute = computed(() => websiteId.value ? `/llm-ranking/${websiteId.value}/brand-vault` : '/websites')
+const accuracyRoute = computed(() => websiteId.value ? `/llm-ranking/${websiteId.value}/accuracy` : '/websites')
 
 
 

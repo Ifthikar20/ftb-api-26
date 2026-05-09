@@ -1,0 +1,513 @@
+<template>
+  <div class="p-6">
+    <!-- Header -->
+    <header id="acc-header" class="mb-6 flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <h1 class="text-2xl font-semibold text-gray-900">Accuracy</h1>
+        <p v-if="websiteName" class="text-sm text-gray-500">{{ websiteName }}</p>
+      </div>
+      <div class="flex flex-wrap items-center gap-2">
+        <div class="inline-flex overflow-hidden rounded-md border border-gray-200 bg-white">
+          <button
+            v-for="opt in periodOptions"
+            :key="opt.value"
+            class="px-3 py-1.5 text-xs"
+            :class="periodDays === opt.value ? 'bg-pink-500 text-white' : 'text-gray-600 hover:bg-gray-50'"
+            @click="periodDays = opt.value"
+          >
+            {{ opt.label }}
+          </button>
+        </div>
+        <select
+          v-model="providerFilter"
+          class="rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs"
+        >
+          <option v-for="p in providerOptions" :key="p.value || 'all'" :value="p.value">
+            {{ p.label }}
+          </option>
+        </select>
+      </div>
+    </header>
+
+    <div v-if="loading" class="p-8 text-center text-sm text-gray-500">Loading accuracy data...</div>
+
+    <template v-else>
+      <!-- Empty state -->
+      <div
+        v-if="accuracy.total_claims === 0"
+        class="rounded-lg border border-dashed border-gray-300 bg-white p-10 text-center"
+      >
+        <h2 class="text-base font-semibold text-gray-900">No claims tracked yet</h2>
+        <p class="mt-2 text-sm text-gray-500">
+          Run an audit to start tracking accuracy.
+        </p>
+        <router-link
+          :to="`/llm-ranking/${websiteId}`"
+          class="mt-4 inline-block rounded-md bg-pink-500 px-3 py-1.5 text-sm font-medium text-white hover:bg-pink-600"
+        >
+          Run new audit
+        </router-link>
+      </div>
+
+      <template v-else>
+        <!-- Stat row -->
+        <section id="acc-stats" class="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
+          <div class="rounded-lg border border-gray-200 bg-white p-4">
+            <div class="text-xs text-gray-500">Total claims</div>
+            <div class="mt-1 text-2xl font-semibold text-gray-900">
+              {{ accuracy.total_claims.toLocaleString() }}
+            </div>
+          </div>
+          <div class="rounded-lg border border-gray-200 bg-white p-4">
+            <div class="text-xs text-gray-500">Verified</div>
+            <div class="mt-1 text-2xl font-semibold text-emerald-700">
+              {{ accuracy.verified.toLocaleString() }}
+            </div>
+          </div>
+          <div class="rounded-lg border border-gray-200 bg-white p-4">
+            <div class="text-xs text-gray-500">Mismatched</div>
+            <div class="mt-1 text-2xl font-semibold text-rose-700">
+              {{ accuracy.mismatched.toLocaleString() }}
+            </div>
+          </div>
+          <div class="rounded-lg border border-gray-200 bg-white p-4">
+            <div class="text-xs text-gray-500">Accuracy rate</div>
+            <div class="mt-1 text-2xl font-semibold text-gray-900">
+              {{ accuracyPct }}<span class="text-sm text-gray-500">%</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- Severity breakdown bar -->
+        <section id="acc-severity" class="mb-6 rounded-lg border border-gray-200 bg-white p-4">
+          <h2 class="mb-3 text-sm font-semibold text-gray-900">Mismatches by severity</h2>
+          <div v-if="severityTotal === 0" class="text-xs text-gray-500">
+            No mismatches in this window.
+          </div>
+          <div v-else>
+            <div class="flex h-3 w-full overflow-hidden rounded-md border border-gray-100">
+              <div
+                v-for="seg in severitySegments"
+                :key="seg.severity"
+                class="h-full"
+                :class="seg.bg"
+                :style="{ width: seg.percent + '%' }"
+                :title="`${seg.label}: ${seg.count} (${seg.percent}%)`"
+              ></div>
+            </div>
+            <div class="mt-2 flex flex-wrap gap-3 text-xs">
+              <span
+                v-for="seg in severitySegments"
+                :key="seg.severity + '-l'"
+                class="inline-flex items-center gap-1"
+              >
+                <SeverityBadge :severity="seg.severity" />
+                <span class="text-gray-500">{{ seg.count }}</span>
+              </span>
+            </div>
+          </div>
+        </section>
+
+        <!-- Trend chart -->
+        <section class="mb-6 rounded-lg border border-gray-200 bg-white p-4">
+          <h2 class="mb-3 text-sm font-semibold text-gray-900">Claims tracked over time</h2>
+          <div v-if="!trendData.length" class="text-xs text-gray-500">
+            Trend data will appear once more audits run.
+          </div>
+          <svg
+            v-else
+            :viewBox="`0 0 ${trendWidth} ${trendHeight}`"
+            class="h-32 w-full"
+            preserveAspectRatio="none"
+          >
+            <polyline
+              :points="trendPoints"
+              fill="none"
+              stroke="#ec4899"
+              stroke-width="2"
+            />
+            <circle
+              v-for="(p, i) in trendCircles"
+              :key="i"
+              :cx="p.x"
+              :cy="p.y"
+              r="2"
+              fill="#ec4899"
+            />
+          </svg>
+        </section>
+
+        <!-- Filter bar above mismatch list -->
+        <section class="mb-3 flex flex-wrap items-center gap-2">
+          <select
+            v-model="mmFilters.severity"
+            class="rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs"
+          >
+            <option value="">All severities</option>
+            <option value="critical">Critical</option>
+            <option value="high">High</option>
+            <option value="medium">Medium</option>
+            <option value="low">Low</option>
+            <option value="info">Info</option>
+          </select>
+          <select
+            v-model="mmFilters.type"
+            class="rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs"
+          >
+            <option value="">All types</option>
+            <option v-for="t in mismatchTypes" :key="t" :value="t">{{ t }}</option>
+          </select>
+          <select
+            v-model="mmFilters.product_line"
+            class="rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs"
+          >
+            <option value="">All product lines</option>
+            <option v-for="pl in productLineOptions" :key="pl" :value="pl">{{ pl }}</option>
+          </select>
+          <input
+            v-model="mmFilters.since"
+            type="date"
+            class="rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs"
+          />
+          <label class="inline-flex items-center gap-1 text-xs text-gray-600">
+            <input v-model="mmFilters.includeDismissed" type="checkbox" />
+            Show dismissed
+          </label>
+        </section>
+
+        <!-- Mismatch list -->
+        <section id="acc-mismatches" class="rounded-lg border border-gray-200 bg-white">
+          <div v-if="mismatchesLoading" class="p-6 text-center text-sm text-gray-500">
+            Loading mismatches...
+          </div>
+          <div
+            v-else-if="!mismatches.length"
+            class="p-10 text-center text-sm text-gray-500"
+          >
+            No mismatches match these filters.
+          </div>
+          <ul v-else class="divide-y divide-gray-100">
+            <li
+              v-for="mm in mismatches"
+              :key="mm.id"
+              class="flex flex-wrap items-start gap-3 px-4 py-3 hover:bg-gray-50"
+            >
+              <div class="flex shrink-0 flex-col gap-1">
+                <SeverityBadge :severity="mm.severity" />
+                <span class="text-xs text-gray-500">{{ mm.mismatch_type || '—' }}</span>
+              </div>
+              <div class="min-w-0 flex-1">
+                <p class="line-clamp-2 text-sm text-gray-800">
+                  {{ mm.claim?.text || '—' }}
+                </p>
+                <p v-if="mm.matched_fact" class="mt-1 truncate text-xs text-gray-500">
+                  Vault: {{ mm.matched_fact.subject }} · {{ mm.matched_fact.predicate }} · {{ mm.matched_fact.object }}
+                </p>
+                <p v-else class="mt-1 text-xs italic text-gray-400">
+                  No matching fact in vault
+                </p>
+              </div>
+              <div class="flex shrink-0 flex-col items-end gap-1 text-xs text-gray-500">
+                <span>{{ mm.claim?.provider || '—' }}</span>
+                <span>{{ formatDate(mm.created_at) }}</span>
+                <button
+                  class="rounded-md border border-gray-200 bg-white px-2 py-1 text-xs hover:bg-gray-50"
+                  @click="openMismatch(mm)"
+                >
+                  View
+                </button>
+              </div>
+            </li>
+          </ul>
+          <div
+            v-if="mismatches.length && mmHasMore"
+            class="flex justify-center border-t border-gray-100 px-3 py-3"
+          >
+            <button
+              class="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm hover:bg-gray-50"
+              :disabled="mmLoadingMore"
+              @click="loadMoreMismatches"
+            >
+              {{ mmLoadingMore ? 'Loading...' : 'Load more' }}
+            </button>
+          </div>
+        </section>
+      </template>
+    </template>
+
+    <MismatchDrawer
+      v-model:open="drawerOpen"
+      :mismatch="drawerMismatch"
+      @dismissed="onDismissed"
+    />
+
+    <OnboardingTooltip storage-key="fb_tour_accuracy_v1" :steps="tourSteps" />
+  </div>
+</template>
+
+<script setup>
+import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { useRoute } from 'vue-router'
+import { useAppStore } from '@/stores/app'
+import claimVerifierApi from '@/api/claimVerifier'
+import SeverityBadge from '@/components/claim_verifier/SeverityBadge.vue'
+import MismatchDrawer from '@/components/claim_verifier/MismatchDrawer.vue'
+import OnboardingTooltip from '@/components/OnboardingTooltip.vue'
+
+const route = useRoute()
+const appStore = useAppStore()
+const websiteId = route.params.websiteId
+
+const websiteName = computed(() => appStore.activeWebsite?.name || '')
+
+const periodOptions = [
+  { value: 7, label: '7d' },
+  { value: 30, label: '30d' },
+  { value: 90, label: '90d' },
+]
+const providerOptions = [
+  { value: '', label: 'All providers' },
+  { value: 'claude', label: 'Claude' },
+  { value: 'gpt-4', label: 'GPT-4' },
+  { value: 'gemini', label: 'Gemini' },
+  { value: 'perplexity', label: 'Perplexity' },
+]
+
+const periodDays = ref(30)
+const providerFilter = ref('')
+
+const loading = ref(true)
+const accuracy = ref({
+  total_claims: 0,
+  verified: 0,
+  mismatched: 0,
+  accuracy_rate: 1,
+  by_severity: {},
+  by_type: {},
+  by_provider: {},
+  trend: [],
+})
+
+const mismatches = ref([])
+const mismatchesLoading = ref(false)
+const mmLoadingMore = ref(false)
+const mmNextUrl = ref(null)
+
+const mmFilters = reactive({
+  severity: '',
+  type: '',
+  product_line: '',
+  since: '',
+  includeDismissed: false,
+})
+
+const drawerOpen = ref(false)
+const drawerMismatch = ref(null)
+
+const SEV_BG = {
+  critical: 'bg-red-500',
+  high: 'bg-orange-500',
+  medium: 'bg-amber-400',
+  low: 'bg-blue-400',
+  info: 'bg-slate-400',
+}
+const SEV_ORDER = ['critical', 'high', 'medium', 'low', 'info']
+
+const tourSteps = [
+  {
+    target: '#acc-header',
+    title: 'Accuracy',
+    message: 'How accurate is what AI assistants say about you? This view tracks every claim against your Brand Vault.',
+    position: 'bottom',
+  },
+  {
+    target: '#acc-stats',
+    title: 'Verified vs mismatched',
+    message: 'Each claim is matched to your Brand Vault — verified ones support your story, mismatched ones flag risk.',
+    position: 'bottom',
+  },
+  {
+    target: '#acc-severity',
+    title: 'Severity breakdown',
+    message: 'Mismatches are scored by severity so you can prioritize the worst offenders first.',
+    position: 'bottom',
+  },
+  {
+    target: '#acc-mismatches',
+    title: 'Inspect any mismatch',
+    message: 'Click any mismatch to see the discrepancy side-by-side with your verified facts.',
+    position: 'top',
+  },
+]
+
+const accuracyPct = computed(() =>
+  Math.round((Number(accuracy.value.accuracy_rate) || 0) * 1000) / 10,
+)
+
+const severityTotal = computed(() =>
+  SEV_ORDER.reduce((acc, s) => acc + (accuracy.value.by_severity?.[s] || 0), 0),
+)
+
+const severitySegments = computed(() => {
+  const total = severityTotal.value
+  if (!total) return []
+  return SEV_ORDER
+    .map((sev) => {
+      const count = accuracy.value.by_severity?.[sev] || 0
+      return {
+        severity: sev,
+        count,
+        percent: Math.round((count / total) * 1000) / 10,
+        bg: SEV_BG[sev],
+        label: sev.charAt(0).toUpperCase() + sev.slice(1),
+      }
+    })
+    .filter((s) => s.count > 0)
+})
+
+const trendData = computed(() => accuracy.value.trend || [])
+const trendWidth = 600
+const trendHeight = 120
+const trendPoints = computed(() => {
+  const arr = trendData.value
+  if (!arr.length) return ''
+  const max = Math.max(1, ...arr.map((d) => d.claims || 0))
+  return arr
+    .map((d, i) => {
+      const x = arr.length === 1 ? trendWidth / 2 : (i / (arr.length - 1)) * trendWidth
+      const y = trendHeight - ((d.claims || 0) / max) * (trendHeight - 10) - 5
+      return `${x},${y}`
+    })
+    .join(' ')
+})
+const trendCircles = computed(() => {
+  const arr = trendData.value
+  if (!arr.length) return []
+  const max = Math.max(1, ...arr.map((d) => d.claims || 0))
+  return arr.map((d, i) => ({
+    x: arr.length === 1 ? trendWidth / 2 : (i / (arr.length - 1)) * trendWidth,
+    y: trendHeight - ((d.claims || 0) / max) * (trendHeight - 10) - 5,
+  }))
+})
+
+const mismatchTypes = computed(() => Object.keys(accuracy.value.by_type || {}))
+const productLineOptions = computed(() => {
+  const set = new Set()
+  for (const m of mismatches.value) {
+    const pl = m.matched_fact?.product_line
+    if (pl) set.add(pl)
+  }
+  return Array.from(set)
+})
+
+const mmHasMore = computed(() => !!mmNextUrl.value)
+
+function buildAccuracyParams() {
+  const p = { period_days: periodDays.value }
+  if (providerFilter.value) p.provider = providerFilter.value
+  return p
+}
+
+function buildMismatchParams() {
+  const p = {}
+  if (mmFilters.severity) p.severity = mmFilters.severity
+  if (mmFilters.type) p.type = mmFilters.type
+  if (mmFilters.product_line) p.product_line = mmFilters.product_line
+  if (mmFilters.since) p.since = mmFilters.since
+  if (mmFilters.includeDismissed) p.include_dismissed = '1'
+  return p
+}
+
+async function loadAccuracy() {
+  loading.value = true
+  try {
+    const { data } = await claimVerifierApi.accuracy(websiteId, buildAccuracyParams())
+    accuracy.value = data?.data || data || accuracy.value
+  } catch (e) {
+    console.error('Accuracy load failed', e)
+  } finally {
+    loading.value = false
+  }
+}
+
+async function loadMismatches() {
+  mismatchesLoading.value = true
+  try {
+    const { data } = await claimVerifierApi.mismatches(websiteId, buildMismatchParams())
+    const body = data?.data || data || {}
+    mismatches.value = body.results || body || []
+    mmNextUrl.value = body.next || null
+  } catch (e) {
+    console.error('Mismatches load failed', e)
+    mismatches.value = []
+    mmNextUrl.value = null
+  } finally {
+    mismatchesLoading.value = false
+  }
+}
+
+async function loadMoreMismatches() {
+  if (!mmNextUrl.value) return
+  mmLoadingMore.value = true
+  try {
+    const qs = mmNextUrl.value.includes('?') ? mmNextUrl.value.split('?')[1] : ''
+    const params = Object.fromEntries(new URLSearchParams(qs))
+    const { data } = await claimVerifierApi.mismatches(websiteId, {
+      ...buildMismatchParams(),
+      ...params,
+    })
+    const body = data?.data || data || {}
+    mismatches.value = mismatches.value.concat(body.results || [])
+    mmNextUrl.value = body.next || null
+  } catch (e) {
+    console.error('Load more mismatches failed', e)
+  } finally {
+    mmLoadingMore.value = false
+  }
+}
+
+function openMismatch(mm) {
+  drawerMismatch.value = mm
+  drawerOpen.value = true
+}
+
+function onDismissed(updated) {
+  if (!updated?.id) return
+  const idx = mismatches.value.findIndex((m) => m.id === updated.id)
+  if (idx >= 0) {
+    if (mmFilters.includeDismissed) {
+      mismatches.value.splice(idx, 1, updated)
+    } else {
+      mismatches.value.splice(idx, 1)
+    }
+  }
+}
+
+function formatDate(v) {
+  if (!v) return ''
+  try {
+    return new Date(v).toLocaleDateString()
+  } catch {
+    return v
+  }
+}
+
+onMounted(() => {
+  loadAccuracy()
+  loadMismatches()
+})
+
+watch([periodDays, providerFilter], () => {
+  loadAccuracy()
+})
+watch(
+  [
+    () => mmFilters.severity,
+    () => mmFilters.type,
+    () => mmFilters.product_line,
+    () => mmFilters.since,
+    () => mmFilters.includeDismissed,
+  ],
+  loadMismatches,
+)
+</script>
