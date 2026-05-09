@@ -66,4 +66,13 @@ app.conf.beat_schedule = {
         "task": "apps.llm_ranking.tasks.dispatch_scheduled_audits",
         "schedule": crontab(minute="*/15"),  # Every 15 min — checks next_run_at
     },
+    # ── Prompt Library ──
+    "mine-daily-prompts": {
+        "task": "apps.prompt_library.tasks.mine_daily_prompts",
+        "schedule": crontab(minute=0, hour=4),
+    },
+    "compute-demand-scores": {
+        "task": "apps.prompt_library.tasks.compute_demand_scores",
+        "schedule": crontab(minute=0, hour=5),
+    },
 }

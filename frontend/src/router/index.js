@@ -84,6 +84,7 @@ const routes = [
     protect('/websites/:id', 'website-detail', () => import('@/pages/WebsiteDetailPage.vue'), true),
     protect('/analytics/:websiteId', 'analytics', () => import('@/pages/AnalyticsPage.vue'), true),
     protect('/llm-ranking/:websiteId', 'llm-ranking', () => import('@/pages/LLMRankingPage.vue'), true),
+    protect('/llm-ranking/:websiteId/prompts', 'prompt-library', () => import('@/pages/PromptLibraryPage.vue'), true),
     protect('/onboarding/:websiteId', 'onboarding', () => import('@/pages/OnboardingPage.vue'), true),
     protect('/app-onboarding', 'app-onboarding', () => import('@/pages/AppOnboardingPage.vue')),
     {

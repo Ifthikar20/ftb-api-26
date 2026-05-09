@@ -57,6 +57,7 @@ LOCAL_APPS = [
     "apps.llm_ranking",
     "apps.rag",
     "apps.onboarding",
+    "apps.prompt_library",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
