@@ -1,7 +1,7 @@
 <template>
-  <div class="mx-auto max-w-7xl px-6 py-10">
+  <div class="pl-page">
     <!-- Header -->
-    <header id="pl-header" class="mb-8 text-center">
+    <header id="pl-header" class="pl-page-header">
       <h1 class="pl-hero-title">Prompt Library</h1>
       <p class="pl-hero-sub">
         Describe a scenario. We'll find the prompts AI assistants are likely
@@ -10,7 +10,7 @@
     </header>
 
     <!-- Context input -->
-    <section class="mb-10">
+    <section class="pl-section pl-section-search">
       <ContextInputCard
         v-model="contextInput"
         :loading="generating"
@@ -19,18 +19,63 @@
     </section>
 
     <!-- Generated results -->
-    <section class="mb-10">
-      <div class="mb-4 flex flex-wrap items-end justify-between gap-3">
-        <h2 class="text-lg font-semibold" style="color: var(--text-primary)">
+    <section class="pl-section pl-section-results">
+      <!-- Stat strip -->
+      <div v-if="generatedPrompts.length" class="pl-stat-grid">
+        <div class="pl-stat-tile">
+          <div class="pl-stat-icon" style="background: rgba(91, 141, 239, 0.12); color: var(--brand-accent)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3 8-8" stroke-linecap="round" stroke-linejoin="round"/><path d="M20 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2h11" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+          <div>
+            <div class="pl-stat-label">Total prompts</div>
+            <div class="pl-stat-val">{{ generatedPrompts.length }}</div>
+          </div>
+        </div>
+        <div class="pl-stat-tile">
+          <div class="pl-stat-icon" style="background: rgba(16, 185, 129, 0.12); color: var(--color-success, #059669)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 17l6-6 4 4 8-8" stroke-linecap="round" stroke-linejoin="round"/><path d="M17 7h4v4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+          <div>
+            <div class="pl-stat-label">Avg trend</div>
+            <div class="pl-stat-val">{{ avgTrend }}</div>
+          </div>
+        </div>
+        <div class="pl-stat-tile">
+          <div class="pl-stat-icon" style="background: rgba(180, 83, 9, 0.10); color: var(--color-warning, #b45309)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+          <div>
+            <div class="pl-stat-label">Trending (≥70)</div>
+            <div class="pl-stat-val">{{ trendingCount }}</div>
+          </div>
+        </div>
+        <div class="pl-stat-tile">
+          <div class="pl-stat-icon" style="background: rgba(126, 34, 206, 0.10); color: #7e22ce">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5v14" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+          <div>
+            <div class="pl-stat-label">Saved</div>
+            <div class="pl-stat-val">{{ savedCount }}</div>
+          </div>
+        </div>
+        <div class="pl-stat-tile">
+          <div class="pl-stat-icon" style="background: rgba(15, 23, 42, 0.06); color: var(--text-secondary)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+          </div>
+          <div>
+            <div class="pl-stat-label">Categories</div>
+            <div class="pl-stat-val">{{ categoryCount }}</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="pl-section-head">
+        <h2 class="pl-section-title">
           <template v-if="generatedPrompts.length">
             {{ generatedPrompts.length }} results
-            <span v-if="generationProvider" style="color: var(--text-muted); font-weight: 400">
-              · {{ generationProvider }}
-            </span>
+            <span v-if="generationProvider" class="pl-section-sub-inline">· {{ generationProvider }}</span>
           </template>
-          <template v-else>
-            Results
-          </template>
+          <template v-else>Results</template>
         </h2>
         <AirButton
           v-if="generatedPrompts.length"
@@ -198,55 +243,71 @@
                     </div>
                   </td>
                 </tr>
-                <tr v-if="expandedResult === p._uid" class="pl-detail-row">
+                <tr class="pl-detail-row" :class="{ 'is-open': expandedResult === p._uid }">
                   <td colspan="6" class="pl-detail-cell">
-                    <div class="pl-detail-grid">
-                      <div class="pl-detail-block">
-                        <div class="pl-detail-label">Source</div>
-                        <div class="pl-detail-value">{{ generationProvider || 'deepseek' }}</div>
+                    <div class="pl-detail-inner">
+                      <div class="pl-detail-grid">
+                        <div class="pl-detail-block">
+                          <div class="pl-detail-label">Source</div>
+                          <div class="pl-detail-value">{{ generationProvider || 'deepseek' }}</div>
+                        </div>
+                        <div class="pl-detail-block">
+                          <div class="pl-detail-label">Intent</div>
+                          <div class="pl-detail-value">{{ titleCaseStyle(p.intent_bucket) }}</div>
+                        </div>
+                        <div class="pl-detail-block">
+                          <div class="pl-detail-label">Style</div>
+                          <div class="pl-detail-value">{{ titleCaseStyle(p.style) }}</div>
+                        </div>
+                        <div class="pl-detail-block">
+                          <div class="pl-detail-label">Length</div>
+                          <div class="pl-detail-value">{{ wordCountOf(p) }} words · <span style="color: var(--text-muted)">{{ titleCaseStyle(lengthBandOf(p)) }}</span></div>
+                        </div>
+                        <div class="pl-detail-block">
+                          <div class="pl-detail-label">Trend score</div>
+                          <div class="pl-detail-value">{{ p.trend_score ?? '—' }} / 100 · <span style="color: var(--text-muted)">{{ trendLabel(p.trend_score) }}</span></div>
+                        </div>
+                        <div class="pl-detail-block">
+                          <div class="pl-detail-label">Sentiment</div>
+                          <div class="pl-detail-value">{{ sentimentOf(p) }}</div>
+                        </div>
+                        <div class="pl-detail-block">
+                          <div class="pl-detail-label">Question type</div>
+                          <div class="pl-detail-value">{{ questionTypeOf(p) }}</div>
+                        </div>
+                        <div class="pl-detail-block">
+                          <div class="pl-detail-label">Suggested LLMs</div>
+                          <div class="pl-detail-value">
+                            <AirChip v-for="prov in suggestedProviders(p)" :key="prov" size="xs" variant="neutral" class="mr-1">{{ prov }}</AirChip>
+                          </div>
+                        </div>
                       </div>
-                      <div class="pl-detail-block">
-                        <div class="pl-detail-label">Intent</div>
-                        <div class="pl-detail-value">{{ titleCaseStyle(p.intent_bucket) }}</div>
-                      </div>
-                      <div class="pl-detail-block">
-                        <div class="pl-detail-label">Style</div>
-                        <div class="pl-detail-value">{{ titleCaseStyle(p.style) }}</div>
-                      </div>
-                      <div class="pl-detail-block">
-                        <div class="pl-detail-label">Words</div>
-                        <div class="pl-detail-value">{{ wordCountOf(p) }}</div>
-                      </div>
-                      <div class="pl-detail-block">
-                        <div class="pl-detail-label">Trend score</div>
-                        <div class="pl-detail-value">{{ p.trend_score ?? '—' }} / 100 · <span style="color: var(--text-muted)">{{ trendLabel(p.trend_score) }}</span></div>
-                      </div>
-                      <div class="pl-detail-block">
-                        <div class="pl-detail-label">Variables</div>
+                      <div class="pl-detail-block-wide">
+                        <div class="pl-detail-label">Keywords highlighted</div>
                         <div class="pl-detail-value">
-                          <span v-if="!p.template_variables || !p.template_variables.length" style="color: var(--text-muted)">None — fully concrete</span>
+                          <span v-if="!p.keywords || !p.keywords.length" style="color: var(--text-muted)">No keywords detected</span>
                           <span v-else>
-                            <AirChip v-for="v in p.template_variables" :key="v" size="xs" variant="info" class="mr-1">{{ v }}</AirChip>
+                            <AirChip v-for="kw in p.keywords" :key="kw" size="xs" variant="warning" class="mr-1 mb-1">{{ kw }}</AirChip>
                           </span>
                         </div>
                       </div>
-                    </div>
-                    <div class="pl-detail-prompt">
-                      <div class="pl-detail-label mb-1">Full prompt</div>
-                      <p class="pl-detail-fulltext" v-html="renderHighlighted(p.prompt_text || p.template_text, p.keywords)"></p>
-                    </div>
-                    <div class="pl-detail-actions">
-                      <AirButton variant="ghost" size="sm" @click.stop="onRemoveGenerated(p)">Skip</AirButton>
-                      <AirButton
-                        v-if="!p._saved"
-                        variant="primary"
-                        size="sm"
-                        :loading="!!p._saving"
-                        @click.stop="onSaveGenerated(p)"
-                      >
-                        Save to my prompts
-                      </AirButton>
-                      <AirChip v-else size="sm" variant="success">Saved</AirChip>
+                      <div class="pl-detail-prompt">
+                        <div class="pl-detail-label mb-1">Full prompt</div>
+                        <p class="pl-detail-fulltext" v-html="renderHighlighted(p.prompt_text || p.template_text, p.keywords)"></p>
+                      </div>
+                      <div class="pl-detail-actions">
+                        <AirButton variant="ghost" size="sm" @click.stop="onRemoveGenerated(p)">Skip</AirButton>
+                        <AirButton
+                          v-if="!p._saved"
+                          variant="primary"
+                          size="sm"
+                          :loading="!!p._saving"
+                          @click.stop="onSaveGenerated(p)"
+                        >
+                          Save to my prompts
+                        </AirButton>
+                        <AirChip v-else size="sm" variant="success">Saved</AirChip>
+                      </div>
                     </div>
                   </td>
                 </tr>
@@ -457,6 +518,52 @@ function trendBarClass(score) {
   if (s >= 70) return 'is-hot'
   if (s >= 40) return 'is-warm'
   return 'is-cool'
+}
+
+const avgTrend = computed(() => {
+  if (!generatedPrompts.value.length) return '—'
+  const sum = generatedPrompts.value.reduce((a, p) => a + (Number(p.trend_score) || 0), 0)
+  return Math.round(sum / generatedPrompts.value.length)
+})
+const trendingCount = computed(() => generatedPrompts.value.filter(p => (p.trend_score || 0) >= 70).length)
+const savedCount = computed(() => generatedPrompts.value.filter(p => p._saved).length)
+const categoryCount = computed(() => new Set(generatedPrompts.value.map(p => p.style).filter(Boolean)).size)
+
+// Heuristic sentiment label from prompt text — cheap client-side derivation
+// so the detail panel can show something meaningful without a round-trip.
+function sentimentOf(p) {
+  const t = (p?.prompt_text || p?.template_text || '').toLowerCase()
+  if (!t) return '—'
+  if (/(scam|fraud|fake|delusion|gimmick|sketchy|shady|legit|trust|lying|hype)/.test(t)) return 'Skeptical'
+  if (/(love|amazing|incredible|legendary|best|favourite|favorite|insane|genius)/.test(t)) return 'Excited'
+  if (/(can't|cannot|hate|frustrat|annoy|terrible|awful|bad|worst|stuck)/.test(t)) return 'Frustrated'
+  if (/(\?\s*$)/.test(t.trim())) return 'Curious'
+  return 'Neutral'
+}
+
+function questionTypeOf(p) {
+  const t = (p?.prompt_text || p?.template_text || '').trim()
+  if (!t) return '—'
+  if (/^(what|who|where|when|why|how)\b/i.test(t)) return 'Open-ended'
+  if (/\b(or)\b.*\?/i.test(t)) return 'Either / or'
+  if (/(should i|do i|is it|is this|are they)/i.test(t)) return 'Yes / no'
+  if (/(best|top|recommend)/i.test(t)) return 'Recommendation'
+  if (t.endsWith('?')) return 'Direct'
+  return 'Statement'
+}
+
+const ALL_PROVIDERS = ['Claude', 'GPT-4', 'Gemini', 'Perplexity']
+function suggestedProviders(p) {
+  // Suggest providers based on trend and style. Trending high-volume
+  // queries should always hit Perplexity (cited results); local + how-to
+  // prefer Gemini grounded; story-style is conversational so Claude/GPT.
+  const out = new Set(['Claude', 'GPT-4'])
+  const score = Number(p?.trend_score) || 0
+  if (score >= 70) out.add('Perplexity')
+  if (['local', 'how_to', 'verification'].includes(p?.style)) out.add('Gemini')
+  if (['recommendation', 'comparison', 'listicle'].includes(p?.style)) out.add('Perplexity')
+  if ((p?.keywords || []).some(k => /\b(near me|in [a-z]+)\b/i.test(k))) out.add('Gemini')
+  return ALL_PROVIDERS.filter(x => out.has(x))
 }
 
 function trendLabel(score) {
@@ -877,6 +984,80 @@ watch(websiteId, loadVariables)
 </script>
 
 <style scoped>
+/* ── Full-width dashboard layout ──────────────────────────── */
+.pl-page {
+  width: 100%;
+  max-width: none;
+  padding: 32px 40px 48px;
+  margin: 0;
+  background: var(--bg-root, var(--bg-page, #fafafa));
+  min-height: 100%;
+}
+.pl-page-header { margin-bottom: 32px; text-align: center; }
+.pl-section { margin-bottom: 32px; }
+.pl-section-search { display: flex; justify-content: center; }
+.pl-section-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.pl-section-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+.pl-section-sub-inline { color: var(--text-muted); font-weight: 400; }
+
+/* ── Stat tiles ───────────────────────────────────────────── */
+.pl-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.pl-stat-tile {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 20px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  transition: transform 0.15s ease-out, box-shadow 0.15s ease-out;
+}
+.pl-stat-tile:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.06);
+}
+.pl-stat-icon {
+  width: 40px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  flex-shrink: 0;
+}
+.pl-stat-tile .pl-stat-label {
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--text-secondary);
+  margin: 0;
+}
+.pl-stat-tile .pl-stat-val {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-top: 2px;
+  font-variant-numeric: tabular-nums;
+}
+
 .pl-hero-title {
   font-size: 34px;
   font-weight: 600;
@@ -1032,13 +1213,40 @@ watch(websiteId, loadVariables)
 }
 .pl-expand-toggle:hover { background: var(--bg-surface); color: var(--text-primary); }
 
+/* ── Animated detail expansion ─────────────────────────────── */
 .pl-detail-row { background: var(--bg-surface, rgba(0, 0, 0, 0.025)); }
-.pl-detail-cell { padding: 20px 24px; border-top: 1px solid var(--border-color); }
+.pl-detail-cell { padding: 0; border: 0; }
+.pl-detail-inner {
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  padding: 0 28px;
+  border-top: 1px solid transparent;
+  transition:
+    max-height 0.32s cubic-bezier(0.4, 0.0, 0.2, 1),
+    opacity 0.18s ease,
+    padding 0.32s cubic-bezier(0.4, 0.0, 0.2, 1),
+    border-color 0.18s ease;
+}
+.pl-detail-row.is-open .pl-detail-inner {
+  max-height: 1400px;
+  opacity: 1;
+  padding: 24px 28px 28px;
+  border-top: 1px solid var(--border-color);
+}
 .pl-detail-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 18px 28px;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 20px 28px;
   margin-bottom: 18px;
+}
+.pl-detail-block-wide {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 16px;
+  margin-bottom: 4px;
+  border-top: 1px solid var(--border-color);
 }
 .pl-detail-block { display: flex; flex-direction: column; gap: 4px; }
 .pl-detail-label {
