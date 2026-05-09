@@ -1,12 +1,12 @@
 <template>
   <div class="si-page">
     <!-- Header -->
-    <div class="si-header">
+    <div id="si-header" class="si-header">
       <div class="si-title-block">
         <h1 class="si-title">Source Influence</h1>
         <p class="si-subtitle" v-if="websiteName">{{ websiteName }}</p>
       </div>
-      <div class="si-controls">
+      <div id="si-controls" class="si-controls">
         <div class="si-segmented" role="group" aria-label="Period">
           <button
             v-for="opt in periodOptions"
@@ -54,7 +54,7 @@
 
       <template v-else>
         <!-- Top stat row -->
-        <div class="si-stats">
+        <div id="si-stats" class="si-stats">
           <div class="si-stat">
             <div class="si-stat-label">Total citations</div>
             <div class="si-stat-value">{{ totalCitations.toLocaleString() }}</div>
@@ -78,7 +78,7 @@
         </div>
 
         <!-- Per-provider breakdown cards -->
-        <div class="si-section">
+        <div id="si-providers" class="si-section">
           <h2 class="si-section-title">Source mix by provider</h2>
           <div v-if="!providerCards.length" class="si-card si-empty-inline">
             No per-provider rollups for this window yet.
@@ -174,7 +174,7 @@
         </div>
 
         <!-- Recommendations -->
-        <div class="si-section">
+        <div id="si-recs" class="si-section">
           <h2 class="si-section-title">Recommendations</h2>
           <div class="si-recs">
             <div v-for="(rec, i) in recommendations" :key="i" class="si-rec-card">
@@ -203,6 +203,8 @@
       :provider="drawerProvider"
       :prompt="drawerPrompt"
     />
+
+    <OnboardingTooltip storage-key="fb_tour_source_influence_v1" :steps="tourSteps" />
   </div>
 </template>
 
@@ -213,6 +215,40 @@ import { useAppStore } from '@/stores/app'
 import citationsApi from '@/api/citations'
 import SourceClassBadge from '@/components/citations/SourceClassBadge.vue'
 import SourceBreakdownBar from '@/components/citations/SourceBreakdownBar.vue'
+import OnboardingTooltip from '@/components/OnboardingTooltip.vue'
+
+const tourSteps = [
+  {
+    target: '#si-header',
+    title: 'Source Influence',
+    message: 'See which websites AI assistants pull from when answering questions about your category. Knowing this tells you where to invest content effort.',
+    position: 'bottom',
+  },
+  {
+    target: '#si-controls',
+    title: 'Filter the view',
+    message: 'Narrow by time period (7 / 30 / 90 days) or by AI provider. Each provider has its own citation pattern — Perplexity favors Reddit, Gemini leans on news, etc.',
+    position: 'bottom',
+  },
+  {
+    target: '#si-stats',
+    title: 'Top-line metrics',
+    message: 'Total citations and unique domains tell you the breadth. Your-site share vs competitor share is the headline number to move.',
+    position: 'bottom',
+  },
+  {
+    target: '#si-providers',
+    title: 'Source mix per provider',
+    message: 'Each card shows how a single LLM splits its citations across source classes. Click a card to see top domains for that provider.',
+    position: 'top',
+  },
+  {
+    target: '#si-recs',
+    title: 'Actionable recommendations',
+    message: 'These are auto-generated based on the gaps in your citation pattern — click through to act on them.',
+    position: 'top',
+  },
+]
 import CitationsDrawer from '@/components/citations/CitationsDrawer.vue'
 
 const route = useRoute()
