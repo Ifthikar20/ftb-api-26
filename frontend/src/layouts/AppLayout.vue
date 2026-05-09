@@ -59,6 +59,18 @@
           <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M5 8l2 2 4-4"/></svg></span>
           <span v-if="!appStore.sidebarCollapsed" class="nav-text">Accuracy</span>
         </router-link>
+        <router-link :to="contentStudioRoute" class="nav-link nav-sub" active-class="active" style="--nav-color: #FF385C">
+          <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 2h7l3 3v9H3z"/><path d="M10 2v3h3"/><path d="M5 8h6M5 11h4"/></svg></span>
+          <span v-if="!appStore.sidebarCollapsed" class="nav-text">Content</span>
+        </router-link>
+        <router-link :to="publishTargetsRoute" class="nav-link nav-sub" active-class="active" style="--nav-color: #FF385C">
+          <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="5" r="2"/><path d="M11 7v4M5 11l5-3M5 11h6"/><circle cx="5" cy="11" r="2"/></svg></span>
+          <span v-if="!appStore.sidebarCollapsed" class="nav-text">Publish targets</span>
+        </router-link>
+        <router-link :to="roiRoute" class="nav-link nav-sub" active-class="active" style="--nav-color: #FF385C">
+          <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 12l4-4 3 3 5-6"/><path d="M10 5h4v4"/></svg></span>
+          <span v-if="!appStore.sidebarCollapsed" class="nav-text">ROI</span>
+        </router-link>
 
         <router-link to="/app/integrations" class="nav-link" exact-active-class="active" style="--nav-color: #22c55e">
           <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M10 13a5 5 0 007.5.5l3-3a5 5 0 00-7-7l-1.5 1.5"/><path d="M14 11a5 5 0 00-7.5-.5l-3 3a5 5 0 007 7l1.5-1.5"/></svg></span>
@@ -421,6 +433,9 @@ const promptLibraryRoute = computed(() => websiteId.value ? `/llm-ranking/${webs
 const sourceInfluenceRoute = computed(() => websiteId.value ? `/llm-ranking/${websiteId.value}/source-influence` : '/websites')
 const brandVaultRoute = computed(() => websiteId.value ? `/llm-ranking/${websiteId.value}/brand-vault` : '/websites')
 const accuracyRoute = computed(() => websiteId.value ? `/llm-ranking/${websiteId.value}/accuracy` : '/websites')
+const contentStudioRoute = computed(() => websiteId.value ? `/llm-ranking/${websiteId.value}/content` : '/websites')
+const publishTargetsRoute = computed(() => websiteId.value ? `/llm-ranking/${websiteId.value}/content/publish-targets` : '/websites')
+const roiRoute = computed(() => websiteId.value ? `/llm-ranking/${websiteId.value}/content/roi` : '/websites')
 
 
 

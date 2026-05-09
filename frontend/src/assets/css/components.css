@@ -52,6 +52,30 @@
   box-shadow: 0 4px 16px rgba(91, 141, 239, 0.25);
 }
 
+.btn-rose {
+  background: var(--brand-rose, #FF385C);
+  color: #fff;
+  font-weight: 600;
+}
+
+.btn-rose:hover:not(:disabled) {
+  background: var(--brand-rose-hover, #E11D48);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px var(--brand-rose-glow, rgba(255, 56, 92, 0.18));
+}
+
+.btn-rose-outline {
+  background: transparent;
+  color: var(--brand-rose, #FF385C);
+  border: 1px solid var(--brand-rose, #FF385C);
+  font-weight: 600;
+}
+
+.btn-rose-outline:hover:not(:disabled) {
+  background: var(--brand-rose-glow, rgba(255, 56, 92, 0.08));
+  color: var(--brand-rose-hover, #E11D48);
+}
+
 .btn-secondary {
   background: var(--bg-card);
   color: var(--text-primary);

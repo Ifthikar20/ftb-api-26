@@ -891,6 +891,17 @@
                 View accuracy →
               </button>
             </div>
+            <div class="summary-stat">
+              <span class="summary-num">{{ contentBriefsForAudit }}</span>
+              <span class="summary-label">Content suggested</span>
+              <button
+                class="btn-ghost btn-sm"
+                style="margin-top:4px;font-size:11px;color:#FF385C"
+                @click="gotoContentStudio"
+              >
+                Open in Content Studio →
+              </button>
+            </div>
           </div>
           <!-- Mini source-class breakdown for this audit. -->
           <div
@@ -4230,6 +4241,8 @@ async function selectAudit(audit) {
   loadCitations(audit.id)
   // Phase 3: load claim/accuracy summary (non-blocking).
   loadAuditClaimSummary(audit.id)
+  // Phase 4: count of content briefs created from this audit (non-blocking).
+  loadContentBriefsForAudit(audit)
 }
 
 async function loadAuditClaimSummary(auditId) {
@@ -4308,6 +4321,41 @@ function gotoAccuracy() {
     path: `/llm-ranking/${websiteId}/accuracy`,
     query: selectedAuditId.value ? { audit: selectedAuditId.value } : {},
   })
+}
+
+function gotoContentStudio() {
+  router.push({
+    path: `/llm-ranking/${websiteId}/content`,
+    query: selectedAuditId.value ? { from_audit: selectedAuditId.value } : {},
+  })
+}
+
+// Phase 4: Content Studio integration. Count of content briefs created
+// from (or after) the currently selected audit. Soft-fails if endpoint
+// or response shape isn't available — the tile still renders with 0.
+const contentBriefsForAudit = ref(0)
+
+async function loadContentBriefsForAudit(audit) {
+  contentBriefsForAudit.value = 0
+  if (!audit) return
+  try {
+    const contentStudioApi = (await import('@/api/contentStudio')).default
+    const { data } = await contentStudioApi.briefs(websiteId, { from_audit: audit.id, _silentError: true })
+    const body = data?.data || data || {}
+    const list = body.results || body || []
+    if (Array.isArray(list) && list.length) {
+      // Backend may not filter by from_audit. Fall back to created_at >= audit.created_at.
+      const auditTs = audit.created_at ? new Date(audit.created_at).getTime() : 0
+      const filtered = auditTs
+        ? list.filter((b) => b.created_at && new Date(b.created_at).getTime() >= auditTs)
+        : list
+      contentBriefsForAudit.value = filtered.length || list.length
+    } else {
+      contentBriefsForAudit.value = 0
+    }
+  } catch {
+    contentBriefsForAudit.value = 0
+  }
 }
 
 async function confirmDelete(audit) {

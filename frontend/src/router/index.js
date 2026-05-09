@@ -88,6 +88,10 @@ const routes = [
     protect('/llm-ranking/:websiteId/source-influence', 'source-influence', () => import('@/pages/SourceInfluencePage.vue'), true),
     protect('/llm-ranking/:websiteId/brand-vault', 'brand-vault', () => import('@/pages/BrandVaultPage.vue'), true),
     protect('/llm-ranking/:websiteId/accuracy', 'accuracy', () => import('@/pages/AccuracyPage.vue'), true),
+    protect('/llm-ranking/:websiteId/content', 'content-studio', () => import('@/pages/ContentStudioPage.vue'), true),
+    protect('/llm-ranking/:websiteId/content/drafts/:draftId', 'content-studio-draft', () => import('@/pages/DraftEditorPage.vue'), true),
+    protect('/llm-ranking/:websiteId/content/publish-targets', 'content-studio-targets', () => import('@/pages/PublishTargetsPage.vue'), true),
+    protect('/llm-ranking/:websiteId/content/roi', 'content-studio-roi', () => import('@/pages/ROIPage.vue'), true),
     protect('/onboarding/:websiteId', 'onboarding', () => import('@/pages/OnboardingPage.vue'), true),
     protect('/app-onboarding', 'app-onboarding', () => import('@/pages/AppOnboardingPage.vue')),
     {
@@ -176,7 +180,7 @@ router.beforeEach(async (to, from, next) => {
     }
 
     // Guard: project-specific pages require an active project
-    const projectPages = ['analytics', 'llm-ranking', 'website-detail', 'source-influence', 'prompt-library', 'brand-vault', 'accuracy']
+    const projectPages = ['analytics', 'llm-ranking', 'website-detail', 'source-influence', 'prompt-library', 'brand-vault', 'accuracy', 'content-studio', 'content-studio-draft', 'content-studio-targets', 'content-studio-roi']
     if (projectPages.includes(to.name) && auth.isAuthenticated) {
         const app = useAppStore()
         if (!app.activeWebsite) {
