@@ -779,13 +779,27 @@
             <span class="pa-model" :title="providerModel(r.provider)">
               {{ providerModel(r.provider) }}
             </span>
-            <span class="pa-prompt" :title="r.prompt">{{ r.prompt }}</span>
+            <span class="pa-prompt" :title="r.prompt">
+              {{ r.prompt }}
+              <span class="badge badge-source" :class="badgeClass(r.prompt_source_label)">
+                {{ formatLabel(r.prompt_source_label) }}
+              </span>
+            </span>
             <span class="pa-status">
               <span v-if="!r.query_succeeded" class="badge badge-danger">API error</span>
               <span v-else-if="r.is_mentioned" class="badge badge-success">
                 Ranked #{{ r.mention_rank || '—' }}
               </span>
               <span v-else class="badge badge-neutral">Not mentioned</span>
+              <button
+                v-if="citationsForResult(r.id).length"
+                class="badge badge-citation"
+                style="margin-left:6px;cursor:pointer;border:0"
+                @click.stop="openCitationsDrawer(r)"
+                :title="`View ${citationsForResult(r.id).length} citations`"
+              >
+                {{ citationsForResult(r.id).length }} citation{{ citationsForResult(r.id).length === 1 ? '' : 's' }}
+              </button>
             </span>
           </div>
           <div v-if="!filteredPromptActivity.length" class="pa-empty">
@@ -849,6 +863,28 @@
               <span class="summary-num">{{ promptsUsed }}</span>
               <span class="summary-label">Unique Prompts</span>
             </div>
+            <div class="summary-stat">
+              <span class="summary-num" style="font-size:14px;line-height:1.3">{{ coverage }}</span>
+              <span class="summary-label">Prompt Coverage</span>
+            </div>
+            <div class="summary-stat">
+              <span class="summary-num">{{ totalAuditCitations }}</span>
+              <span class="summary-label">Citations</span>
+              <button
+                class="btn-ghost btn-sm"
+                style="margin-top:4px;font-size:11px;color:var(--accent, #ec4899)"
+                @click="gotoSourceInfluence"
+              >
+                View source influence →
+              </button>
+            </div>
+          </div>
+          <!-- Mini source-class breakdown for this audit. -->
+          <div
+            v-if="auditSourceInfluence && auditSourceInfluence.breakdown && Object.keys(auditSourceInfluence.breakdown).length"
+            style="margin: 4px 0 16px"
+          >
+            <SourceBreakdownBar :breakdown="auditSourceInfluence.breakdown" :height="10" />
           </div>
 
           <!-- Per-query results -->
@@ -864,9 +900,20 @@
                     {{ r.sentiment }}
                   </span>
                   <span class="finding-confidence" v-if="r.confidence_score">{{ Math.round(r.confidence_score) }}% confidence</span>
+                  <button
+                    v-if="citationsForResult(r.id).length"
+                    class="badge badge-citation"
+                    style="margin-left:6px;cursor:pointer;border:0"
+                    @click="openCitationsDrawer(r)"
+                  >
+                    {{ citationsForResult(r.id).length }} citation{{ citationsForResult(r.id).length === 1 ? '' : 's' }}
+                  </button>
                 </div>
                 <div class="finding-prompt">
                   <strong>Q:</strong> {{ r.prompt }}
+                  <span class="badge badge-source" :class="badgeClass(r.prompt_source_label)">
+                    {{ formatLabel(r.prompt_source_label) }}
+                  </span>
                 </div>
                 <div v-if="r.mention_context" class="finding-context">
                   <strong>Match:</strong> "...{{ r.mention_context }}..."
@@ -1682,6 +1729,30 @@
               ${{ Number(preflight.cap_status.spent_usd).toFixed(2) }}). Raise the cap in Settings to proceed.
             </p>
 
+            <div class="form-group" style="margin-top:16px">
+              <label class="form-label">Prompt source</label>
+              <PromptSourceToggle v-model="promptSource" />
+              <button
+                v-if="promptSource !== 'vault'"
+                type="button"
+                class="btn btn-link"
+                style="margin-top:6px;padding:0;font-size:12px"
+                @click="previewOpen = true"
+              >
+                Preview prompts
+              </button>
+              <p v-if="previewedPrompts.length" class="text-xs text-muted" style="margin-top:4px">
+                {{ previewedPrompts.length }} prompts selected from preview.
+              </p>
+            </div>
+
+            <PromptPreviewDrawer
+              v-model:open="previewOpen"
+              :industry-id="auditForm.industry_id || null"
+              :n="50"
+              @confirm="onPreviewConfirm"
+            />
+
             <details class="run-modal-advanced" style="margin-top:16px">
               <summary class="text-xs text-muted" style="cursor:pointer;padding:4px 0">Advanced — custom prompts</summary>
               <div class="form-group" style="margin-top:8px">
@@ -1787,12 +1858,19 @@
       </template>
     </BaseModal>
     </template>
+
+    <CitationsDrawer
+      v-model:open="citationsDrawerOpen"
+      :citations="citationsDrawerCitations"
+      :provider="citationsDrawerProvider"
+      :prompt="citationsDrawerPrompt"
+    />
   </div>
 </template>
 
 <script setup>
 import { ref, shallowRef, computed, onMounted, onBeforeUnmount, markRaw, nextTick } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useToast } from '@/composables/useToast'
 import { useAppStore } from '@/stores/app'
 import llmRankingApi from '@/api/llm_ranking'
@@ -1802,6 +1880,11 @@ import FirstRunLLMRanking from '@/components/llm_ranking/FirstRunLLMRanking.vue'
 import PromptHeatmap from '@/components/llm_ranking/PromptHeatmap.vue'
 import FunnelRadar from '@/components/llm_ranking/FunnelRadar.vue'
 import ProviderAgreement from '@/components/llm_ranking/ProviderAgreement.vue'
+import PromptSourceToggle from '@/components/llm_ranking/PromptSourceToggle.vue'
+import PromptPreviewDrawer from '@/components/llm_ranking/PromptPreviewDrawer.vue'
+import citationsApi from '@/api/citations'
+import CitationsDrawer from '@/components/citations/CitationsDrawer.vue'
+import SourceBreakdownBar from '@/components/citations/SourceBreakdownBar.vue'
 import { Line, Bar } from 'vue-chartjs'
 import {
   Chart as ChartJS,
@@ -1819,6 +1902,7 @@ ChartJS.defaults.font.family = "'Inter', 'SF Pro Display', system-ui, sans-serif
 ChartJS.defaults.font.size = 11
 
 const route = useRoute()
+const router = useRouter()
 const websiteId = route.params.websiteId
 const toast = useToast()
 const appStore = useAppStore()
@@ -1836,6 +1920,13 @@ const selectedAuditId = ref(null)
 const latestBreakdown = shallowRef([])
 const recommendations = shallowRef([])
 const auditDetail = shallowRef(null)
+// Citations state (Phase 2). Populated by loadCitations() on audit selection.
+const citationsByResult = shallowRef(new Map())
+const auditSourceInfluence = shallowRef(null)
+const citationsDrawerOpen = ref(false)
+const citationsDrawerCitations = ref([])
+const citationsDrawerProvider = ref('')
+const citationsDrawerPrompt = ref('')
 const showFindings = ref(true)
 const showMethodology = ref(false)
 const showPrompts = ref(true)
@@ -1846,6 +1937,35 @@ const expandedAuditId = ref(null)
 const confirmDeleteId = ref(null)
 const historyData = ref([])
 const runningAuditId = ref(null)
+
+// Prompt source dispatcher state for the Run Audit wizard.
+const promptSource = ref('hybrid')
+const previewOpen = ref(false)
+const previewedPrompts = ref([])
+
+function onPreviewConfirm(payload) {
+  // PromptPreviewDrawer emits { prompts, seed } on confirm.
+  previewedPrompts.value = payload?.prompts || []
+}
+
+function formatLabel(label) {
+  if (!label) return 'Vault'
+  const [head, tail] = String(label).split(':')
+  if (head === 'library') {
+    if (tail === 'reddit') return 'Library · Reddit'
+    if (tail === 'llm_synth') return 'Library · Synth'
+    return tail ? `Library · ${tail}` : 'Library'
+  }
+  if (head === 'custom') return 'Custom'
+  return 'Vault'
+}
+
+function badgeClass(label) {
+  const head = String(label || 'vault').split(':')[0]
+  if (head === 'library') return 'badge-library'
+  if (head === 'custom') return 'badge-custom'
+  return 'badge-vault'
+}
 
 // ── Prompt Results ──
 const promptResultsData = shallowRef(null)
@@ -3641,6 +3761,19 @@ const promptsUsed = computed(() => {
   return new Set(auditDetail.value.results.filter(r => r.query_succeeded).map(r => r.prompt)).size
 })
 
+// Prompt-source coverage across the current audit's results.
+const coverage = computed(() => {
+  const results = auditDetail.value?.results || []
+  const total = results.length || 1
+  const buckets = { library: 0, vault: 0, custom: 0 }
+  for (const r of results) {
+    const src = String(r.prompt_source_label || 'vault').split(':')[0]
+    if (src === 'library' || src === 'vault' || src === 'custom') buckets[src]++
+  }
+  const pct = (n) => Math.round((n / total) * 100)
+  return `${pct(buckets.library)}% library / ${pct(buckets.vault)}% vault / ${pct(buckets.custom)}% custom`
+})
+
 // ── Historic trend charts ──
 function shortDate(dt) {
   return new Date(dt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
@@ -4015,6 +4148,10 @@ async function submitAudit() {
     if (customPromptsText.value.trim()) {
       payload.custom_prompts = customPromptsText.value.split('\n').map(s => s.trim()).filter(Boolean)
     }
+    payload.prompt_source = promptSource.value
+    if (previewedPrompts.value.length) {
+      payload.prompt_ids = previewedPrompts.value.map(p => p.id)
+    }
     const { data } = await llmRankingApi.runAudit(websiteId, payload)
     const audit = data?.data || data
     audits.value = [audit, ...audits.value]
@@ -4022,6 +4159,10 @@ async function submitAudit() {
     // Show the prompts panel immediately so the user sees what's being asked
     auditDetail.value = audit
     showRunForm.value = false
+    // Reset prompt-source dispatcher state for the next run.
+    promptSource.value = 'hybrid'
+    previewOpen.value = false
+    previewedPrompts.value = []
     toast.success('Audit queued. Results will appear once complete.')
     // Status polling brings in new results — the Prompt Activity card
     // re-renders from auditDetail.results, no separate log poll needed.
@@ -4069,6 +4210,56 @@ async function selectAudit(audit) {
   } catch (e) {
     console.error('Audit breakdown fetch error', e)
   }
+
+  // Phase 2: load citations + source influence (non-blocking).
+  loadCitations(audit.id)
+}
+
+// Phase 2 helpers ----------------------------------------------------
+async function loadCitations(auditId) {
+  citationsByResult.value = new Map()
+  auditSourceInfluence.value = null
+  try {
+    const [cRes, sRes] = await Promise.all([
+      citationsApi.auditCitations(auditId),
+      citationsApi.auditSourceInfluence(auditId),
+    ])
+    const cBody = cRes.data?.data || cRes.data || {}
+    const rows = cBody.results || cBody || []
+    const map = new Map()
+    for (const c of rows) {
+      const rid = c.result
+      if (!rid) continue
+      if (!map.has(rid)) map.set(rid, [])
+      map.get(rid).push(c)
+    }
+    citationsByResult.value = map
+    auditSourceInfluence.value = sRes.data?.data || sRes.data || null
+  } catch (e) {
+    console.warn('Failed to load citations', e)
+  }
+}
+
+function citationsForResult(resultId) {
+  return citationsByResult.value.get(resultId) || []
+}
+
+function openCitationsDrawer(result) {
+  const list = citationsForResult(result.id)
+  citationsDrawerCitations.value = list
+  citationsDrawerProvider.value = result.provider || ''
+  citationsDrawerPrompt.value = result.prompt || ''
+  citationsDrawerOpen.value = true
+}
+
+const totalAuditCitations = computed(() => {
+  let total = 0
+  for (const arr of citationsByResult.value.values()) total += arr.length
+  return total
+})
+
+function gotoSourceInfluence() {
+  router.push(`/llm-ranking/${websiteId}/source-influence`)
 }
 
 async function confirmDelete(audit) {
@@ -7064,5 +7255,40 @@ onBeforeUnmount(() => {
 .wizard-page-remove:hover {
   background: var(--bg-base);
   color: var(--color-danger, #DC2626);
+}
+
+/* Prompt-source provenance badges (Phase 1 prompt_library wiring). */
+.badge-source {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 500;
+  vertical-align: middle;
+  line-height: 1.4;
+}
+.badge-library {
+  background: rgba(59, 130, 246, 0.10);
+  color: #1d4ed8;
+}
+.badge-vault {
+  background: rgba(107, 114, 128, 0.12);
+  color: #4b5563;
+}
+.badge-custom {
+  background: rgba(139, 92, 246, 0.12);
+  color: #6d28d9;
+}
+.badge-citation {
+  background: rgba(236, 72, 153, 0.12);
+  color: #be185d;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-weight: 500;
+}
+.badge-citation:hover {
+  background: rgba(236, 72, 153, 0.2);
 }
 </style>

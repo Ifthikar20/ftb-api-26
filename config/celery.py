@@ -24,6 +24,7 @@ app.conf.task_routes = {
     "apps.websites.tasks.refresh_expiring_tokens": {"queue": "integrations"},
     # AI / LLM
     "apps.llm_ranking.tasks.*": {"queue": "ai"},
+    "apps.citations.tasks.*": {"queue": "ai"},
 }
 
 app.conf.beat_schedule = {
@@ -65,5 +66,23 @@ app.conf.beat_schedule = {
     "llm-ranking-schedule-dispatcher": {
         "task": "apps.llm_ranking.tasks.dispatch_scheduled_audits",
         "schedule": crontab(minute="*/15"),  # Every 15 min — checks next_run_at
+    },
+    # ── Prompt Library ──
+    "mine-daily-prompts": {
+        "task": "apps.prompt_library.tasks.mine_daily_prompts",
+        "schedule": crontab(minute=0, hour=4),
+    },
+    "compute-demand-scores": {
+        "task": "apps.prompt_library.tasks.compute_demand_scores",
+        "schedule": crontab(minute=0, hour=5),
+    },
+    # ── Citations / Source Influence ──
+    "compute-source-influence": {
+        "task": "apps.citations.tasks.compute_source_influence_snapshots",
+        "schedule": crontab(minute=30, hour=5),
+    },
+    "classify-unknown-domains": {
+        "task": "apps.citations.tasks.classify_unknown_domains",
+        "schedule": crontab(minute=0, hour=6),
     },
 }

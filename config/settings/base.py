@@ -57,7 +57,13 @@ LOCAL_APPS = [
     "apps.llm_ranking",
     "apps.rag",
     "apps.onboarding",
+    "apps.prompt_library",
+    "apps.citations",
 ]
+
+# Phase 2: extract citations from each LLMRankingResult after it's saved.
+# Toggle off to disable the post-save hook (e.g. in narrow unit tests).
+CITATION_EXTRACTION_ENABLED = True
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 
