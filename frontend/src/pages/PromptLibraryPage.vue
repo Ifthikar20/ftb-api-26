@@ -1,29 +1,16 @@
 <template>
-  <div class="mx-auto max-w-7xl px-6 py-8">
+  <div class="mx-auto max-w-7xl px-6 py-10">
     <!-- Header -->
-    <header id="pl-header" class="mb-6 flex flex-wrap items-end justify-between gap-4">
-      <div>
-        <h1 class="text-2xl font-semibold tracking-tight" style="color: var(--text-primary)">
-          Prompt Library
-        </h1>
-        <p class="mt-1 max-w-2xl text-sm" style="color: var(--text-secondary)">
-          Describe a real-world scenario. We'll generate prompts that AI assistants
-          are likely to be asked about you.
-        </p>
-      </div>
-      <div class="flex items-center gap-2">
-        <AirButton id="pl-new-btn" variant="primary" size="sm" @click="newPromptOpen = true">New prompt</AirButton>
-        <AirButton variant="outline" size="sm" :loading="synthesizing" @click="onSynthesize">
-          Generate 50 with DeepSeek
-        </AirButton>
-        <AirButton variant="ghost" size="sm" :disabled="!websiteId" @click="variablesOpen = true">
-          Edit variables
-        </AirButton>
-      </div>
+    <header id="pl-header" class="mb-8 text-center">
+      <h1 class="pl-hero-title">Prompt Library</h1>
+      <p class="pl-hero-sub">
+        Describe a scenario. We'll find the prompts AI assistants are likely
+        being asked about you.
+      </p>
     </header>
 
     <!-- Context input -->
-    <section class="mb-8">
+    <section class="mb-10">
       <ContextInputCard
         v-model="contextInput"
         :loading="generating"
@@ -757,6 +744,21 @@ watch(websiteId, loadVariables)
 </script>
 
 <style scoped>
+.pl-hero-title {
+  font-size: 34px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+  margin: 0;
+}
+.pl-hero-sub {
+  margin: 10px auto 0;
+  max-width: 36rem;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+
 .pl-control {
   border-radius: 9999px;
   border: 1px solid var(--border-color);
