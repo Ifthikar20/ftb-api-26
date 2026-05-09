@@ -23,20 +23,76 @@
 
     <!-- ═══ Hero ═══ -->
     <section class="hero">
-      <div class="wrap">
-        <h1 class="hero-h anim" data-anim="fade-up">
-          <span class="tw-line" ref="twLine1"></span><br/>
-          <span class="tw-line" ref="twLine2"></span><br/>
-          <em><span class="tw-line" ref="twLine3"></span></em>
-          <span class="tw-cursor" :class="{ 'tw-cursor--done': twDone }">|</span>
-        </h1>
-        <p class="hero-p anim" data-anim="fade-up" data-delay="60">
-          Track visitors, score leads, audit your site, and grow<br class="hide-m"/>
-          with AI — all in one platform.
-        </p>
-        <div class="hero-ctas anim" data-anim="fade-up" data-delay="120">
-          <router-link to="/register" class="btn-primary">Get Started</router-link>
-          <router-link to="/login" class="btn-ghost">Sign In</router-link>
+      <div class="wrap hero-grid">
+        <div class="hero-left">
+          <span class="hero-eyebrow anim" data-anim="fade-up">Generative Engine Optimization</span>
+          <h1 class="hero-h anim" data-anim="fade-up">
+            <span class="tw-line" ref="twLine1"></span><br/>
+            <span class="tw-line" ref="twLine2"></span><br/>
+            <em><span class="tw-line" ref="twLine3"></span></em>
+            <span class="tw-cursor" :class="{ 'tw-cursor--done': twDone }">|</span>
+          </h1>
+          <p class="hero-p anim" data-anim="fade-up" data-delay="60">
+            See how often
+            <span class="hero-word-cycler">
+              <TransitionGroup name="word-cycle">
+                <span class="hero-word" :key="categories[activeCat]">{{ categories[activeCat] }}</span>
+              </TransitionGroup>
+            </span>
+            mentions your brand. Find the prompts you're missing from. Generate the
+            content to close the gap.
+          </p>
+          <div class="hero-ctas anim" data-anim="fade-up" data-delay="120">
+            <router-link to="/register" class="btn-primary">Run a free audit</router-link>
+            <router-link to="/login" class="btn-ghost">Sign in</router-link>
+          </div>
+          <ul class="hero-bullets anim" data-anim="fade-up" data-delay="160">
+            <li><span class="hero-bullet-dot"></span> Multi-LLM probing across Claude, GPT-4, Gemini, Perplexity</li>
+            <li><span class="hero-bullet-dot"></span> Source-level citation tracking — see where the AI gets its answers</li>
+            <li><span class="hero-bullet-dot"></span> Brand-fact verification + AI-drafted content to close gaps</li>
+          </ul>
+        </div>
+
+        <!-- Framer-style animated visualisation -->
+        <div class="hero-right anim" data-anim="fade-up" data-delay="220">
+          <div class="hero-viz">
+            <div class="hero-viz-head">
+              <span class="hero-viz-dot is-anthropic"></span>
+              <span class="hero-viz-dot is-openai"></span>
+              <span class="hero-viz-dot is-google"></span>
+              <span class="hero-viz-dot is-perplexity"></span>
+              <span class="hero-viz-title">Live audit · 4 providers</span>
+              <span class="hero-viz-tag">+12 pts</span>
+            </div>
+            <div class="hero-viz-body">
+              <div
+                v-for="(p, idx) in heroProviders"
+                :key="p.name"
+                class="hero-viz-row"
+                :style="{ animationDelay: (0.2 + idx * 0.18) + 's' }"
+              >
+                <div class="hero-viz-row-head">
+                  <span class="hero-viz-provider">
+                    <span class="hero-viz-dot" :class="'is-' + p.key"></span>
+                    {{ p.name }}
+                  </span>
+                  <span class="hero-viz-pct">{{ p.pct }}%</span>
+                </div>
+                <div class="hero-viz-bar">
+                  <div
+                    class="hero-viz-bar-fill"
+                    :class="'is-' + p.key"
+                    :style="{ '--target-w': p.pct + '%', animationDelay: (0.3 + idx * 0.18) + 's' }"
+                  ></div>
+                </div>
+                <div class="hero-viz-meta">{{ p.cited }} citations · {{ p.sources }}</div>
+              </div>
+            </div>
+            <div class="hero-viz-foot">
+              <span class="hero-viz-pulse"></span>
+              <span>Brand mentioned in 38% of category prompts</span>
+            </div>
+          </div>
         </div>
       </div>
     </section>
@@ -291,11 +347,11 @@ function typeWriter(el, text, speed = 65) {
 
 async function runTypewriter() {
   await new Promise(r => setTimeout(r, 400)) // initial pause
-  await typeWriter(twLine1.value, 'MARKETING', 80)
+  await typeWriter(twLine1.value, 'AI VISIBILITY,', 80)
   await new Promise(r => setTimeout(r, 200))
-  await typeWriter(twLine2.value, 'INTELLIGENCE,', 70)
+  await typeWriter(twLine2.value, 'MEASURED.', 70)
   await new Promise(r => setTimeout(r, 200))
-  await typeWriter(twLine3.value, 'SIMPLIFIED.', 70)
+  await typeWriter(twLine3.value, 'OPTIMIZED.', 70)
   await new Promise(r => setTimeout(r, 400))
   twDone.value = true
 }
@@ -327,7 +383,13 @@ onMounted(() => {
   })
 })
 
-const categories = ['Growth', 'Analytics', 'SEO', 'Intelligence']
+const categories = ['ChatGPT', 'Claude', 'Gemini', 'Perplexity']
+const heroProviders = [
+  { key: 'anthropic',  name: 'Claude',     pct: 47, cited: 12, sources: 'Reddit · TechCrunch · Wikipedia' },
+  { key: 'openai',     name: 'GPT-4',      pct: 38, cited:  8, sources: 'Wikipedia · Medium · NYT' },
+  { key: 'google',     name: 'Gemini',     pct: 52, cited: 15, sources: 'BBC · Bloomberg · gov sites' },
+  { key: 'perplexity', name: 'Perplexity', pct: 64, cited: 21, sources: 'Reddit · Quora · Stack Overflow' },
+]
 
 const features = [
   {
@@ -529,7 +591,183 @@ em { color: #5B8DEF; font-style: italic; }
 .nav-cta:hover { background: #2a2d2e; transform: translateY(-1px); }
 
 /* ── Hero ── */
-.hero { padding: 160px 0 80px; }
+.hero { padding: 140px 0 80px; }
+.hero-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+  gap: 64px;
+  align-items: center;
+}
+@media (max-width: 980px) {
+  .hero-grid { grid-template-columns: 1fr; gap: 40px; }
+}
+.hero-eyebrow {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--brand-accent, #c9a050);
+  background: rgba(201, 160, 80, 0.12);
+  padding: 6px 12px;
+  border-radius: 9999px;
+  margin-bottom: 18px;
+}
+.hero-word-cycler {
+  display: inline-block;
+  position: relative;
+  min-width: 7.5em;
+  vertical-align: baseline;
+}
+.hero-word {
+  display: inline-block;
+  color: var(--brand-accent, #c9a050);
+  font-weight: 600;
+}
+.hero-bullets {
+  list-style: none;
+  margin: 28px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: 14px;
+  color: #6e6a65;
+}
+.hero-bullets li { display: flex; align-items: center; gap: 10px; }
+.hero-bullet-dot {
+  width: 6px; height: 6px; border-radius: 9999px;
+  background: var(--brand-accent, #c9a050);
+  flex-shrink: 0;
+}
+
+/* Framer-style hero visualisation */
+.hero-viz {
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 22px;
+  padding: 22px;
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    0 24px 60px rgba(15, 23, 42, 0.10);
+  position: relative;
+  overflow: hidden;
+}
+.hero-viz::before {
+  content: '';
+  position: absolute;
+  inset: -40%;
+  background: radial-gradient(ellipse at top right, rgba(201, 160, 80, 0.10), transparent 60%);
+  pointer-events: none;
+}
+.hero-viz-head {
+  display: flex; align-items: center; gap: 6px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+  margin-bottom: 16px;
+}
+.hero-viz-title {
+  margin-left: 8px;
+  font-size: 12px;
+  color: #6e6a65;
+  font-weight: 500;
+}
+.hero-viz-tag {
+  margin-left: auto;
+  display: inline-flex; align-items: center;
+  padding: 3px 10px;
+  border-radius: 9999px;
+  background: rgba(16, 185, 129, 0.12);
+  color: #059669;
+  font-size: 12px;
+  font-weight: 600;
+}
+.hero-viz-dot {
+  width: 8px; height: 8px; border-radius: 9999px;
+  flex-shrink: 0;
+  background: #cbd5e1;
+}
+.hero-viz-dot.is-anthropic  { background: #d97706; }
+.hero-viz-dot.is-openai     { background: #10b981; }
+.hero-viz-dot.is-google     { background: #4285f4; }
+.hero-viz-dot.is-perplexity { background: #5b6cff; }
+
+.hero-viz-row {
+  margin-bottom: 16px;
+  opacity: 0;
+  transform: translateY(6px);
+  animation: hero-row-in 0.5s ease-out forwards;
+}
+.hero-viz-row:last-child { margin-bottom: 0; }
+@keyframes hero-row-in {
+  to { opacity: 1; transform: translateY(0); }
+}
+.hero-viz-row-head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 6px;
+}
+.hero-viz-provider {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-size: 13px; font-weight: 600; color: #1f2937;
+}
+.hero-viz-pct {
+  font-size: 13px; font-weight: 600; color: #1f2937;
+  font-variant-numeric: tabular-nums;
+}
+.hero-viz-bar {
+  position: relative;
+  height: 8px;
+  background: rgba(15, 23, 42, 0.06);
+  border-radius: 9999px;
+  overflow: hidden;
+}
+.hero-viz-bar-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0;
+  border-radius: 9999px;
+  animation: hero-bar-fill 1.1s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.hero-viz-bar-fill.is-anthropic  { background: linear-gradient(90deg, #fbbf24, #d97706); }
+.hero-viz-bar-fill.is-openai     { background: linear-gradient(90deg, #34d399, #059669); }
+.hero-viz-bar-fill.is-google     { background: linear-gradient(90deg, #60a5fa, #2563eb); }
+.hero-viz-bar-fill.is-perplexity { background: linear-gradient(90deg, #818cf8, #4338ca); }
+@keyframes hero-bar-fill {
+  to { width: var(--target-w); }
+}
+.hero-viz-meta {
+  margin-top: 6px;
+  font-size: 11.5px;
+  color: #94a3b8;
+}
+.hero-viz-foot {
+  display: flex; align-items: center; gap: 8px;
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(15, 23, 42, 0.06);
+  font-size: 12.5px;
+  color: #6e6a65;
+}
+.hero-viz-pulse {
+  width: 8px; height: 8px;
+  border-radius: 9999px;
+  background: #10b981;
+  box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.55);
+  animation: hero-pulse 1.6s ease-out infinite;
+  flex-shrink: 0;
+}
+@keyframes hero-pulse {
+  70% { box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+}
+
+/* word-cycle transition (reused from the deleted features section) */
+.word-cycle-enter-active, .word-cycle-leave-active {
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  display: inline-block;
+}
+.word-cycle-enter-from { opacity: 0; transform: translateY(8px); }
+.word-cycle-leave-to   { opacity: 0; transform: translateY(-8px); position: absolute; }
 .hero-h {
   font-family: 'DM Serif Display', Georgia, serif;
   font-weight: 400; font-size: clamp(2.8rem, 6vw, 5.5rem);
