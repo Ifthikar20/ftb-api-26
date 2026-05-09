@@ -34,19 +34,14 @@
     <!-- Generated results -->
     <section v-if="generatedPrompts.length || generationError" class="mb-10">
       <div class="mb-4 flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h2 class="text-lg font-semibold" style="color: var(--text-primary)">
-            {{ generatedPrompts.length }} prompts generated
-            <span v-if="generationProvider" style="color: var(--text-muted); font-weight: 400">
-              · powered by {{ generationProvider }}
-            </span>
-          </h2>
-          <p class="mt-1 text-xs" style="color: var(--text-muted)">
-            Save the ones that match how real people would ask AI about you.
-          </p>
-        </div>
+        <h2 class="text-lg font-semibold" style="color: var(--text-primary)">
+          {{ generatedPrompts.length }} results
+          <span v-if="generationProvider" style="color: var(--text-muted); font-weight: 400">
+            · {{ generationProvider }}
+          </span>
+        </h2>
         <AirButton variant="ghost" size="sm" :loading="generating" @click="regenerate">
-          Generate more
+          Search again
         </AirButton>
       </div>
 
@@ -70,20 +65,52 @@
         We couldn't generate prompts for that context — try adding more detail.
       </div>
 
-      <transition-group v-else name="pl-stagger" tag="div" class="grid gap-6 grid-cols-1 md:grid-cols-2 xl:grid-cols-3">
-        <PromptCard
-          v-for="(p, idx) in filteredGeneratedPrompts"
-          :key="p._uid"
-          :prompt="p"
-          :variables="resolvedVariables"
-          action-mode="save"
-          :saved="!!p._saved"
-          :saving="!!p._saving"
-          :style="{ transitionDelay: (idx * 30) + 'ms' }"
-          @save="onSaveGenerated"
-          @remove="onRemoveGenerated"
-        />
-      </transition-group>
+      <AirCard v-else size="md" :padded="false">
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-sm">
+            <thead>
+              <tr style="border-bottom: 1px solid var(--border-color)">
+                <th class="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider" style="color: var(--text-muted); width: 110px">Style</th>
+                <th class="px-3 py-3 text-[11px] font-semibold uppercase tracking-wider" style="color: var(--text-muted); width: 110px">Status</th>
+                <th class="px-3 py-3 text-[11px] font-semibold uppercase tracking-wider" style="color: var(--text-muted)">Prompt</th>
+                <th class="px-3 py-3 text-[11px] font-semibold uppercase tracking-wider" style="color: var(--text-muted); width: 120px">Runs</th>
+                <th class="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wider" style="color: var(--text-muted); width: 130px">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="p in filteredGeneratedPrompts"
+                :key="p._uid"
+                class="pl-row"
+                style="border-top: 1px solid var(--border-color)"
+              >
+                <td class="px-4 py-3 align-top">
+                  <AirChip size="xs" variant="primary">{{ titleCaseStyle(p.style) }}</AirChip>
+                </td>
+                <td class="px-3 py-3 align-top">
+                  <span class="pl-untested">Untested</span>
+                </td>
+                <td class="px-3 py-3 align-top" style="color: var(--text-primary)">
+                  <div class="leading-snug" v-html="renderTemplate(p.template_text)"></div>
+                </td>
+                <td class="px-3 py-3 align-top text-xs" style="color: var(--text-muted)">No runs yet</td>
+                <td class="px-3 py-3 align-top text-right">
+                  <AirButton
+                    v-if="!p._saved"
+                    variant="primary"
+                    size="sm"
+                    :loading="!!p._saving"
+                    @click="onSaveGenerated(p)"
+                  >
+                    Save
+                  </AirButton>
+                  <AirChip v-else size="sm" variant="success">Saved</AirChip>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </AirCard>
     </section>
 
     <!-- Saved prompts browse -->
@@ -357,6 +384,27 @@ const filteredGeneratedPrompts = computed(() => {
   if (!generatedStyleFilter.value) return generatedPrompts.value
   return generatedPrompts.value.filter(p => p.style === generatedStyleFilter.value)
 })
+
+function titleCaseStyle(value) {
+  if (!value) return 'Question'
+  const map = { story: 'Story', question: 'Question', comparison: 'Comparison', local: 'Local', how_to: 'How-to', listicle: 'Listicle', problem: 'Problem' }
+  return map[value] || (String(value).charAt(0).toUpperCase() + String(value).slice(1))
+}
+
+function _escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}
+
+function renderTemplate(template) {
+  if (!template) return ''
+  return _escapeHtml(template).replace(
+    /\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g,
+    (_m, name) => `<span class="pl-var-chip">${_escapeHtml(name)}</span>`
+  )
+}
 
 let _genUid = 0
 function _wrap(item) {
@@ -716,4 +764,33 @@ watch(websiteId, loadVariables)
 .pl-stagger-enter-to { opacity: 1; transform: translateY(0); }
 .pl-stagger-leave-active { transition: opacity 0.2s ease; }
 .pl-stagger-leave-to { opacity: 0; }
+
+.pl-row { transition: background 0.12s ease-out; }
+.pl-row:hover { background: var(--bg-surface, rgba(0, 0, 0, 0.02)); }
+
+.pl-untested {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: 9999px;
+  border: 1px dashed var(--border-color);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: transparent;
+}
+
+:deep(.pl-var-chip) {
+  display: inline-block;
+  padding: 1px 8px;
+  margin: 0 2px;
+  border-radius: 9999px;
+  background: var(--bg-surface, rgba(0, 0, 0, 0.04));
+  color: var(--brand-accent);
+  font-size: 0.8em;
+  font-weight: 500;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  line-height: 1.3;
+  vertical-align: baseline;
+}
 </style>
