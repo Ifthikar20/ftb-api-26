@@ -74,43 +74,8 @@
         </div>
       </div>
 
-      <!-- Step 3: Competitors -->
-      <div v-if="step === 3" class="ob-card ob-card-wide fade-in">
-        <h2 class="ob-title">Add Your Competitors</h2>
-        <p class="ob-desc">Track up to 20 competitors to monitor your relative AI visibility</p>
-        <div class="ob-comp-header">
-          <strong>Add New Competitor</strong>
-          <span class="ob-comp-count">{{ competitors.length }}/20</span>
-        </div>
-        <div class="ob-comp-input-row">
-          <div class="ob-field ob-field-grow">
-            <div class="ob-input-icon"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="12" height="10" rx="2"/><path d="M5 7h6"/></svg></div>
-            <input v-model="newComp.name" class="ob-input" placeholder="Competitor name" @keydown.enter="addCompetitor" />
-          </div>
-          <div class="ob-field ob-field-grow">
-            <div class="ob-input-icon"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><line x1="2" y1="8" x2="14" y2="8"/></svg></div>
-            <input v-model="newComp.url" class="ob-input" placeholder="www.example.com (optional)" @keydown.enter="addCompetitor" />
-          </div>
-          <button class="ob-btn-add" @click="addCompetitor" :disabled="!newComp.name || competitors.length >= 20">+</button>
-        </div>
-        <div class="ob-comp-grid">
-          <div v-for="c in competitors" :key="c.id || c.name" class="ob-comp-card">
-            <div class="ob-comp-avatar">{{ (c.name || '?')[0].toUpperCase() }}</div>
-            <div class="ob-comp-info">
-              <div class="ob-comp-name">{{ c.name }}</div>
-              <div class="ob-comp-url">{{ c.competitor_url || c.url || '' }}</div>
-            </div>
-            <button class="ob-comp-remove" @click="removeCompetitor(c)">×</button>
-          </div>
-        </div>
-        <div class="ob-nav-row">
-          <button class="ob-btn-secondary" @click="step--">Back</button>
-          <button class="ob-btn-primary" @click="nextStep">Simulate AI Searches</button>
-        </div>
-      </div>
-
-      <!-- Step 4: Analysis -->
-      <div v-if="step === 4" class="ob-card fade-in">
+      <!-- Step 3: Analysis -->
+      <div v-if="step === 3" class="ob-card fade-in">
         <h2 class="ob-title">Running AI Visibility Analysis</h2>
         <p class="ob-desc">We're simulating searches across ChatGPT, Claude, Gemini, and Perplexity to measure your visibility...</p>
         <div class="ob-analysis-progress">
@@ -123,8 +88,8 @@
         </div>
       </div>
 
-      <!-- Step 5: Complete -->
-      <div v-if="step === 5" class="ob-card fade-in">
+      <!-- Step 4: Complete -->
+      <div v-if="step === 4" class="ob-card fade-in">
         <div class="ob-complete-icon">🎉</div>
         <h2 class="ob-title">You're all set!</h2>
         <p class="ob-desc">Your project is configured and ready. We'll start tracking your AI visibility across all major LLM platforms.</p>
@@ -156,7 +121,6 @@ const steps = [
   { key: 'website', label: 'Website' },
   { key: 'description', label: 'Description' },
   { key: 'topics', label: 'Topics' },
-  { key: 'competitors', label: 'Competitors' },
   { key: 'analysis', label: 'Analysis' },
   { key: 'complete', label: 'Complete' },
 ]
@@ -171,8 +135,6 @@ const form = reactive({
 
 const websiteId = ref(route.params.websiteId || null)
 const availableTopics = ref([])
-const competitors = ref([])
-const newComp = reactive({ name: '', url: '' })
 
 onMounted(async () => {
   // If we have a websiteId, load existing data
@@ -186,12 +148,6 @@ onMounted(async () => {
       form.topics = site.topics || []
       form.industry = site.industry || ''
 
-      // If onboarding was already completed, skip to step 0 (re-do flow)
-      // Load existing competitors
-      try {
-        const compResp = await websitesApi.listCompetitors(websiteId.value)
-        competitors.value = compResp.data?.data || compResp.data || []
-      } catch {}
     } catch {}
   }
 })
@@ -234,33 +190,6 @@ async function loadTopics() {
   loadingMoreTopics.value = false
 }
 
-async function addCompetitor() {
-  if (!newComp.name || competitors.value.length >= 20) return
-  const compUrl = newComp.url ? (newComp.url.startsWith('http') ? newComp.url : `https://${newComp.url}`) : ''
-  if (websiteId.value) {
-    try {
-      const { data } = await websitesApi.addCompetitor(websiteId.value, {
-        name: newComp.name,
-        competitor_url: compUrl || `https://${newComp.name.toLowerCase().replace(/\s+/g, '')}.com`,
-      })
-      competitors.value.push(data?.data || data)
-    } catch {
-      // Still add locally
-      competitors.value.push({ name: newComp.name, competitor_url: compUrl, id: Date.now() })
-    }
-  } else {
-    competitors.value.push({ name: newComp.name, competitor_url: compUrl, id: Date.now() })
-  }
-  newComp.name = ''
-  newComp.url = ''
-}
-
-async function removeCompetitor(c) {
-  if (c.id && websiteId.value && typeof c.id === 'string') {
-    try { await websitesApi.deleteCompetitor(websiteId.value, c.id) } catch {}
-  }
-  competitors.value = competitors.value.filter(x => x !== c)
-}
 
 async function saveStepData() {
   if (!websiteId.value) return
@@ -332,21 +261,16 @@ async function nextStep() {
     }
   }
 
-  // Step 2 → 3: Save topics
+  // Step 2 → 3: Save topics, start analysis
   if (step.value === 2) {
     await saveStepData()
-  }
-
-  // Step 3 → 4: Save and start analysis
-  if (step.value === 3) {
-    await saveStepData()
-    step.value = 4
+    step.value = 3
     simulateAnalysis()
     return
   }
 
-  // Step 4 → 5: Mark onboarding complete
-  if (step.value === 4) {
+  // Step 3 → 4: Mark onboarding complete
+  if (step.value === 3) {
     if (websiteId.value) {
       try {
         await websitesApi.update(websiteId.value, { onboarding_completed: true })

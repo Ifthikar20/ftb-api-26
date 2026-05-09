@@ -79,25 +79,6 @@ class OnboardingSaveView(APIView):
             website.topics = data.get("keywords") or []
         website.save()
 
-        # Persist competitors via the existing Competitor model. Skipping
-        # silently if the model isn't available (older deploys) — the
-        # user can always add them later.
-        try:
-            from apps.competitors.models import Competitor
-            for c in (data.get("competitors") or [])[:20]:
-                if not isinstance(c, dict):
-                    continue
-                name = (c.get("name") or "").strip()
-                if not name:
-                    continue
-                Competitor.objects.get_or_create(
-                    website=website,
-                    name=name[:200],
-                    defaults={"domain": (c.get("domain") or "")[:200]},
-                )
-        except Exception:
-            pass
-
         return Response({
             "website_id": str(website.id),
             "name": website.name,

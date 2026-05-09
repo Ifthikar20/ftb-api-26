@@ -130,59 +130,6 @@
 
             <div class="ob-step-actions">
               <button class="ob-link-btn" @click="back">Back</button>
-              <button class="ob-cta" @click="step = 3">
-                Continue
-                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M3 8h10M9 4l4 4-4 4"/>
-                </svg>
-              </button>
-            </div>
-          </div>
-        </section>
-
-        <!-- ── Step 3: Confirm competitors ───────────────────────── -->
-        <section v-else-if="step === 3" key="competitors" class="ob-step ob-step-wide">
-          <div class="ob-stagger">
-            <span class="ob-eyebrow">Step 3 of 3 — competitors</span>
-            <h1 class="ob-title">Who do you compete against?</h1>
-            <p class="ob-sub">
-              We found these from public sources. Pick the ones that
-              actually show up next to you, or add your own.
-            </p>
-
-            <div class="ob-card">
-              <div class="ob-comp-list">
-                <label
-                  v-for="c in form.competitors"
-                  :key="c.domain || c.name"
-                  class="ob-comp"
-                  :class="{ 'is-selected': c.selected }"
-                >
-                  <input type="checkbox" v-model="c.selected" />
-                  <span class="ob-comp-icon">{{ (c.name || '?')[0].toUpperCase() }}</span>
-                  <span class="ob-comp-meta">
-                    <span class="ob-comp-name">{{ c.name }}</span>
-                    <span v-if="c.domain" class="ob-comp-domain">{{ c.domain }}</span>
-                  </span>
-                </label>
-                <div v-if="!form.competitors.length" class="ob-comp-empty">
-                  We couldn't find competitors automatically. Add some below.
-                </div>
-              </div>
-
-              <div class="ob-comp-add">
-                <input
-                  v-model="newCompetitor"
-                  class="ob-text-input"
-                  placeholder="Name or domain (e.g. mixpanel.com)"
-                  @keydown.enter.prevent="addCompetitor"
-                />
-                <button class="ob-link-btn" @click="addCompetitor">Add</button>
-              </div>
-            </div>
-
-            <div class="ob-step-actions">
-              <button class="ob-link-btn" @click="back">Back</button>
               <button class="ob-cta" :disabled="saving" @click="finish">
                 <span v-if="!saving">Finish setup</span>
                 <span v-else class="ob-spinner" aria-hidden="true"></span>
@@ -210,7 +157,7 @@ const auth = useAuthStore()
 const toast = useToast()
 
 const steps = Object.freeze([
-  { id: 'url' }, { id: 'scanning' }, { id: 'describe' }, { id: 'competitors' },
+  { id: 'url' }, { id: 'scanning' }, { id: 'describe' },
 ])
 
 const step = ref(0)
@@ -225,11 +172,9 @@ const form = ref({
   industry: '',
   description: '',
   keywords: [],
-  competitors: [],     // [{name, domain, selected}]
 })
 
 const urlInputRef = ref(null)
-const newCompetitor = ref('')
 
 const urlHostname = computed(() => {
   try {
@@ -251,7 +196,6 @@ const SCAN_LINES = [
   'Reading your homepage…',
   'Spotting products and features…',
   'Drafting a clean description…',
-  'Searching the web for competitors…',
   'Wrapping up…',
 ]
 const scanLine = ref(SCAN_LINES[0])
@@ -294,11 +238,6 @@ async function startScan() {
       industry: payload.industry || '',
       description: payload.description_short || payload.description_raw || '',
       keywords: (payload.topics || []).slice(0, 8),
-      competitors: (payload.competitors || []).map(c => ({
-        name: c.name || '',
-        domain: c.domain || '',
-        selected: true,
-      })),
     }
     step.value = 2
   } catch (e) {
@@ -319,31 +258,15 @@ function removeKeyword(k) {
   form.value.keywords = form.value.keywords.filter(x => x !== k)
 }
 
-function addCompetitor() {
-  const raw = newCompetitor.value.trim()
-  if (!raw) return
-  const isDomain = /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(raw)
-  form.value.competitors.push({
-    name: isDomain ? raw.split('.')[0] : raw,
-    domain: isDomain ? raw : '',
-    selected: true,
-  })
-  newCompetitor.value = ''
-}
-
 async function finish() {
   saving.value = true
   try {
-    const selected = form.value.competitors.filter(c => c.selected).map(c => ({
-      name: c.name, domain: c.domain,
-    }))
     await onboardingApi.save({
       url: form.value.url,
       business_name: form.value.business_name,
       industry: form.value.industry,
       description: form.value.description,
       keywords: form.value.keywords,
-      competitors: selected,
     })
     // Refresh the auth session so the gate sees the next step
     // (paywall) instead of routing back to onboarding.

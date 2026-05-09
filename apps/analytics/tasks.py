@@ -97,48 +97,6 @@ def _send_keyword_alert_email(alert, event):
         logger.warning(f"Failed to send keyword alert email: {e}")
 
 
-@shared_task(name="apps.analytics.tasks.check_competitor_rankings")
-def check_competitor_rankings(competitor_id: str):
-    """
-    Fetch DataForSEO rankings for a single competitor domain across
-    all tracked keywords for its parent website.
-    """
-    from django.utils import timezone
-
-    from apps.analytics.models import CompetitorDomain, CompetitorKeywordRank, TrackedKeyword
-    from apps.analytics.services.dataforseo_service import DataForSEOService
-
-    try:
-        comp = CompetitorDomain.objects.select_related("website").get(id=competitor_id)
-    except CompetitorDomain.DoesNotExist:
-        logger.warning(f"Competitor {competitor_id} not found")
-        return
-
-    if not DataForSEOService.is_configured():
-        logger.warning("DataForSEO not configured — skipping competitor rank check")
-        return
-
-    keywords = list(
-        TrackedKeyword.objects.filter(website=comp.website).values_list("keyword", flat=True)
-    )
-    if not keywords:
-        return
-
-    try:
-        enriched = DataForSEOService.enrich_keywords(keywords, comp.domain)
-        for entry in enriched:
-            CompetitorKeywordRank.objects.create(
-                competitor=comp,
-                keyword=entry["keyword"],
-                rank=entry.get("position"),
-            )
-        comp.last_checked_at = timezone.now()
-        comp.save(update_fields=["last_checked_at"])
-        logger.info(f"Competitor ranks updated for {comp.domain}: {len(enriched)} keywords")
-    except Exception as e:
-        logger.error(f"Competitor rank check failed for {comp.domain}: {e}")
-
-
 # ── Auto Keyword Scan ────────────────────────────────────────────────────────
 
 
