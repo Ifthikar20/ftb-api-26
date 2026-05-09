@@ -289,32 +289,57 @@
                         <p class="pl-detail-fulltext" v-html="renderHighlighted(p.prompt_text || p.template_text, p.keywords)"></p>
                       </div>
 
-                      <!-- Where this question is being asked from on Google -->
+                      <!-- Who's asking similar questions, grouped by source -->
                       <div class="pl-detail-sources">
-                        <div class="pl-detail-label mb-2">Where this question is asked (Google)</div>
+                        <div class="pl-detail-label mb-2">Who's asking similar questions</div>
                         <div v-if="searchSourcesByUid[p._uid]?.loading" class="pl-sources-state">
                           Looking it up on Google…
                         </div>
                         <div v-else-if="searchSourcesByUid[p._uid]?.unconfigured" class="pl-sources-state">
-                          Add a SerpAPI key in your environment to see live Google sources for this prompt.
+                          Add a SerpAPI key in your environment to see who's asking similar questions on Google.
                         </div>
                         <div v-else-if="searchSourcesByUid[p._uid]?.error" class="pl-sources-state">
                           Couldn't fetch live sources. Try again later.
                         </div>
-                        <ul v-else-if="searchSourcesByUid[p._uid]?.results?.length" class="pl-sources-list">
-                          <li v-for="r in searchSourcesByUid[p._uid].results" :key="r.url" class="pl-source-row">
-                            <a :href="r.url" target="_blank" rel="noopener" class="pl-source-link">
-                              <div class="pl-source-head">
-                                <span class="pl-source-title">{{ r.title }}</span>
-                                <AirChip size="xs" variant="neutral">{{ r.source_class }}</AirChip>
-                              </div>
-                              <div class="pl-source-host">{{ r.domain }}</div>
-                              <div v-if="r.snippet" class="pl-source-snippet">{{ r.snippet }}</div>
-                            </a>
-                          </li>
-                        </ul>
+                        <div v-else-if="searchSourcesByUid[p._uid]?.groups?.length" class="pl-asker-groups">
+                          <div
+                            v-for="g in searchSourcesByUid[p._uid].groups"
+                            :key="g.source_class"
+                            class="pl-asker-group"
+                          >
+                            <div class="pl-asker-group-head">
+                              <span class="pl-asker-group-title">
+                                <span class="pl-asker-source-dot" :class="'is-' + g.source_class"></span>
+                                {{ titleCaseStyle(g.source_class) }}
+                              </span>
+                              <span class="pl-asker-group-count">
+                                {{ g.count }} {{ g.count === 1 ? 'asker' : 'askers' }}
+                                <template v-if="g.communities && g.communities.length">
+                                  · {{ g.communities.slice(0, 2).join(' · ') }}
+                                </template>
+                              </span>
+                            </div>
+                            <ul class="pl-asker-list">
+                              <li v-for="(a, ai) in g.askers" :key="a.url + '-' + ai" class="pl-asker-row">
+                                <a :href="a.url" target="_blank" rel="noopener" class="pl-asker-link">
+                                  <span class="pl-asker-avatar">{{ avatarInitial(a) }}</span>
+                                  <span class="pl-asker-body">
+                                    <span class="pl-asker-line">
+                                      <span class="pl-asker-handle">{{ a.asker || displayDomain(a.domain) }}</span>
+                                      <span v-if="a.community" class="pl-asker-community">{{ a.community }}</span>
+                                      <span v-if="a.posted_at" class="pl-asker-when">{{ a.posted_at }}</span>
+                                    </span>
+                                    <span class="pl-asker-question">{{ a.title }}</span>
+                                    <span v-if="a.snippet" class="pl-asker-snippet">{{ a.snippet }}</span>
+                                  </span>
+                                  <span class="pl-asker-go" aria-hidden="true">↗</span>
+                                </a>
+                              </li>
+                            </ul>
+                          </div>
+                        </div>
                         <div v-else class="pl-sources-state">
-                          No public results for this prompt yet.
+                          No similar public questions found for this prompt yet.
                         </div>
                       </div>
 
@@ -605,6 +630,18 @@ function questionTypeOf(p) {
   if (/(best|top|recommend)/i.test(t)) return 'Recommendation'
   if (t.endsWith('?')) return 'Direct'
   return 'Statement'
+}
+
+function avatarInitial(asker) {
+  const handle = (asker?.asker || '').replace(/^u\/|^@/, '')
+  if (handle) return handle.charAt(0).toUpperCase()
+  const dom = (asker?.domain || '').replace(/^www\./, '')
+  if (dom) return dom.charAt(0).toUpperCase()
+  return '?'
+}
+
+function displayDomain(host) {
+  return (host || '').replace(/^www\./, '').split('.').slice(0, -1).join('.') || host
 }
 
 const ALL_PROVIDERS = ['Claude', 'GPT-4', 'Gemini', 'Perplexity']
@@ -1233,6 +1270,135 @@ watch(websiteId, loadVariables)
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+
+/* ── Who's asking — grouped view ──────────────────────────── */
+.pl-asker-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.pl-asker-group {
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--bg-card);
+}
+.pl-asker-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: var(--bg-surface, rgba(0, 0, 0, 0.025));
+  border-bottom: 1px solid var(--border-color);
+}
+.pl-asker-group-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.pl-asker-source-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background: var(--text-muted);
+  flex-shrink: 0;
+}
+.pl-asker-source-dot.is-reddit { background: #ff4500; }
+.pl-asker-source-dot.is-quora { background: #b92b27; }
+.pl-asker-source-dot.is-stackoverflow { background: #f48024; }
+.pl-asker-source-dot.is-wikipedia { background: #555; }
+.pl-asker-source-dot.is-youtube { background: #ff0000; }
+.pl-asker-source-dot.is-social { background: #0ea5e9; }
+.pl-asker-source-dot.is-review { background: #d97706; }
+.pl-asker-source-dot.is-news { background: #2563eb; }
+.pl-asker-source-dot.is-blog { background: #7e22ce; }
+.pl-asker-source-dot.is-gov { background: #059669; }
+.pl-asker-source-dot.is-edu { background: #4338ca; }
+.pl-asker-source-dot.is-other { background: #94a3b8; }
+.pl-asker-group-count {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.pl-asker-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.pl-asker-row + .pl-asker-row { border-top: 1px solid var(--border-color); }
+.pl-asker-link {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  text-decoration: none;
+  color: inherit;
+  transition: background 0.12s;
+}
+.pl-asker-link:hover { background: var(--bg-surface, rgba(0, 0, 0, 0.025)); }
+.pl-asker-avatar {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 9999px;
+  background: var(--bg-surface, rgba(0, 0, 0, 0.06));
+  color: var(--text-primary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 600;
+}
+.pl-asker-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.pl-asker-line {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.pl-asker-handle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.pl-asker-community {
+  font-size: 12px;
+  color: var(--text-muted);
+  background: var(--bg-surface, rgba(0, 0, 0, 0.04));
+  padding: 1px 8px;
+  border-radius: 9999px;
+}
+.pl-asker-when {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.pl-asker-question {
+  font-size: 13.5px;
+  color: var(--text-primary);
+  line-height: 1.4;
+  margin-top: 2px;
+}
+.pl-asker-snippet {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  line-height: 1.45;
+  margin-top: 4px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.pl-asker-go {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  font-size: 14px;
+  align-self: center;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.pl-asker-link:hover .pl-asker-go { opacity: 1; }
 
 .pl-control {
   border-radius: 9999px;
