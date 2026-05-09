@@ -2,7 +2,7 @@ import factory
 from factory.django import DjangoModelFactory
 
 from apps.accounts.tests.factories import UserFactory
-from apps.leads.tests.factories import WebsiteFactory
+from apps.websites.tests.factories import WebsiteFactory
 from apps.llm_ranking.models import LLMRankingAudit, LLMRankingResult
 
 

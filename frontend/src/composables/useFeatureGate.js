@@ -9,13 +9,13 @@ const PLAN_FEATURES = {
     integrations: 2, projects: 3, pageviews: 50000, team_members: 1, ai_credits: 100, competitors: 5,
     pipeline: true, trends: true, sso: false, api: false, whitelabel: false,
     llm_ranking: false,
-    tabs: ['dashboard', 'projects', 'analytics', 'leads', 'heatmaps', 'keywords', 'campaigns', 'integrations', 'billing', 'settings'],
+    tabs: ['dashboard', 'projects', 'analytics', 'integrations', 'billing', 'settings'],
   },
   enterprise: {
     integrations: -1, projects: -1, pageviews: -1, team_members: -1, ai_credits: -1, competitors: -1,
     pipeline: true, trends: true, sso: true, api: true, whitelabel: true,
     llm_ranking: true,
-    tabs: ['dashboard', 'projects', 'analytics', 'leads', 'heatmaps', 'keywords', 'campaigns', 'llm_ranking', 'integrations', 'billing', 'settings'],
+    tabs: ['dashboard', 'projects', 'analytics', 'llm_ranking', 'integrations', 'billing', 'settings'],
   },
 }
 

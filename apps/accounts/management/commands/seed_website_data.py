@@ -8,14 +8,13 @@ from django.utils import timezone
 
 
 class Command(BaseCommand):
-    help = "Seed analytics, heatmap, and lead data for a specific website."
+    help = "Seed analytics data for a specific website."
 
     def add_arguments(self, parser):
         parser.add_argument("--website-id", required=True)
 
     def handle(self, *args, **options):
         from apps.analytics.models import PageEvent, Session, Visitor
-        from apps.leads.models import Lead
         from apps.websites.models import Website
 
         wid = options["website_id"]
@@ -96,31 +95,6 @@ class Command(BaseCommand):
                     ))
         PageEvent.objects.bulk_create(clicks)
         self.stdout.write(f"  Heatmap clicks: {len(clicks)}")
-
-        # 4. Leads (bulk)
-        lead_info = [
-            ("Sarah Mitchell", "sarah@techcorp.com", "TechCorp", 92, "qualified"),
-            ("James Lee", "james@greenleaf.com", "GreenLeaf Inc", 87, "contacted"),
-            ("Emily Chen", "emily@byteworks.io", "ByteWorks", 81, "new"),
-            ("Robert Kim", "robert@pinnacle.co", "Pinnacle Solutions", 78, "qualified"),
-            ("Maria Garcia", "maria@horizon.media", "Horizon Media", 74, "new"),
-            ("David Park", "david@quantum.labs", "Quantum Labs", 68, "contacted"),
-            ("Lisa Wang", "lisa@novastar.io", "NovaStar", 55, "new"),
-            ("Tom Harris", "tom@datavault.com", "DataVault", 45, "lost"),
-            ("Anna Brown", "anna@silverline.co", "Silverline", 38, "new"),
-            ("Chris Wright", "chris@blueshift.dev", "BlueShift", 22, "new"),
-            ("Sophie Turner", "sophie@cloudnine.io", "CloudNine", 91, "customer"),
-            ("Daniel Zhao", "daniel@redpeak.com", "RedPeak", 85, "qualified"),
-        ]
-        lds = []
-        for i, (name, email, co, score, status) in enumerate(lead_info):
-            if i < len(visitors):
-                lds.append(Lead(
-                    visitor=visitors[i], website=website,
-                    name=name, email=email, company=co, score=score, status=status, source="organic",
-                ))
-        Lead.objects.bulk_create(lds, ignore_conflicts=True)
-        self.stdout.write(f"  Leads: {len(lds)}")
 
         # Flush Redis
         try:

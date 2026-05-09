@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import analytics_views, dynamic_seo_views, keyword_scan_views, keyword_views, views
+from . import analytics_views, dynamic_seo_views, views
 
 urlpatterns = [
     # Existing
@@ -8,23 +8,7 @@ urlpatterns = [
     path("<uuid:website_id>/pages/", views.TopPagesView.as_view(), name="analytics-pages"),
     path("<uuid:website_id>/sources/", views.TrafficSourcesView.as_view(), name="analytics-sources"),
     path("<uuid:website_id>/realtime/", views.RealtimeView.as_view(), name="analytics-realtime"),
-    path("<uuid:website_id>/heatmap/", views.HeatmapView.as_view(), name="analytics-heatmap"),
     path("<uuid:website_id>/ai-traffic/", views.AITrafficView.as_view(), name="analytics-ai-traffic"),
-    path("<uuid:website_id>/keywords/trending/", keyword_views.TrendingKeywordsView.as_view(), name="keywords-trending"),
-    path("<uuid:website_id>/keywords/scores/", keyword_views.KeywordScoresView.as_view(), name="keywords-scores"),
-    path("<uuid:website_id>/keywords/suggestions/", keyword_views.KeywordSuggestionsView.as_view(), name="keywords-suggestions"),
-    path("<uuid:website_id>/keywords/interest/", keyword_views.KeywordInterestView.as_view(), name="keywords-interest"),
-    path("<uuid:website_id>/keywords/scan/", keyword_scan_views.KeywordScanView.as_view(), name="keywords-scan"),
-    path("<uuid:website_id>/keywords/scan-config/", keyword_views.KeywordScanConfigView.as_view(), name="keywords-scan-config"),
-    path("<uuid:website_id>/keywords/platform-content/", keyword_views.PlatformContentListView.as_view(), name="keywords-platform-content"),
-    path("<uuid:website_id>/keywords/platform-content/<uuid:post_id>/", keyword_views.PlatformContentDetailView.as_view(), name="keywords-platform-content-detail"),
-    path("<uuid:website_id>/keywords/comparison/", keyword_views.KeywordComparisonView.as_view(), name="keywords-comparison"),
-    path("<uuid:website_id>/keywords/comparison/export/", keyword_views.KeywordComparisonExportView.as_view(), name="keywords-comparison-export"),
-    path("<uuid:website_id>/keywords/alerts/", keyword_views.KeywordAlertListView.as_view(), name="keywords-alerts"),
-    path("<uuid:website_id>/keywords/alerts/events/", keyword_views.KeywordAlertEventListView.as_view(), name="keywords-alert-events"),
-    path("<uuid:website_id>/keywords/alerts/<uuid:alert_id>/", keyword_views.KeywordAlertDetailView.as_view(), name="keywords-alert-detail"),
-    path("<uuid:website_id>/keywords/", keyword_views.KeywordListCreateView.as_view(), name="keywords-list-create"),
-    path("<uuid:website_id>/keywords/<uuid:keyword_id>/history/", keyword_views.KeywordHistoryView.as_view(), name="keyword-history"),
 
     # New — Advanced Analytics
     path("<uuid:website_id>/chart/", analytics_views.ChartDataView.as_view(), name="analytics-chart"),

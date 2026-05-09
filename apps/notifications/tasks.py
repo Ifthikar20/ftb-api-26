@@ -61,8 +61,7 @@ def send_daily_growth_reports():
 
 
 def _build_report_data(user) -> dict:
-    """Gather analytics, lead, and keyword data for a user's websites."""
-    from apps.leads.models import Lead
+    """Gather analytics data for a user's websites."""
     from apps.websites.models import Website
 
     websites = Website.objects.filter(organization__users=user)
@@ -70,12 +69,6 @@ def _build_report_data(user) -> dict:
         "visitors_24h": 0,
         "pageviews_24h": 0,
         "visitors_change": 0,
-        "hot_leads": 0,
-        "total_leads_today": 0,
-        "top_keyword": None,
-        "keyword_trend": None,
-        "seo_score": None,
-        "new_rankings": 0,
         "top_page": None,
     }
 
@@ -97,32 +90,6 @@ def _build_report_data(user) -> dict:
         except Exception:
             pass
 
-        try:
-            # Hot leads
-            data["hot_leads"] += Lead.objects.filter(
-                website=website, score__gte=70
-            ).count()
-            data["total_leads_today"] += Lead.objects.filter(
-                website=website
-            ).count()
-        except Exception:
-            pass
-
-        try:
-            # Keyword data from cache
-            import hashlib
-            from django.core.cache import cache
-            cache_key = f"seo_scan_{hashlib.md5(website.url.encode()).hexdigest()}"
-            scan = cache.get(cache_key)
-            if scan and not data["top_keyword"]:
-                keywords = scan.get("keywords", [])
-                if keywords:
-                    data["top_keyword"] = keywords[0].get("keyword", "")
-                    data["keyword_trend"] = keywords[0].get("trend_direction", "")
-                data["seo_score"] = scan.get("score", 0)
-        except Exception:
-            pass
-
     return data
 
 
@@ -132,34 +99,21 @@ def _send_slack_report(webhook_url: str, data: dict, today: str):
 
     change = data["visitors_change"]
     change_str = f"+{change}%" if change >= 0 else f"{change}%"
-    change_emoji = "📈" if change >= 0 else "📉"
 
     blocks = [
         {
             "type": "header",
-            "text": {"type": "plain_text", "text": f"📊 Daily Growth Report — {today}", "emoji": True},
+            "text": {"type": "plain_text", "text": f"Daily Growth Report — {today}", "emoji": True},
         },
         {"type": "divider"},
         {
             "type": "section",
             "fields": [
-                {"type": "mrkdwn", "text": f"👥 *{data['visitors_24h']:,}* visitors\n_{change_str} from yesterday_"},
-                {"type": "mrkdwn", "text": f"📄 *{data['pageviews_24h']:,}* pageviews"},
-                {"type": "mrkdwn", "text": f"🔥 *{data['hot_leads']}* hot leads\n_{data['total_leads_today']} total_"},
-                {"type": "mrkdwn", "text": f"🎯 SEO: *{data['seo_score'] or '--'}/100*"},
+                {"type": "mrkdwn", "text": f"*{data['visitors_24h']:,}* visitors\n_{change_str} from yesterday_"},
+                {"type": "mrkdwn", "text": f"*{data['pageviews_24h']:,}* pageviews"},
             ],
         },
     ]
-
-    if data["top_keyword"]:
-        trend_emoji = "↑" if data["keyword_trend"] == "rising" else "→"
-        blocks.append({
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": f"{change_emoji} Top keyword: *{data['top_keyword']}* {trend_emoji}",
-            },
-        })
 
     blocks.append({"type": "divider"})
     blocks.append({
@@ -182,19 +136,9 @@ def _send_discord_report(webhook_url: str, data: dict, today: str):
     change_str = f"+{change}%" if change >= 0 else f"{change}%"
 
     fields = [
-        {"name": "👥 Visitors", "value": f"**{data['visitors_24h']:,}**\n{change_str} from yesterday", "inline": True},
-        {"name": "📄 Pageviews", "value": f"**{data['pageviews_24h']:,}**", "inline": True},
-        {"name": "🔥 Hot Leads", "value": f"**{data['hot_leads']}**\n{data['total_leads_today']} total", "inline": True},
-        {"name": "🎯 SEO Score", "value": f"**{data['seo_score'] or '--'}/100**", "inline": True},
+        {"name": "Visitors", "value": f"**{data['visitors_24h']:,}**\n{change_str} from yesterday", "inline": True},
+        {"name": "Pageviews", "value": f"**{data['pageviews_24h']:,}**", "inline": True},
     ]
-
-    if data["top_keyword"]:
-        trend_emoji = "↑" if data["keyword_trend"] == "rising" else "→"
-        fields.append({
-            "name": "📈 Top Keyword",
-            "value": f"**{data['top_keyword']}** {trend_emoji}",
-            "inline": True,
-        })
 
     DiscordService.send_message(
         webhook_url=webhook_url,
@@ -210,21 +154,12 @@ def _send_telegram_report(chat_id: str, data: dict, today: str):
 
     change = data["visitors_change"]
     change_str = f"+{change}%" if change >= 0 else f"{change}%"
-    change_emoji = "📈" if change >= 0 else "📉"
-
-    keyword_line = ""
-    if data["top_keyword"]:
-        trend_emoji = "↑" if data["keyword_trend"] == "rising" else "→"
-        keyword_line = f"{change_emoji} Top keyword: *{data['top_keyword']}* {trend_emoji}\n"
 
     text = (
-        f"📊 *Daily Growth Report*\n_{today}_\n\n"
-        f"👥 *{data['visitors_24h']:,}* visitors · {change_str} from yesterday\n"
-        f"📄 *{data['pageviews_24h']:,}* pageviews\n"
-        f"🔥 *{data['hot_leads']}* hot leads · {data['total_leads_today']} total\n"
-        f"🎯 SEO Score: *{data['seo_score'] or '--'}/100*\n"
-        f"{keyword_line}\n"
-        f"📎 _View full dashboard at app.fetchbot.ai_"
+        f"*Daily Growth Report*\n_{today}_\n\n"
+        f"*{data['visitors_24h']:,}* visitors · {change_str} from yesterday\n"
+        f"*{data['pageviews_24h']:,}* pageviews\n\n"
+        f"_View full dashboard at app.fetchbot.ai_"
     )
 
     TelegramService.send_message(chat_id=chat_id, text=text)
