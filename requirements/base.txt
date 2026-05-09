@@ -66,6 +66,7 @@ python-slugify==8.*
 pytz==2024.*
 beautifulsoup4==4.*
 pytrends==4.*
+tldextract==5.*
 
 # Production
 gunicorn==23.*

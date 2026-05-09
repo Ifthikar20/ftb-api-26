@@ -805,7 +805,7 @@ class LLMRankingService:
                     audit_id, prompt_index, provider, exc,
                 )
 
-        LLMRankingResult.objects.update_or_create(
+        result_obj, _ = LLMRankingResult.objects.update_or_create(
             audit=audit, prompt_index=prompt_index, provider=provider, run_id=0,
             defaults={
                 "prompt": prompt_text,
@@ -826,6 +826,7 @@ class LLMRankingService:
                 "extraction_version": analysis.get("extraction_version", ""),
             },
         )
+        LLMRankingService._dispatch_citation_extraction(result_obj.id)
         LLMRankingService._bump_progress(audit_id)
         return {
             "audit_id": audit_id, "prompt_index": prompt_index,
@@ -871,6 +872,24 @@ class LLMRankingService:
                 "extraction_version": "",
             },
         )
+
+    @staticmethod
+    def _dispatch_citation_extraction(result_id) -> None:
+        """Fan out citation extraction for a freshly-saved LLMRankingResult.
+
+        Gated on the ``CITATION_EXTRACTION_ENABLED`` setting (default True)
+        so the existing ranking-service test suite can opt out without
+        importing the citations app. Failures are swallowed: citations are
+        a downstream analytic, never on the critical path of the audit.
+        """
+        from django.conf import settings as _settings
+        if not getattr(_settings, "CITATION_EXTRACTION_ENABLED", True):
+            return
+        try:
+            from apps.citations.tasks import extract_citations_for_result
+            extract_citations_for_result.delay(str(result_id))
+        except Exception as exc:  # pragma: no cover
+            logger.debug("citation extraction dispatch failed for %s: %s", result_id, exc)
 
     @staticmethod
     def _bump_progress(audit_id: str) -> None:
@@ -1260,6 +1279,7 @@ class LLMRankingService:
                         "extraction_version": analysis.get("extraction_version", ""),
                     },
                 )
+                LLMRankingService._dispatch_citation_extraction(result.id)
                 all_results.append(result)
 
                 # Update progress after each query
