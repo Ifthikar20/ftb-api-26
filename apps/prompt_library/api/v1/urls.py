@@ -22,6 +22,11 @@ urlpatterns = [
         name="prompt-library-auto-template",
     ),
     path(
+        "prompts/search-sources/",
+        views.PromptSearchSourcesView.as_view(),
+        name="prompt-library-search-sources",
+    ),
+    path(
         "prompts/synthesize/",
         views.PromptSynthesizeView.as_view(),
         name="prompt-library-synthesize",

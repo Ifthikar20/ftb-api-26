@@ -319,6 +319,30 @@ class PromptAutoTemplateView(APIView):
         return Response(envelope)
 
 
+class PromptSearchSourcesView(APIView):
+    """Live Google search lookup so the UI can show 'where this question is
+    being asked from' (top organic results, classified by source domain).
+
+    Body: ``{"query": "the prompt text"}``
+    Returns: ``{"provider": "serpapi" | "unconfigured", "query": str,
+                "results": [{title, url, domain, snippet, source_class, position}]}``
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        from apps.prompt_library.services.search_sources import search_sources
+
+        query = (request.data or {}).get("query") or ""
+        query = str(query).strip()
+        if len(query) < 5:
+            return Response(
+                {"detail": "Query too short."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(search_sources(query, limit=8))
+
+
 class PromptSmokeTestView(APIView):
     """Run a single prompt against one provider and return quality signals.
 

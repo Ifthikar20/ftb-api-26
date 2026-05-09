@@ -45,6 +45,9 @@ export default {
     autoTemplate: (rawText) =>
         api.post('/prompt-library/prompts/auto-template/', { raw_text: rawText }),
 
+    searchSources: (query) =>
+        api.post('/prompt-library/prompts/search-sources/', { query }),
+
     smokeTest: (promptId, payload) =>
         api.post(`/prompt-library/prompts/${promptId}/smoke-test/`, payload),
 

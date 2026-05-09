@@ -9,6 +9,8 @@
       </p>
     </header>
 
+    <!-- (filters appear inline next to the section title below) -->
+
     <!-- Context input -->
     <section class="pl-section pl-section-search">
       <ContextInputCard
@@ -77,45 +79,36 @@
           </template>
           <template v-else>Results</template>
         </h2>
-        <AirButton
-          v-if="generatedPrompts.length"
-          variant="ghost"
-          size="sm"
-          :loading="generating"
-          @click="regenerate"
-        >
-          Search again
-        </AirButton>
+
+        <div class="pl-head-actions">
+          <label v-if="generatedPrompts.length" class="pl-select-wrap">
+            <span class="pl-select-label">Style</span>
+            <select v-model="generatedStyleFilter" class="pl-select">
+              <option v-for="s in generatedStyleFilters" :key="'gs-' + s.value" :value="s.value">
+                {{ s.label }}
+              </option>
+            </select>
+          </label>
+          <label v-if="generatedPrompts.length" class="pl-select-wrap">
+            <span class="pl-select-label">Length</span>
+            <select v-model="generatedLengthFilter" class="pl-select">
+              <option v-for="l in generatedLengthFilters" :key="'gl-' + l.value" :value="l.value">
+                {{ l.label }}
+              </option>
+            </select>
+          </label>
+          <AirButton
+            v-if="generatedPrompts.length"
+            variant="ghost"
+            size="sm"
+            :loading="generating"
+            @click="regenerate"
+          >
+            Search again
+          </AirButton>
+        </div>
       </div>
 
-      <div v-if="generatedPrompts.length" class="pl-filters-stack">
-        <div class="pl-filter-row">
-          <span class="pl-filter-label">Style</span>
-          <div class="pl-filter-chips">
-            <AirChip
-              v-for="s in generatedStyleFilters"
-              :key="'gs-' + s.value"
-              as="button"
-              size="sm"
-              :variant="s.value === generatedStyleFilter ? 'primary' : 'neutral'"
-              @click="generatedStyleFilter = s.value"
-            >{{ s.label }}</AirChip>
-          </div>
-        </div>
-        <div class="pl-filter-row">
-          <span class="pl-filter-label">Length</span>
-          <div class="pl-filter-chips">
-            <AirChip
-              v-for="l in generatedLengthFilters"
-              :key="'gl-' + l.value"
-              as="button"
-              size="sm"
-              :variant="l.value === generatedLengthFilter ? 'primary' : 'neutral'"
-              @click="generatedLengthFilter = l.value"
-            >{{ l.label }}</AirChip>
-          </div>
-        </div>
-      </div>
 
       <AirCard size="md" :padded="false">
         <div class="overflow-x-auto">
@@ -295,6 +288,36 @@
                         <div class="pl-detail-label mb-1">Full prompt</div>
                         <p class="pl-detail-fulltext" v-html="renderHighlighted(p.prompt_text || p.template_text, p.keywords)"></p>
                       </div>
+
+                      <!-- Where this question is being asked from on Google -->
+                      <div class="pl-detail-sources">
+                        <div class="pl-detail-label mb-2">Where this question is asked (Google)</div>
+                        <div v-if="searchSourcesByUid[p._uid]?.loading" class="pl-sources-state">
+                          Looking it up on Google…
+                        </div>
+                        <div v-else-if="searchSourcesByUid[p._uid]?.unconfigured" class="pl-sources-state">
+                          Add a SerpAPI key in your environment to see live Google sources for this prompt.
+                        </div>
+                        <div v-else-if="searchSourcesByUid[p._uid]?.error" class="pl-sources-state">
+                          Couldn't fetch live sources. Try again later.
+                        </div>
+                        <ul v-else-if="searchSourcesByUid[p._uid]?.results?.length" class="pl-sources-list">
+                          <li v-for="r in searchSourcesByUid[p._uid].results" :key="r.url" class="pl-source-row">
+                            <a :href="r.url" target="_blank" rel="noopener" class="pl-source-link">
+                              <div class="pl-source-head">
+                                <span class="pl-source-title">{{ r.title }}</span>
+                                <AirChip size="xs" variant="neutral">{{ r.source_class }}</AirChip>
+                              </div>
+                              <div class="pl-source-host">{{ r.domain }}</div>
+                              <div v-if="r.snippet" class="pl-source-snippet">{{ r.snippet }}</div>
+                            </a>
+                          </li>
+                        </ul>
+                        <div v-else class="pl-sources-state">
+                          No public results for this prompt yet.
+                        </div>
+                      </div>
+
                       <div class="pl-detail-actions">
                         <AirButton variant="ghost" size="sm" @click.stop="onRemoveGenerated(p)">Skip</AirButton>
                         <AirButton
@@ -453,7 +476,39 @@ function lengthBandOf(p) {
 }
 
 const expandedResult = ref(null)
-function toggleExpand(uid) { expandedResult.value = expandedResult.value === uid ? null : uid }
+const searchSourcesByUid = ref({})
+
+function toggleExpand(uid) {
+  expandedResult.value = expandedResult.value === uid ? null : uid
+  if (expandedResult.value === uid) loadSearchSources(uid)
+}
+
+async function loadSearchSources(uid) {
+  if (searchSourcesByUid.value[uid]?.results) return // already loaded
+  if (searchSourcesByUid.value[uid]?.loading) return
+  const prompt = generatedPrompts.value.find(p => p._uid === uid)
+  if (!prompt) return
+  const text = (prompt.prompt_text || prompt.template_text || '').trim()
+  if (!text) return
+  searchSourcesByUid.value = { ...searchSourcesByUid.value, [uid]: { loading: true } }
+  try {
+    const { data } = await promptLibrary.searchSources(text)
+    const payload = data?.data || data || {}
+    if (payload.provider === 'unconfigured') {
+      searchSourcesByUid.value = { ...searchSourcesByUid.value, [uid]: { unconfigured: true, results: [] } }
+    } else {
+      searchSourcesByUid.value = {
+        ...searchSourcesByUid.value,
+        [uid]: { results: payload.results || [], provider: payload.provider },
+      }
+    }
+  } catch (e) {
+    searchSourcesByUid.value = {
+      ...searchSourcesByUid.value,
+      [uid]: { error: true, results: [] },
+    }
+  }
+}
 
 const resultsSort = ref({ key: 'trend', dir: 'desc' })
 function toggleResultsSort(key) {
@@ -993,7 +1048,11 @@ watch(websiteId, loadVariables)
   background: var(--bg-root, var(--bg-page, #fafafa));
   min-height: 100%;
 }
-.pl-page-header { margin-bottom: 32px; text-align: center; }
+.pl-page-header {
+  margin-bottom: 32px;
+  text-align: left;
+  max-width: 720px;
+}
 .pl-section { margin-bottom: 32px; }
 .pl-section-search { display: flex; justify-content: center; }
 .pl-section-head {
@@ -1066,11 +1125,113 @@ watch(websiteId, loadVariables)
   margin: 0;
 }
 .pl-hero-sub {
-  margin: 10px auto 0;
+  margin: 8px 0 0;
   max-width: 36rem;
   font-size: 15px;
   line-height: 1.55;
   color: var(--text-secondary);
+}
+
+/* Section head — title left, dropdowns + Search-again right */
+.pl-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.pl-select-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+.pl-select-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+.pl-select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-color: var(--bg-card);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6' fill='none'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%2364748b' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  border: 1px solid var(--border-color);
+  border-radius: 9999px;
+  color: var(--text-primary);
+  padding: 6px 30px 6px 12px;
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.pl-select:focus-visible {
+  outline: none;
+  border-color: var(--brand-accent);
+  box-shadow: 0 0 0 3px var(--brand-accent-glow);
+}
+
+/* Sources panel inside the expanded detail */
+.pl-detail-sources {
+  border-top: 1px solid var(--border-color);
+  padding-top: 16px;
+  margin-top: 4px;
+  margin-bottom: 16px;
+}
+.pl-sources-state {
+  font-size: 13px;
+  color: var(--text-muted);
+  padding: 8px 0;
+}
+.pl-sources-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.pl-source-row {
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  overflow: hidden;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.pl-source-row:hover { border-color: var(--text-muted); box-shadow: 0 2px 6px rgba(15, 23, 42, 0.06); }
+.pl-source-link {
+  display: block;
+  padding: 12px 14px;
+  text-decoration: none;
+  color: inherit;
+}
+.pl-source-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.pl-source-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+  line-height: 1.35;
+}
+.pl-source-host {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.pl-source-snippet {
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .pl-control {
