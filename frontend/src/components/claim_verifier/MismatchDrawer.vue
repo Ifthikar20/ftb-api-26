@@ -124,6 +124,42 @@
         </div>
       </div>
 
+      <div
+        v-if="mismatch && showDismissForm && !mismatch.dismissed"
+        class="space-y-2 border-t bg-gray-50 px-4 py-3"
+      >
+        <label class="block text-xs font-medium text-gray-700">Reason</label>
+        <select
+          v-model="dismissReason"
+          class="w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs"
+        >
+          <option v-for="r in dismissReasons" :key="r.value" :value="r.value">
+            {{ r.label }}
+          </option>
+        </select>
+        <label class="block text-xs font-medium text-gray-700">Note (optional)</label>
+        <textarea
+          v-model="dismissNote"
+          rows="2"
+          class="w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs"
+        ></textarea>
+        <div class="flex justify-end gap-2">
+          <button
+            class="rounded-md border px-3 py-1.5 text-xs hover:bg-gray-50"
+            @click="showDismissForm = false"
+          >
+            Cancel
+          </button>
+          <button
+            class="rounded-md bg-rose-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-rose-700 disabled:opacity-50"
+            :disabled="dismissing"
+            @click="confirmDismiss"
+          >
+            {{ dismissing ? 'Dismissing...' : 'Confirm dismiss' }}
+          </button>
+        </div>
+      </div>
+
       <footer v-if="mismatch" class="flex flex-wrap items-center justify-end gap-2 border-t px-4 py-3">
         <button
           class="rounded-md border px-3 py-1.5 text-xs hover:bg-gray-50"
@@ -140,9 +176,9 @@
         <button
           class="rounded-md bg-rose-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-rose-700 disabled:opacity-50"
           :disabled="dismissing || mismatch.dismissed"
-          @click="onDismiss"
+          @click="openDismissForm"
         >
-          {{ mismatch.dismissed ? 'Dismissed' : (dismissing ? 'Dismissing...' : 'Dismiss as false positive') }}
+          {{ mismatch.dismissed ? 'Dismissed' : 'Dismiss as false positive' }}
         </button>
       </footer>
     </div>
@@ -167,11 +203,25 @@ const dismissing = ref(false)
 const showPrompt = ref(false)
 const showRaw = ref(false)
 const rawResponse = ref('')
+const showDismissForm = ref(false)
+const dismissReason = ref('false_positive')
+const dismissNote = ref('')
+
+const dismissReasons = [
+  { value: 'false_positive', label: 'False positive' },
+  { value: 'not_about_us', label: 'Not about our brand' },
+  { value: 'vault_outdated', label: 'Our vault is outdated' },
+  { value: 'low_severity', label: 'Acceptable inaccuracy' },
+  { value: 'other', label: 'Other' },
+]
 
 watch(() => props.mismatch, () => {
   showPrompt.value = false
   showRaw.value = false
   rawResponse.value = ''
+  showDismissForm.value = false
+  dismissReason.value = 'false_positive'
+  dismissNote.value = ''
 })
 
 const provider = computed(() => props.mismatch?.claim?.provider || '')
@@ -195,11 +245,18 @@ function close() {
   emit('update:open', false)
 }
 
-async function onDismiss() {
+function openDismissForm() {
+  showDismissForm.value = true
+}
+
+async function confirmDismiss() {
   if (!props.mismatch?.id) return
   dismissing.value = true
   try {
-    const { data } = await claimVerifierApi.dismiss(props.mismatch.id)
+    const { data } = await claimVerifierApi.dismiss(props.mismatch.id, {
+      reason: dismissReason.value,
+      note: dismissNote.value,
+    })
     const updated = data?.data || data
     toast.success('Mismatch dismissed.')
     emit('dismissed', updated)
@@ -208,6 +265,7 @@ async function onDismiss() {
     toast.error(e.displayMessage || 'Could not dismiss mismatch.')
   } finally {
     dismissing.value = false
+    showDismissForm.value = false
   }
 }
 </script>

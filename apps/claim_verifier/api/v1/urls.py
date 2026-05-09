@@ -29,4 +29,9 @@ urlpatterns = [
         views.MismatchDismissView.as_view(),
         name="claim-verifier-mismatch-dismiss",
     ),
+    path(
+        "websites/<uuid:website_id>/dismissal-stats/",
+        views.WebsiteDismissalStatsView.as_view(),
+        name="claim-verifier-website-dismissal-stats",
+    ),
 ]

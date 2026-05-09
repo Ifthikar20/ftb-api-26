@@ -39,4 +39,19 @@ urlpatterns = [
         views.FactEditView.as_view(),
         name="brand-vault-fact-edit",
     ),
+    path(
+        "websites/<uuid:website_id>/facts/import/",
+        views.WebsiteFactsImportView.as_view(),
+        name="brand-vault-website-facts-import",
+    ),
+    path(
+        "websites/<uuid:website_id>/facts/import-csv/",
+        views.WebsiteFactsImportCSVView.as_view(),
+        name="brand-vault-website-facts-import-csv",
+    ),
+    path(
+        "websites/<uuid:website_id>/tone-samples/",
+        views.WebsiteToneSamplesView.as_view(),
+        name="brand-vault-website-tone-samples",
+    ),
 ]

@@ -129,3 +129,65 @@ class TestFactActions:
         assert resp.status_code == 200
         assert resp.data["total"] >= 1
         assert "by_status" in resp.data
+
+
+class TestFactImport:
+    def test_import_json_creates_facts(self, auth_client):
+        client, user = auth_client
+        website = WebsiteFactory(user=user)
+        url = reverse("brand-vault-website-facts-import", args=[website.id])
+        payload = {"facts": [
+            {"subject": "Acme", "predicate": "supports", "object": "Webhooks",
+             "confidence": 0.95},
+            {"subject": "Acme", "predicate": "offers", "object": "API access"},
+        ]}
+        resp = client.post(url, payload, format="json")
+        assert resp.status_code == 200
+        assert resp.data["created"] == 2
+        assert resp.data["skipped"] == 0
+        assert BrandFact.objects.filter(
+            website=website, extracted_by="manual",
+            status=FactStatus.APPROVED,
+        ).count() == 2
+
+    def test_import_json_is_idempotent(self, auth_client):
+        client, user = auth_client
+        website = WebsiteFactory(user=user)
+        BrandFact.objects.create(
+            website=website, subject="Acme", predicate="supports",
+            object="Webhooks", status=FactStatus.APPROVED, confidence=0.9,
+        )
+        url = reverse("brand-vault-website-facts-import", args=[website.id])
+        payload = {"facts": [
+            {"subject": "Acme", "predicate": "supports", "object": "Webhooks"},
+        ]}
+        resp = client.post(url, payload, format="json")
+        assert resp.status_code == 200
+        assert resp.data["created"] == 0
+        assert resp.data["skipped"] == 1
+
+    def test_import_json_validates(self, auth_client):
+        client, user = auth_client
+        website = WebsiteFactory(user=user)
+        url = reverse("brand-vault-website-facts-import", args=[website.id])
+        payload = {"facts": [{"subject": "Acme"}]}
+        resp = client.post(url, payload, format="json")
+        assert resp.status_code == 200
+        assert resp.data["created"] == 0
+        assert resp.data["errors"]
+
+    def test_import_csv_creates_facts(self, auth_client):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        client, user = auth_client
+        website = WebsiteFactory(user=user)
+        csv_body = (
+            "subject,predicate,object,product_line,topic,confidence,source_url\n"
+            "Acme,supports,Webhooks,api,integrations,0.9,\n"
+            "Acme,offers,API,api,integrations,0.95,\n"
+        )
+        upload = SimpleUploadedFile("facts.csv", csv_body.encode("utf-8"),
+                                    content_type="text/csv")
+        url = reverse("brand-vault-website-facts-import-csv", args=[website.id])
+        resp = client.post(url, {"file": upload}, format="multipart")
+        assert resp.status_code == 200
+        assert resp.data["created"] == 2

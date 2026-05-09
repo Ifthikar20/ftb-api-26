@@ -126,13 +126,25 @@ class WebsiteAccuracyView(TenantScopedAPIView):
             if prov:
                 provider_counter[prov] += 1
 
-        # Trend — claims per day.
-        trend: dict[str, int] = {}
-        for created in claim_qs.values_list("created_at", flat=True):
+        # Trend — per-severity counts of mismatches per day.
+        sev_keys = ("critical", "high", "medium", "low", "info")
+        trend_buckets: dict[str, dict[str, int]] = {}
+        # Seed every day in the period so the chart has continuous x-axis.
+        cur = start
+        while cur <= end:
+            trend_buckets[cur.isoformat()] = {k: 0 for k in sev_keys}
+            cur = cur + timedelta(days=1)
+        for created, sev in mm_qs.values_list("created_at", "severity"):
             d = created.date().isoformat()
-            trend[d] = trend.get(d, 0) + 1
+            row = trend_buckets.get(d)
+            if row is None:
+                row = {k: 0 for k in sev_keys}
+                trend_buckets[d] = row
+            if sev in row:
+                row[sev] += 1
         trend_data = [
-            {"date": d, "claims": trend[d]} for d in sorted(trend.keys())
+            {"date": d, "severity_breakdown": trend_buckets[d]}
+            for d in sorted(trend_buckets.keys())
         ]
 
         return Response({
@@ -172,12 +184,57 @@ class ClaimDetailView(APIView):
         return Response(ClaimDetailSerializer(claim).data)
 
 
+_DISMISSAL_REASONS = {
+    "false_positive", "not_about_us", "vault_outdated", "low_severity", "other",
+}
+
+
 class MismatchDismissView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, mismatch_id):
         mm = _get_mismatch_for_user(request.user, mismatch_id)
+        reason = (request.data.get("reason") or "").strip()
+        note = (request.data.get("note") or "").strip()
+        if reason and reason not in _DISMISSAL_REASONS:
+            from rest_framework import status as drf_status
+
+            return Response(
+                {"detail": f"Unknown dismissal reason '{reason}'."},
+                status=drf_status.HTTP_400_BAD_REQUEST,
+            )
         mm.dismissed = True
         mm.dismissed_at = timezone.now()
-        mm.save(update_fields=["dismissed", "dismissed_at", "updated_at"])
+        mm.dismissal_reason = reason
+        mm.dismissal_note = note
+        mm.dismissed_by = request.user if getattr(request.user, "is_authenticated", False) else None
+        mm.save(update_fields=[
+            "dismissed", "dismissed_at",
+            "dismissal_reason", "dismissal_note", "dismissed_by",
+            "updated_at",
+        ])
         return Response(ClaimMismatchSerializer(mm).data)
+
+
+class WebsiteDismissalStatsView(TenantScopedAPIView):
+    """Counts of dismissed mismatches by reason in the last N days."""
+
+    def get(self, request, website_id):
+        website = self.get_website(website_id)
+        try:
+            days = int(request.query_params.get("days", 30) or 30)
+        except (TypeError, ValueError):
+            days = 30
+        since = timezone.now() - timedelta(days=days)
+        qs = ClaimMismatch.objects.filter(
+            claim__website=website, dismissed=True, dismissed_at__gte=since,
+        )
+        counter: Counter = Counter()
+        for reason in qs.values_list("dismissal_reason", flat=True):
+            counter[reason or "unspecified"] += 1
+        return Response({
+            "website_id": str(website.id),
+            "days": days,
+            "total_dismissed": sum(counter.values()),
+            "by_reason": dict(counter),
+        })

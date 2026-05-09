@@ -1,7 +1,7 @@
 """DRF serializers for the brand_vault API."""
 from rest_framework import serializers
 
-from apps.brand_vault.models import BrandFact, FactRevision
+from apps.brand_vault.models import BrandFact, FactRevision, ToneSample
 
 
 class FactRevisionSerializer(serializers.ModelSerializer):
@@ -52,3 +52,24 @@ class BrandFactEditSerializer(serializers.Serializer):
     subject = serializers.CharField(max_length=300)
     predicate = serializers.CharField(max_length=200)
     object = serializers.CharField()
+
+
+class ToneSampleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ToneSample
+        fields = (
+            "id", "website", "source_chunk",
+            "text", "text_hash", "word_count",
+            "created_at",
+        )
+        read_only_fields = fields
+
+
+class FactImportItemSerializer(serializers.Serializer):
+    subject = serializers.CharField(max_length=300)
+    predicate = serializers.CharField(max_length=200)
+    object = serializers.CharField()
+    product_line = serializers.CharField(max_length=120, required=False, allow_blank=True)
+    topic = serializers.CharField(max_length=120, required=False, allow_blank=True)
+    confidence = serializers.FloatField(required=False, default=0.9)
+    source_url = serializers.URLField(required=False, allow_blank=True, max_length=1000)

@@ -14,7 +14,10 @@ from apps.claim_verifier.models import (
 )
 from apps.claim_verifier.services.claim_extractor import persist_extracted_items
 from apps.claim_verifier.services.severity import bucket
-from apps.claim_verifier.services.verifier import verify_claim
+from apps.claim_verifier.services.verifier import (
+    compute_audience_reach,
+    verify_claim,
+)
 from apps.llm_ranking.tests.factories import (
     LLMRankingAuditFactory,
     LLMRankingResultFactory,
@@ -113,7 +116,44 @@ class TestVerifier:
         assert mm is not None
         assert mm.mismatch_type == MismatchType.CONTRADICTS.value
 
-    def test_unknown_when_no_match(self):
+
+class TestAudienceReach:
+    def _claim(self, *, provider="claude", subject="Acme", prompt="What is Acme?"):
+        website = WebsiteFactory()
+        audit = LLMRankingAuditFactory(website=website, business_name="Acme")
+        result = LLMRankingResultFactory(
+            audit=audit, provider=provider, prompt=prompt,
+        )
+        return Claim.objects.create(
+            result=result, audit=audit, website=website,
+            text=f"{subject} is", subject=subject,
+            predicate="is", object="something",
+        )
+
+    def test_provider_weight_scales(self):
+        claude_claim = self._claim(provider="claude")
+        perplexity_claim = self._claim(provider="perplexity")
+        assert compute_audience_reach(claude_claim) > compute_audience_reach(perplexity_claim)
+
+    def test_brand_mention_bonus(self):
+        on_brand = self._claim(subject="Acme")
+        off_brand = self._claim(subject="OtherCo")
+        assert compute_audience_reach(on_brand) > compute_audience_reach(off_brand)
+
+    def test_audience_reach_increases_with_prompt_frequency(self):
+        from apps.llm_ranking.tests.factories import LLMRankingResultFactory as RF
+        rare = self._claim(prompt="A very rare prompt that is unique")
+        common = self._claim(prompt="A repeated common prompt for tests")
+        # Seed multiple rows with the same prompt as the common claim
+        for _ in range(15):
+            RF(audit=common.audit, prompt="A repeated common prompt for tests")
+        assert compute_audience_reach(common) > compute_audience_reach(rare)
+
+
+class TestUnknownWhenNoMatchOriginal:
+    """Kept for backward compatibility."""
+
+    def test_unknown_no_match(self):
         website = WebsiteFactory()
         audit = LLMRankingAuditFactory(website=website, business_name="Acme")
         result = LLMRankingResultFactory(audit=audit)

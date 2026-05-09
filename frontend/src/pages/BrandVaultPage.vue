@@ -6,13 +6,21 @@
         <h1 class="text-2xl font-semibold text-gray-900">Brand Vault</h1>
         <p v-if="websiteName" class="text-sm text-gray-500">{{ websiteName }}</p>
       </div>
-      <button
-        class="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
-        :disabled="extracting"
-        @click="onReExtract"
-      >
-        {{ extracting ? 'Queuing...' : 'Re-extract from sources' }}
-      </button>
+      <div class="flex items-center gap-2">
+        <button
+          class="rounded-md border border-indigo-600 bg-white px-3 py-1.5 text-sm font-medium text-indigo-700 hover:bg-indigo-50"
+          @click="importOpen = true"
+        >
+          Import facts
+        </button>
+        <button
+          class="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+          :disabled="extracting"
+          @click="onReExtract"
+        >
+          {{ extracting ? 'Queuing...' : 'Re-extract from sources' }}
+        </button>
+      </div>
     </header>
 
     <!-- Stats row -->
@@ -121,6 +129,12 @@
       @saved="onEditSaved"
     />
 
+    <ImportFactsModal
+      v-model:open="importOpen"
+      :website-id="websiteId"
+      @imported="onImported"
+    />
+
     <OnboardingTooltip storage-key="fb_tour_brand_vault_v1" :steps="tourSteps" />
   </div>
 </template>
@@ -133,6 +147,7 @@ import { useToast } from '@/composables/useToast'
 import brandVaultApi from '@/api/brandVault'
 import FactRow from '@/components/brand_vault/FactRow.vue'
 import EditFactModal from '@/components/brand_vault/EditFactModal.vue'
+import ImportFactsModal from '@/components/brand_vault/ImportFactsModal.vue'
 import OnboardingTooltip from '@/components/OnboardingTooltip.vue'
 
 const route = useRoute()
@@ -164,6 +179,12 @@ watch(searchInput, (v) => {
 
 const editOpen = ref(false)
 const editFact = ref(null)
+const importOpen = ref(false)
+
+function onImported() {
+  loadFacts()
+  loadStats()
+}
 
 const tourSteps = [
   {

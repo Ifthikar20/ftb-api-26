@@ -12,9 +12,26 @@ logger = logging.getLogger("apps")
 def extract_facts_for_website(website_id: str, limit: int = 50) -> int:
     from apps.brand_vault.services.fact_extractor import extract_facts_for_website as _impl
     try:
-        return _impl(website_id, limit=limit)
+        result = _impl(website_id, limit=limit)
     except Exception as exc:  # pragma: no cover
         logger.exception("brand_vault.extract_facts_for_website(%s) failed: %s", website_id, exc)
+        return 0
+    # Chain tone sampling so Phase 4's voice guard has fresh exemplars.
+    try:
+        sample_tone_for_website.delay(website_id)
+    except Exception as exc:  # pragma: no cover
+        logger.warning("Could not queue sample_tone_for_website(%s): %s", website_id, exc)
+    return result
+
+
+@shared_task(name="apps.brand_vault.tasks.sample_tone_for_website")
+def sample_tone_for_website(website_id: str, target_count: int = 30) -> int:
+    """Run the tone sampler for a website. Returns new sample count."""
+    from apps.brand_vault.services.tone_sampler import sample_tone_from_chunks
+    try:
+        return sample_tone_from_chunks(website_id, target_count=target_count)
+    except Exception as exc:  # pragma: no cover
+        logger.exception("brand_vault.sample_tone_for_website(%s) failed: %s", website_id, exc)
         return 0
 
 

@@ -110,31 +110,36 @@
 
         <!-- Trend chart -->
         <section class="mb-6 rounded-lg border border-gray-200 bg-white p-4">
-          <h2 class="mb-3 text-sm font-semibold text-gray-900">Claims tracked over time</h2>
+          <h2 class="mb-3 text-sm font-semibold text-gray-900">Mismatches over time, by severity</h2>
           <div v-if="!trendData.length" class="text-xs text-gray-500">
             Trend data will appear once more audits run.
           </div>
-          <svg
-            v-else
-            :viewBox="`0 0 ${trendWidth} ${trendHeight}`"
-            class="h-32 w-full"
-            preserveAspectRatio="none"
-          >
-            <polyline
-              :points="trendPoints"
-              fill="none"
-              stroke="#ec4899"
-              stroke-width="2"
-            />
-            <circle
-              v-for="(p, i) in trendCircles"
-              :key="i"
-              :cx="p.x"
-              :cy="p.y"
-              r="2"
-              fill="#ec4899"
-            />
-          </svg>
+          <template v-else>
+            <svg
+              :viewBox="`0 0 ${trendWidth} ${trendHeight}`"
+              class="h-32 w-full"
+              preserveAspectRatio="none"
+            >
+              <path
+                v-for="line in trendLines"
+                :key="line.severity"
+                :d="line.d"
+                fill="none"
+                :stroke="line.stroke"
+                stroke-width="2"
+              />
+            </svg>
+            <div class="mt-2 flex flex-wrap gap-3 text-xs">
+              <span
+                v-for="line in trendLines"
+                :key="line.severity + '-leg'"
+                class="inline-flex items-center gap-1"
+              >
+                <span class="inline-block h-2 w-3 rounded-sm" :style="{ background: line.stroke }"></span>
+                <span class="capitalize text-gray-600">{{ line.severity }}</span>
+              </span>
+            </div>
+          </template>
         </section>
 
         <!-- Filter bar above mismatch list -->
@@ -191,14 +196,24 @@
               v-for="mm in mismatches"
               :key="mm.id"
               class="flex flex-wrap items-start gap-3 px-4 py-3 hover:bg-gray-50"
+              :class="mm.dismissed ? 'opacity-60' : ''"
             >
               <div class="flex shrink-0 flex-col gap-1">
                 <SeverityBadge :severity="mm.severity" />
                 <span class="text-xs text-gray-500">{{ mm.mismatch_type || '—' }}</span>
               </div>
               <div class="min-w-0 flex-1">
-                <p class="line-clamp-2 text-sm text-gray-800">
+                <p
+                  class="line-clamp-2 text-sm text-gray-800"
+                  :class="mm.dismissed ? 'line-through text-gray-400' : ''"
+                >
                   {{ mm.claim?.text || '—' }}
+                </p>
+                <p
+                  v-if="mm.dismissed && mm.dismissal_reason"
+                  class="mt-0.5 text-xs italic text-gray-500"
+                >
+                  Dismissed: {{ mm.dismissal_reason }}
                 </p>
                 <p v-if="mm.matched_fact" class="mt-1 truncate text-xs text-gray-500">
                   Vault: {{ mm.matched_fact.subject }} · {{ mm.matched_fact.predicate }} · {{ mm.matched_fact.object }}
@@ -368,26 +383,32 @@ const severitySegments = computed(() => {
 const trendData = computed(() => accuracy.value.trend || [])
 const trendWidth = 600
 const trendHeight = 120
-const trendPoints = computed(() => {
-  const arr = trendData.value
-  if (!arr.length) return ''
-  const max = Math.max(1, ...arr.map((d) => d.claims || 0))
-  return arr
-    .map((d, i) => {
-      const x = arr.length === 1 ? trendWidth / 2 : (i / (arr.length - 1)) * trendWidth
-      const y = trendHeight - ((d.claims || 0) / max) * (trendHeight - 10) - 5
-      return `${x},${y}`
-    })
-    .join(' ')
-})
-const trendCircles = computed(() => {
+const SEV_STROKE = {
+  critical: '#ef4444',
+  high: '#f97316',
+  medium: '#f59e0b',
+  low: '#60a5fa',
+  info: '#94a3b8',
+}
+const trendLines = computed(() => {
   const arr = trendData.value
   if (!arr.length) return []
-  const max = Math.max(1, ...arr.map((d) => d.claims || 0))
-  return arr.map((d, i) => ({
-    x: arr.length === 1 ? trendWidth / 2 : (i / (arr.length - 1)) * trendWidth,
-    y: trendHeight - ((d.claims || 0) / max) * (trendHeight - 10) - 5,
+  // Normalize: each entry may carry severity_breakdown (new) or claims (old).
+  const series = SEV_ORDER.map((sev) => ({
+    severity: sev,
+    stroke: SEV_STROKE[sev],
+    values: arr.map((d) => (d.severity_breakdown ? (d.severity_breakdown[sev] || 0) : 0)),
   }))
+  const max = Math.max(1, ...series.flatMap((s) => s.values))
+  return series.map((s) => {
+    const pts = s.values.map((v, i) => {
+      const x = arr.length === 1 ? trendWidth / 2 : (i / (arr.length - 1)) * trendWidth
+      const y = trendHeight - (v / max) * (trendHeight - 10) - 5
+      return `${x},${y}`
+    })
+    const d = pts.length ? 'M' + pts.join(' L') : ''
+    return { severity: s.severity, stroke: s.stroke, d }
+  })
 })
 
 const mismatchTypes = computed(() => Object.keys(accuracy.value.by_type || {}))

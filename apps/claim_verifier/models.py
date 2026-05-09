@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import uuid
 
+from django.conf import settings
 from django.db import models
 
 from core.mixins.timestamp_mixin import TimestampMixin
@@ -93,6 +94,23 @@ class ClaimMismatch(TimestampMixin):
     explanation = models.TextField(blank=True)
     dismissed = models.BooleanField(default=False)
     dismissed_at = models.DateTimeField(null=True, blank=True)
+    dismissal_reason = models.CharField(
+        max_length=32, blank=True,
+        choices=[
+            ("false_positive", "False positive"),
+            ("not_about_us", "Not about our brand"),
+            ("vault_outdated", "Our vault is outdated"),
+            ("low_severity", "Acceptable inaccuracy"),
+            ("other", "Other"),
+        ],
+    )
+    dismissal_note = models.TextField(blank=True)
+    dismissed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
 
     class Meta:
         db_table = "claim_verifier_claimmismatch"

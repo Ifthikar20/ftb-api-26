@@ -111,3 +111,38 @@ class FactRevision(TimestampMixin):
 
     def __str__(self):
         return f"FactRevision({self.fact_id}, {self.action})"
+
+
+class ToneSample(TimestampMixin):
+    """A short sample of brand-owned writing for voice modeling.
+
+    Phase 4's voice guard reads these to learn the brand's tone.
+    Each sample is a 80-300 word slice from a KnowledgeChunk, deduped
+    via ``text_hash`` so re-running the sampler is idempotent.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    website = models.ForeignKey(
+        "websites.Website",
+        related_name="tone_samples",
+        on_delete=models.CASCADE,
+    )
+    source_chunk = models.ForeignKey(
+        "rag.KnowledgeChunk",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="tone_samples",
+    )
+    text = models.TextField()
+    text_hash = models.CharField(max_length=64, db_index=True)
+    word_count = models.IntegerField(default=0)
+    embedding = models.JSONField(null=True, blank=True)
+
+    class Meta:
+        db_table = "brand_vault_tonesample"
+        unique_together = [("website", "text_hash")]
+        indexes = [models.Index(fields=["website"])]
+
+    def __str__(self):
+        return f"ToneSample({self.website_id}, {self.word_count}w)"

@@ -33,6 +33,7 @@ class ClaimMismatchSerializer(serializers.ModelSerializer):
             "factual_divergence", "audience_reach",
             "explanation",
             "dismissed", "dismissed_at",
+            "dismissal_reason", "dismissal_note", "dismissed_by",
             "created_at",
         )
         read_only_fields = fields

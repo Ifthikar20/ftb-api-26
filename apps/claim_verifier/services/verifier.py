@@ -3,14 +3,17 @@
 The MVP verifier is intentionally simple — embedding cosine similarity
 to retrieve top candidate facts, then a string-overlap check on the
 object to decide whether the claim agrees, contradicts, or is unknown.
-Severity is derived from a product of factual divergence and an audience
-reach term that is currently a placeholder (1.0) — refinement is a
-follow-up phase once we have provider-weighting + prompt-frequency.
+
+Severity is the product of factual divergence and an audience-reach
+weight; see :func:`compute_audience_reach` below.
 """
 from __future__ import annotations
 
 import logging
+from datetime import timedelta
 from typing import Optional
+
+from django.utils import timezone
 
 from apps.brand_vault.models import BrandFact, FactStatus
 from apps.brand_vault.services.embeddings import cosine_similarity, embed_text
@@ -27,6 +30,26 @@ logger = logging.getLogger("apps")
 
 _SIMILAR_THRESHOLD = 0.55
 _OBJECT_OVERLAP_THRESHOLD = 0.4
+
+# Provider weights — calibrated against rough internal traffic estimates.
+# Claude and GPT each get the largest slice; Gemini sits just below;
+# Perplexity is the smallest share but still meaningful for citations.
+# Update these as the traffic mix changes.
+PROVIDER_WEIGHTS: dict[str, float] = {
+    "claude": 0.30,
+    "anthropic": 0.30,
+    "gpt": 0.30,
+    "openai": 0.30,
+    "gemini": 0.25,
+    "google": 0.25,
+    "perplexity": 0.15,
+}
+
+# Above this many same-prompt rows in the period, prompt_frequency saturates.
+_PROMPT_FREQ_SATURATION = 20
+
+# Lookback window for prompt-frequency normalization.
+_PROMPT_FREQ_DAYS = 30
 
 
 def _tokens(text: str) -> set[str]:
@@ -64,7 +87,6 @@ def _best_match(claim: Claim) -> tuple[Optional[BrandFact], float]:
         if cvec and fvec and len(cvec) == len(fvec):
             sim = cosine_similarity(cvec, fvec)
         else:
-            # Lexical fallback when embedding dims differ or are missing.
             sim = _overlap(
                 f"{claim.subject} {claim.predicate}",
                 f"{fact.subject} {fact.predicate}",
@@ -72,6 +94,86 @@ def _best_match(claim: Claim) -> tuple[Optional[BrandFact], float]:
         if sim > best_sim:
             best, best_sim = fact, sim
     return best, best_sim
+
+
+def _provider_weight(provider: str) -> float:
+    if not provider:
+        return 0.20
+    key = provider.strip().lower()
+    if key in PROVIDER_WEIGHTS:
+        return PROVIDER_WEIGHTS[key]
+    # try fuzzy startswith match (e.g. "gpt-4" -> "gpt")
+    for k, v in PROVIDER_WEIGHTS.items():
+        if key.startswith(k) or k in key:
+            return v
+    return 0.20
+
+
+def _prompt_frequency(claim: Claim) -> int:
+    """Count of LLMRankingResult rows with the same prompt text in last N days."""
+    from apps.llm_ranking.models import LLMRankingResult
+
+    prompt_text = getattr(claim.result, "prompt", "") or ""
+    if not prompt_text:
+        return 0
+    since = timezone.now() - timedelta(days=_PROMPT_FREQ_DAYS)
+    return LLMRankingResult.objects.filter(
+        prompt=prompt_text, created_at__gte=since,
+    ).count()
+
+
+def _is_target_brand(claim: Claim) -> bool:
+    """Return True if the claim subject mentions the website's brand."""
+    subject = (claim.subject or "").lower()
+    if not subject:
+        return False
+    audit = getattr(claim, "audit", None)
+    candidates: list[str] = []
+    if audit is not None:
+        bn = getattr(audit, "business_name", "") or ""
+        if bn:
+            candidates.append(bn.lower())
+    website = getattr(claim, "website", None)
+    if website is not None:
+        for attr in ("name", "domain", "brand_name"):
+            val = getattr(website, attr, "") or ""
+            if val:
+                candidates.append(str(val).lower())
+    for cand in candidates:
+        cand_core = cand.replace("www.", "").split(".")[0].strip()
+        if cand_core and cand_core in subject:
+            return True
+    return False
+
+
+def compute_audience_reach(claim: Claim) -> float:
+    """0.0 to 1.0. Higher = more visible/important.
+
+    Components:
+      - provider_weight: Claude/GPT = 0.30 each, Gemini = 0.25, Perplexity = 0.15
+        (calibrate to your traffic estimates; stored in PROVIDER_WEIGHTS).
+      - prompt_frequency: how often this prompt was sampled in last 30d
+        (count of LLMRankingResult rows for the same prompt text in the period),
+        normalized against a saturation point.
+      - is_target_brand: 1.5x multiplier if claim.subject mentions the
+        website's brand.
+
+    Final: clamp(provider_weight * 0.5 + freq_normalized * 0.4 + brand_bonus * 0.1, 0, 1)
+    Then multiplied by 1.5 (and clamped to 1.0) when the claim references the
+    target brand directly.
+    """
+    provider = getattr(getattr(claim, "result", None), "provider", "") or ""
+    pw = _provider_weight(provider)
+
+    freq = _prompt_frequency(claim)
+    freq_normalized = min(1.0, freq / float(_PROMPT_FREQ_SATURATION))
+
+    brand_bonus = 1.0 if _is_target_brand(claim) else 0.0
+
+    base = pw * 0.5 + freq_normalized * 0.4 + brand_bonus * 0.1
+    if brand_bonus:
+        base *= 1.5
+    return max(0.0, min(1.0, base))
 
 
 def verify_claim(claim_id: str) -> Optional[ClaimMismatch]:
@@ -83,10 +185,11 @@ def verify_claim(claim_id: str) -> Optional[ClaimMismatch]:
 
     fact, sim = _best_match(claim)
 
+    audience_reach = compute_audience_reach(claim)
+
     if fact is None or sim < _SIMILAR_THRESHOLD:
-        # Nothing close in the vault.
         divergence = 0.5
-        score = divergence * 1.0
+        score = divergence * audience_reach
         severity = bucket(score)
         explanation = "No matching fact found in the brand vault."
         return _upsert_mismatch(
@@ -95,18 +198,17 @@ def verify_claim(claim_id: str) -> Optional[ClaimMismatch]:
             mismatch_type=MismatchType.UNKNOWN.value,
             severity=severity,
             divergence=divergence,
+            audience_reach=audience_reach,
             explanation=explanation,
         )
 
-    # subject+predicate align reasonably; check the object.
     object_overlap = _overlap(claim.object, fact.object)
     if object_overlap >= _OBJECT_OVERLAP_THRESHOLD:
-        # Agrees — clean up any stale mismatch row, return None.
         ClaimMismatch.objects.filter(claim=claim).delete()
         return None
 
     divergence = 1.0 - object_overlap
-    score = divergence * 1.0
+    score = divergence * audience_reach
     severity = bucket(score)
     explanation = (
         f"Claim object '{claim.object[:120]}' diverges from vault fact "
@@ -118,6 +220,7 @@ def verify_claim(claim_id: str) -> Optional[ClaimMismatch]:
         mismatch_type=MismatchType.CONTRADICTS.value,
         severity=severity,
         divergence=divergence,
+        audience_reach=audience_reach,
         explanation=explanation,
     )
 
@@ -129,6 +232,7 @@ def _upsert_mismatch(
     mismatch_type: str,
     severity: str,
     divergence: float,
+    audience_reach: float,
     explanation: str,
 ) -> ClaimMismatch:
     mm, _ = ClaimMismatch.objects.update_or_create(
@@ -138,7 +242,7 @@ def _upsert_mismatch(
             "mismatch_type": mismatch_type,
             "severity": severity,
             "factual_divergence": divergence,
-            "audience_reach": 1.0,
+            "audience_reach": audience_reach,
             "explanation": explanation,
             "dismissed": False,
         },

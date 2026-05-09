@@ -1,10 +1,13 @@
 """REST endpoints for the Brand Vault."""
 from __future__ import annotations
 
+import csv
+import io
 from collections import Counter
 
 from django.db.models import Q
 from rest_framework import status
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -13,9 +16,13 @@ from apps.brand_vault.api.v1.serializers import (
     BrandFactDetailSerializer,
     BrandFactEditSerializer,
     BrandFactSerializer,
+    FactImportItemSerializer,
+    ToneSampleSerializer,
 )
-from apps.brand_vault.models import BrandFact, FactStatus
+from apps.brand_vault.models import BrandFact, FactStatus, ToneSample
 from apps.brand_vault.services import fact_versioning
+from apps.brand_vault.services.embeddings import embed_text
+from apps.brand_vault.services.fact_versioning import record_creation
 from core.exceptions import ResourceNotFound
 from core.views import TenantScopedAPIView, TenantScopedListAPIView
 
@@ -120,6 +127,139 @@ class WebsiteExtractView(TenantScopedAPIView):
         except Exception:
             queued = False
         return Response({"queued": queued, "website_id": str(website.id)})
+
+
+def _import_one(website, item: dict, *, actor_user=None) -> str:
+    """Persist one validated fact item. Returns 'created' or 'skipped'."""
+    subject = (item.get("subject") or "").strip()
+    predicate = (item.get("predicate") or "").strip()
+    obj = (item.get("object") or "").strip()
+    if not subject or not predicate or not obj:
+        raise ValueError("subject, predicate and object are required")
+    exists = BrandFact.objects.filter(
+        website=website,
+        subject__iexact=subject,
+        predicate__iexact=predicate,
+        object__iexact=obj,
+        version_to__isnull=True,
+    ).exists()
+    if exists:
+        return "skipped"
+    try:
+        confidence = float(item.get("confidence") or 0.9)
+    except (TypeError, ValueError):
+        confidence = 0.9
+    confidence = max(0.0, min(1.0, confidence))
+    fact = BrandFact.objects.create(
+        website=website,
+        subject=subject[:300],
+        predicate=predicate[:200],
+        object=obj,
+        product_line=(item.get("product_line") or "")[:120],
+        topic=(item.get("topic") or "")[:120],
+        source_url=(item.get("source_url") or "")[:1000],
+        confidence=confidence,
+        extracted_by="manual",
+        status=FactStatus.APPROVED,
+    )
+    try:
+        fact.embedding = embed_text(f"{subject} {predicate} {obj}")
+        fact.save(update_fields=["embedding", "updated_at"])
+    except Exception:
+        pass
+    record_creation(fact, actor_user=actor_user)
+    return "created"
+
+
+class WebsiteFactsImportView(TenantScopedAPIView):
+    """Bulk-import manually authored facts (JSON body)."""
+
+    parser_classes = [JSONParser]
+
+    def post(self, request, website_id):
+        website = self.get_website(website_id)
+        raw = request.data.get("facts") if isinstance(request.data, dict) else None
+        if not isinstance(raw, list):
+            return Response(
+                {"detail": "Body must be {\"facts\": [...]}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        created = 0
+        skipped = 0
+        errors: list[dict] = []
+        for idx, item in enumerate(raw):
+            ser = FactImportItemSerializer(data=item)
+            if not ser.is_valid():
+                errors.append({"index": idx, "errors": ser.errors})
+                continue
+            try:
+                outcome = _import_one(website, ser.validated_data, actor_user=request.user)
+            except Exception as exc:
+                errors.append({"index": idx, "error": str(exc)})
+                continue
+            if outcome == "created":
+                created += 1
+            else:
+                skipped += 1
+        return Response({"created": created, "skipped": skipped, "errors": errors})
+
+
+class WebsiteFactsImportCSVView(TenantScopedAPIView):
+    """Bulk-import facts from a CSV file (multipart/form-data)."""
+
+    parser_classes = [MultiPartParser, FormParser]
+
+    EXPECTED_COLUMNS = (
+        "subject", "predicate", "object",
+        "product_line", "topic", "confidence", "source_url",
+    )
+
+    def post(self, request, website_id):
+        website = self.get_website(website_id)
+        f = request.FILES.get("file") or request.FILES.get("csv")
+        if f is None:
+            return Response(
+                {"detail": "Upload a 'file' field with a CSV body."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            raw = f.read().decode("utf-8-sig", errors="replace")
+        except Exception:
+            return Response(
+                {"detail": "Could not decode CSV as UTF-8."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        reader = csv.DictReader(io.StringIO(raw))
+        created = 0
+        skipped = 0
+        errors: list[dict] = []
+        for idx, row in enumerate(reader):
+            data = {k: (row.get(k) or "").strip() for k in self.EXPECTED_COLUMNS}
+            if data.get("confidence") in ("", None):
+                data.pop("confidence", None)
+            ser = FactImportItemSerializer(data=data)
+            if not ser.is_valid():
+                errors.append({"row": idx + 1, "errors": ser.errors})
+                continue
+            try:
+                outcome = _import_one(website, ser.validated_data, actor_user=request.user)
+            except Exception as exc:
+                errors.append({"row": idx + 1, "error": str(exc)})
+                continue
+            if outcome == "created":
+                created += 1
+            else:
+                skipped += 1
+        return Response({"created": created, "skipped": skipped, "errors": errors})
+
+
+class WebsiteToneSamplesView(TenantScopedListAPIView):
+    """List ToneSample rows for a website (Phase 4 voice-guard input)."""
+
+    def get(self, request, website_id):
+        website = self.get_website(website_id)
+        qs = ToneSample.objects.filter(website=website).order_by("-created_at")
+        return self.paginated_response(qs, ToneSampleSerializer)
 
 
 class WebsiteStatsView(TenantScopedAPIView):
