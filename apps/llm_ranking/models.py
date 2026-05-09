@@ -232,6 +232,16 @@ class LLMRankingResult(TimestampMixin):
     # short string so the frontend can render a badge such as
     # ``Library / Reddit`` or ``Vault``. Empty for legacy rows.
     prompt_source_label = models.CharField(max_length=64, blank=True, default="")
+    # Optional FK to the prompt_library Prompt that produced this row. Lets
+    # the effectiveness scorer roll signals back per-template without
+    # text-matching across filled variants.
+    source_prompt = models.ForeignKey(
+        "prompt_library.Prompt",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="ranking_results",
+    )
     # Per-result citation country breakdown (ISO-2 -> count). Computed
     # from this row's citations during aggregation; rolled up into the
     # audit-level ``citation_countries`` field for the dashboard.

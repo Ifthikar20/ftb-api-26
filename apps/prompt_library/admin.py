@@ -5,6 +5,7 @@ from apps.prompt_library.models import (
     Prompt,
     PromptSampleEntry,
     PromptSampleRun,
+    PromptVariableSet,
     PromptVariation,
 )
 
@@ -19,14 +20,32 @@ class IndustryAdmin(admin.ModelAdmin):
 
 @admin.register(Prompt)
 class PromptAdmin(admin.ModelAdmin):
-    list_display = ("text_short", "industry", "intent_bucket", "source", "demand_score", "is_active")
-    list_filter = ("intent_bucket", "source", "is_active", "industry")
-    search_fields = ("text",)
+    list_display = (
+        "text_short",
+        "industry",
+        "intent_bucket",
+        "style",
+        "source",
+        "demand_score",
+        "effectiveness_score",
+        "runs_count",
+        "last_used_at",
+        "is_active",
+    )
+    list_filter = ("intent_bucket", "style", "source", "is_active", "industry")
+    search_fields = ("text", "template_text")
     raw_id_fields = ("industry",)
+    readonly_fields = (
+        "effectiveness_score",
+        "effectiveness_components",
+        "runs_count",
+        "last_used_at",
+    )
 
     @admin.display(description="Text")
     def text_short(self, obj):
-        return obj.text[:80]
+        body = obj.template_text or obj.text or ""
+        return body[:80]
 
 
 @admin.register(PromptVariation)
@@ -46,3 +65,10 @@ class PromptSampleRunAdmin(admin.ModelAdmin):
     list_display = ("audit_run", "industry", "strategy", "seed", "created_at")
     raw_id_fields = ("audit_run", "industry")
     inlines = [PromptSampleEntryInline]
+
+
+@admin.register(PromptVariableSet)
+class PromptVariableSetAdmin(admin.ModelAdmin):
+    list_display = ("website", "updated_at")
+    raw_id_fields = ("website",)
+    search_fields = ("website__name",)

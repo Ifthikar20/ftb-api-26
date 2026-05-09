@@ -58,19 +58,30 @@ def _embed(text: str) -> tuple[list[float] | None, str]:
 def generate_paraphrases(prompt: Prompt, n: int = 3) -> list[PromptVariation]:
     """Generate up to ``n`` paraphrases of ``prompt`` and persist them."""
     try:
-        from apps.llm_ranking.providers import get_provider
+        from apps.llm_ranking.providers import (
+            get_provider,
+            get_synthesis_provider,
+        )
     except Exception as exc:  # pragma: no cover
         logger.warning("paraphrase: provider registry unavailable: %s", exc)
         return []
 
+    # Prefer the configured synthesis provider (DeepSeek when available)
+    # for cheap paraphrasing; fall back to the audit-tier providers when
+    # no tooling key is configured.
     provider = None
-    for name in ("claude", "gpt4"):
-        try:
-            provider = get_provider(name)
-            if provider is not None:
-                break
-        except Exception:
-            continue
+    try:
+        provider = get_synthesis_provider()
+    except Exception:
+        provider = None
+    if provider is None:
+        for name in ("claude", "gpt4"):
+            try:
+                provider = get_provider(name)
+                if provider is not None:
+                    break
+            except Exception:
+                continue
     if provider is None:
         logger.warning("paraphrase: no provider configured")
         return []

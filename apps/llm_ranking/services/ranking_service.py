@@ -805,10 +805,15 @@ class LLMRankingService:
                     audit_id, prompt_index, provider, exc,
                 )
 
+        from apps.llm_ranking.services.source_prompt_resolver import (
+            resolve_source_prompt_id,
+        )
+        source_prompt_id = resolve_source_prompt_id(prompt_text)
         result_obj, _ = LLMRankingResult.objects.update_or_create(
             audit=audit, prompt_index=prompt_index, provider=provider, run_id=0,
             defaults={
                 "prompt": prompt_text,
+                "source_prompt_id": source_prompt_id,
                 "response_text": result.text or "",
                 "is_mentioned": analysis["is_mentioned"],
                 "mention_rank": analysis["mention_rank"],
@@ -1281,6 +1286,10 @@ class LLMRankingService:
                 # update_or_create lets the legacy synchronous path
                 # tolerate re-runs without slamming into the
                 # uq_llm_result_audit_prompt_provider_run constraint.
+                from apps.llm_ranking.services.source_prompt_resolver import (
+                    resolve_source_prompt_id as _resolve_source_prompt_id,
+                )
+                _src_prompt_id = _resolve_source_prompt_id(prompt_text)
                 result, _ = LLMRankingResult.objects.update_or_create(
                     audit=audit,
                     prompt_index=prompt_index,
@@ -1288,6 +1297,7 @@ class LLMRankingService:
                     run_id=0,
                     defaults={
                         "prompt": prompt_text,
+                        "source_prompt_id": _src_prompt_id,
                         "response_text": response_text,
                         "is_mentioned": analysis["is_mentioned"],
                         "mention_rank": analysis["mention_rank"],

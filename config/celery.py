@@ -79,6 +79,10 @@ app.conf.beat_schedule = {
         "task": "apps.prompt_library.tasks.compute_demand_scores",
         "schedule": crontab(minute=0, hour=5),
     },
+    "refresh-prompt-effectiveness": {
+        "task": "apps.prompt_library.tasks.refresh_effectiveness_scores",
+        "schedule": crontab(minute=30, hour=2),
+    },
     # ── Citations / Source Influence ──
     "compute-source-influence": {
         "task": "apps.citations.tasks.compute_source_influence_snapshots",
