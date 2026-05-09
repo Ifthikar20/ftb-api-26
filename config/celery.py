@@ -12,10 +12,10 @@ app.autodiscover_tasks()
 
 # ── Queue topology ──
 # Slow third-party API calls must not block pixel/analytics aggregation.
-#   default      — analytics, leads, pixel, accounts (fast, in-process work)
+#   default      — analytics, pixel, accounts (fast, in-process work)
 #   integrations — HubSpot, Semrush, Google Ads, OAuth token refresh
 #   webhooks     — outbound webhook delivery (user-controlled URLs, slow, isolated)
-#   ai           — LLM ranking, keyword scans, platform trends
+#   ai           — LLM ranking
 app.conf.task_default_queue = "default"
 app.conf.task_routes = {
     # webhooks
@@ -24,17 +24,10 @@ app.conf.task_routes = {
     "apps.websites.tasks.refresh_expiring_tokens": {"queue": "integrations"},
     # AI / LLM
     "apps.llm_ranking.tasks.*": {"queue": "ai"},
-    # Analytics scan + trend tasks (hit external APIs, can be slow)
-    "apps.analytics.tasks.execute_keyword_scan": {"queue": "ai"},
-    "apps.analytics.tasks.fetch_platform_trends": {"queue": "ai"},
 }
 
 app.conf.beat_schedule = {
     # ── Daily ──
-    "daily-lead-rescoring": {
-        "task": "apps.leads.tasks.rescore_all_leads",
-        "schedule": crontab(minute=0, hour=2),
-    },
     "expire-sessions": {
         "task": "apps.accounts.tasks.expire_inactive_sessions",
         "schedule": crontab(minute=0, hour=3),
@@ -62,19 +55,6 @@ app.conf.beat_schedule = {
     "rotate-encryption-keys": {
         "task": "core.tasks.check_encryption_key_rotation",
         "schedule": crontab(minute=0, hour=0, day_of_month=1),
-    },
-    # ── Keyword Intelligence ──
-    "keyword-auto-scan-dispatcher": {
-        "task": "apps.analytics.tasks.run_auto_keyword_scans",
-        "schedule": crontab(minute="*/15"),  # Every 15 min — checks next_scan_at
-    },
-    "keyword-alert-check": {
-        "task": "apps.analytics.tasks.check_keyword_alerts",
-        "schedule": crontab(minute=0),  # Every hour
-    },
-    "platform-trend-fetch": {
-        "task": "apps.analytics.tasks.fetch_platform_trends",
-        "schedule": crontab(minute=0, hour="*/6"),  # Every 6 hours
     },
     # ── Integration Reports ──
     "daily-growth-reports": {

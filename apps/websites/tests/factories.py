@@ -4,14 +4,7 @@ from factory.django import DjangoModelFactory
 
 from apps.accounts.tests.factories import UserFactory
 from apps.analytics.models import PageEvent, Visitor
-from apps.leads.models import (
-    Lead,
-    LeadNote,
-    LeadSegment,
-    ScoringConfig,
-)
 from apps.websites.models import Website, WebsiteSettings
-from core.utils.constants import LeadStatus
 
 
 class WebsiteFactory(DjangoModelFactory):
@@ -50,46 +43,3 @@ class PageEventFactory(DjangoModelFactory):
     url = "https://example.com/page"
     event_type = "pageview"
     timestamp = factory.LazyFunction(timezone.now)
-
-
-class LeadFactory(DjangoModelFactory):
-    class Meta:
-        model = Lead
-
-    visitor = factory.SubFactory(VisitorFactory)
-    website = factory.LazyAttribute(lambda o: o.visitor.website)
-    score = 50
-    status = LeadStatus.NEW
-    email = factory.Sequence(lambda n: f"lead{n}@example.com")
-    name = factory.Faker("name")
-    company = factory.Faker("company")
-
-
-class LeadNoteFactory(DjangoModelFactory):
-    class Meta:
-        model = LeadNote
-
-    lead = factory.SubFactory(LeadFactory)
-    author = factory.SubFactory(UserFactory)
-    content = factory.Faker("sentence")
-
-
-class LeadSegmentFactory(DjangoModelFactory):
-    class Meta:
-        model = LeadSegment
-
-    website = factory.SubFactory(WebsiteFactory)
-    name = factory.Sequence(lambda n: f"Segment {n}")
-    rules = factory.LazyFunction(dict)
-    created_by = factory.SubFactory(UserFactory)
-
-
-class ScoringConfigFactory(DjangoModelFactory):
-    class Meta:
-        model = ScoringConfig
-
-    website = factory.SubFactory(WebsiteFactory)
-    weights = factory.LazyFunction(dict)
-    threshold = 70
-
-

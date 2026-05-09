@@ -166,79 +166,10 @@ class Command(BaseCommand):
                     click_count += 1
         self.stdout.write(f"  Heatmap: {click_count} click events across {len(heatmap_pages)} pages")
 
-        # ── Keyword Rank Tracking ──
-        from apps.analytics.models import KeywordRankHistory, TrackedKeyword
-
-        keyword_data = [
-            {"keyword": "growth hacking tools", "search_volume": 8200, "difficulty": 45, "base_rank": 12},
-            {"keyword": "website analytics platform", "search_volume": 6400, "difficulty": 62, "base_rank": 8},
-            {"keyword": "seo audit tool", "search_volume": 14000, "difficulty": 58, "base_rank": 15},
-            {"keyword": "lead scoring software", "search_volume": 5400, "difficulty": 38, "base_rank": 6},
-            {"keyword": "competitor analysis tool", "search_volume": 9800, "difficulty": 52, "base_rank": 22},
-            {"keyword": "marketing automation", "search_volume": 22000, "difficulty": 72, "base_rank": 35},
-            {"keyword": "privacy analytics", "search_volume": 3200, "difficulty": 25, "base_rank": 4},
-            {"keyword": "ai marketing strategy", "search_volume": 4100, "difficulty": 42, "base_rank": 18},
-            {"keyword": "content calendar tool", "search_volume": 7600, "difficulty": 48, "base_rank": 11},
-            {"keyword": "visitor identification", "search_volume": 2900, "difficulty": 33, "base_rank": 9},
-        ]
-        for kd in keyword_data:
-            base = kd.pop("base_rank")
-            kw, _ = TrackedKeyword.objects.get_or_create(
-                website=website,
-                keyword=kd["keyword"],
-                defaults={
-                    **kd,
-                    "target_url": f"https://demo.example.com/{kd['keyword'].replace(' ', '-')}",
-                },
-            )
-            ranks = []
-            for d in range(30, -1, -1):
-                rank = max(1, base + random.randint(-3, 3))
-                base = rank
-                ranks.append(rank)
-                KeywordRankHistory.objects.get_or_create(
-                    tracked_keyword=kw,
-                    date=date.today() - timedelta(days=d),
-                    defaults={"rank": rank, "serp_features": random.choice([[], ["featured_snippet"], ["people_also_ask"], ["video"]])},
-                )
-            kw.current_rank = ranks[-1]
-            kw.previous_rank = ranks[-2] if len(ranks) > 1 else None
-            kw.best_rank = min(ranks)
-            kw.save()
-        self.stdout.write(f"  Keywords: {len(keyword_data)} tracked with 30-day history")
-
-        # ── Leads ──
-        from apps.leads.models import Lead
-
-        lead_data = [
-            {"name": "Sarah Mitchell", "email": "sarah@techcorp.com", "company": "TechCorp", "score": 92, "status": "qualified", "source": "organic"},
-            {"name": "James Lee", "email": "james@greenleaf.com", "company": "GreenLeaf Inc", "score": 87, "status": "contacted", "source": "referral"},
-            {"name": "Emily Chen", "email": "emily@byteworks.io", "company": "ByteWorks", "score": 81, "status": "new", "source": "google"},
-            {"name": "Robert Kim", "email": "robert@pinnacle.co", "company": "Pinnacle Solutions", "score": 78, "status": "qualified", "source": "linkedin"},
-            {"name": "Maria Garcia", "email": "maria@horizon.media", "company": "Horizon Media", "score": 74, "status": "new", "source": "twitter"},
-            {"name": "David Park", "email": "david@quantum.labs", "company": "Quantum Labs", "score": 68, "status": "contacted", "source": "organic"},
-            {"name": "Lisa Wang", "email": "lisa@novastar.io", "company": "NovaStar", "score": 55, "status": "new", "source": "direct"},
-            {"name": "Tom Harris", "email": "tom@datavault.com", "company": "DataVault", "score": 45, "status": "lost", "source": "email"},
-            {"name": "Anna Brown", "email": "anna@silverline.co", "company": "Silverline", "score": 38, "status": "new", "source": "social"},
-            {"name": "Chris Wright", "email": "chris@blueshift.dev", "company": "BlueShift", "score": 22, "status": "new", "source": "organic"},
-            {"name": "Sophie Turner", "email": "sophie@cloudnine.io", "company": "CloudNine", "score": 91, "status": "customer", "source": "referral"},
-            {"name": "Daniel Zhao", "email": "daniel@redpeak.com", "company": "RedPeak", "score": 85, "status": "qualified", "source": "google"},
-        ]
-        for i, ld in enumerate(lead_data):
-            if i < len(visitors):
-                Lead.objects.get_or_create(
-                    visitor=visitors[i],
-                    website=website,
-                    defaults=ld,
-                )
-        self.stdout.write(f"  Leads: {len(lead_data)} created")
-
-
         # ── Notifications ──
         from apps.notifications.models import Notification
 
         notif_data = [
-            {"type": "hot_lead", "title": "New Hot Lead", "message": "Sarah Mitchell from TechCorp just scored 92. Time to reach out.", "action_url": "/leads"},
             {"type": "audit_complete", "title": "Audit Complete", "message": "Your website audit is done. Overall score: 78/100.", "action_url": "/audits"},
             {"type": "competitor_alert", "title": "Competitor Alert", "message": "CompetitorX is now ranking for 'growth hacking tools'.", "action_url": "/competitors"},
             {"type": "strategy", "title": "Strategy Updated", "message": "3 new action items generated for this week.", "action_url": "/strategy"},

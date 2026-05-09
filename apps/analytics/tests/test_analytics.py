@@ -14,7 +14,6 @@ from apps.analytics.models import (
     CustomFunnel,
     PageEvent,
     Session,
-    TrackedKeyword,
     Visitor,
 )
 from apps.websites.models import Website
@@ -401,77 +400,6 @@ class AIInsightsServiceTest(TestCase):
 
 
 # ═══════════════════════════════════════════
-# Keyword Intelligence Tests
-# ═══════════════════════════════════════════
-
-class KeywordIntelligenceServiceTest(TestCase):
-    def setUp(self):
-        self.user = create_test_user()
-        self.website = create_test_website(self.user)
-        # Create tracked keywords for outfi.ai
-        TrackedKeyword.objects.create(
-            website=self.website, keyword="modest fashion",
-            current_rank=8, search_volume=5400, difficulty=45,
-        )
-        TrackedKeyword.objects.create(
-            website=self.website, keyword="outfi clothing",
-            current_rank=15, search_volume=1200, difficulty=25,
-        )
-        TrackedKeyword.objects.create(
-            website=self.website, keyword="online fashion store",
-            current_rank=42, search_volume=22000, difficulty=78,
-        )
-
-    def test_score_keyword_page1(self):
-        from apps.analytics.services.keyword_intelligence_service import KeywordIntelligenceService
-        score = KeywordIntelligenceService.score_keyword(
-            keyword="modest fashion", current_rank=8, search_volume=5400, difficulty=45,
-        )
-        self.assertIn("score", score)
-        self.assertIn("grade", score)
-        self.assertIn("breakdown", score)
-        self.assertIn("recommendation", score)
-        self.assertIn("calculation_method", score)
-        self.assertGreater(score["score"], 40)  # Page 1 + decent volume = good score
-
-    def test_score_keyword_quick_win(self):
-        from apps.analytics.services.keyword_intelligence_service import KeywordIntelligenceService
-        score = KeywordIntelligenceService.score_keyword(
-            keyword="outfi clothing", current_rank=15, search_volume=1200, difficulty=25,
-        )
-        # Rank 11-20 + low difficulty = high quick-win score
-        self.assertGreater(score["score"], 50)
-        self.assertIn("Quick Win", score["recommendation"])
-
-    def test_score_keyword_hard(self):
-        from apps.analytics.services.keyword_intelligence_service import KeywordIntelligenceService
-        score = KeywordIntelligenceService.score_keyword(
-            keyword="online fashion store", current_rank=42, search_volume=22000, difficulty=78,
-        )
-        self.assertIn("Competitive", score["recommendation"])
-
-    def test_score_keywords_bulk(self):
-        from apps.analytics.services.keyword_intelligence_service import KeywordIntelligenceService
-        scored = KeywordIntelligenceService.score_keywords_bulk(website_id=str(self.website.id))
-        self.assertEqual(len(scored), 3)
-        # Should be sorted by score descending
-        self.assertGreaterEqual(scored[0]["ai_score"], scored[1]["ai_score"])
-
-    def test_score_grade_labels(self):
-        from apps.analytics.services.keyword_intelligence_service import KeywordIntelligenceService
-        # Top 3 rank + high volume + low difficulty
-        s = KeywordIntelligenceService.score_keyword(keyword="x", current_rank=3, search_volume=10000, difficulty=10)
-        self.assertIn(s["grade"]["label"], ["Excellent", "Good"])  # Depends on exact multiplier math
-        self.assertGreater(s["score"], 50)
-
-    def test_trending_fallback(self):
-        from apps.analytics.services.keyword_intelligence_service import KeywordIntelligenceService
-        data = KeywordIntelligenceService.get_trending_keywords()
-        self.assertIn("region", data)
-        self.assertIn("source", data)
-
-
-# ═══════════════════════════════════════════
 # API Endpoint Tests
 # ═══════════════════════════════════════════
 
@@ -543,21 +471,6 @@ class AnalyticsAPITest(APITestCase):
     def test_live_events_endpoint(self):
         response = self.client.get(f"/api/v1/analytics/{self.wid}/live/")
         self.assertEqual(response.status_code, 200)
-
-    def test_keyword_scores_endpoint(self):
-        TrackedKeyword.objects.create(
-            website=self.website, keyword="outfi fashion", current_rank=12,
-            search_volume=800, difficulty=30,
-        )
-        response = self.client.get(f"/api/v1/analytics/{self.wid}/keywords/scores/")
-        self.assertEqual(response.status_code, 200)
-        self.assertIn("keywords", response.data)
-        self.assertIn("explanation", response.data)
-
-    def test_keyword_trending_endpoint(self):
-        response = self.client.get(f"/api/v1/analytics/{self.wid}/keywords/trending/")
-        self.assertEqual(response.status_code, 200)
-        self.assertIn("region", response.data)
 
     def test_unauthenticated_blocked(self):
         """Ensure unauthenticated requests are rejected."""

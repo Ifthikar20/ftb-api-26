@@ -83,10 +83,6 @@ const routes = [
     protect('/websites', 'websites', () => import('@/pages/WebsitesListPage.vue')),
     protect('/websites/:id', 'website-detail', () => import('@/pages/WebsiteDetailPage.vue'), true),
     protect('/analytics/:websiteId', 'analytics', () => import('@/pages/AnalyticsPage.vue'), true),
-    protect('/leads/:websiteId', 'leads', () => import('@/pages/LeadsPage.vue'), true),
-
-    protect('/heatmap/:websiteId', 'heatmap', () => import('@/pages/HeatmapPage.vue'), true),
-    protect('/keywords/:websiteId', 'keywords', () => import('@/pages/KeywordsPage.vue'), true),
     protect('/llm-ranking/:websiteId', 'llm-ranking', () => import('@/pages/LLMRankingPage.vue'), true),
     protect('/onboarding/:websiteId', 'onboarding', () => import('@/pages/OnboardingPage.vue'), true),
     protect('/app-onboarding', 'app-onboarding', () => import('@/pages/AppOnboardingPage.vue')),
@@ -176,7 +172,7 @@ router.beforeEach(async (to, from, next) => {
     }
 
     // Guard: project-specific pages require an active project
-    const projectPages = ['analytics', 'leads', 'heatmap', 'keywords', 'llm-ranking', 'website-detail']
+    const projectPages = ['analytics', 'llm-ranking', 'website-detail']
     if (projectPages.includes(to.name) && auth.isAuthenticated) {
         const app = useAppStore()
         if (!app.activeWebsite) {

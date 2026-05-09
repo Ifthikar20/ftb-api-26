@@ -26,7 +26,7 @@ export const useAnalyticsStore = defineStore('analytics', () => {
                 funnelList: [], funnelResult: null,
                 retentionData: {}, engagementData: {}, flowData: {}, entryExitData: {},
                 journeys: [], liveEvents: [],
-                insightsData: {}, keywordsData: {}, visitorList: [], timelineEvents: [],
+                insightsData: {}, visitorList: [], timelineEvents: [],
                 _ts: {},
             }
         }
@@ -194,26 +194,6 @@ export const useAnalyticsStore = defineStore('analytics', () => {
         } catch { /* keep cached */ }
     }
 
-    async function fetchKeywords(wid) {
-        wid = wid || activeWebsiteId.value
-        if (!wid || !isStale('keywords', wid)) return
-        try {
-            const [trendRes, scoreRes, suggestRes] = await Promise.allSettled([
-                analyticsApi.keywordTrending(wid),
-                analyticsApi.keywordScores(wid),
-                analyticsApi.keywordSuggestions(wid),
-            ])
-            const unwrap = (r) => r.status === 'fulfilled' ? (r.value?.data?.data ?? r.value?.data ?? {}) : {}
-            const c = _key(wid)
-            c.keywordsData = {
-                trending: unwrap(trendRes),
-                scores: unwrap(scoreRes),
-                suggestions: unwrap(suggestRes),
-            }
-            c._ts.keywords = Date.now()
-        } catch { /* keep cached */ }
-    }
-
     async function fetchVisitors(wid, period) {
         wid = wid || activeWebsiteId.value
         period = period || activePeriod.value
@@ -250,7 +230,6 @@ export const useAnalyticsStore = defineStore('analytics', () => {
             else if (tab === 'retention') await fetchRetention(wid, period)
             else if (tab === 'flows') await fetchFlows(wid, period)
             else if (tab === 'insights') await fetchInsights(wid, period)
-            else if (tab === 'keywords') await fetchKeywords(wid)
             else if (tab === 'events') await fetchVisitors(wid, period)
         } catch { /* silent */ }
     }
@@ -335,7 +314,7 @@ export const useAnalyticsStore = defineStore('analytics', () => {
         initialLoading, refreshing, data,
         init, switchTab, changePeriod, loadTabBackground,
         fetchOverview, fetchFunnels, runFunnel, createFunnel,
-        fetchRetention, fetchFlows, fetchInsights, fetchKeywords, fetchVisitors,
+        fetchRetention, fetchFlows, fetchInsights, fetchVisitors,
         fetchLiveEvents, loadTimeline, saveToSession, forceRefresh, startPolling, stopPolling,
     }
 })

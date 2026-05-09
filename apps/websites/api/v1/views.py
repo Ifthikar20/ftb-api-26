@@ -127,7 +127,6 @@ class DashboardView(APIView):
 
     def get(self, request):
         from apps.analytics.models import PageEvent, Visitor
-        from apps.leads.models import Lead
         from apps.notifications.models import Notification
 
         websites = Website.objects.filter(user=request.user)
@@ -138,14 +137,12 @@ class DashboardView(APIView):
 
         # Stats
         total_visitors = 0
-        hot_leads_count = 0
         conversion_rate = 0
         visitors_prev = 0
 
         if website:
             total_visitors = Visitor.objects.filter(website=website, first_seen__gte=thirty_days_ago).count()
             visitors_prev = Visitor.objects.filter(website=website, first_seen__gte=thirty_days_ago - timedelta(days=30), first_seen__lt=thirty_days_ago).count()
-            hot_leads_count = Lead.objects.filter(website=website, score__gte=70).count()
             total_events = PageEvent.objects.filter(website=website, timestamp__gte=thirty_days_ago).count()
             form_events = PageEvent.objects.filter(website=website, event_type='form_submit', timestamp__gte=thirty_days_ago).count()
             conversion_rate = round((form_events / max(total_events, 1)) * 100, 1)
@@ -156,7 +153,6 @@ class DashboardView(APIView):
 
         stats = [
             {'label': 'Total Visitors', 'value': f'{total_visitors:,}', 'change': f'{abs(visitor_change)}% vs last month', 'direction': 'up' if visitor_change >= 0 else 'down'},
-            {'label': 'Hot Leads', 'value': str(hot_leads_count), 'change': f'{hot_leads_count} above threshold', 'direction': 'up'},
             {'label': 'Conversion Rate', 'value': f'{conversion_rate}%', 'change': 'form submissions / events', 'direction': 'up' if conversion_rate >= 2 else 'down'},
         ]
 
@@ -170,7 +166,6 @@ class DashboardView(APIView):
         quick_actions = [
             {'label': 'Run Site Audit', 'desc': 'Check SEO, speed and security', 'to': '/websites'},
             {'label': 'Generate Strategy', 'desc': 'AI-powered growth plan', 'to': '/websites'},
-            {'label': 'View Hot Leads', 'desc': f'{hot_leads_count} leads above threshold', 'to': '/websites'},
             {'label': 'Competitor Intel', 'desc': 'See what changed this week', 'to': '/websites'},
         ]
 

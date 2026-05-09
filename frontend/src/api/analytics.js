@@ -6,7 +6,6 @@ export default {
     pages: (wid, params) => api.get(`/analytics/${wid}/pages/`, { params }),
     sources: (wid, params) => api.get(`/analytics/${wid}/sources/`, { params }),
     realtime: (wid) => api.get(`/analytics/${wid}/realtime/`),
-    heatmap: (wid, params) => api.get(`/analytics/${wid}/heatmap/`, { params }),
 
     // Advanced analytics
     chart: (wid, params) => api.get(`/analytics/${wid}/chart/`, { params }),
@@ -38,35 +37,6 @@ export default {
     // Live
     liveEvents: (wid) => api.get(`/analytics/${wid}/live/`),
 
-    // Keywords
-    keywords: (wid) => api.get(`/analytics/${wid}/keywords/`),
-    addKeyword: (wid, data) => api.post(`/analytics/${wid}/keywords/`, data),
-    keywordHistory: (wid, kid) => api.get(`/analytics/${wid}/keywords/${kid}/history/`),
-    keywordTrending: (wid, params) => api.get(`/analytics/${wid}/keywords/trending/`, { params }),
-    keywordScores: (wid) => api.get(`/analytics/${wid}/keywords/scores/`),
-    keywordSuggestions: (wid) => api.get(`/analytics/${wid}/keywords/suggestions/`),
-    keywordInterest: (wid, data) => api.post(`/analytics/${wid}/keywords/interest/`, data),
-    keywordScan: (wid) => api.get(`/analytics/${wid}/keywords/scan/`),
-    keywordScanTrigger: (wid) => api.post(`/analytics/${wid}/keywords/scan/`),
+    // Dynamic SEO
     seoEmbed: (wid) => api.get(`/analytics/${wid}/seo-embed/`),
-
-    // Scan schedule config
-    getScanConfig: (wid) => api.get(`/analytics/${wid}/keywords/scan-config/`),
-    updateScanConfig: (wid, data) => api.put(`/analytics/${wid}/keywords/scan-config/`, data),
-
-    // Platform content (social posts for keyword comparison)
-    getPlatformContent: (wid, params) => api.get(`/analytics/${wid}/keywords/platform-content/`, { params }),
-    addPlatformContent: (wid, data) => api.post(`/analytics/${wid}/keywords/platform-content/`, data),
-    deletePlatformContent: (wid, pid) => api.delete(`/analytics/${wid}/keywords/platform-content/${pid}/`),
-
-    // Keyword gap comparison
-    keywordComparison: (wid) => api.get(`/analytics/${wid}/keywords/comparison/`),
-    exportComparison: (wid, fmt) => api.get(`/analytics/${wid}/keywords/comparison/export/?format=${fmt}`, { responseType: 'blob' }),
-
-    // Keyword alerts
-    getAlerts: (wid) => api.get(`/analytics/${wid}/keywords/alerts/`),
-    createAlert: (wid, data) => api.post(`/analytics/${wid}/keywords/alerts/`, data),
-    updateAlert: (wid, aid, data) => api.patch(`/analytics/${wid}/keywords/alerts/${aid}/`, data),
-    deleteAlert: (wid, aid) => api.delete(`/analytics/${wid}/keywords/alerts/${aid}/`),
-    getAlertEvents: (wid) => api.get(`/analytics/${wid}/keywords/alerts/events/`),
 }
