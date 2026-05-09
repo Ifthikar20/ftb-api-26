@@ -189,7 +189,7 @@
                 <!-- LLM Ranking: provider visibility bars -->
                 <div v-else-if="f.visual === 'llm'" class="viz viz-llm">
                   <div class="viz-stat">
-                    <div class="viz-stat-value">{{ metricFor(f, i) }}</div>
+                    <div class="viz-stat-value">{{ f.metric.value }}</div>
                     <div class="viz-stat-meta">
                       <span class="viz-stat-label">{{ f.metric.label }}</span>
                       <span class="viz-stat-delta up">{{ f.metric.delta }}</span>
