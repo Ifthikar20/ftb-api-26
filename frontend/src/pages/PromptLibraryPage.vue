@@ -1,6 +1,6 @@
 <template>
   <div class="p-6">
-    <header class="mb-6 flex items-center justify-between">
+    <header id="pl-header" class="mb-6 flex items-center justify-between">
       <div>
         <h1 class="text-2xl font-semibold">Prompt Library</h1>
         <p class="text-sm text-gray-500">
@@ -8,42 +8,48 @@
         </p>
       </div>
       <IndustryTypeahead
+        id="pl-industry"
         v-model="industryId"
         placeholder="Filter by industry"
         class="w-64"
       />
     </header>
 
-    <section class="mb-4 flex flex-wrap gap-2">
-      <button
+    <section id="pl-buckets" class="mb-4 flex flex-wrap gap-2">
+      <AirChip
         v-for="bucket in buckets"
         :key="bucket.value"
-        class="rounded-full border px-3 py-1 text-sm"
-        :class="bucket.value === intent ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-gray-200 text-gray-600'"
+        as="button"
+        size="sm"
+        :variant="bucket.value === intent ? 'primary' : 'neutral'"
         @click="intent = bucket.value"
       >
         {{ bucket.label }}
-      </button>
+      </AirChip>
     </section>
 
-    <div v-if="loading" class="text-sm text-gray-500">Loading...</div>
+    <div v-if="loading" class="text-sm" style="color: var(--text-secondary)">Loading...</div>
     <ul v-else class="space-y-2">
-      <li
+      <AirCard
         v-for="p in prompts"
         :key="p.id"
-        class="flex items-start justify-between rounded-md border border-gray-100 px-3 py-2"
+        as="div"
+        size="sm"
+        class="flex items-start justify-between"
       >
         <div>
-          <div class="text-sm text-gray-900">{{ p.text }}</div>
-          <div class="text-xs text-gray-500">
+          <div class="text-sm" style="color: var(--text-primary)">{{ p.text }}</div>
+          <div class="text-xs" style="color: var(--text-secondary)">
             {{ p.intent_bucket }} · {{ p.source_label }} · score {{ p.demand_score?.toFixed?.(0) || 0 }}
           </div>
         </div>
-      </li>
-      <li v-if="!prompts.length" class="rounded-md border border-dashed p-6 text-center text-sm text-gray-500">
+      </AirCard>
+      <li v-if="!prompts.length" class="rounded-2xl border border-dashed p-6 text-center text-sm" style="color: var(--text-secondary); border-color: var(--border-color)">
         No prompts yet for this industry. The daily miner will populate this list.
       </li>
     </ul>
+
+    <OnboardingTooltip storage-key="fb_tour_prompt_library_v1" :steps="tourSteps" />
   </div>
 </template>
 
@@ -51,6 +57,30 @@
 import { ref, watch } from 'vue'
 import promptLibrary from '@/api/promptLibrary'
 import IndustryTypeahead from '@/components/IndustryTypeahead.vue'
+import OnboardingTooltip from '@/components/OnboardingTooltip.vue'
+import AirCard from '@/components/ui/AirCard.vue'
+import AirChip from '@/components/ui/AirChip.vue'
+
+const tourSteps = [
+  {
+    target: '#pl-header',
+    title: 'Welcome to the Prompt Library',
+    message: 'These are demand-side prompts — real questions people ask AI assistants in your category. We use them to test whether your brand shows up.',
+    position: 'bottom',
+  },
+  {
+    target: '#pl-industry',
+    title: 'Filter by industry',
+    message: 'Pick your industry to see prompts mined for that category. New prompts arrive daily from Reddit, search data, and AI-generated paraphrases.',
+    position: 'left',
+  },
+  {
+    target: '#pl-buckets',
+    title: 'Intent buckets',
+    message: 'Prompts are grouped by intent: Category ("best CRM"), Comparison ("X vs Y"), Problem ("how do I…"), and Local ("near me"). Use these to spot coverage gaps.',
+    position: 'bottom',
+  },
+]
 
 const industryId = ref(null)
 const intent = ref('')

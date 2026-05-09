@@ -1,0 +1,137 @@
+/* ════════════════════════════════════════
+   Air Button — Airbnb-inspired button system
+   Uses existing brand color tokens
+   ════════════════════════════════════════ */
+
+.air-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border: 1px solid transparent;
+  background: transparent;
+  font-family: var(--font-family);
+  font-weight: 500;
+  line-height: 1.2;
+  cursor: pointer;
+  white-space: nowrap;
+  text-decoration: none;
+  border-radius: 9999px;
+  transition: transform 150ms ease-out, background-color 150ms ease-out,
+              box-shadow 150ms ease-out, color 150ms ease-out, border-color 150ms ease-out,
+              filter 150ms ease-out, opacity 150ms ease-out;
+  user-select: none;
+}
+
+.air-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--bg-card), 0 0 0 4px var(--brand-accent-glow, rgba(91, 141, 239, 0.35));
+}
+
+.air-btn:active:not(.air-btn--disabled) {
+  transform: scale(0.98);
+}
+
+.air-btn--block { width: 100%; }
+
+.air-btn--disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* Sizes */
+.air-btn--xs { padding: 0.375rem 0.75rem; font-size: 0.6875rem; }
+.air-btn--sm { padding: 0.5rem 1rem; font-size: 0.75rem; }
+.air-btn--md { padding: 0.625rem 1.25rem; font-size: 0.875rem; font-weight: 500; }
+.air-btn--lg { padding: 0.75rem 1.5rem; font-size: 1rem; font-weight: 500; }
+.air-btn--xl { padding: 0.875rem 2rem; font-size: 1.125rem; font-weight: 600; }
+
+/* Primary — uses brand-accent */
+.air-btn--primary {
+  background: var(--brand-accent);
+  color: #ffffff;
+  border-color: var(--brand-accent);
+}
+.air-btn--primary:hover:not(.air-btn--disabled) {
+  filter: brightness(0.95);
+  box-shadow: 0 4px 12px var(--brand-accent-glow);
+}
+
+/* Secondary */
+.air-btn--secondary {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+}
+.air-btn--secondary:hover:not(.air-btn--disabled) {
+  background: var(--bg-card-hover);
+  border-color: var(--border-hover);
+}
+
+/* Ghost */
+.air-btn--ghost {
+  background: transparent;
+  color: var(--text-primary);
+}
+.air-btn--ghost:hover:not(.air-btn--disabled) {
+  background: var(--bg-surface);
+}
+
+/* Outline — rounded-xl per spec */
+.air-btn--outline {
+  background: transparent;
+  color: var(--text-primary);
+  border: 1.5px solid var(--text-primary);
+  border-radius: 0.75rem;
+}
+.air-btn--outline:hover:not(.air-btn--disabled) {
+  background: var(--bg-surface);
+}
+
+/* Link */
+.air-btn--link {
+  background: transparent;
+  color: var(--brand-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  padding-left: 0;
+  padding-right: 0;
+}
+.air-btn--link:hover:not(.air-btn--disabled) {
+  color: var(--brand-accent-hover);
+}
+
+/* Danger */
+.air-btn--danger {
+  background: var(--color-danger);
+  color: #ffffff;
+  border-color: var(--color-danger);
+}
+.air-btn--danger:hover:not(.air-btn--disabled) {
+  filter: brightness(0.95);
+  box-shadow: 0 4px 12px var(--color-danger-bg);
+}
+
+/* Icon + spinner */
+.air-btn__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.air-btn__icon svg { width: 1em; height: 1em; }
+
+.air-btn__spinner {
+  width: 0.875em;
+  height: 0.875em;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: air-btn-spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes air-btn-spin {
+  to { transform: rotate(360deg); }
+}

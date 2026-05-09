@@ -59,11 +59,25 @@ LOCAL_APPS = [
     "apps.onboarding",
     "apps.prompt_library",
     "apps.citations",
+    "apps.brand_vault",
+    "apps.claim_verifier",
+    "apps.content_studio",
 ]
 
 # Phase 2: extract citations from each LLMRankingResult after it's saved.
 # Toggle off to disable the post-save hook (e.g. in narrow unit tests).
 CITATION_EXTRACTION_ENABLED = True
+
+# Phase 3: claim verification + brand-vault extraction. Both gated so
+# the test suite never burns Anthropic tokens by default.
+CLAIM_VERIFICATION_ENABLED = True
+BRAND_VAULT_EXTRACTION_ENABLED = True
+
+# Phase 4: Content Studio. Brief generation runs after each audit by default.
+# Live publishing (real HTTP calls to WP/Webflow/Shopify/HubSpot) is gated
+# off until a tenant is wired up.
+CONTENT_STUDIO_BRIEF_GENERATION_ENABLED = True
+CONTENT_STUDIO_PUBLISH_LIVE = env.bool("CONTENT_STUDIO_PUBLISH_LIVE", default=False)
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 

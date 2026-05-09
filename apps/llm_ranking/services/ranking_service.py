@@ -891,6 +891,14 @@ class LLMRankingService:
         except Exception as exc:  # pragma: no cover
             logger.debug("citation extraction dispatch failed for %s: %s", result_id, exc)
 
+        # Phase 3 — claim extraction. Gated so the existing tests can opt out.
+        if getattr(_settings, "CLAIM_VERIFICATION_ENABLED", True):
+            try:
+                from apps.claim_verifier.tasks import extract_claims_for_result
+                extract_claims_for_result.delay(str(result_id))
+            except Exception as exc:  # pragma: no cover
+                logger.debug("claim extraction dispatch failed for %s: %s", result_id, exc)
+
     @staticmethod
     def _bump_progress(audit_id: str) -> None:
         """Atomically increment queries_completed so the live UI ETAs work."""
@@ -987,6 +995,24 @@ class LLMRankingService:
             "duration_seconds", "total_tokens", "total_cost_usd",
             "audit_logs", "updated_at",
         ])
+
+        # Phase 3 — once all results land, verify any extracted claims.
+        try:
+            from django.conf import settings as _settings_phase3
+            if getattr(_settings_phase3, "CLAIM_VERIFICATION_ENABLED", True):
+                from apps.claim_verifier.tasks import verify_claims_for_audit
+                verify_claims_for_audit.delay(str(audit.id))
+        except Exception as exc:  # pragma: no cover
+            logger.debug("claim verification dispatch failed for %s: %s", audit_id, exc)
+
+        # Phase 4 — generate Content Studio briefs from the latest gaps.
+        try:
+            from django.conf import settings as _settings_phase4
+            if getattr(_settings_phase4, "CONTENT_STUDIO_BRIEF_GENERATION_ENABLED", True):
+                from apps.content_studio.tasks import generate_briefs_for_website
+                generate_briefs_for_website.delay(str(audit.website_id))
+        except Exception as exc:  # pragma: no cover
+            logger.debug("content_studio dispatch failed for %s: %s", audit_id, exc)
 
     # ── Legacy single-task runner (eager mode + tests) ─────────────────────
 

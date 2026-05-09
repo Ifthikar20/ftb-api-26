@@ -1,12 +1,12 @@
 <template>
   <div class="si-page">
     <!-- Header -->
-    <div class="si-header">
+    <div id="si-header" class="si-header">
       <div class="si-title-block">
         <h1 class="si-title">Source Influence</h1>
         <p class="si-subtitle" v-if="websiteName">{{ websiteName }}</p>
       </div>
-      <div class="si-controls">
+      <div id="si-controls" class="si-controls">
         <div class="si-segmented" role="group" aria-label="Period">
           <button
             v-for="opt in periodOptions"
@@ -47,14 +47,19 @@
         <p class="si-empty-copy">
           Run an audit to start tracking which sources LLMs cite for your category.
         </p>
-        <router-link :to="`/llm-ranking/${websiteId}`" class="si-btn-primary">
+        <AirButton
+          as="router-link"
+          :to="`/llm-ranking/${websiteId}`"
+          variant="primary"
+          size="md"
+        >
           Run new audit
-        </router-link>
+        </AirButton>
       </div>
 
       <template v-else>
         <!-- Top stat row -->
-        <div class="si-stats">
+        <div id="si-stats" class="si-stats">
           <div class="si-stat">
             <div class="si-stat-label">Total citations</div>
             <div class="si-stat-value">{{ totalCitations.toLocaleString() }}</div>
@@ -78,7 +83,7 @@
         </div>
 
         <!-- Per-provider breakdown cards -->
-        <div class="si-section">
+        <div id="si-providers" class="si-section">
           <h2 class="si-section-title">Source mix by provider</h2>
           <div v-if="!providerCards.length" class="si-card si-empty-inline">
             No per-provider rollups for this window yet.
@@ -124,16 +129,26 @@
             <table class="si-table">
               <thead>
                 <tr>
-                  <th @click="toggleSort('count')" class="sortable">
+                  <th @click="toggleSort('apex_domain')" class="sortable">
                     Domain
+                    <span v-if="sortKey === 'apex_domain'">{{ sortDir === 'desc' ? '↓' : '↑' }}</span>
                   </th>
-                  <th>Source class</th>
+                  <th @click="toggleSort('source_class')" class="sortable">
+                    Source class
+                    <span v-if="sortKey === 'source_class'">{{ sortDir === 'desc' ? '↓' : '↑' }}</span>
+                  </th>
                   <th class="num sortable" @click="toggleSort('count')">
                     Count
                     <span v-if="sortKey === 'count'">{{ sortDir === 'desc' ? '↓' : '↑' }}</span>
                   </th>
-                  <th class="num">Share</th>
-                  <th>Type</th>
+                  <th class="num sortable" @click="toggleSort('share')">
+                    Share
+                    <span v-if="sortKey === 'share'">{{ sortDir === 'desc' ? '↓' : '↑' }}</span>
+                  </th>
+                  <th class="sortable" @click="toggleSort('type')">
+                    Type
+                    <span v-if="sortKey === 'type'">{{ sortDir === 'desc' ? '↓' : '↑' }}</span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -174,7 +189,7 @@
         </div>
 
         <!-- Recommendations -->
-        <div class="si-section">
+        <div id="si-recs" class="si-section">
           <h2 class="si-section-title">Recommendations</h2>
           <div class="si-recs">
             <div v-for="(rec, i) in recommendations" :key="i" class="si-rec-card">
@@ -187,9 +202,14 @@
               <div class="si-rec-body">
                 <div class="si-rec-headline">{{ rec.headline }}</div>
                 <p class="si-rec-desc" v-html="rec.description"></p>
-                <button v-if="rec.cta" class="si-btn-secondary" @click="rec.action && rec.action()">
+                <AirButton
+                  v-if="rec.cta"
+                  variant="outline"
+                  size="sm"
+                  @click="rec.action && rec.action()"
+                >
                   {{ rec.cta }}
-                </button>
+                </AirButton>
               </div>
             </div>
           </div>
@@ -203,6 +223,8 @@
       :provider="drawerProvider"
       :prompt="drawerPrompt"
     />
+
+    <OnboardingTooltip storage-key="fb_tour_source_influence_v1" :steps="tourSteps" />
   </div>
 </template>
 
@@ -213,6 +235,41 @@ import { useAppStore } from '@/stores/app'
 import citationsApi from '@/api/citations'
 import SourceClassBadge from '@/components/citations/SourceClassBadge.vue'
 import SourceBreakdownBar from '@/components/citations/SourceBreakdownBar.vue'
+import OnboardingTooltip from '@/components/OnboardingTooltip.vue'
+import AirButton from '@/components/ui/AirButton.vue'
+
+const tourSteps = [
+  {
+    target: '#si-header',
+    title: 'Source Influence',
+    message: 'See which websites AI assistants pull from when answering questions about your category. Knowing this tells you where to invest content effort.',
+    position: 'bottom',
+  },
+  {
+    target: '#si-controls',
+    title: 'Filter the view',
+    message: 'Narrow by time period (7 / 30 / 90 days) or by AI provider. Each provider has its own citation pattern — Perplexity favors Reddit, Gemini leans on news, etc.',
+    position: 'bottom',
+  },
+  {
+    target: '#si-stats',
+    title: 'Top-line metrics',
+    message: 'Total citations and unique domains tell you the breadth. Your-site share vs competitor share is the headline number to move.',
+    position: 'bottom',
+  },
+  {
+    target: '#si-providers',
+    title: 'Source mix per provider',
+    message: 'Each card shows how a single LLM splits its citations across source classes. Click a card to see top domains for that provider.',
+    position: 'top',
+  },
+  {
+    target: '#si-recs',
+    title: 'Actionable recommendations',
+    message: 'These are auto-generated based on the gaps in your citation pattern — click through to act on them.',
+    position: 'top',
+  },
+]
 import CitationsDrawer from '@/components/citations/CitationsDrawer.vue'
 
 const route = useRoute()
@@ -427,14 +484,39 @@ const providerCards = computed(() => {
   return Array.from(grouped.values()).sort((a, b) => b.total - a.total)
 })
 
+const domainSort = computed({
+  get: () => ({ key: sortKey.value, dir: sortDir.value }),
+  set: (v) => {
+    sortKey.value = v.key
+    sortDir.value = v.dir
+  },
+})
+
+function _typeRank(row) {
+  if (row.is_target) return 0
+  if (row.is_competitor) return 1
+  return 2
+}
+
 const sortedDomains = computed(() => {
+  const dir = sortDir.value === 'asc' ? 1 : -1
+  const key = sortKey.value
   const list = [...aggregatedDomains.value]
-  list.sort((a, b) => {
-    const dir = sortDir.value === 'desc' ? -1 : 1
-    if (sortKey.value === 'count') return (a.count - b.count) * dir
-    return 0
+  return list.sort((a, b) => {
+    let av
+    let bv
+    if (key === 'type') {
+      av = _typeRank(a)
+      bv = _typeRank(b)
+    } else {
+      av = a[key] ?? ''
+      bv = b[key] ?? ''
+    }
+    if (typeof av === 'number' && typeof bv === 'number') {
+      return (av - bv) * dir
+    }
+    return String(av).localeCompare(String(bv)) * dir
   })
-  return list
 })
 
 const visibleDomains = computed(() => sortedDomains.value.slice(0, domainLimit.value))

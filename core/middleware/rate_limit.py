@@ -87,11 +87,17 @@ class AdaptiveRateLimitMiddleware:
                 headers={"Retry-After": str(limit_config["window"])},
             )
 
-        # Increment counter
-        if current == 0:
-            cache.set(cache_key, 1, timeout=limit_config["window"])
+        # Increment counter. Race-safe: cache.add only sets the key if it
+        # doesn't already exist; cache.incr can fail with ValueError when
+        # the key expired between get() and incr() — fall back to set in
+        # that case so the request isn't blocked by a stale read.
+        if cache.add(cache_key, 1, timeout=limit_config["window"]):
+            pass
         else:
-            cache.incr(cache_key)
+            try:
+                cache.incr(cache_key)
+            except ValueError:
+                cache.set(cache_key, 1, timeout=limit_config["window"])
 
         return self.get_response(request)
 
