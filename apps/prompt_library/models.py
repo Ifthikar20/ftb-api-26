@@ -68,6 +68,39 @@ class Prompt(TimestampMixin):
     demand_score = models.FloatField(default=0.0, db_index=True)
     is_active = models.BooleanField(default=True)
     text_hash = models.CharField(max_length=64, db_index=True)
+    # Templated body with {{ variable }} placeholders. When non-empty,
+    # `text` is treated as a denormalised preview of the template.
+    template_text = models.TextField(
+        blank=True,
+        help_text="Prompt body with {{ variable }} placeholders. If empty, falls back to text.",
+    )
+    template_variables = models.JSONField(
+        default=list, blank=True,
+        help_text="Auto-extracted list of placeholder names",
+    )
+    STYLE_CHOICES = [
+        ("question", "Question"),
+        ("story", "Story"),
+        ("comparison", "Comparison"),
+        ("local", "Local"),
+        ("how_to", "How-to"),
+        ("listicle", "Listicle"),
+    ]
+    style = models.CharField(
+        max_length=24, choices=STYLE_CHOICES, default="question", db_index=True,
+    )
+    effectiveness_score = models.FloatField(
+        default=0.0, db_index=True,
+        help_text="Cached 0-1 score from past audit performance",
+    )
+    effectiveness_components = models.JSONField(
+        default=dict, blank=True,
+        help_text="Per-axis breakdown: visibility_hit_rate, citation_yield, claim_yield, coverage_breadth",
+    )
+    runs_count = models.IntegerField(
+        default=0, help_text="Number of audit runs that used this prompt",
+    )
+    last_used_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = "prompt_library_prompt"
@@ -193,3 +226,24 @@ class PromptSampleEntry(models.Model):
         db_table = "prompt_library_promptsampleentry"
         unique_together = [("sample_run", "prompt")]
         ordering = ["rank"]
+
+
+class PromptVariableSet(TimestampMixin):
+    """Per-website templating dictionary. One row per website."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    website = models.OneToOneField(
+        "websites.Website",
+        related_name="prompt_variables",
+        on_delete=models.CASCADE,
+    )
+    variables = models.JSONField(
+        default=dict, blank=True,
+        help_text="key -> value, e.g. {'location': 'Dallas', 'sales_item': 'medical board'}",
+    )
+
+    class Meta:
+        db_table = "prompt_library_promptvariableset"
+
+    def __str__(self):
+        return f"PromptVariableSet({self.website_id})"
