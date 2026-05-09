@@ -1005,6 +1005,15 @@ class LLMRankingService:
         except Exception as exc:  # pragma: no cover
             logger.debug("claim verification dispatch failed for %s: %s", audit_id, exc)
 
+        # Phase 4 — generate Content Studio briefs from the latest gaps.
+        try:
+            from django.conf import settings as _settings_phase4
+            if getattr(_settings_phase4, "CONTENT_STUDIO_BRIEF_GENERATION_ENABLED", True):
+                from apps.content_studio.tasks import generate_briefs_for_website
+                generate_briefs_for_website.delay(str(audit.website_id))
+        except Exception as exc:  # pragma: no cover
+            logger.debug("content_studio dispatch failed for %s: %s", audit_id, exc)
+
     # ── Legacy single-task runner (eager mode + tests) ─────────────────────
 
     @staticmethod

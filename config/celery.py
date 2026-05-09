@@ -27,6 +27,7 @@ app.conf.task_routes = {
     "apps.citations.tasks.*": {"queue": "ai"},
     "apps.brand_vault.tasks.*": {"queue": "ai"},
     "apps.claim_verifier.tasks.*": {"queue": "ai"},
+    "apps.content_studio.tasks.*": {"queue": "ai"},
 }
 
 app.conf.beat_schedule = {
@@ -91,5 +92,10 @@ app.conf.beat_schedule = {
     "refresh-fact-embeddings": {
         "task": "apps.brand_vault.tasks.refresh_fact_embeddings",
         "schedule": crontab(minute=30, hour=3),
+    },
+    # ── Content Studio ──
+    "generate-briefs-daily": {
+        "task": "apps.content_studio.tasks.generate_briefs_daily",
+        "schedule": crontab(minute=15, hour=6),
     },
 }
