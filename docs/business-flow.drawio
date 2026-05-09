@@ -1,0 +1,333 @@
+<mxfile host="app.diagrams.net" modified="2026-05-09T00:00:00.000Z" agent="claude-code" version="22.0.0" type="device">
+  <diagram name="Customer Business Flow" id="biz-flow-1">
+    <mxGraphModel dx="1800" dy="1200" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2400" pageHeight="1700" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- Title -->
+        <mxCell id="title" value="Customer Business Flow — Acquisition to Expansion" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=22;fontStyle=1;fontColor=#1F2D3D;" vertex="1" parent="1">
+          <mxGeometry x="40" y="20" width="900" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="subtitle" value="Six lifecycle stages → the value loop → tier expansion" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=12;fontColor=#6B7280;" vertex="1" parent="1">
+          <mxGeometry x="40" y="55" width="900" height="20" as="geometry" />
+        </mxCell>
+
+        <!-- ===================== STAGE 1: ACQUISITION ===================== -->
+        <mxCell id="lane-acq" value="1. ACQUISITION" style="swimlane;fontSize=14;fontStyle=1;startSize=30;rounded=1;fillColor=#FEE2E2;strokeColor=#B91C1C;swimlaneFillColor=#FEF2F2;" vertex="1" parent="1">
+          <mxGeometry x="40" y="100" width="2320" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="acq-channels" value="Marketing site · SEO · referrals · partner content" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#B91C1C;fontSize=12;" vertex="1" parent="lane-acq">
+          <mxGeometry x="40" y="50" width="320" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="acq-hook" value="Hook&#10;&quot;Are you visible in ChatGPT, Claude, Gemini, Perplexity?&quot;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#B91C1C;fontSize=12;" vertex="1" parent="lane-acq">
+          <mxGeometry x="400" y="50" width="380" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="acq-free" value="Free instant audit (anonymous)&#10;Paste URL → 5 prompts on 2 providers&#10;Result in &lt; 60 seconds" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#B91C1C;fontSize=12;" vertex="1" parent="lane-acq">
+          <mxGeometry x="820" y="50" width="380" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="acq-signup" value="Teaser result&#10;&quot;You&apos;re cited 12% of the time.&#10;Competitors X, Y are at 47%.&quot;&#10;CTA → Sign up for full report" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#B91C1C;fontSize=12;fontStyle=1;" vertex="1" parent="lane-acq">
+          <mxGeometry x="1240" y="50" width="380" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="acq-metric" value="KEY METRIC&#10;Free→Signup conversion ≥ 8%" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#D97706;fontSize=11;dashed=1;" vertex="1" parent="lane-acq">
+          <mxGeometry x="1660" y="50" width="280" height="80" as="geometry" />
+        </mxCell>
+
+        <!-- ===================== STAGE 2: ONBOARDING ===================== -->
+        <mxCell id="lane-onb" value="2. ONBOARDING (5–10 min)" style="swimlane;fontSize=14;fontStyle=1;startSize=30;rounded=1;fillColor=#FEF3C7;strokeColor=#D97706;swimlaneFillColor=#FFFBEB;" vertex="1" parent="1">
+          <mxGeometry x="40" y="280" width="2320" height="220" as="geometry" />
+        </mxCell>
+        <mxCell id="onb-1" value="① Sign up&#10;Email + verify (OTP)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#D97706;fontSize=11;" vertex="1" parent="lane-onb">
+          <mxGeometry x="40" y="50" width="200" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="onb-2" value="② Connect sources&#10;Website (auto-scan) + optional&#10;FB · IG · GBP · GSC · GA · YouTube" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#D97706;fontSize=11;" vertex="1" parent="lane-onb">
+          <mxGeometry x="260" y="50" width="280" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="onb-3" value="③ Brand Vault populates&#10;&quot;We found 127 facts. Review →&quot;&#10;User confirms / corrects" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#D97706;fontSize=11;fontStyle=1;" vertex="1" parent="lane-onb">
+          <mxGeometry x="560" y="50" width="280" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="onb-4" value="④ Industry + audience&#10;Pick from 20 industries&#10;Library seeds 500 prompts" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#D97706;fontSize=11;" vertex="1" parent="lane-onb">
+          <mxGeometry x="860" y="50" width="280" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="onb-5" value="⑤ Pick plan + payment&#10;Starter $29 · Growth $96 ·&#10;Scale (custom)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#D97706;fontSize=11;" vertex="1" parent="lane-onb">
+          <mxGeometry x="1160" y="50" width="280" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="onb-6" value="⑥ First audit fires&#10;auto-dispatched on save" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#D97706;fontSize=11;" vertex="1" parent="lane-onb">
+          <mxGeometry x="1460" y="50" width="240" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="onb-metric" value="KEY METRIC&#10;Activation (audit complete &lt; 24h) ≥ 90%" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#D97706;fontSize=11;dashed=1;" vertex="1" parent="lane-onb">
+          <mxGeometry x="1720" y="50" width="280" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="onb-friction" value="DROP-OFF RISKS&#10;• Source connect rejection (OAuth)&#10;• Industry not listed → falls back to LLM-synth&#10;• Payment friction → 7-day trial mitigates" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE4E6;strokeColor=#9F1239;fontSize=10;align=left;spacingLeft=8;" vertex="1" parent="lane-onb">
+          <mxGeometry x="40" y="150" width="800" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- ===================== STAGE 3: FIRST VALUE ===================== -->
+        <mxCell id="lane-first" value="3. FIRST VALUE (Aha moment, &lt; 10 min after signup)" style="swimlane;fontSize=14;fontStyle=1;startSize=30;rounded=1;fillColor=#DCFCE7;strokeColor=#15803D;swimlaneFillColor=#F0FDF4;" vertex="1" parent="1">
+          <mxGeometry x="40" y="520" width="2320" height="240" as="geometry" />
+        </mxCell>
+        <mxCell id="fv-progress" value="Live audit progress&#10;terminal-style log + WS push&#10;visibility / coverage / citations" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#15803D;fontSize=11;" vertex="1" parent="lane-first">
+          <mxGeometry x="40" y="50" width="280" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="fv-report" value="Visibility Report&#10;Score: 23 / 100&#10;You appear in 23% of category prompts&#10;Top 3 competitors at 47%" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#15803D;fontSize=11;fontStyle=1;" vertex="1" parent="lane-first">
+          <mxGeometry x="340" y="50" width="320" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="fv-source" value="Source Influence&#10;Perplexity → Reddit 47%&#10;Gemini → news 31%&#10;Claude → blogs 12%" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#15803D;fontSize=11;fontStyle=1;" vertex="1" parent="lane-first">
+          <mxGeometry x="680" y="50" width="280" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="fv-accuracy" value="Accuracy [Phase 3]&#10;18 claims · 4 wrong&#10;&quot;Pricing outdated 31%&quot;&#10;&quot;Wrong founding year 12%&quot;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FEF9C3;strokeColor=#CA8A04;fontSize=11;dashed=1;" vertex="1" parent="lane-first">
+          <mxGeometry x="980" y="50" width="280" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="fv-recs" value="3 actionable recommendations&#10;&quot;Engage these Reddit threads&quot;&#10;&quot;Update /pricing page&quot;&#10;&quot;Add JSON-LD to /about&quot;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#15803D;fontSize=11;" vertex="1" parent="lane-first">
+          <mxGeometry x="1280" y="50" width="320" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="fv-aha" value="AHA MOMENT&#10;Customer sees real visibility numbers,&#10;real source pattern,&#10;real fix list — in one screen." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFBEB;strokeColor=#B91C1C;fontSize=12;fontStyle=1;dashed=0;" vertex="1" parent="lane-first">
+          <mxGeometry x="1620" y="50" width="380" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="fv-metric" value="KEY METRIC&#10;% who view audit detail page ≥ 80%" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#D97706;fontSize=11;dashed=1;" vertex="1" parent="lane-first">
+          <mxGeometry x="40" y="150" width="280" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="fv-cta" value="Surface CTAs in this view:&#10;&quot;Generate the fix&quot; · &quot;Schedule audits&quot; · &quot;Share report with team&quot;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F0FDF4;strokeColor=#15803D;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="lane-first">
+          <mxGeometry x="340" y="150" width="700" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- ===================== STAGE 4: MONITORING ===================== -->
+        <mxCell id="lane-mon" value="4. ONGOING MONITORING (passive)" style="swimlane;fontSize=14;fontStyle=1;startSize=30;rounded=1;fillColor=#DBEAFE;strokeColor=#1D4ED8;swimlaneFillColor=#EFF6FF;" vertex="1" parent="1">
+          <mxGeometry x="40" y="780" width="2320" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="mon-sched" value="Scheduled audits&#10;Daily / weekly per tier&#10;Celery beat dispatcher" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#1D4ED8;fontSize=11;" vertex="1" parent="lane-mon">
+          <mxGeometry x="40" y="50" width="280" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="mon-trend" value="Trend dashboard&#10;Visibility · Accuracy · Citation share&#10;30-day / 90-day rolling lines" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#1D4ED8;fontSize=11;" vertex="1" parent="lane-mon">
+          <mxGeometry x="340" y="50" width="320" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="mon-alerts" value="Threshold alerts&#10;&quot;Visibility on Perplexity dropped 8 pts&quot;&#10;&quot;Claude reporting wrong pricing&quot;&#10;&quot;Competitor Y cited in 12 new threads&quot;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#1D4ED8;fontSize=11;" vertex="1" parent="lane-mon">
+          <mxGeometry x="680" y="50" width="380" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="mon-channels" value="Delivery channels&#10;in-app · email · Slack · Discord · Telegram" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#1D4ED8;fontSize=11;" vertex="1" parent="lane-mon">
+          <mxGeometry x="1080" y="50" width="320" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="mon-digest" value="Weekly digest&#10;Top change · top mismatch · top recommendation&#10;Trends graph snapshot" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#1D4ED8;fontSize=11;" vertex="1" parent="lane-mon">
+          <mxGeometry x="1420" y="50" width="320" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="mon-metric" value="KEY METRIC&#10;Habit forming&#10;Weekly active ≥ 60% by month 2" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#D97706;fontSize=11;dashed=1;" vertex="1" parent="lane-mon">
+          <mxGeometry x="1760" y="50" width="280" height="80" as="geometry" />
+        </mxCell>
+
+        <!-- ===================== STAGE 5: ACTION LOOP ===================== -->
+        <mxCell id="lane-action" value="5. ACTIONING — the differentiating loop" style="swimlane;fontSize=14;fontStyle=1;startSize=30;rounded=1;fillColor=#FCE7F3;strokeColor=#BE185D;swimlaneFillColor=#FDF2F8;" vertex="1" parent="1">
+          <mxGeometry x="40" y="980" width="2320" height="280" as="geometry" />
+        </mxCell>
+
+        <mxCell id="act-queue" value="Recommendations queue&#10;ranked by impact = visibility×accuracy×citation gap" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#BE185D;fontSize=11;" vertex="1" parent="lane-action">
+          <mxGeometry x="40" y="50" width="320" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="act-pick" value="Customer picks one&#10;or batch-selects" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#BE185D;fontSize=11;" vertex="1" parent="lane-action">
+          <mxGeometry x="380" y="50" width="200" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="act-draft" value="AI drafts content [Phase 4]&#10;Reddit answer · FAQ · blog post ·&#10;JSON-LD · landing-page section&#10;grounded in Brand Vault facts&#10;voice guard against tone samples" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#BE185D;fontSize=11;fontStyle=1;dashed=1;" vertex="1" parent="lane-action">
+          <mxGeometry x="600" y="50" width="380" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="act-edit" value="Review &amp; edit&#10;single-page editor&#10;voice + accuracy scores" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#BE185D;fontSize=11;" vertex="1" parent="lane-action">
+          <mxGeometry x="1000" y="50" width="280" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="act-publish" value="Publish&#10;WordPress · Webflow · Shopify · HubSpot&#10;or copy-paste / Reddit / forum" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#BE185D;fontSize=11;dashed=1;" vertex="1" parent="lane-action">
+          <mxGeometry x="1300" y="50" width="320" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="act-reprobe" value="Re-probe loop (14 days)&#10;Same prompts run again&#10;Score lift attributed to draft" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#BE185D;fontSize=11;dashed=1;" vertex="1" parent="lane-action">
+          <mxGeometry x="1640" y="50" width="320" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="act-roi" value="ROI dashboard&#10;&quot;Reddit answer caused +6 pts visibility&quot;&#10;&quot;GPT now correct pricing in 84%&quot;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFBEB;strokeColor=#B45309;fontSize=11;fontStyle=1;dashed=1;" vertex="1" parent="lane-action">
+          <mxGeometry x="1980" y="50" width="300" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="act-metric" value="KEY METRICS&#10;Action: ≥ 35% publish a draft within 14 days&#10;Retention: ≥ 75% paying after 60 days" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#D97706;fontSize=11;dashed=1;" vertex="1" parent="lane-action">
+          <mxGeometry x="40" y="160" width="500" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="act-loop-note" value="THE VALUE LOOP&#10;Recommendation → Draft → Publish → Re-probe → Score lift → New recommendation&#10;This is the loop that drives everything: retention, expansion, word-of-mouth, ROI proof." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FDF2F8;strokeColor=#BE185D;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="lane-action">
+          <mxGeometry x="560" y="160" width="1720" height="80" as="geometry" />
+        </mxCell>
+
+        <!-- ===================== STAGE 6: EXPANSION ===================== -->
+        <mxCell id="lane-exp" value="6. EXPANSION &amp; RETENTION" style="swimlane;fontSize=14;fontStyle=1;startSize=30;rounded=1;fillColor=#E0E7FF;strokeColor=#4338CA;swimlaneFillColor=#EEF2FF;" vertex="1" parent="1">
+          <mxGeometry x="40" y="1280" width="2320" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="exp-multi" value="Add more brands&#10;multi-brand plan upgrade" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#4338CA;fontSize=11;" vertex="1" parent="lane-exp">
+          <mxGeometry x="40" y="50" width="280" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="exp-team" value="Invite teammates&#10;Editor / Viewer roles (RBAC)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#4338CA;fontSize=11;" vertex="1" parent="lane-exp">
+          <mxGeometry x="340" y="50" width="280" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="exp-source" value="Connect more sources&#10;Brand Vault gets richer&#10;→ better recommendations" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#4338CA;fontSize=11;" vertex="1" parent="lane-exp">
+          <mxGeometry x="640" y="50" width="280" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="exp-cap" value="Hit usage cap&#10;upgrade to higher tier" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#4338CA;fontSize=11;" vertex="1" parent="lane-exp">
+          <mxGeometry x="940" y="50" width="240" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="exp-scale" value="Scale tier (annual)&#10;custom industries · API · white-label&#10;SOC 2 / DPA / SSO" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#4338CA;fontSize=11;fontStyle=1;" vertex="1" parent="lane-exp">
+          <mxGeometry x="1200" y="50" width="320" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="exp-referrals" value="Referrals + word-of-mouth&#10;agency reseller program" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#4338CA;fontSize=11;" vertex="1" parent="lane-exp">
+          <mxGeometry x="1540" y="50" width="280" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="exp-metric" value="KEY METRICS&#10;Expansion: ≥ 25% add 2nd brand or teammate by D90&#10;NRR ≥ 110% by month 6" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#D97706;fontSize=11;dashed=1;" vertex="1" parent="lane-exp">
+          <mxGeometry x="1840" y="50" width="440" height="80" as="geometry" />
+        </mxCell>
+
+        <!-- ===================== TIER MAPPING ===================== -->
+        <mxCell id="lane-tiers" value="PRICING TIERS — feature gating maps to engineering phases" style="swimlane;fontSize=14;fontStyle=1;startSize=30;rounded=1;fillColor=#F3F4F6;strokeColor=#374151;swimlaneFillColor=#F9FAFB;" vertex="1" parent="1">
+          <mxGeometry x="40" y="1480" width="2320" height="200" as="geometry" />
+        </mxCell>
+
+        <mxCell id="tier-starter" value="STARTER · $29 / month&#10;1 brand · weekly audit · 50 prompts/audit · 4 LLMs&#10;+ Source Influence (Phase 2)&#10;5 drafts / mo · Email + Slack alerts · 1 user" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#10B981;fontSize=11;align=left;spacingLeft=10;fontStyle=1;" vertex="1" parent="lane-tiers">
+          <mxGeometry x="40" y="50" width="700" height="120" as="geometry" />
+        </mxCell>
+
+        <mxCell id="tier-growth" value="GROWTH · $96 / month&#10;5 brands · daily audit · 200 prompts/audit · 4 LLMs&#10;+ Claim Verification (Phase 3)&#10;25 drafts / mo · all alert channels · 5 users" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#3B82F6;fontSize=11;align=left;spacingLeft=10;fontStyle=1;" vertex="1" parent="lane-tiers">
+          <mxGeometry x="780" y="50" width="700" height="120" as="geometry" />
+        </mxCell>
+
+        <mxCell id="tier-scale" value="SCALE · custom (annual)&#10;Unlimited brands · continuous audit · 1000+ prompts · 4+ LLMs&#10;+ Content Studio with publish API (Phase 4)&#10;Unlimited drafts · custom webhooks · unlimited users · RBAC&#10;White-label reports · API access · SOC 2 / DPA" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#8B5CF6;fontSize=11;align=left;spacingLeft=10;fontStyle=1;" vertex="1" parent="lane-tiers">
+          <mxGeometry x="1520" y="50" width="760" height="120" as="geometry" />
+        </mxCell>
+
+        <!-- ===================== EDGES — main flow ===================== -->
+        <!-- Stage 1 horizontal -->
+        <mxCell id="e1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#B91C1C;strokeWidth=2;endArrow=block;" edge="1" source="acq-channels" target="acq-hook" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#B91C1C;strokeWidth=2;endArrow=block;" edge="1" source="acq-hook" target="acq-free" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#B91C1C;strokeWidth=2;endArrow=block;" edge="1" source="acq-free" target="acq-signup" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Stage 1 → 2 -->
+        <mxCell id="e1-2" value="customer signs up" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeColor=#1F2D3D;strokeWidth=3;endArrow=block;fontSize=10;" edge="1" source="lane-acq" target="lane-onb" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Stage 2 horizontal -->
+        <mxCell id="e2a" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#D97706;strokeWidth=2;endArrow=block;" edge="1" source="onb-1" target="onb-2" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2b" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#D97706;strokeWidth=2;endArrow=block;" edge="1" source="onb-2" target="onb-3" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2c" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#D97706;strokeWidth=2;endArrow=block;" edge="1" source="onb-3" target="onb-4" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2d" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#D97706;strokeWidth=2;endArrow=block;" edge="1" source="onb-4" target="onb-5" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2e" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#D97706;strokeWidth=2;endArrow=block;" edge="1" source="onb-5" target="onb-6" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Stage 2 → 3 -->
+        <mxCell id="e2-3" value="audit fires automatically" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeColor=#1F2D3D;strokeWidth=3;endArrow=block;fontSize=10;" edge="1" source="lane-onb" target="lane-first" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Stage 3 horizontal -->
+        <mxCell id="e3a" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#15803D;strokeWidth=2;endArrow=block;" edge="1" source="fv-progress" target="fv-report" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e3b" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#15803D;strokeWidth=2;endArrow=block;" edge="1" source="fv-report" target="fv-source" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e3c" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#15803D;strokeWidth=2;endArrow=block;" edge="1" source="fv-source" target="fv-accuracy" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e3d" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#15803D;strokeWidth=2;endArrow=block;" edge="1" source="fv-accuracy" target="fv-recs" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e3e" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#15803D;strokeWidth=2;endArrow=block;" edge="1" source="fv-recs" target="fv-aha" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Stage 3 → 4 -->
+        <mxCell id="e3-4" value="audits scheduled, customer steps away" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeColor=#1F2D3D;strokeWidth=3;endArrow=block;fontSize=10;" edge="1" source="lane-first" target="lane-mon" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Stage 4 horizontal -->
+        <mxCell id="e4a" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#1D4ED8;strokeWidth=2;endArrow=block;" edge="1" source="mon-sched" target="mon-trend" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e4b" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#1D4ED8;strokeWidth=2;endArrow=block;" edge="1" source="mon-trend" target="mon-alerts" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e4c" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#1D4ED8;strokeWidth=2;endArrow=block;" edge="1" source="mon-alerts" target="mon-channels" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e4d" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#1D4ED8;strokeWidth=2;endArrow=block;" edge="1" source="mon-channels" target="mon-digest" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Stage 4 → 5 -->
+        <mxCell id="e4-5" value="alert prompts action" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeColor=#1F2D3D;strokeWidth=3;endArrow=block;fontSize=10;" edge="1" source="lane-mon" target="lane-action" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Stage 5 horizontal flow -->
+        <mxCell id="e5a" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#BE185D;strokeWidth=2;endArrow=block;" edge="1" source="act-queue" target="act-pick" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e5b" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#BE185D;strokeWidth=2;endArrow=block;" edge="1" source="act-pick" target="act-draft" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e5c" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#BE185D;strokeWidth=2;endArrow=block;" edge="1" source="act-draft" target="act-edit" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e5d" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#BE185D;strokeWidth=2;endArrow=block;" edge="1" source="act-edit" target="act-publish" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e5e" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#BE185D;strokeWidth=2;endArrow=block;" edge="1" source="act-publish" target="act-reprobe" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e5f" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#BE185D;strokeWidth=2;endArrow=block;" edge="1" source="act-reprobe" target="act-roi" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Stage 5 internal feedback loop: ROI → queue (the closing of the loop) -->
+        <mxCell id="e5-loop" value="lift feeds new recs" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;exitX=0;exitY=0;entryX=1;entryY=0;strokeColor=#BE185D;strokeWidth=2;endArrow=block;dashed=1;fontSize=10;" edge="1" source="act-roi" target="act-queue" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="2200" y="20" />
+              <mxPoint x="20" y="20" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Stage 5 → 6 -->
+        <mxCell id="e5-6" value="proven ROI drives expansion" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeColor=#1F2D3D;strokeWidth=3;endArrow=block;fontSize=10;" edge="1" source="lane-action" target="lane-exp" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Stage 6 horizontal -->
+        <mxCell id="e6a" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#4338CA;strokeWidth=2;endArrow=block;" edge="1" source="exp-multi" target="exp-team" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e6b" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#4338CA;strokeWidth=2;endArrow=block;" edge="1" source="exp-team" target="exp-source" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e6c" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#4338CA;strokeWidth=2;endArrow=block;" edge="1" source="exp-source" target="exp-cap" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e6d" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#4338CA;strokeWidth=2;endArrow=block;" edge="1" source="exp-cap" target="exp-scale" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e6e" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#4338CA;strokeWidth=2;endArrow=block;" edge="1" source="exp-scale" target="exp-referrals" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Stage 6 → tier mapping -->
+        <mxCell id="e6-tier" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeColor=#374151;strokeWidth=2;endArrow=block;dashed=1;" edge="1" source="lane-exp" target="lane-tiers" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
