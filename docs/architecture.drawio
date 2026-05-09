@@ -1,443 +1,367 @@
 <mxfile host="app.diagrams.net" modified="2026-05-09T00:00:00.000Z" agent="claude-code" version="22.0.0" type="device">
-  <diagram name="GEO Platform - System Flow" id="geo-flow-1">
-    <mxGraphModel background="#FFFFFF" dx="2000" dy="1400" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2600" pageHeight="2400" math="0" shadow="0">
+  <diagram name="GEO Platform - Architectural Flow" id="geo-flow-2">
+    <mxGraphModel background="#FFFFFF" dx="2000" dy="1400" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1800" pageHeight="3800" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
 
         <!-- Title -->
-        <mxCell id="t1" value="GEO Platform — End-to-End System Flow" style="text;html=1;align=center;verticalAlign=middle;fontSize=22;fontStyle=1;fontColor=#000000;" vertex="1" parent="1">
-          <mxGeometry x="40" y="20" width="2520" height="40" as="geometry" />
+        <mxCell id="title" value="GEO Platform — Architectural Flow" style="text;html=1;align=center;verticalAlign=middle;fontSize=24;fontStyle=1;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="40" y="20" width="1720" height="40" as="geometry" />
         </mxCell>
-        <mxCell id="t2" value="Top-to-bottom data flow: user request → audit pipeline → extraction → scoring → dashboard" style="text;html=1;align=center;verticalAlign=middle;fontSize=12;fontColor=#000000;" vertex="1" parent="1">
-          <mxGeometry x="40" y="55" width="2520" height="20" as="geometry" />
-        </mxCell>
-
-        <!-- ===================== ROW 1: USER ENTRY ===================== -->
-        <mxCell id="user" value="USER&#10;(browser)" style="ellipse;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=12;fontStyle=1;fontColor=#000000;" vertex="1" parent="1">
-          <mxGeometry x="1180" y="100" width="160" height="60" as="geometry" />
+        <mxCell id="subtitle" value="Top-to-bottom: User → Frontend → API → Audit pipeline → Extraction → Scoring → Delivery" style="text;html=1;align=center;verticalAlign=middle;fontSize=13;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="40" y="60" width="1720" height="22" as="geometry" />
         </mxCell>
 
-        <!-- ===================== ROW 2: VUE PAGES ===================== -->
-        <mxCell id="grp-vue" value="VUE 3 SPA (frontend)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;fontSize=12;fontStyle=1;align=left;verticalAlign=top;spacingLeft=8;spacingTop=4;fontColor=#000000;dashed=0;" vertex="1" parent="1">
-          <mxGeometry x="40" y="200" width="2520" height="120" as="geometry" />
-        </mxCell>
-        <mxCell id="p-onb" value="OnboardingPage" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#6366F1;fontSize=11;fontColor=#000000;" vertex="1" parent="1">
-          <mxGeometry x="80" y="240" width="180" height="60" as="geometry" />
-        </mxCell>
-        <mxCell id="p-llm" value="LLMRankingPage&#10;(Run Audit modal)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#6366F1;fontSize=11;fontColor=#000000;" vertex="1" parent="1">
-          <mxGeometry x="280" y="240" width="180" height="60" as="geometry" />
-        </mxCell>
-        <mxCell id="p-prompt" value="PromptLibraryPage" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#6366F1;fontSize=11;fontColor=#000000;" vertex="1" parent="1">
-          <mxGeometry x="480" y="240" width="180" height="60" as="geometry" />
-        </mxCell>
-        <mxCell id="p-source" value="SourceInfluencePage" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#6366F1;fontSize=11;fontColor=#000000;" vertex="1" parent="1">
-          <mxGeometry x="680" y="240" width="180" height="60" as="geometry" />
-        </mxCell>
-        <mxCell id="p-dash" value="DashboardPage" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#6366F1;fontSize=11;fontColor=#000000;" vertex="1" parent="1">
-          <mxGeometry x="880" y="240" width="160" height="60" as="geometry" />
-        </mxCell>
-        <mxCell id="p-anal" value="AnalyticsPage" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#6366F1;fontSize=11;fontColor=#000000;" vertex="1" parent="1">
-          <mxGeometry x="1060" y="240" width="160" height="60" as="geometry" />
-        </mxCell>
-        <mxCell id="p-set" value="Settings · Billing · Websites" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#6366F1;fontSize=11;fontColor=#000000;" vertex="1" parent="1">
-          <mxGeometry x="1240" y="240" width="220" height="60" as="geometry" />
-        </mxCell>
-        <mxCell id="p-comp" value="Reusable components&#10;CitationsDrawer · PromptPreviewDrawer · IndustryTypeahead · SourceClassBadge · OnboardingTooltip" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F5F3FF;strokeColor=#6366F1;fontSize=10;dashed=1;fontColor=#000000;" vertex="1" parent="1">
-          <mxGeometry x="1480" y="240" width="540" height="60" as="geometry" />
-        </mxCell>
-        <mxCell id="p-store" value="Pinia stores · API clients · Vue Router" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F5F3FF;strokeColor=#6366F1;fontSize=10;dashed=1;fontColor=#000000;" vertex="1" parent="1">
-          <mxGeometry x="2040" y="240" width="480" height="60" as="geometry" />
+        <!-- ========== USER ========== -->
+        <mxCell id="user" value="USER (browser)" style="ellipse;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontSize=14;fontStyle=1;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="780" y="120" width="240" height="70" as="geometry" />
         </mxCell>
 
-        <!-- ===================== ROW 3: API GATEWAY ===================== -->
-        <mxCell id="grp-api" value="DJANGO API GATEWAY (DRF · /api/v1/*)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFBEB;strokeColor=#D97706;fontSize=12;fontStyle=1;align=left;verticalAlign=top;spacingLeft=8;spacingTop=4;fontColor=#000000;dashed=0;" vertex="1" parent="1">
-          <mxGeometry x="40" y="380" width="2520" height="120" as="geometry" />
+        <!-- ========== STEP A: FRONTEND ========== -->
+        <mxCell id="sa-header" value="STEP A · FRONTEND (Vue 3 SPA)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;fontSize=15;fontStyle=1;align=center;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="40" y="240" width="1720" height="44" as="geometry" />
         </mxCell>
-        <mxCell id="api-mw" value="Middleware stack&#10;RequestID · Security · Sanitizer · Auth · AuditLog · RateLimit · Axes · Correlation · structlog" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#D97706;fontSize=11;align=left;spacingLeft=8;fontColor=#000000;" vertex="1" parent="1">
-          <mxGeometry x="80" y="420" width="700" height="60" as="geometry" />
+        <mxCell id="sa-1" value="Pages&#10;LLMRanking · PromptLibrary · SourceInfluence&#10;Onboarding · Dashboard · Settings" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#6366F1;fontSize=12;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="80" y="320" width="500" height="100" as="geometry" />
         </mxCell>
-        <mxCell id="api-drf" value="DRF&#10;JWT auth · throttling · pagination · OpenAPI · EnvelopeRenderer" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#D97706;fontSize=11;align=left;spacingLeft=8;fontColor=#000000;" vertex="1" parent="1">
-          <mxGeometry x="800" y="420" width="600" height="60" as="geometry" />
+        <mxCell id="sa-2" value="Components&#10;CitationsDrawer · PromptPreviewDrawer&#10;IndustryTypeahead · OnboardingTooltip" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#6366F1;fontSize=12;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="640" y="320" width="500" height="100" as="geometry" />
         </mxCell>
-        <mxCell id="api-ws" value="Channels (ASGI/Daphne)&#10;/ws/audits/&lt;id&gt;/ · /ws/notifications/" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#D97706;fontSize=11;align=left;spacingLeft=8;fontColor=#000000;" vertex="1" parent="1">
-          <mxGeometry x="1420" y="420" width="500" height="60" as="geometry" />
-        </mxCell>
-        <mxCell id="api-tenant" value="Tenant scoping&#10;Website ownership check" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#D97706;fontSize=11;align=left;spacingLeft=8;fontColor=#000000;" vertex="1" parent="1">
-          <mxGeometry x="1940" y="420" width="580" height="60" as="geometry" />
+        <mxCell id="sa-3" value="State + Routing&#10;Pinia stores · Vue Router · Axios clients&#10;route guards (auth, plan, website)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#6366F1;fontSize=12;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="1200" y="320" width="500" height="100" as="geometry" />
         </mxCell>
 
-        <!-- ===================== ROW 4: ONBOARDING + KNOWLEDGE ===================== -->
-        <mxCell id="grp-knowl" value="STEP A — KNOWLEDGE INGESTION (per business)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F0FDF4;strokeColor=#15803D;fontSize=12;fontStyle=1;align=left;verticalAlign=top;spacingLeft=8;spacingTop=4;fontColor=#000000;dashed=0;" vertex="1" parent="1">
-          <mxGeometry x="40" y="560" width="1240" height="280" as="geometry" />
+        <!-- ========== STEP B: API GATEWAY ========== -->
+        <mxCell id="sb-header" value="STEP B · API GATEWAY (Django + DRF)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFBEB;strokeColor=#D97706;fontSize=15;fontStyle=1;align=center;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="40" y="490" width="1720" height="44" as="geometry" />
         </mxCell>
-        <mxCell id="k-acc" value="apps.accounts&#10;User · JWT · OTP" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#15803D;fontSize=11;fontColor=#000000;" vertex="1" parent="1">
-          <mxGeometry x="80" y="610" width="180" height="60" as="geometry" />
+        <mxCell id="sb-1" value="Middleware&#10;RequestID · Security headers · Sanitizer&#10;Auth · Audit log · Rate limit · Axes" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#D97706;fontSize=12;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="80" y="570" width="500" height="100" as="geometry" />
         </mxCell>
-        <mxCell id="k-web" value="apps.websites&#10;Website (tenant)&#10;Pixel · Integrations · RBAC" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#15803D;fontSize=11;fontColor=#000000;" vertex="1" parent="1">
-          <mxGeometry x="280" y="610" width="220" height="60" as="geometry" />
+        <mxCell id="sb-2" value="DRF&#10;JWT auth · throttling · pagination&#10;OpenAPI · EnvelopeRenderer" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#D97706;fontSize=12;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="640" y="570" width="500" height="100" as="geometry" />
         </mxCell>
-        <mxCell id="k-onb" value="apps.onboarding&#10;Scan + save flow&#10;industry_id" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#15803D;fontSize=11;fontColor=#000000;" vertex="1" parent="1">
-          <mxGeometry x="520" y="610" width="200" height="60" as="geometry" />
+        <mxCell id="sb-3" value="Channels (ASGI / Daphne)&#10;/ws/audits/&lt;id&gt;/&#10;/ws/notifications/" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#D97706;fontSize=12;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="1200" y="570" width="500" height="100" as="geometry" />
         </mxCell>
-        <mxCell id="k-bill" value="apps.billing&#10;Stripe · plan gates" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#15803D;fontSize=11;fontColor=#000000;" vertex="1" parent="1">
-          <mxGeometry x="740" y="610" width="180" height="60" as="geometry" />
-        </mxCell>
-        <mxCell id="k-rag" value="apps.rag&#10;ingest_url / ingest_site&#10;chunker · embedder · retriever" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#15803D;fontSize=11;fontStyle=1;fontColor=#000000;" vertex="1" parent="1">
-          <mxGeometry x="80" y="700" width="280" height="60" as="geometry" />
-        </mxCell>
-        <mxCell id="k-vault" value="apps.brand_vault [Phase 3]&#10;BrandFact (s, p, o)&#10;versioned · confidence" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FEF9C3;strokeColor=#CA8A04;fontSize=11;dashed=1;fontColor=#000000;" vertex="1" parent="1">
-          <mxGeometry x="380" y="700" width="240" height="60" as="geometry" />
-        </mxCell>
-        <mxCell id="k-sources" value="External sources crawled&#10;Website · FB · IG · GBP · GSC · GA · YouTube · Shopify · docs" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FEE2E2;strokeColor=#B91C1C;fontSize=10;dashed=1;fontColor=#000000;" vertex="1" parent="1">
-          <mxGeometry x="640" y="700" width="600" height="60" as="geometry" />
+        <mxCell id="sb-4" value="Tenant scoping at every endpoint · Website ownership check" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFBEB;strokeColor=#D97706;fontSize=12;fontStyle=1;align=center;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="80" y="690" width="1620" height="50" as="geometry" />
         </mxCell>
 
-        <!-- ===================== ROW 4 RIGHT: PROMPT LIBRARY ===================== -->
-        <mxCell id="grp-prompt" value="STEP B — DEMAND-SIDE PROMPTS" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FAF5FF;strokeColor=#7E22CE;fontSize=12;fontStyle=1;align=left;verticalAlign=top;spacingLeft=8;spacingTop=4;fontColor=#000000;dashed=0;" vertex="1" parent="1">
-          <mxGeometry x="1300" y="560" width="1260" height="280" as="geometry" />
+        <!-- ========== STEP C: KNOWLEDGE INGESTION ========== -->
+        <mxCell id="sc-header" value="STEP C · KNOWLEDGE INGESTION (per business)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F0FDF4;strokeColor=#15803D;fontSize=15;fontStyle=1;align=center;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="40" y="800" width="1720" height="44" as="geometry" />
         </mxCell>
-        <mxCell id="pr-mine" value="Miners (Celery beat 04:00)&#10;Reddit · SerpAPI / DataForSEO · LLM-synth" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#7E22CE;fontSize=11;fontColor=#000000;" vertex="1" parent="1">
-          <mxGeometry x="1340" y="610" width="380" height="60" as="geometry" />
+        <mxCell id="sc-1" value="apps.onboarding&#10;Scan + save flow · industry_id" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#15803D;fontSize=12;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="80" y="880" width="380" height="100" as="geometry" />
         </mxCell>
-        <mxCell id="pr-dedup" value="dedup_service&#10;cosine + trigram fallback" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#7E22CE;fontSize=11;fontColor=#000000;" vertex="1" parent="1">
-          <mxGeometry x="1740" y="610" width="220" height="60" as="geometry" />
+        <mxCell id="sc-2" value="External sources crawled&#10;Website · FB · IG · GBP · GSC&#10;GA · YouTube · Shopify" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FEE2E2;strokeColor=#B91C1C;fontSize=12;dashed=1;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="520" y="880" width="380" height="100" as="geometry" />
         </mxCell>
-        <mxCell id="pr-score" value="scoring_service&#10;demand_score (recency·source·variations)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#7E22CE;fontSize=11;fontColor=#000000;" vertex="1" parent="1">
-          <mxGeometry x="1980" y="610" width="320" height="60" as="geometry" />
+        <mxCell id="sc-3" value="apps.rag&#10;ingest_url · chunker · embedder · retriever" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#15803D;fontSize=12;fontStyle=1;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="960" y="880" width="380" height="100" as="geometry" />
         </mxCell>
-        <mxCell id="pr-store" value="apps.prompt_library&#10;Industry · Prompt · PromptVariation&#10;PromptSampleRun + Entries" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#7E22CE;fontSize=11;fontStyle=1;fontColor=#000000;" vertex="1" parent="1">
-          <mxGeometry x="1340" y="700" width="380" height="60" as="geometry" />
-        </mxCell>
-        <mxCell id="pr-sampler" value="sampler_service&#10;stratified · seed-reproducible&#10;intent buckets: category / comparison / problem / local" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#7E22CE;fontSize=11;fontStyle=1;fontColor=#000000;" vertex="1" parent="1">
-          <mxGeometry x="1740" y="700" width="560" height="60" as="geometry" />
+        <mxCell id="sc-4" value="apps.brand_vault [Phase 3]&#10;BrandFact (s, p, o)&#10;versioned · confidence" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FEF9C3;strokeColor=#CA8A04;fontSize=12;dashed=1;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="1400" y="880" width="300" height="100" as="geometry" />
         </mxCell>
 
-        <!-- ===================== ROW 5: AUDIT RUNNER ===================== -->
-        <mxCell id="grp-audit" value="STEP C — AUDIT CREATION &amp; PROBE FAN-OUT" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ECFEFF;strokeColor=#0E7490;fontSize=12;fontStyle=1;align=left;verticalAlign=top;spacingLeft=8;spacingTop=4;fontColor=#000000;dashed=0;" vertex="1" parent="1">
-          <mxGeometry x="40" y="880" width="2520" height="280" as="geometry" />
+        <!-- ========== STEP D: PROMPT LIBRARY ========== -->
+        <mxCell id="sd-header" value="STEP D · DEMAND-SIDE PROMPTS (mined + sampled)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FAF5FF;strokeColor=#7E22CE;fontSize=15;fontStyle=1;align=center;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="40" y="1040" width="1720" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="sd-1" value="Miners (Celery beat 04:00)&#10;Reddit · SerpAPI / DataForSEO&#10;LLM-synth (paraphrase)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#7E22CE;fontSize=12;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="80" y="1120" width="380" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="sd-2" value="dedup_service&#10;cosine + trigram fallback&#10;reject if similarity ≥ 0.92" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#7E22CE;fontSize=12;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="520" y="1120" width="380" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="sd-3" value="apps.prompt_library&#10;Industry · Prompt · PromptVariation&#10;PromptSampleRun + Entries" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#7E22CE;fontSize=12;fontStyle=1;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="960" y="1120" width="380" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="sd-4" value="sampler_service&#10;stratified · seed-reproducible&#10;category / comparison / problem / local" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#7E22CE;fontSize=12;fontStyle=1;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="1400" y="1120" width="320" height="100" as="geometry" />
         </mxCell>
 
-        <mxCell id="ar-post" value="POST /api/v1/llm-ranking/audits/&#10;LLMRankingAuditListView.post&#10;validate prompt_source ∈ {vault,library,hybrid}" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#0E7490;fontSize=11;fontColor=#000000;" vertex="1" parent="1">
-          <mxGeometry x="80" y="930" width="320" height="70" as="geometry" />
+        <!-- ========== STEP E: AUDIT CREATION ========== -->
+        <mxCell id="se-header" value="STEP E · AUDIT CREATION" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ECFEFF;strokeColor=#0E7490;fontSize=15;fontStyle=1;align=center;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="40" y="1280" width="1720" height="44" as="geometry" />
         </mxCell>
-        <mxCell id="ar-apply" value="audit_runner.apply_to_audit&#10;resolve prompts:&#10; vault | library | hybrid" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#0E7490;fontSize=11;fontStyle=1;fontColor=#000000;" vertex="1" parent="1">
-          <mxGeometry x="430" y="930" width="280" height="70" as="geometry" />
+        <mxCell id="se-1" value="POST /api/v1/llm-ranking/audits/&#10;LLMRankingAuditListView.post&#10;validate prompt_source ∈ {vault, library, hybrid}" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#0E7490;fontSize=12;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="80" y="1360" width="500" height="100" as="geometry" />
         </mxCell>
-        <mxCell id="ar-create" value="Create LLMRankingAudit&#10;status=pending&#10;persist PromptSampleRun" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#0E7490;fontSize=11;fontColor=#000000;" vertex="1" parent="1">
-          <mxGeometry x="740" y="930" width="280" height="70" as="geometry" />
+        <mxCell id="se-2" value="audit_runner.apply_to_audit&#10;resolve prompts: vault · library · hybrid&#10;persist PromptSampleRun · write audit.prompts" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#0E7490;fontSize=12;fontStyle=1;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="640" y="1360" width="500" height="100" as="geometry" />
         </mxCell>
-        <mxCell id="ar-dispatch" value="run_audit.delay()&#10;Celery queue=ai" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#0E7490;fontSize=11;fontColor=#000000;" vertex="1" parent="1">
-          <mxGeometry x="1050" y="930" width="240" height="70" as="geometry" />
-        </mxCell>
-        <mxCell id="ar-router" value="ProviderRouter&#10;rate-limit · retry · cost telemetry [TODO]" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#0E7490;fontSize=11;fontStyle=1;fontColor=#000000;" vertex="1" parent="1">
-          <mxGeometry x="1320" y="930" width="320" height="70" as="geometry" />
-        </mxCell>
-        <mxCell id="ar-anthropic" value="Anthropic&#10;Claude" style="ellipse;whiteSpace=wrap;html=1;fillColor=#FEE2E2;strokeColor=#B91C1C;fontSize=11;fontColor=#000000;" vertex="1" parent="1">
-          <mxGeometry x="1680" y="935" width="140" height="60" as="geometry" />
-        </mxCell>
-        <mxCell id="ar-openai" value="OpenAI&#10;GPT-4" style="ellipse;whiteSpace=wrap;html=1;fillColor=#FEE2E2;strokeColor=#B91C1C;fontSize=11;fontColor=#000000;" vertex="1" parent="1">
-          <mxGeometry x="1840" y="935" width="140" height="60" as="geometry" />
-        </mxCell>
-        <mxCell id="ar-google" value="Google&#10;Gemini grounded" style="ellipse;whiteSpace=wrap;html=1;fillColor=#FEE2E2;strokeColor=#B91C1C;fontSize=11;fontColor=#000000;" vertex="1" parent="1">
-          <mxGeometry x="2000" y="935" width="160" height="60" as="geometry" />
-        </mxCell>
-        <mxCell id="ar-pp" value="Perplexity&#10;native citations" style="ellipse;whiteSpace=wrap;html=1;fillColor=#FEE2E2;strokeColor=#B91C1C;fontSize=11;fontColor=#000000;" vertex="1" parent="1">
-          <mxGeometry x="2180" y="935" width="160" height="60" as="geometry" />
-        </mxCell>
-        <mxCell id="ar-result" value="Persist LLMRankingResult&#10;raw_payload (JSON) · prompt_source_label&#10;triggers extraction subtasks" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#0E7490;fontSize=11;fontStyle=1;fontColor=#000000;" vertex="1" parent="1">
-          <mxGeometry x="80" y="1050" width="500" height="80" as="geometry" />
-        </mxCell>
-        <mxCell id="ar-ws" value="WebSocket push (Channels)&#10;audit progress · result added · status updates" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#0E7490;fontSize=11;fontColor=#000000;" vertex="1" parent="1">
-          <mxGeometry x="610" y="1050" width="380" height="80" as="geometry" />
+        <mxCell id="se-3" value="Create LLMRankingAudit&#10;status=pending · run_audit.delay()&#10;Celery queue=ai" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#0E7490;fontSize=12;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="1200" y="1360" width="500" height="100" as="geometry" />
         </mxCell>
 
-        <!-- ===================== ROW 6: EXTRACTION ===================== -->
-        <mxCell id="grp-ext" value="STEP D — PER-RESULT EXTRACTION (parallel Celery subtasks)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF7ED;strokeColor=#C2410C;fontSize=12;fontStyle=1;align=left;verticalAlign=top;spacingLeft=8;spacingTop=4;fontColor=#000000;dashed=0;" vertex="1" parent="1">
-          <mxGeometry x="40" y="1180" width="2520" height="280" as="geometry" />
+        <!-- ========== STEP F: PROVIDER FAN-OUT ========== -->
+        <mxCell id="sf-header" value="STEP F · PROVIDER FAN-OUT (multi-LLM probe)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF1F2;strokeColor=#9F1239;fontSize=15;fontStyle=1;align=center;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="40" y="1520" width="1720" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="sf-router" value="ProviderRouter&#10;rate-limit · retry · cost telemetry [TODO]&#10;async fan-out per (provider × prompt)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#9F1239;fontSize=12;fontStyle=1;align=center;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="540" y="1600" width="720" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="sf-anthropic" value="Anthropic&#10;Claude" style="ellipse;whiteSpace=wrap;html=1;fillColor=#FEE2E2;strokeColor=#B91C1C;fontSize=13;fontStyle=1;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="100" y="1720" width="200" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="sf-openai" value="OpenAI&#10;GPT-4" style="ellipse;whiteSpace=wrap;html=1;fillColor=#FEE2E2;strokeColor=#B91C1C;fontSize=13;fontStyle=1;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="540" y="1720" width="200" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="sf-google" value="Google&#10;Gemini grounded" style="ellipse;whiteSpace=wrap;html=1;fillColor=#FEE2E2;strokeColor=#B91C1C;fontSize=13;fontStyle=1;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="980" y="1720" width="220" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="sf-pp" value="Perplexity&#10;native citations" style="ellipse;whiteSpace=wrap;html=1;fillColor=#FEE2E2;strokeColor=#B91C1C;fontSize=13;fontStyle=1;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="1440" y="1720" width="220" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="sf-result" value="Persist LLMRankingResult per (provider × prompt)&#10;raw_payload (JSON) · prompt_source_label · WS push" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#9F1239;fontSize=12;fontStyle=1;align=center;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="380" y="1840" width="1040" height="60" as="geometry" />
         </mxCell>
 
-        <mxCell id="ex-mention" value="Mention Extractor (existing)&#10;is_mentioned · position · sentiment · competitors_mentioned" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#C2410C;fontSize=11;fontColor=#000000;" vertex="1" parent="1">
-          <mxGeometry x="80" y="1230" width="500" height="70" as="geometry" />
+        <!-- ========== STEP G: EXTRACTION ========== -->
+        <mxCell id="sg-header" value="STEP G · PER-RESULT EXTRACTION (parallel Celery subtasks)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF7ED;strokeColor=#C2410C;fontSize=15;fontStyle=1;align=center;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="40" y="1960" width="1720" height="44" as="geometry" />
         </mxCell>
-        <mxCell id="ex-cit" value="Citation Extractor (Phase 2)&#10;perplexity native + gemini grounding + regex + LLM-assisted&#10;normalize → apex_domain → SourceClass" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#C2410C;fontSize=11;fontStyle=1;fontColor=#000000;" vertex="1" parent="1">
-          <mxGeometry x="610" y="1230" width="600" height="70" as="geometry" />
+        <mxCell id="sg-1" value="Mention Extractor&#10;is_mentioned · position · sentiment&#10;competitors_mentioned" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#C2410C;fontSize=12;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="80" y="2040" width="500" height="100" as="geometry" />
         </mxCell>
-        <mxCell id="ex-claim" value="Claim Extractor [Phase 3]&#10;atomic claims (s, p, o, conf)&#10;match against BrandFact → ClaimMismatch + severity" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FEF9C3;strokeColor=#CA8A04;fontSize=11;dashed=1;fontColor=#000000;" vertex="1" parent="1">
-          <mxGeometry x="1240" y="1230" width="600" height="70" as="geometry" />
+        <mxCell id="sg-2" value="Citation Extractor (Phase 2)&#10;Perplexity native + Gemini grounding&#10;regex + LLM-assisted fallback" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#C2410C;fontSize=12;fontStyle=1;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="640" y="2040" width="500" height="100" as="geometry" />
         </mxCell>
-        <mxCell id="ex-domain" value="DomainClassifier&#10;rules + cache · per-tenant your_site / competitor_site" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#C2410C;fontSize=11;fontColor=#000000;" vertex="1" parent="1">
-          <mxGeometry x="80" y="1330" width="500" height="60" as="geometry" />
+        <mxCell id="sg-3" value="Claim Extractor [Phase 3]&#10;atomic claims (s, p, o, conf)&#10;match BrandFact → ClaimMismatch" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FEF9C3;strokeColor=#CA8A04;fontSize=12;dashed=1;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="1200" y="2040" width="500" height="100" as="geometry" />
         </mxCell>
-        <mxCell id="ex-cit-out" value="Citation rows + S3 raw payload [TODO]&#10;page snapshots [TODO]" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#C2410C;fontSize=11;fontColor=#000000;" vertex="1" parent="1">
-          <mxGeometry x="610" y="1330" width="600" height="60" as="geometry" />
-        </mxCell>
-        <mxCell id="ex-mismatch" value="ClaimMismatch rows&#10;severity = factual_divergence × audience_reach × prompt_freq" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FEF9C3;strokeColor=#CA8A04;fontSize=11;dashed=1;fontColor=#000000;" vertex="1" parent="1">
-          <mxGeometry x="1240" y="1330" width="600" height="60" as="geometry" />
-        </mxCell>
-        <mxCell id="ex-cost" value="LLMCallLog [TODO]&#10;tokens_in/out · cost_usd · provider · model" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#C2410C;fontSize=11;dashed=1;fontColor=#000000;" vertex="1" parent="1">
-          <mxGeometry x="1880" y="1280" width="640" height="60" as="geometry" />
+        <mxCell id="sg-domain" value="DomainClassifier · normalize URL → apex_domain → SourceClass · per-tenant your_site / competitor_site" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF7ED;strokeColor=#C2410C;fontSize=12;align=center;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="80" y="2160" width="1620" height="50" as="geometry" />
         </mxCell>
 
-        <!-- ===================== ROW 7: SCORING / AGGREGATION ===================== -->
-        <mxCell id="grp-score" value="STEP E — SCORING, ROLLUPS &amp; RECOMMENDATIONS" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FDF2F8;strokeColor=#BE185D;fontSize=12;fontStyle=1;align=left;verticalAlign=top;spacingLeft=8;spacingTop=4;fontColor=#000000;dashed=0;" vertex="1" parent="1">
-          <mxGeometry x="40" y="1480" width="2520" height="200" as="geometry" />
+        <!-- ========== STEP H: SCORING ========== -->
+        <mxCell id="sh-header" value="STEP H · SCORING, SNAPSHOTS &amp; RECOMMENDATIONS" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FDF2F8;strokeColor=#BE185D;fontSize=15;fontStyle=1;align=center;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="40" y="2270" width="1720" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="sh-1" value="finalize_audit&#10;Plackett-Luce visibility · share-of-voice&#10;coverage % library / vault / custom" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#BE185D;fontSize=12;fontStyle=1;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="80" y="2350" width="500" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="sh-2" value="SourceInfluenceSnapshot&#10;daily Celery beat (05:30)&#10;per provider × industry × website × period" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#BE185D;fontSize=12;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="640" y="2350" width="500" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="sh-3" value="Gap engine&#10;visibility × accuracy × citation gap&#10;ranked recommendation queue" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#BE185D;fontSize=12;fontStyle=1;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="1200" y="2350" width="500" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="sh-4" value="apps.content_studio [Phase 4]&#10;Brief → Draft → Publish · ROI re-probe loop" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FCE7F3;strokeColor=#BE185D;fontSize=12;dashed=1;align=center;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="80" y="2470" width="1620" height="60" as="geometry" />
         </mxCell>
 
-        <mxCell id="sc-finalize" value="finalize_audit&#10;Plackett-Luce visibility · SOV&#10;coverage % library/vault/custom" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#BE185D;fontSize=11;fontStyle=1;fontColor=#000000;" vertex="1" parent="1">
-          <mxGeometry x="80" y="1530" width="320" height="80" as="geometry" />
+        <!-- ========== STEP I: DELIVERY ========== -->
+        <mxCell id="si-header" value="STEP I · DELIVERY (back to user)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#4338CA;fontSize=15;fontStyle=1;align=center;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="40" y="2580" width="1720" height="44" as="geometry" />
         </mxCell>
-        <mxCell id="sc-snap" value="SourceInfluenceSnapshot&#10;daily Celery beat (05:30)&#10;per provider × industry × website × period" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#BE185D;fontSize=11;fontColor=#000000;" vertex="1" parent="1">
-          <mxGeometry x="430" y="1530" width="380" height="80" as="geometry" />
+        <mxCell id="si-1" value="Dashboard pages&#10;LLMRanking · SourceInfluence&#10;trends · audit detail · reports" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#4338CA;fontSize=12;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="80" y="2660" width="500" height="100" as="geometry" />
         </mxCell>
-        <mxCell id="sc-trend" value="Trend snapshots&#10;visibility · accuracy · citation share over time" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#BE185D;fontSize=11;fontColor=#000000;" vertex="1" parent="1">
-          <mxGeometry x="840" y="1530" width="340" height="80" as="geometry" />
+        <mxCell id="si-2" value="apps.notifications&#10;in-app · email · Slack&#10;Discord · Telegram" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#4338CA;fontSize=12;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="640" y="2660" width="500" height="100" as="geometry" />
         </mxCell>
-        <mxCell id="sc-gap" value="Gap engine&#10;visibility gap × accuracy gap × citation gap&#10;ranked recommendations queue" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#BE185D;fontSize=11;fontStyle=1;fontColor=#000000;" vertex="1" parent="1">
-          <mxGeometry x="1210" y="1530" width="380" height="80" as="geometry" />
-        </mxCell>
-        <mxCell id="sc-studio" value="apps.content_studio [Phase 4]&#10;Brief → Draft → Publish&#10;ROI re-probe loop" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FCE7F3;strokeColor=#BE185D;fontSize=11;dashed=1;fontColor=#000000;" vertex="1" parent="1">
-          <mxGeometry x="1620" y="1530" width="320" height="80" as="geometry" />
-        </mxCell>
-        <mxCell id="sc-notif" value="apps.notifications&#10;in-app · email · Slack · Discord · Telegram&#10;daily / weekly digests" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#BE185D;fontSize=11;fontColor=#000000;" vertex="1" parent="1">
-          <mxGeometry x="1970" y="1530" width="540" height="80" as="geometry" />
+        <mxCell id="si-3" value="Publish targets [Phase 4]&#10;WordPress · Webflow · Shopify · HubSpot&#10;copy / paste / Reddit" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FCE7F3;strokeColor=#BE185D;fontSize=12;dashed=1;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="1200" y="2660" width="500" height="100" as="geometry" />
         </mxCell>
 
-        <!-- ===================== ROW 8: DELIVERY / DASHBOARDS ===================== -->
-        <mxCell id="grp-out" value="STEP F — DELIVERY (back to user)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#4338CA;fontSize=12;fontStyle=1;align=left;verticalAlign=top;spacingLeft=8;spacingTop=4;fontColor=#000000;dashed=0;" vertex="1" parent="1">
-          <mxGeometry x="40" y="1700" width="2520" height="140" as="geometry" />
+        <!-- ========== DATA ========== -->
+        <mxCell id="dx-header" value="DATA &amp; INFRA" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EFF6FF;strokeColor=#1D4ED8;fontSize=15;fontStyle=1;align=center;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="40" y="2820" width="1720" height="44" as="geometry" />
         </mxCell>
-        <mxCell id="out-dashboard" value="Dashboard pages render scored data via DRF endpoints&#10;LLMRankingPage · SourceInfluencePage · DashboardPage · audit detail · trends" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#4338CA;fontSize=11;fontColor=#000000;" vertex="1" parent="1">
-          <mxGeometry x="80" y="1740" width="900" height="80" as="geometry" />
+        <mxCell id="dx-1" value="Postgres + pgvector&#10;tenants · audits · results · prompts · facts · citations · embeddings" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#FFFFFF;strokeColor=#1D4ED8;fontSize=12;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="80" y="2900" width="500" height="100" as="geometry" />
         </mxCell>
-        <mxCell id="out-alerts" value="Alerts &amp; reports delivered to user&#10;email (SendGrid) · Slack · Discord · Telegram" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#4338CA;fontSize=11;fontColor=#000000;" vertex="1" parent="1">
-          <mxGeometry x="1010" y="1740" width="700" height="80" as="geometry" />
+        <mxCell id="dx-2" value="Redis&#10;Celery broker · cache · channels layer" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#FFFFFF;strokeColor=#1D4ED8;fontSize=12;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="640" y="2900" width="500" height="100" as="geometry" />
         </mxCell>
-        <mxCell id="out-publish" value="Content publish targets [Phase 4]&#10;WordPress · Webflow · Shopify · HubSpot · copy/paste" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FCE7F3;strokeColor=#BE185D;fontSize=11;dashed=1;fontColor=#000000;" vertex="1" parent="1">
-          <mxGeometry x="1740" y="1740" width="780" height="80" as="geometry" />
+        <mxCell id="dx-3" value="S3 / object storage&#10;raw LLM payloads · scraped HTML&#10;cited-page snapshots [TODO]" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#FFFFFF;strokeColor=#1D4ED8;fontSize=12;dashed=1;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="1200" y="2900" width="500" height="100" as="geometry" />
         </mxCell>
-
-        <!-- ===================== DATA STORES (left rail) ===================== -->
-        <mxCell id="grp-data" value="DATA &amp; INFRA" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EFF6FF;strokeColor=#1D4ED8;fontSize=12;fontStyle=1;align=left;verticalAlign=top;spacingLeft=8;spacingTop=4;fontColor=#000000;dashed=0;" vertex="1" parent="1">
-          <mxGeometry x="40" y="1880" width="2520" height="140" as="geometry" />
+        <mxCell id="dx-4" value="Secrets Manager&#10;OAuth tokens (Fernet) · LLM keys · webhook secrets" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#FFFFFF;strokeColor=#1D4ED8;fontSize=12;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="80" y="3030" width="800" height="80" as="geometry" />
         </mxCell>
-        <mxCell id="d-pg" value="Postgres + pgvector&#10;tenant data · audits · results · prompts · facts · citations · embeddings" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#FFFFFF;strokeColor=#1D4ED8;fontSize=11;fontColor=#000000;" vertex="1" parent="1">
-          <mxGeometry x="80" y="1925" width="500" height="70" as="geometry" />
-        </mxCell>
-        <mxCell id="d-redis" value="Redis&#10;Celery broker · cache · channels layer" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#FFFFFF;strokeColor=#1D4ED8;fontSize=11;fontColor=#000000;" vertex="1" parent="1">
-          <mxGeometry x="610" y="1925" width="380" height="70" as="geometry" />
-        </mxCell>
-        <mxCell id="d-s3" value="S3 / object storage&#10;raw LLM payloads · scraped HTML · cited-page snapshots [TODO]" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#FFFFFF;strokeColor=#1D4ED8;fontSize=11;dashed=1;fontColor=#000000;" vertex="1" parent="1">
-          <mxGeometry x="1020" y="1925" width="540" height="70" as="geometry" />
-        </mxCell>
-        <mxCell id="d-secrets" value="Secrets Manager&#10;OAuth tokens (Fernet) · LLM keys · webhook secrets" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#FFFFFF;strokeColor=#1D4ED8;fontSize=11;fontColor=#000000;" vertex="1" parent="1">
-          <mxGeometry x="1590" y="1925" width="500" height="70" as="geometry" />
-        </mxCell>
-        <mxCell id="d-bedrock" value="Bedrock / OpenSearch / Iceberg&#10;[Phase 5 — when scale demands]" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#FFFFFF;strokeColor=#1D4ED8;fontSize=11;dashed=1;fontColor=#000000;" vertex="1" parent="1">
-          <mxGeometry x="2120" y="1925" width="400" height="70" as="geometry" />
+        <mxCell id="dx-5" value="Bedrock · OpenSearch · Iceberg [Phase 5 — when scale demands]" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#FFFFFF;strokeColor=#1D4ED8;fontSize=12;dashed=1;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="900" y="3030" width="800" height="80" as="geometry" />
         </mxCell>
 
-        <!-- Celery infra mini -->
-        <mxCell id="grp-celery" value="ASYNC INFRA" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F0FDF4;strokeColor=#15803D;fontSize=12;fontStyle=1;align=left;verticalAlign=top;spacingLeft=8;spacingTop=4;fontColor=#000000;dashed=0;" vertex="1" parent="1">
-          <mxGeometry x="40" y="2060" width="2520" height="120" as="geometry" />
+        <!-- ========== ASYNC ========== -->
+        <mxCell id="ax-header" value="ASYNC INFRA" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F0FDF4;strokeColor=#15803D;fontSize=15;fontStyle=1;align=center;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="40" y="3160" width="1720" height="44" as="geometry" />
         </mxCell>
-        <mxCell id="ce-workers" value="Celery workers&#10;default · ai · integrations · webhooks" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#15803D;fontSize=11;fontColor=#000000;" vertex="1" parent="1">
-          <mxGeometry x="80" y="2105" width="500" height="60" as="geometry" />
+        <mxCell id="ax-1" value="Celery workers&#10;default · ai · integrations · webhooks queues" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#15803D;fontSize=12;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="80" y="3240" width="500" height="100" as="geometry" />
         </mxCell>
-        <mxCell id="ce-beat" value="Celery beat&#10;mine-prompts · compute-source-influence · classify-domains · weekly reports · audit dispatcher · token refresh" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#15803D;fontSize=11;fontColor=#000000;" vertex="1" parent="1">
-          <mxGeometry x="610" y="2105" width="900" height="60" as="geometry" />
+        <mxCell id="ax-2" value="Celery beat&#10;mine-prompts · compute-source-influence&#10;classify-domains · weekly reports · audit dispatcher" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#15803D;fontSize=12;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="640" y="3240" width="500" height="100" as="geometry" />
         </mxCell>
-        <mxCell id="ce-ext" value="Outbound integrations (egress NAT)&#10;Stripe · Reddit · SerpAPI · OAuth (Google/Meta/LinkedIn/Shopify) · SendGrid/Slack/Discord/Telegram" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FEE2E2;strokeColor=#B91C1C;fontSize=11;fontColor=#000000;" vertex="1" parent="1">
-          <mxGeometry x="1540" y="2105" width="980" height="60" as="geometry" />
-        </mxCell>
-
-        <!-- ===================== LEGEND ===================== -->
-        <mxCell id="legend" value="LEGEND&#10;Solid green = shipped (Phases 1 + 2)&#10;Dashed yellow = Phase 3 (Brand Vault + Claim Verification)&#10;Dashed pink = Phase 4 (Content Studio)&#10;Dashed blue = Phase 5 (AWS scale)&#10;Red ellipse = External provider" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#9CA3AF;fontSize=11;align=left;spacingLeft=8;fontColor=#000000;" vertex="1" parent="1">
-          <mxGeometry x="40" y="2220" width="600" height="120" as="geometry" />
+        <mxCell id="ax-3" value="Outbound integrations (egress NAT)&#10;Stripe · Reddit · SerpAPI · OAuth · SendGrid · Slack" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FEE2E2;strokeColor=#B91C1C;fontSize=12;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="1200" y="3240" width="500" height="100" as="geometry" />
         </mxCell>
 
-        <!-- ===================== EDGES (flow direction) ===================== -->
+        <!-- ========== LEGEND ========== -->
+        <mxCell id="legend" value="LEGEND&#10;Solid green = shipped (Phases 1 + 2)&#10;Dashed yellow = Phase 3 (Brand Vault + Claim Verification)&#10;Dashed pink = Phase 4 (Content Studio)&#10;Dashed blue = Phase 5 (AWS scale)&#10;Red ellipse = External LLM provider" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#9CA3AF;fontSize=12;align=left;spacingLeft=12;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="40" y="3370" width="1720" height="120" as="geometry" />
+        </mxCell>
 
-        <!-- User → Vue -->
-        <mxCell id="e-user" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#000000;strokeWidth=2;endArrow=block;" edge="1" source="user" target="grp-vue" parent="1">
+        <!-- ===================== EDGES ===================== -->
+
+        <!-- User → Frontend -->
+        <mxCell id="e-user-fe" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#1F2D3D;strokeWidth=3;endArrow=block;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" source="user" target="sa-header" parent="1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
 
-        <!-- Vue → API -->
-        <mxCell id="e-vue-api" value="HTTPS · JWT · WS" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#000000;strokeWidth=2;endArrow=block;fontSize=10;fontColor=#000000;" edge="1" source="grp-vue" target="grp-api" parent="1">
+        <!-- Step A → Step B -->
+        <mxCell id="e-a-b" value="HTTPS / JWT / WS" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#1F2D3D;strokeWidth=3;endArrow=block;fontSize=11;fontStyle=1;fontColor=#000000;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" source="sa-header" target="sb-header" parent="1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
 
-        <!-- API → Knowledge group (onboarding flow) -->
-        <mxCell id="e-api-k" value="step A: signup + ingestion" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#15803D;strokeWidth=2;endArrow=block;fontSize=10;fontColor=#000000;" edge="1" source="grp-api" target="grp-knowl" parent="1">
+        <!-- Step B → Step C (knowledge) -->
+        <mxCell id="e-b-c" value="onboarding · ingestion" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#15803D;strokeWidth=3;endArrow=block;fontSize=11;fontStyle=1;fontColor=#000000;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" source="sb-4" target="sc-header" parent="1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
 
-        <!-- API → Prompt group -->
-        <mxCell id="e-api-p" value="step B: prompts mined &amp; sampled" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#7E22CE;strokeWidth=2;endArrow=block;fontSize=10;fontColor=#000000;" edge="1" source="grp-api" target="grp-prompt" parent="1">
+        <!-- Step C internal -->
+        <mxCell id="ec1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#15803D;strokeWidth=2;endArrow=block;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" source="sc-1" target="sc-2" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ec2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#15803D;strokeWidth=2;endArrow=block;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" source="sc-2" target="sc-3" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ec3" value="extract facts" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#CA8A04;strokeWidth=2;dashed=1;endArrow=block;fontSize=10;fontColor=#000000;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" source="sc-3" target="sc-4" parent="1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
 
-        <!-- Knowledge ingestion edges -->
-        <mxCell id="e-onb-rag" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#15803D;strokeWidth=1;endArrow=block;" edge="1" source="k-onb" target="k-rag" parent="1">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="e-rag-vault" value="extract facts" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#CA8A04;strokeWidth=1;dashed=1;endArrow=block;fontSize=10;fontColor=#000000;" edge="1" source="k-rag" target="k-vault" parent="1">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="e-rag-sources" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#B91C1C;strokeWidth=1;dashed=1;endArrow=open;" edge="1" source="k-rag" target="k-sources" parent="1">
+        <!-- Step C → Step D -->
+        <mxCell id="e-c-d" value="prompts mined &amp; sampled" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#7E22CE;strokeWidth=3;endArrow=block;fontSize=11;fontStyle=1;fontColor=#000000;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" source="sc-header" target="sd-header" parent="1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
 
-        <!-- Prompt edges -->
-        <mxCell id="e-mine-store" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#7E22CE;strokeWidth=1;endArrow=block;" edge="1" source="pr-mine" target="pr-store" parent="1">
+        <!-- Step D internal -->
+        <mxCell id="ed1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#7E22CE;strokeWidth=2;endArrow=block;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" source="sd-1" target="sd-2" parent="1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e-dedup-store" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#7E22CE;strokeWidth=1;endArrow=block;" edge="1" source="pr-dedup" target="pr-store" parent="1">
+        <mxCell id="ed2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#7E22CE;strokeWidth=2;endArrow=block;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" source="sd-2" target="sd-3" parent="1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e-store-sampler" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#7E22CE;strokeWidth=1;endArrow=block;" edge="1" source="pr-store" target="pr-sampler" parent="1">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-
-        <!-- Knowledge + Prompt → Audit -->
-        <mxCell id="e-knowl-audit" value="step C: probe" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#0E7490;strokeWidth=2;endArrow=block;fontSize=10;fontColor=#000000;" edge="1" source="grp-knowl" target="grp-audit" parent="1">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="e-prompt-audit" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#0E7490;strokeWidth=2;endArrow=block;" edge="1" source="grp-prompt" target="grp-audit" parent="1">
+        <mxCell id="ed3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#7E22CE;strokeWidth=2;endArrow=block;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" source="sd-3" target="sd-4" parent="1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
 
-        <!-- Audit internal flow -->
-        <mxCell id="e-post-apply" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#0E7490;strokeWidth=2;endArrow=block;" edge="1" source="ar-post" target="ar-apply" parent="1">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="e-apply-create" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#0E7490;strokeWidth=2;endArrow=block;" edge="1" source="ar-apply" target="ar-create" parent="1">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="e-create-disp" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#0E7490;strokeWidth=2;endArrow=block;" edge="1" source="ar-create" target="ar-dispatch" parent="1">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="e-disp-router" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#0E7490;strokeWidth=2;endArrow=block;" edge="1" source="ar-dispatch" target="ar-router" parent="1">
+        <!-- Step D → Step E -->
+        <mxCell id="e-d-e" value="audit kicks off with sampled prompts" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#0E7490;strokeWidth=3;endArrow=block;fontSize=11;fontStyle=1;fontColor=#000000;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" source="sd-header" target="se-header" parent="1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
 
-        <!-- Router → Providers -->
-        <mxCell id="e-rt-anthropic" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#B91C1C;strokeWidth=1;dashed=1;endArrow=open;" edge="1" source="ar-router" target="ar-anthropic" parent="1">
+        <!-- Step E internal -->
+        <mxCell id="ee1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#0E7490;strokeWidth=2;endArrow=block;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" source="se-1" target="se-2" parent="1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e-rt-openai" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#B91C1C;strokeWidth=1;dashed=1;endArrow=open;" edge="1" source="ar-router" target="ar-openai" parent="1">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="e-rt-google" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#B91C1C;strokeWidth=1;dashed=1;endArrow=open;" edge="1" source="ar-router" target="ar-google" parent="1">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="e-rt-pp" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#B91C1C;strokeWidth=1;dashed=1;endArrow=open;" edge="1" source="ar-router" target="ar-pp" parent="1">
+        <mxCell id="ee2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#0E7490;strokeWidth=2;endArrow=block;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" source="se-2" target="se-3" parent="1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
 
+        <!-- Step E → Step F -->
+        <mxCell id="e-e-f" value="dispatch via ProviderRouter" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#9F1239;strokeWidth=3;endArrow=block;fontSize=11;fontStyle=1;fontColor=#000000;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" source="se-header" target="sf-header" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Step F: Router → Providers -->
+        <mxCell id="ef1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#B91C1C;strokeWidth=2;dashed=1;endArrow=open;exitX=0.25;exitY=1;entryX=0.5;entryY=0;" edge="1" source="sf-router" target="sf-anthropic" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ef2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#B91C1C;strokeWidth=2;dashed=1;endArrow=open;exitX=0.4;exitY=1;entryX=0.5;entryY=0;" edge="1" source="sf-router" target="sf-openai" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ef3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#B91C1C;strokeWidth=2;dashed=1;endArrow=open;exitX=0.6;exitY=1;entryX=0.5;entryY=0;" edge="1" source="sf-router" target="sf-google" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ef4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#B91C1C;strokeWidth=2;dashed=1;endArrow=open;exitX=0.8;exitY=1;entryX=0.5;entryY=0;" edge="1" source="sf-router" target="sf-pp" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
         <!-- Providers → Result -->
-        <mxCell id="e-anth-res" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#0E7490;strokeWidth=1;endArrow=block;" edge="1" source="ar-anthropic" target="ar-result" parent="1">
+        <mxCell id="ef5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#9F1239;strokeWidth=2;endArrow=block;exitX=0.5;exitY=1;entryX=0.25;entryY=0;" edge="1" source="sf-anthropic" target="sf-result" parent="1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e-oai-res" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#0E7490;strokeWidth=1;endArrow=block;" edge="1" source="ar-openai" target="ar-result" parent="1">
+        <mxCell id="ef6" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#9F1239;strokeWidth=2;endArrow=block;exitX=0.5;exitY=1;entryX=0.4;entryY=0;" edge="1" source="sf-openai" target="sf-result" parent="1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e-gem-res" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#0E7490;strokeWidth=1;endArrow=block;" edge="1" source="ar-google" target="ar-result" parent="1">
+        <mxCell id="ef7" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#9F1239;strokeWidth=2;endArrow=block;exitX=0.5;exitY=1;entryX=0.6;entryY=0;" edge="1" source="sf-google" target="sf-result" parent="1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e-pp-res" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#0E7490;strokeWidth=1;endArrow=block;" edge="1" source="ar-pp" target="ar-result" parent="1">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-
-        <!-- Result → WS -->
-        <mxCell id="e-res-ws" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#0E7490;strokeWidth=1;endArrow=block;" edge="1" source="ar-result" target="ar-ws" parent="1">
+        <mxCell id="ef8" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#9F1239;strokeWidth=2;endArrow=block;exitX=0.5;exitY=1;entryX=0.8;entryY=0;" edge="1" source="sf-pp" target="sf-result" parent="1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
 
-        <!-- Audit → Extraction -->
-        <mxCell id="e-audit-ext" value="step D: parallel extract" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#C2410C;strokeWidth=2;endArrow=block;fontSize=10;fontColor=#000000;" edge="1" source="grp-audit" target="grp-ext" parent="1">
+        <!-- Step F → Step G -->
+        <mxCell id="e-f-g" value="parallel extract per result" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#C2410C;strokeWidth=3;endArrow=block;fontSize=11;fontStyle=1;fontColor=#000000;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" source="sf-result" target="sg-header" parent="1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
 
-        <!-- Extraction internal -->
-        <mxCell id="e-cit-domain" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#C2410C;strokeWidth=1;endArrow=block;" edge="1" source="ex-cit" target="ex-domain" parent="1">
+        <!-- Step G internal -->
+        <mxCell id="eg1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#C2410C;strokeWidth=2;endArrow=block;exitX=0.5;exitY=1;entryX=0.25;entryY=0;" edge="1" source="sg-1" target="sg-domain" parent="1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e-cit-out" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#C2410C;strokeWidth=1;endArrow=block;" edge="1" source="ex-cit" target="ex-cit-out" parent="1">
+        <mxCell id="eg2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#C2410C;strokeWidth=2;endArrow=block;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" source="sg-2" target="sg-domain" parent="1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e-claim-mismatch" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#CA8A04;strokeWidth=1;dashed=1;endArrow=block;" edge="1" source="ex-claim" target="ex-mismatch" parent="1">
+        <mxCell id="eg3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#CA8A04;strokeWidth=2;dashed=1;endArrow=block;exitX=0.5;exitY=1;entryX=0.75;entryY=0;" edge="1" source="sg-3" target="sg-domain" parent="1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e-claim-vault" value="match facts" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#CA8A04;strokeWidth=1;dashed=1;endArrow=block;fontSize=10;fontColor=#000000;exitX=0;exitY=0.5;entryX=1;entryY=0.5;" edge="1" source="ex-claim" target="k-vault" parent="1">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-
-        <!-- Extraction → Scoring -->
-        <mxCell id="e-ext-score" value="step E: score &amp; aggregate" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#BE185D;strokeWidth=2;endArrow=block;fontSize=10;fontColor=#000000;" edge="1" source="grp-ext" target="grp-score" parent="1">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-
-        <!-- Scoring internal -->
-        <mxCell id="e-fin-snap" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#BE185D;strokeWidth=1;endArrow=block;" edge="1" source="sc-finalize" target="sc-snap" parent="1">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="e-snap-trend" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#BE185D;strokeWidth=1;endArrow=block;" edge="1" source="sc-snap" target="sc-trend" parent="1">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="e-trend-gap" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#BE185D;strokeWidth=1;endArrow=block;" edge="1" source="sc-trend" target="sc-gap" parent="1">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="e-gap-studio" value="briefs" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#BE185D;strokeWidth=1;dashed=1;endArrow=block;fontSize=10;fontColor=#000000;" edge="1" source="sc-gap" target="sc-studio" parent="1">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="e-gap-notif" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#BE185D;strokeWidth=1;endArrow=block;" edge="1" source="sc-gap" target="sc-notif" parent="1">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-
-        <!-- Scoring → Delivery -->
-        <mxCell id="e-score-out" value="step F: deliver" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#4338CA;strokeWidth=2;endArrow=block;fontSize=10;fontColor=#000000;" edge="1" source="grp-score" target="grp-out" parent="1">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-
-        <!-- Delivery → User loop back -->
-        <mxCell id="e-out-user" value="response · push · alerts" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#000000;strokeWidth=2;dashed=1;endArrow=block;fontSize=10;fontColor=#000000;exitX=0;exitY=0.5;entryX=0;entryY=0.5;" edge="1" source="grp-out" target="user" parent="1">
+        <!-- Claim → BrandVault (cross-step) -->
+        <mxCell id="eg4" value="match facts" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#CA8A04;strokeWidth=2;dashed=1;endArrow=block;fontSize=10;fontColor=#000000;exitX=1;exitY=0;entryX=1;entryY=1;" edge="1" source="sg-3" target="sc-4" parent="1">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="20" y="1780" />
-              <mxPoint x="20" y="130" />
+              <mxPoint x="1750" y="2020" />
+              <mxPoint x="1750" y="990" />
             </Array>
           </mxGeometry>
         </mxCell>
 
-        <!-- Studio → publish -->
-        <mxCell id="e-studio-pub" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#BE185D;strokeWidth=1;dashed=1;endArrow=open;" edge="1" source="sc-studio" target="out-publish" parent="1">
+        <!-- Step G → Step H -->
+        <mxCell id="e-g-h" value="aggregate &amp; score" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#BE185D;strokeWidth=3;endArrow=block;fontSize=11;fontStyle=1;fontColor=#000000;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" source="sg-domain" target="sh-header" parent="1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
 
-        <!-- Notif → alerts -->
-        <mxCell id="e-notif-alert" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#4338CA;strokeWidth=1;endArrow=block;" edge="1" source="sc-notif" target="out-alerts" parent="1">
+        <!-- Step H internal -->
+        <mxCell id="eh1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#BE185D;strokeWidth=2;endArrow=block;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" source="sh-1" target="sh-2" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eh2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#BE185D;strokeWidth=2;endArrow=block;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" source="sh-2" target="sh-3" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eh3" value="briefs" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#BE185D;strokeWidth=2;dashed=1;endArrow=block;fontSize=10;fontColor=#000000;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" source="sh-3" target="sh-4" parent="1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
 
-        <!-- Domain ↔ Data -->
-        <mxCell id="e-data-bidir" value="reads / writes" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#1D4ED8;strokeWidth=2;endArrow=classic;startArrow=classic;fontSize=10;fontColor=#000000;exitX=0.5;exitY=0;entryX=0.5;entryY=1;" edge="1" source="grp-data" target="grp-out" parent="1">
+        <!-- Step H → Step I -->
+        <mxCell id="e-h-i" value="render in dashboard · alert · publish" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#4338CA;strokeWidth=3;endArrow=block;fontSize=11;fontStyle=1;fontColor=#000000;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" source="sh-4" target="si-header" parent="1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
 
-        <!-- Async → Audit (run worker) -->
-        <mxCell id="e-celery-audit" value="executes audit" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#15803D;strokeWidth=1;endArrow=block;fontSize=10;fontColor=#000000;" edge="1" source="ce-workers" target="grp-audit" parent="1">
+        <!-- Loop back to user -->
+        <mxCell id="e-loop" value="response · WS push · alerts · publish" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#1F2D3D;strokeWidth=2;dashed=1;endArrow=block;fontSize=11;fontStyle=1;fontColor=#000000;exitX=0;exitY=0.5;entryX=0;entryY=0.5;" edge="1" source="si-header" target="user" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="20" y="2700" />
+              <mxPoint x="20" y="155" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Step I → Data -->
+        <mxCell id="e-i-d" value="reads / writes" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#1D4ED8;strokeWidth=2;endArrow=classic;startArrow=classic;fontSize=10;fontColor=#000000;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" source="si-header" target="dx-header" parent="1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
 
-        <!-- Beat → Workers -->
-        <mxCell id="e-beat-workers" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#15803D;strokeWidth=1;endArrow=block;" edge="1" source="ce-beat" target="ce-workers" parent="1">
+        <!-- Async beat → workers -->
+        <mxCell id="e-beat-workers" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#15803D;strokeWidth=2;endArrow=block;exitX=0;exitY=0.5;entryX=1;entryY=0.5;" edge="1" source="ax-2" target="ax-1" parent="1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-
-        <!-- Workers → External integrations -->
-        <mxCell id="e-workers-ext" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#B91C1C;strokeWidth=1;dashed=1;endArrow=open;" edge="1" source="ce-workers" target="ce-ext" parent="1">
+        <mxCell id="e-workers-ext" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#B91C1C;strokeWidth=2;dashed=1;endArrow=open;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" source="ax-2" target="ax-3" parent="1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
 
