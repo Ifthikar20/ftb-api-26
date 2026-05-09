@@ -71,9 +71,8 @@
             <thead>
               <tr style="border-bottom: 1px solid var(--border-color)">
                 <th class="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider" style="color: var(--text-muted); width: 110px">Style</th>
-                <th class="px-3 py-3 text-[11px] font-semibold uppercase tracking-wider" style="color: var(--text-muted); width: 110px">Status</th>
+                <th class="px-3 py-3 text-[11px] font-semibold uppercase tracking-wider" style="color: var(--text-muted); width: 140px">Trend</th>
                 <th class="px-3 py-3 text-[11px] font-semibold uppercase tracking-wider" style="color: var(--text-muted)">Prompt</th>
-                <th class="px-3 py-3 text-[11px] font-semibold uppercase tracking-wider" style="color: var(--text-muted); width: 120px">Runs</th>
                 <th class="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wider" style="color: var(--text-muted); width: 130px">Action</th>
               </tr>
             </thead>
@@ -88,12 +87,17 @@
                   <AirChip size="xs" variant="primary">{{ titleCaseStyle(p.style) }}</AirChip>
                 </td>
                 <td class="px-3 py-3 align-top">
-                  <span class="pl-untested">Untested</span>
+                  <div class="flex items-center gap-2">
+                    <div class="pl-trend-bar">
+                      <div class="pl-trend-fill" :class="trendBarClass(p.trend_score)" :style="{ width: (p.trend_score || 0) + '%' }"></div>
+                    </div>
+                    <span class="text-xs tabular-nums" style="color: var(--text-secondary)">{{ p.trend_score ?? '—' }}</span>
+                  </div>
+                  <div class="mt-1 text-[10px] uppercase tracking-wider" style="color: var(--text-muted)">{{ trendLabel(p.trend_score) }}</div>
                 </td>
                 <td class="px-3 py-3 align-top" style="color: var(--text-primary)">
                   <div class="leading-snug" v-html="renderTemplate(p.template_text)"></div>
                 </td>
-                <td class="px-3 py-3 align-top text-xs" style="color: var(--text-muted)">No runs yet</td>
                 <td class="px-3 py-3 align-top text-right">
                   <AirButton
                     v-if="!p._saved"
@@ -385,6 +389,20 @@ const filteredGeneratedPrompts = computed(() => {
   return generatedPrompts.value.filter(p => p.style === generatedStyleFilter.value)
 })
 
+function trendBarClass(score) {
+  const s = Number(score) || 0
+  if (s >= 70) return 'is-hot'
+  if (s >= 40) return 'is-warm'
+  return 'is-cool'
+}
+
+function trendLabel(score) {
+  const s = Number(score) || 0
+  if (s >= 70) return 'Trending'
+  if (s >= 40) return 'Steady'
+  return 'Niche'
+}
+
 function titleCaseStyle(value) {
   if (!value) return 'Question'
   const map = { story: 'Story', question: 'Question', comparison: 'Comparison', local: 'Local', how_to: 'How-to', listicle: 'Listicle', problem: 'Problem' }
@@ -587,14 +605,22 @@ async function loadIndustries() {
 }
 
 async function loadPrompts() {
+  // Only show prompts the user has explicitly saved into THIS website's
+  // set — the global library contains thousands of mined Reddit / synth
+  // candidates that aren't relevant until the user picks them.
+  if (!websiteId.value) {
+    prompts.value = []
+    loading.value = false
+    return
+  }
   loading.value = true
   try {
-    const params = { limit: 200 }
-    if (industrySlug.value) params.industry = industrySlug.value
-    if (debouncedSearch.value) params.search = debouncedSearch.value
-    const { data } = await promptLibrary.getPrompts(params)
+    const { data } = await promptLibrary.listBrandPrompts(websiteId.value)
     const rows = data?.data?.results || data?.results || data?.data || data || []
-    prompts.value = Array.isArray(rows) ? rows : []
+    const list = Array.isArray(rows) ? rows : []
+    // The brand-prompts endpoint returns either {brand_prompt, prompt} or
+    // a flat Prompt row — normalise to a flat shape the table expects.
+    prompts.value = list.map(item => item.prompt ? { ...item.prompt, _brand_prompt_id: item.id } : item)
   } catch { prompts.value = [] }
   finally { loading.value = false }
 }
@@ -779,6 +805,23 @@ watch(websiteId, loadVariables)
   color: var(--text-muted);
   background: transparent;
 }
+
+.pl-trend-bar {
+  position: relative;
+  width: 70px;
+  height: 6px;
+  border-radius: 9999px;
+  background: var(--bg-surface, rgba(0, 0, 0, 0.06));
+  overflow: hidden;
+}
+.pl-trend-fill {
+  height: 100%;
+  border-radius: 9999px;
+  transition: width 0.3s ease-out;
+}
+.pl-trend-fill.is-hot { background: var(--color-success, #10b981); }
+.pl-trend-fill.is-warm { background: var(--brand-accent); }
+.pl-trend-fill.is-cool { background: var(--text-muted); }
 
 :deep(.pl-var-chip) {
   display: inline-block;

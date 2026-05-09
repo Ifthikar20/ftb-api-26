@@ -49,7 +49,10 @@ _USER_TEMPLATE = (
     "  template_text  (string with {{{{ var }}}} slots)\n"
     "  style          (one of: story, question, comparison, local, how_to, listicle)\n"
     "  intent_bucket  (one of: category, comparison, problem, local)\n"
-    "  preview_text   (the template filled with plausible values inferred from CONTEXT)\n\n"
+    "  preview_text   (the template filled with plausible values inferred from CONTEXT)\n"
+    "  trend_score    (integer 0-100; your best estimate of how popular / "
+    "trending this question is on Google right now, where 100 = extremely "
+    "common search intent and 0 = obscure niche)\n\n"
     "Return ONLY the JSON array, no commentary."
 )
 
@@ -105,6 +108,7 @@ def _fallback_single(context_text: str) -> list[dict]:
             "style": "question",
             "intent_bucket": "category",
             "preview_text": (context_text or "Tell me about this place.").strip()[:200],
+            "trend_score": 50,
         }
     ]
 
@@ -122,12 +126,18 @@ def _normalise_item(raw: Any) -> dict | None:
     if bucket not in ALLOWED_BUCKETS:
         bucket = "category"
     preview_text = str(raw.get("preview_text") or "").strip()
+    try:
+        trend_score = int(raw.get("trend_score", 50))
+    except (TypeError, ValueError):
+        trend_score = 50
+    trend_score = max(0, min(100, trend_score))
     return {
         "template_text": template_text,
         "template_variables": extract_variables(template_text),
         "style": style,
         "intent_bucket": bucket,
         "preview_text": preview_text or template_text,
+        "trend_score": trend_score,
     }
 
 
