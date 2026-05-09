@@ -124,16 +124,26 @@
             <table class="si-table">
               <thead>
                 <tr>
-                  <th @click="toggleSort('count')" class="sortable">
+                  <th @click="toggleSort('apex_domain')" class="sortable">
                     Domain
+                    <span v-if="sortKey === 'apex_domain'">{{ sortDir === 'desc' ? '↓' : '↑' }}</span>
                   </th>
-                  <th>Source class</th>
+                  <th @click="toggleSort('source_class')" class="sortable">
+                    Source class
+                    <span v-if="sortKey === 'source_class'">{{ sortDir === 'desc' ? '↓' : '↑' }}</span>
+                  </th>
                   <th class="num sortable" @click="toggleSort('count')">
                     Count
                     <span v-if="sortKey === 'count'">{{ sortDir === 'desc' ? '↓' : '↑' }}</span>
                   </th>
-                  <th class="num">Share</th>
-                  <th>Type</th>
+                  <th class="num sortable" @click="toggleSort('share')">
+                    Share
+                    <span v-if="sortKey === 'share'">{{ sortDir === 'desc' ? '↓' : '↑' }}</span>
+                  </th>
+                  <th class="sortable" @click="toggleSort('type')">
+                    Type
+                    <span v-if="sortKey === 'type'">{{ sortDir === 'desc' ? '↓' : '↑' }}</span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -463,14 +473,39 @@ const providerCards = computed(() => {
   return Array.from(grouped.values()).sort((a, b) => b.total - a.total)
 })
 
+const domainSort = computed({
+  get: () => ({ key: sortKey.value, dir: sortDir.value }),
+  set: (v) => {
+    sortKey.value = v.key
+    sortDir.value = v.dir
+  },
+})
+
+function _typeRank(row) {
+  if (row.is_target) return 0
+  if (row.is_competitor) return 1
+  return 2
+}
+
 const sortedDomains = computed(() => {
+  const dir = sortDir.value === 'asc' ? 1 : -1
+  const key = sortKey.value
   const list = [...aggregatedDomains.value]
-  list.sort((a, b) => {
-    const dir = sortDir.value === 'desc' ? -1 : 1
-    if (sortKey.value === 'count') return (a.count - b.count) * dir
-    return 0
+  return list.sort((a, b) => {
+    let av
+    let bv
+    if (key === 'type') {
+      av = _typeRank(a)
+      bv = _typeRank(b)
+    } else {
+      av = a[key] ?? ''
+      bv = b[key] ?? ''
+    }
+    if (typeof av === 'number' && typeof bv === 'number') {
+      return (av - bv) * dir
+    }
+    return String(av).localeCompare(String(bv)) * dir
   })
-  return list
 })
 
 const visibleDomains = computed(() => sortedDomains.value.slice(0, domainLimit.value))
