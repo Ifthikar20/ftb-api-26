@@ -57,8 +57,15 @@ export const useAuthStore = defineStore('auth', () => {
             const { data } = await api.get('/auth/me/', { _silentError: true })
             user.value = data.data || data
             return user.value
-        } catch {
-            clearAuth()
+        } catch (err) {
+            // Only clear auth on a real auth failure (401). Network blips,
+            // 500s, or transient errors should NOT log the user out — the
+            // axios interceptor already handles 401-driven refresh; if that
+            // fails it clears auth itself. Anything else, ignore here.
+            const status = err?.response?.status
+            if (status === 401 || status === 403) {
+                clearAuth()
+            }
         }
     }
 

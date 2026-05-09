@@ -12,39 +12,31 @@ app.autodiscover_tasks()
 
 # ── Queue topology ──
 # Slow third-party API calls must not block pixel/analytics aggregation.
-#   default      — analytics, leads, pixel, accounts (fast, in-process work)
+#   default      — analytics, pixel, accounts (fast, in-process work)
 #   integrations — HubSpot, Semrush, Google Ads, OAuth token refresh
 #   webhooks     — outbound webhook delivery (user-controlled URLs, slow, isolated)
-#   ai           — LLM ranking, keyword scans, platform trends
+#   ai           — LLM ranking
 app.conf.task_default_queue = "default"
 app.conf.task_routes = {
     # webhooks
     "apps.websites.tasks.deliver_webhook": {"queue": "webhooks"},
     # integrations / OAuth
     "apps.websites.tasks.refresh_expiring_tokens": {"queue": "integrations"},
-    "apps.competitors.tasks.*": {"queue": "integrations"},
     # AI / LLM
     "apps.llm_ranking.tasks.*": {"queue": "ai"},
-    # Analytics scan + trend tasks (hit external APIs, can be slow)
-    "apps.analytics.tasks.execute_keyword_scan": {"queue": "ai"},
-    "apps.analytics.tasks.fetch_platform_trends": {"queue": "ai"},
+    "apps.citations.tasks.*": {"queue": "ai"},
+    "apps.brand_vault.tasks.*": {"queue": "ai"},
+    "apps.claim_verifier.tasks.*": {"queue": "ai"},
+    "apps.content_studio.tasks.*": {"queue": "ai"},
 }
 
 app.conf.beat_schedule = {
     # ── Daily ──
-    "daily-lead-rescoring": {
-        "task": "apps.leads.tasks.rescore_all_leads",
-        "schedule": crontab(minute=0, hour=2),
-    },
     "expire-sessions": {
         "task": "apps.accounts.tasks.expire_inactive_sessions",
         "schedule": crontab(minute=0, hour=3),
     },
     # ── Weekly ──
-    "competitor-crawl": {
-        "task": "apps.competitors.tasks.crawl_all_competitors",
-        "schedule": crontab(minute=0, hour=1, day_of_week=1),
-    },
     "weekly-reports": {
         "task": "apps.notifications.tasks.send_weekly_reports",
         "schedule": crontab(minute=0, hour=9, day_of_week=1),
@@ -68,19 +60,6 @@ app.conf.beat_schedule = {
         "task": "core.tasks.check_encryption_key_rotation",
         "schedule": crontab(minute=0, hour=0, day_of_month=1),
     },
-    # ── Keyword Intelligence ──
-    "keyword-auto-scan-dispatcher": {
-        "task": "apps.analytics.tasks.run_auto_keyword_scans",
-        "schedule": crontab(minute="*/15"),  # Every 15 min — checks next_scan_at
-    },
-    "keyword-alert-check": {
-        "task": "apps.analytics.tasks.check_keyword_alerts",
-        "schedule": crontab(minute=0),  # Every hour
-    },
-    "platform-trend-fetch": {
-        "task": "apps.analytics.tasks.fetch_platform_trends",
-        "schedule": crontab(minute=0, hour="*/6"),  # Every 6 hours
-    },
     # ── Integration Reports ──
     "daily-growth-reports": {
         "task": "apps.notifications.tasks.send_daily_growth_reports",
@@ -90,5 +69,37 @@ app.conf.beat_schedule = {
     "llm-ranking-schedule-dispatcher": {
         "task": "apps.llm_ranking.tasks.dispatch_scheduled_audits",
         "schedule": crontab(minute="*/15"),  # Every 15 min — checks next_run_at
+    },
+    # ── Prompt Library ──
+    "mine-daily-prompts": {
+        "task": "apps.prompt_library.tasks.mine_daily_prompts",
+        "schedule": crontab(minute=0, hour=4),
+    },
+    "compute-demand-scores": {
+        "task": "apps.prompt_library.tasks.compute_demand_scores",
+        "schedule": crontab(minute=0, hour=5),
+    },
+    "refresh-prompt-effectiveness": {
+        "task": "apps.prompt_library.tasks.refresh_effectiveness_scores",
+        "schedule": crontab(minute=30, hour=2),
+    },
+    # ── Citations / Source Influence ──
+    "compute-source-influence": {
+        "task": "apps.citations.tasks.compute_source_influence_snapshots",
+        "schedule": crontab(minute=30, hour=5),
+    },
+    "classify-unknown-domains": {
+        "task": "apps.citations.tasks.classify_unknown_domains",
+        "schedule": crontab(minute=0, hour=6),
+    },
+    # ── Brand Vault ──
+    "refresh-fact-embeddings": {
+        "task": "apps.brand_vault.tasks.refresh_fact_embeddings",
+        "schedule": crontab(minute=30, hour=3),
+    },
+    # ── Content Studio ──
+    "generate-briefs-daily": {
+        "task": "apps.content_studio.tasks.generate_briefs_daily",
+        "schedule": crontab(minute=15, hour=6),
     },
 }

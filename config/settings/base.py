@@ -52,16 +52,32 @@ LOCAL_APPS = [
     "apps.accounts",
     "apps.websites",
     "apps.analytics",
-    "apps.leads",
-
     "apps.notifications",
     "apps.billing",
     "apps.llm_ranking",
     "apps.rag",
     "apps.onboarding",
-    "apps.compliance",
-    "apps.social_leads",
+    "apps.prompt_library",
+    "apps.citations",
+    "apps.brand_vault",
+    "apps.claim_verifier",
+    "apps.content_studio",
 ]
+
+# Phase 2: extract citations from each LLMRankingResult after it's saved.
+# Toggle off to disable the post-save hook (e.g. in narrow unit tests).
+CITATION_EXTRACTION_ENABLED = True
+
+# Phase 3: claim verification + brand-vault extraction. Both gated so
+# the test suite never burns Anthropic tokens by default.
+CLAIM_VERIFICATION_ENABLED = True
+BRAND_VAULT_EXTRACTION_ENABLED = True
+
+# Phase 4: Content Studio. Brief generation runs after each audit by default.
+# Live publishing (real HTTP calls to WP/Webflow/Shopify/HubSpot) is gated
+# off until a tenant is wired up.
+CONTENT_STUDIO_BRIEF_GENERATION_ENABLED = True
+CONTENT_STUDIO_PUBLISH_LIVE = env.bool("CONTENT_STUDIO_PUBLISH_LIVE", default=False)
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 
@@ -283,6 +299,16 @@ FIELD_ENCRYPTION_KEY = env("FIELD_ENCRYPTION_KEY", default="")
 # ── EXTERNAL SERVICES ──
 OPENAI_API_KEY = env("OPENAI_API_KEY", default="")
 ANTHROPIC_API_KEY = env("ANTHROPIC_API_KEY", default="")
+# DeepSeek is used ONLY for offline tooling: prompt synthesis,
+# auto-templating raw user text, and on-demand smoke tests. It is NEVER
+# used to answer real audit prompts (those still go through the four
+# canonical providers: claude, gpt4, gemini, perplexity). The key may be
+# empty — every code path that uses DeepSeek must fall back gracefully.
+DEEPSEEK_API_KEY = env("DEEPSEEK_API_KEY", default="")
+PROMPT_SYNTHESIS_PROVIDER = env(
+    "PROMPT_SYNTHESIS_PROVIDER",
+    default=("deepseek" if env("DEEPSEEK_API_KEY", default="") else "anthropic"),
+)
 GOOGLE_SEARCH_API_KEY = env("GOOGLE_SEARCH_API_KEY", default="")
 GOOGLE_SEARCH_ENGINE_ID = env("GOOGLE_SEARCH_ENGINE_ID", default="")
 STRIPE_SECRET_KEY = env("STRIPE_SECRET_KEY", default="")

@@ -19,6 +19,7 @@ class LLMRankingResultSerializer(serializers.ModelSerializer):
             "run_id", "is_linked", "competitors_mentioned",
             "primary_recommendation", "citations", "citation_countries",
             "extraction_model", "extraction_version",
+            "prompt_source_label",
         ]
         read_only_fields = fields
 
@@ -47,7 +48,7 @@ class LLMRankingAuditSerializer(serializers.ModelSerializer):
         fields = [
             "id", "status", "status_display",
             "business_name", "business_description", "industry", "location", "keywords",
-            "region", "prompts", "overall_score", "mention_rate", "mention_rate_smoothed",
+            "region", "prompt_source", "prompts", "overall_score", "mention_rate", "mention_rate_smoothed",
             "avg_mention_rank", "brand_strengths", "citation_countries",
             "mention_rate_ci_lower", "mention_rate_ci_upper",
             "runs_per_query", "extraction_method", "extraction_method_display",
@@ -77,7 +78,7 @@ class LLMRankingAuditListSerializer(serializers.ModelSerializer):
         model = LLMRankingAudit
         fields = [
             "id", "status", "status_display",
-            "business_name", "industry", "location", "region",
+            "business_name", "industry", "location", "region", "prompt_source",
             "overall_score", "mention_rate", "mention_rate_smoothed",
             "avg_mention_rank", "brand_strengths", "citation_countries",
             "mention_rate_ci_lower", "mention_rate_ci_upper",
@@ -162,6 +163,15 @@ class RunAuditSerializer(serializers.Serializer):
         required=False,
         default=list,
     )
+    # Prompt source dispatcher — selects between user vault, demand-side
+    # library, or both. Defaults to "vault" for backwards compatibility.
+    prompt_source = serializers.ChoiceField(
+        choices=["vault", "library", "hybrid"],
+        required=False,
+        default="vault",
+    )
+    # Optional industry override for the prompt_library sample run.
+    industry_id = serializers.UUIDField(required=False, allow_null=True)
 
 class LLMRankingScheduleSerializer(serializers.ModelSerializer):
     frequency_display = serializers.CharField(source="get_frequency_display", read_only=True)

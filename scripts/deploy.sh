@@ -23,12 +23,12 @@ APP_DIR="/opt/fetchbot"
 REPO_URL="${REPO_URL:-}"
 
 # ── Step 1: System updates ──
-echo -e "${YELLOW}▸ [1/7] Updating system...${NC}"
+echo -e "${YELLOW}▸ [1/9] Updating system...${NC}"
 sudo apt-get update -qq
 sudo apt-get upgrade -y -qq
 
 # ── Step 2: Create swap (critical for t3.small) ──
-echo -e "${YELLOW}▸ [2/7] Setting up swap space...${NC}"
+echo -e "${YELLOW}▸ [2/9] Setting up swap space...${NC}"
 if [ ! -f /swapfile ]; then
     sudo fallocate -l 2G /swapfile
     sudo chmod 600 /swapfile
@@ -44,7 +44,7 @@ else
 fi
 
 # ── Step 3: Install Docker ──
-echo -e "${YELLOW}▸ [3/7] Installing Docker...${NC}"
+echo -e "${YELLOW}▸ [3/9] Installing Docker...${NC}"
 if ! command -v docker &>/dev/null; then
     curl -fsSL https://get.docker.com | sudo sh
     sudo usermod -aG docker "$USER"
@@ -55,7 +55,7 @@ else
 fi
 
 # ── Step 4: Clone or pull repo ──
-echo -e "${YELLOW}▸ [4/7] Setting up application...${NC}"
+echo -e "${YELLOW}▸ [4/9] Setting up application...${NC}"
 if [ -d "$APP_DIR" ]; then
     cd "$APP_DIR/ftb-api-26"
     git pull origin main
@@ -73,7 +73,7 @@ else
 fi
 
 # ── Step 5: Check .env.prod ──
-echo -e "${YELLOW}▸ [5/7] Checking environment config...${NC}"
+echo -e "${YELLOW}▸ [5/9] Checking environment config...${NC}"
 if [ ! -f .env.prod ]; then
     cp .env.prod.example .env.prod
     echo -e "${RED}  ⚠ Created .env.prod from template — EDIT IT NOW before continuing!${NC}"
@@ -84,8 +84,59 @@ else
     echo -e "${GREEN}  ✓ .env.prod found${NC}"
 fi
 
+# Required vars — anything in this list missing or still set to a CHANGE_ME
+# placeholder fails the deploy. Optional keys (DeepSeek, SerpAPI, OAuth
+# integrations, AWS, Stripe) are warned about but don't block.
+REQUIRED_VARS=(
+    DJANGO_SECRET_KEY
+    JWT_SIGNING_KEY
+    FIELD_ENCRYPTION_KEY
+    DB_PASSWORD
+    ANTHROPIC_API_KEY
+    OPENAI_API_KEY
+    GEMINI_API_KEY
+    PERPLEXITY_API_KEY
+)
+OPTIONAL_VARS=(
+    DEEPSEEK_API_KEY
+    SERPAPI_KEY
+    STRIPE_SECRET_KEY
+    SENDGRID_API_KEY
+    GOOGLE_OAUTH_CLIENT_ID
+)
+missing=()
+placeholder=()
+optional_missing=()
+# shellcheck disable=SC1091
+set -a; . ./.env.prod; set +a
+for v in "${REQUIRED_VARS[@]}"; do
+    val="${!v:-}"
+    if [ -z "$val" ]; then
+        missing+=("$v")
+    elif [[ "$val" == CHANGE_ME* ]]; then
+        placeholder+=("$v")
+    fi
+done
+for v in "${OPTIONAL_VARS[@]}"; do
+    val="${!v:-}"
+    if [ -z "$val" ]; then
+        optional_missing+=("$v")
+    fi
+done
+if [ ${#missing[@]} -gt 0 ] || [ ${#placeholder[@]} -gt 0 ]; then
+    echo -e "${RED}  ✗ .env.prod is incomplete:${NC}"
+    [ ${#missing[@]}     -gt 0 ] && echo -e "${RED}    Missing: ${missing[*]}${NC}"
+    [ ${#placeholder[@]} -gt 0 ] && echo -e "${RED}    Still CHANGE_ME: ${placeholder[*]}${NC}"
+    echo -e "${RED}    Edit $APP_DIR/ftb-api-26/.env.prod and re-run.${NC}"
+    exit 1
+fi
+if [ ${#optional_missing[@]} -gt 0 ]; then
+    echo -e "${YELLOW}  ⚠ Optional features disabled (key missing): ${optional_missing[*]}${NC}"
+fi
+echo -e "${GREEN}  ✓ .env.prod looks good${NC}"
+
 # ── Step 6: Build and start containers ──
-echo -e "${YELLOW}▸ [6/7] Building and starting containers...${NC}"
+echo -e "${YELLOW}▸ [6/9] Building and starting containers...${NC}"
 cd "$APP_DIR/ftb-api-26"
 docker compose -f docker/docker-compose.prod.yml down 2>/dev/null || true
 docker compose -f docker/docker-compose.prod.yml up -d --build
@@ -112,23 +163,55 @@ docker compose -f docker/docker-compose.prod.yml restart nginx
 echo -e "${GREEN}  ✓ Frontend bundle refreshed${NC}"
 
 # ── Step 7: Run migrations and collect static ──
-echo -e "${YELLOW}▸ [7/7] Running migrations...${NC}"
+echo -e "${YELLOW}▸ [7/9] Running migrations...${NC}"
 docker compose -f docker/docker-compose.prod.yml exec -T web python manage.py migrate --noinput
 docker compose -f docker/docker-compose.prod.yml exec -T web python manage.py collectstatic --noinput 2>/dev/null || true
 echo -e "${GREEN}  ✓ Migrations applied${NC}"
 
-# ── Step 7b: Voice agent backfills ──
-# Both commands are idempotent — safe to run on every deploy. They keep the
-# Lead Detection tab and the Usage card consistent with whatever's in CallLog
-# in case the live recorders missed anything (worker crash, schema bump, etc.).
-echo -e "${YELLOW}  ▸ Backfilling voice agent rollups...${NC}"
+# ── Step 8: Bootstrap Phase 1-4 data ──
+# Each command is idempotent and gated on whether its underlying app exists
+# in this build. Safe to run on every deploy.
+echo -e "${YELLOW}▸ [8/9] Bootstrapping Phase 1-4 data...${NC}"
+
+# Prompt Library effectiveness scoring — recomputes scores from the most
+# recent audits. First-deploy this is a noop because there are no audits.
 docker compose -f docker/docker-compose.prod.yml exec -T web \
-    python manage.py rescore_voice_calls 2>/dev/null || \
-    echo -e "${YELLOW}    (skip: rescore_voice_calls — command not present in this build)${NC}"
+    python -c "from apps.prompt_library.services.effectiveness import refresh_all_effectiveness_scores; print(refresh_all_effectiveness_scores(), 'prompts rescored')" 2>/dev/null || \
+    echo -e "${YELLOW}    (skip: prompt effectiveness — apps.prompt_library not available)${NC}"
+
+# Source-influence snapshots — daily rollups normally run via Celery beat,
+# but compute one immediately so the dashboard shows fresh data after
+# deploy. Idempotent: upserts on (provider × industry × website × period).
 docker compose -f docker/docker-compose.prod.yml exec -T web \
-    python manage.py rebuild_voice_usage 2>/dev/null || \
-    echo -e "${YELLOW}    (skip: rebuild_voice_usage — command not present in this build)${NC}"
-echo -e "${GREEN}  ✓ Voice agent backfills done${NC}"
+    python -c "from apps.citations.tasks import compute_source_influence_snapshots; compute_source_influence_snapshots(period_days=30); print('source-influence snapshots computed')" 2>/dev/null || \
+    echo -e "${YELLOW}    (skip: source-influence rollup — apps.citations not available)${NC}"
+
+# Brand Vault fact embeddings — backfills any embeddings missed by the
+# nightly job (e.g. OpenAI key was just added).
+docker compose -f docker/docker-compose.prod.yml exec -T web \
+    python -c "from apps.brand_vault.tasks import refresh_fact_embeddings; refresh_fact_embeddings(); print('brand-vault embeddings refreshed')" 2>/dev/null || \
+    echo -e "${YELLOW}    (skip: brand vault embeddings — apps.brand_vault not available)${NC}"
+
+# Voice agent backfills — legacy, kept for environments still running the
+# call-log feature.
+docker compose -f docker/docker-compose.prod.yml exec -T web \
+    python manage.py rescore_voice_calls 2>/dev/null || true
+docker compose -f docker/docker-compose.prod.yml exec -T web \
+    python manage.py rebuild_voice_usage 2>/dev/null || true
+
+echo -e "${GREEN}  ✓ Bootstrap complete${NC}"
+
+# ── Step 9: Verify Celery beat is running ──
+# The new Phase 1-4 schedules (mine-daily-prompts, compute-source-influence,
+# refresh-fact-embeddings, generate-briefs-daily, etc.) all live on the beat
+# scheduler. If beat isn't up, none of them fire.
+echo -e "${YELLOW}▸ [9/9] Verifying Celery beat...${NC}"
+if docker compose -f docker/docker-compose.prod.yml ps celery_beat 2>/dev/null | grep -qE "running|Up"; then
+    echo -e "${GREEN}  ✓ Celery beat is running${NC}"
+else
+    echo -e "${YELLOW}  ⚠ Celery beat not detected — daily snapshots, prompt mining, and brief generation will not run.${NC}"
+    echo -e "${YELLOW}    Check: docker compose -f docker/docker-compose.prod.yml logs celery_beat${NC}"
+fi
 
 # ── Done! ──
 echo ""

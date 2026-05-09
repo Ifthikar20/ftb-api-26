@@ -25,7 +25,6 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ("accounts", "0009_drop_messaging_tables"),
-        ("leads", "0005_drop_campaign_models"),
     ]
 
     operations = [

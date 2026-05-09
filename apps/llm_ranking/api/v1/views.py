@@ -132,6 +132,14 @@ class LLMRankingAuditListView(TenantScopedListAPIView):
                 configured.append(key)
         selected_providers = configured or ["claude"]
 
+        prompt_source = data.get("prompt_source", "vault") or "vault"
+        if prompt_source not in ("vault", "library", "hybrid"):
+            return Response(
+                {"error": "prompt_source must be one of vault, library, hybrid."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        industry_id = data.get("industry_id")
+
         audit = LLMRankingAudit.objects.create(
             website=website,
             created_by=request.user,
@@ -144,7 +152,27 @@ class LLMRankingAuditListView(TenantScopedListAPIView):
             prompts=prompts,
             providers_queried=selected_providers,
             context_urls=data.get("context_urls", []),
+            prompt_source=prompt_source,
         )
+
+        # Resolve final prompt list via the prompt_library dispatcher
+        # before any task is enqueued. apply_to_audit mutates audit.prompts
+        # in place; it currently only accepts prompt_source — industry_id
+        # is reserved for future routing into a non-default sample run.
+        try:
+            from apps.llm_ranking.services.audit_runner import apply_to_audit
+            apply_to_audit(audit, prompt_source=prompt_source)
+            audit.save(update_fields=["prompts"])
+        except Exception as exc:
+            audit.delete()
+            return Response(
+                {"error": f"Failed to resolve prompts: {exc}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        # industry_id is accepted for forward-compat with library routing
+        # but the current apply_to_audit signature reads from the audit's
+        # already-attached prompt_sample_run. Reference it to silence linters.
+        _ = industry_id
 
         # Dispatch: in production use Celery, in dev the user triggers
         # the run manually via the "Run" button (retry endpoint) because

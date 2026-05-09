@@ -1,0 +1,164 @@
+"""Compute per-Prompt effectiveness scores from past audit signals.
+
+Effectiveness rolls four normalised axes into a 0-1 weighted overall:
+
+  * visibility_hit_rate = mentioned_runs / total_runs
+  * citation_yield      = clamp(avg_citations_per_run / 3.0, 0, 1)
+  * claim_yield         = clamp(avg_claims_per_run / 5.0, 0, 1)
+  * coverage_breadth    = distinct_providers_with_mention / 4.0
+
+Overall = 0.40*v + 0.30*c + 0.20*cl + 0.10*b
+
+A prompt needs ``MIN_RUNS_STABLE`` (3) result rows before its score is
+considered stable; below that we still compute the components but flag
+``stable=False`` so the UI can show an "Untested" badge.
+
+Result rows are matched to a Prompt via the
+``LLMRankingResult.source_prompt`` foreign key. Older rows that predate
+the FK are simply ignored — they would require unreliable text matching
+across filled template variants.
+"""
+from __future__ import annotations
+
+import logging
+from typing import Iterable
+
+from django.db.models import Count, Q
+
+logger = logging.getLogger("apps")
+
+MIN_RUNS_STABLE = 3
+WEIGHTS = {
+    "visibility_hit_rate": 0.40,
+    "citation_yield": 0.30,
+    "claim_yield": 0.20,
+    "coverage_breadth": 0.10,
+}
+
+
+def _clamp(value: float, lo: float = 0.0, hi: float = 1.0) -> float:
+    if value <= lo:
+        return lo
+    if value >= hi:
+        return hi
+    return float(value)
+
+
+def _avg_citations_per_run(results) -> float:
+    if not results:
+        return 0.0
+    total = 0
+    for r in results:
+        cites = r.citations or []
+        if isinstance(cites, list):
+            total += len(cites)
+    return total / max(len(results), 1)
+
+
+def _avg_claims_per_run(prompt) -> float:
+    """Best-effort: count verified claims associated with this prompt's audits.
+
+    The claim_verifier app stores claims keyed off ``LLMRankingResult``;
+    fall back to zero when the linkage isn't queryable so we never
+    raise during scoring.
+    """
+    try:
+        from apps.claim_verifier.models import Claim  # type: ignore
+    except Exception:
+        return 0.0
+    try:
+        qs = Claim.objects.filter(result__source_prompt=prompt)
+        runs = qs.values("result_id").distinct().count()
+        if runs == 0:
+            return 0.0
+        return qs.count() / runs
+    except Exception as exc:  # pragma: no cover — defensive
+        logger.debug("avg_claims_per_run: %s", exc)
+        return 0.0
+
+
+def compute_effectiveness(prompt) -> dict:
+    """Return the score envelope for ``prompt``.
+
+    Always safe to call — never raises. Returns ``stable=False`` when
+    fewer than :data:`MIN_RUNS_STABLE` runs have used this prompt.
+    """
+    from apps.llm_ranking.models import LLMRankingResult
+
+    qs = LLMRankingResult.objects.filter(source_prompt=prompt)
+    total_runs = qs.count()
+    if total_runs == 0:
+        return {
+            "stable": False,
+            "overall": 0.0,
+            "runs": 0,
+            "components": {
+                "visibility_hit_rate": 0.0,
+                "citation_yield": 0.0,
+                "claim_yield": 0.0,
+                "coverage_breadth": 0.0,
+            },
+        }
+
+    mentioned_runs = qs.filter(is_mentioned=True).count()
+    visibility = mentioned_runs / total_runs
+
+    results = list(qs.only("citations", "provider", "is_mentioned"))
+    citation_yield = _clamp(_avg_citations_per_run(results) / 3.0)
+    claim_yield = _clamp(_avg_claims_per_run(prompt) / 5.0)
+
+    distinct_providers = (
+        qs.filter(is_mentioned=True).values("provider").distinct().count()
+    )
+    breadth = _clamp(distinct_providers / 4.0)
+
+    components = {
+        "visibility_hit_rate": round(visibility, 4),
+        "citation_yield": round(citation_yield, 4),
+        "claim_yield": round(claim_yield, 4),
+        "coverage_breadth": round(breadth, 4),
+    }
+    overall = sum(components[k] * WEIGHTS[k] for k in WEIGHTS)
+    return {
+        "stable": total_runs >= MIN_RUNS_STABLE,
+        "overall": round(overall, 4),
+        "runs": total_runs,
+        "components": components,
+    }
+
+
+def refresh_prompt(prompt) -> dict:
+    """Compute and persist the score for one prompt. Returns the envelope."""
+    envelope = compute_effectiveness(prompt)
+    prompt.effectiveness_score = envelope["overall"]
+    prompt.effectiveness_components = {
+        **envelope["components"],
+        "stable": envelope["stable"],
+        "runs": envelope["runs"],
+    }
+    prompt.runs_count = envelope["runs"]
+    prompt.save(update_fields=[
+        "effectiveness_score",
+        "effectiveness_components",
+        "runs_count",
+        "updated_at",
+    ])
+    return envelope
+
+
+def refresh_all_effectiveness_scores(prompts: Iterable | None = None) -> int:
+    """Iterate active prompts (or the supplied iterable) and refresh scores.
+
+    Returns the number of prompts updated.
+    """
+    from apps.prompt_library.models import Prompt
+
+    qs = prompts if prompts is not None else Prompt.objects.filter(is_active=True)
+    count = 0
+    for prompt in qs:
+        try:
+            refresh_prompt(prompt)
+            count += 1
+        except Exception as exc:  # pragma: no cover
+            logger.warning("refresh_prompt failed for %s: %s", prompt.id, exc)
+    return count

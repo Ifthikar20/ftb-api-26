@@ -15,14 +15,16 @@ urlpatterns = [
     path("api/v1/auth/", include("apps.accounts.api.v1.urls")),
     path("api/v1/websites/", include("apps.websites.api.v1.urls")),
     path("api/v1/analytics/", include("apps.analytics.api.v1.urls")),
-    path("api/v1/leads/", include("apps.leads.api.v1.urls")),
-
     path("api/v1/notifications/", include("apps.notifications.api.v1.urls")),
     path("api/v1/billing/", include("apps.billing.api.v1.urls")),
     path("api/v1/llm-ranking/", include("apps.llm_ranking.api.v1.urls")),
     path("api/v1/rag/", include("apps.rag.api.v1.urls")),
     path("api/v1/onboarding/", include("apps.onboarding.api.v1.urls")),
-    path("api/v1/social-leads/", include("apps.social_leads.api.v1.urls")),
+    path("api/v1/prompt-library/", include("apps.prompt_library.api.v1.urls")),
+    path("api/v1/citations/", include("apps.citations.api.v1.urls")),
+    path("api/v1/brand-vault/", include("apps.brand_vault.api.v1.urls")),
+    path("api/v1/claim-verifier/", include("apps.claim_verifier.api.v1.urls")),
+    path("api/v1/content-studio/", include("apps.content_studio.api.v1.urls")),
 
     # Pixel ingestion (high throughput)
     path("api/v1/track/", include("apps.analytics.api.v1.pixel_urls")),

@@ -88,9 +88,17 @@ api.interceptors.response.use(
                 return api(originalRequest)
             } catch (refreshError) {
                 processQueue(refreshError, null)
-                const auth = useAuthStore()
-                auth.clearAuth()
-                router.push({ name: 'login' })
+                // Only kick the user to /login if the refresh itself was
+                // rejected as unauthorized. Any other failure (network
+                // blip, 5xx from the backend, browser blocking the cookie
+                // briefly) should NOT silently log them out — the original
+                // request will simply fail and the user can retry.
+                const refreshStatus = refreshError?.response?.status
+                if (refreshStatus === 401 || refreshStatus === 403) {
+                    const auth = useAuthStore()
+                    auth.clearAuth()
+                    router.push({ name: 'login' })
+                }
                 return Promise.reject(refreshError)
             } finally {
                 isRefreshing = false

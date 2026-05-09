@@ -2,7 +2,7 @@
 import pytest
 
 from apps.accounts.tests.factories import UserFactory
-from apps.leads.tests.factories import WebsiteFactory
+from apps.websites.tests.factories import WebsiteFactory
 from apps.rag.models import KnowledgeChunk, KnowledgeSource
 from apps.rag.services.embedder import embed_one
 from apps.rag.services.retriever import retrieve, retrieve_context_block

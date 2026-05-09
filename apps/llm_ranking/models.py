@@ -92,6 +92,21 @@ class LLMRankingAudit(TimestampMixin):
     # other codes append a region hint to prompts and route Perplexity
     # web search to that country.
     region = models.CharField(max_length=10, default="global", db_index=True)
+    # Where prompts come from for this audit:
+    #   vault   — user-curated keyword vault (legacy default)
+    #   library — demand-side prompts sampled from the prompt_library app
+    #   hybrid  — both, concatenated (library first, then vault)
+    PROMPT_SOURCE_VAULT = "vault"
+    PROMPT_SOURCE_LIBRARY = "library"
+    PROMPT_SOURCE_HYBRID = "hybrid"
+    PROMPT_SOURCE_CHOICES = [
+        (PROMPT_SOURCE_VAULT, "vault"),
+        (PROMPT_SOURCE_LIBRARY, "library"),
+        (PROMPT_SOURCE_HYBRID, "hybrid"),
+    ]
+    prompt_source = models.CharField(
+        max_length=16, choices=PROMPT_SOURCE_CHOICES, default=PROMPT_SOURCE_VAULT
+    )
     # Aggregated citation footprint by country (ISO-2 code -> count).
     # Built in finalise_audit from each result's citation URLs.
     citation_countries = models.JSONField(default=dict, blank=True)
@@ -213,6 +228,20 @@ class LLMRankingResult(TimestampMixin):
     # Which model + prompt version was used to extract structured data
     extraction_model = models.CharField(max_length=100, blank=True)
     extraction_version = models.CharField(max_length=20, blank=True)
+    # Provenance label for the prompt that produced this row. Free-form
+    # short string so the frontend can render a badge such as
+    # ``Library / Reddit`` or ``Vault``. Empty for legacy rows.
+    prompt_source_label = models.CharField(max_length=64, blank=True, default="")
+    # Optional FK to the prompt_library Prompt that produced this row. Lets
+    # the effectiveness scorer roll signals back per-template without
+    # text-matching across filled variants.
+    source_prompt = models.ForeignKey(
+        "prompt_library.Prompt",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="ranking_results",
+    )
     # Per-result citation country breakdown (ISO-2 -> count). Computed
     # from this row's citations during aggregation; rolled up into the
     # audit-level ``citation_countries`` field for the dashboard.

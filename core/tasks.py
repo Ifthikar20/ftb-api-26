@@ -15,15 +15,13 @@ def hard_delete_soft_deleted():
     """
     cutoff = timezone.now() - timedelta(days=30)
 
-    from apps.leads.models import Lead
     from apps.websites.models import Website
 
     website_count = Website.all_objects.filter(is_deleted=True, deleted_at__lte=cutoff).delete()[0]
-    lead_count = Lead.all_objects.filter(is_deleted=True, deleted_at__lte=cutoff).delete()[0]
 
     logger.info(
         "Hard delete completed",
-        extra={"websites_deleted": website_count, "leads_deleted": lead_count},
+        extra={"websites_deleted": website_count},
     )
 
 

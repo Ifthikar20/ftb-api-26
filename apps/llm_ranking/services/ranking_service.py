@@ -805,10 +805,15 @@ class LLMRankingService:
                     audit_id, prompt_index, provider, exc,
                 )
 
-        LLMRankingResult.objects.update_or_create(
+        from apps.llm_ranking.services.source_prompt_resolver import (
+            resolve_source_prompt_id,
+        )
+        source_prompt_id = resolve_source_prompt_id(prompt_text)
+        result_obj, _ = LLMRankingResult.objects.update_or_create(
             audit=audit, prompt_index=prompt_index, provider=provider, run_id=0,
             defaults={
                 "prompt": prompt_text,
+                "source_prompt_id": source_prompt_id,
                 "response_text": result.text or "",
                 "is_mentioned": analysis["is_mentioned"],
                 "mention_rank": analysis["mention_rank"],
@@ -826,6 +831,7 @@ class LLMRankingService:
                 "extraction_version": analysis.get("extraction_version", ""),
             },
         )
+        LLMRankingService._dispatch_citation_extraction(result_obj.id)
         LLMRankingService._bump_progress(audit_id)
         return {
             "audit_id": audit_id, "prompt_index": prompt_index,
@@ -871,6 +877,32 @@ class LLMRankingService:
                 "extraction_version": "",
             },
         )
+
+    @staticmethod
+    def _dispatch_citation_extraction(result_id) -> None:
+        """Fan out citation extraction for a freshly-saved LLMRankingResult.
+
+        Gated on the ``CITATION_EXTRACTION_ENABLED`` setting (default True)
+        so the existing ranking-service test suite can opt out without
+        importing the citations app. Failures are swallowed: citations are
+        a downstream analytic, never on the critical path of the audit.
+        """
+        from django.conf import settings as _settings
+        if not getattr(_settings, "CITATION_EXTRACTION_ENABLED", True):
+            return
+        try:
+            from apps.citations.tasks import extract_citations_for_result
+            extract_citations_for_result.delay(str(result_id))
+        except Exception as exc:  # pragma: no cover
+            logger.debug("citation extraction dispatch failed for %s: %s", result_id, exc)
+
+        # Phase 3 — claim extraction. Gated so the existing tests can opt out.
+        if getattr(_settings, "CLAIM_VERIFICATION_ENABLED", True):
+            try:
+                from apps.claim_verifier.tasks import extract_claims_for_result
+                extract_claims_for_result.delay(str(result_id))
+            except Exception as exc:  # pragma: no cover
+                logger.debug("claim extraction dispatch failed for %s: %s", result_id, exc)
 
     @staticmethod
     def _bump_progress(audit_id: str) -> None:
@@ -968,6 +1000,24 @@ class LLMRankingService:
             "duration_seconds", "total_tokens", "total_cost_usd",
             "audit_logs", "updated_at",
         ])
+
+        # Phase 3 — once all results land, verify any extracted claims.
+        try:
+            from django.conf import settings as _settings_phase3
+            if getattr(_settings_phase3, "CLAIM_VERIFICATION_ENABLED", True):
+                from apps.claim_verifier.tasks import verify_claims_for_audit
+                verify_claims_for_audit.delay(str(audit.id))
+        except Exception as exc:  # pragma: no cover
+            logger.debug("claim verification dispatch failed for %s: %s", audit_id, exc)
+
+        # Phase 4 — generate Content Studio briefs from the latest gaps.
+        try:
+            from django.conf import settings as _settings_phase4
+            if getattr(_settings_phase4, "CONTENT_STUDIO_BRIEF_GENERATION_ENABLED", True):
+                from apps.content_studio.tasks import generate_briefs_for_website
+                generate_briefs_for_website.delay(str(audit.website_id))
+        except Exception as exc:  # pragma: no cover
+            logger.debug("content_studio dispatch failed for %s: %s", audit_id, exc)
 
     # ── Legacy single-task runner (eager mode + tests) ─────────────────────
 
@@ -1236,6 +1286,10 @@ class LLMRankingService:
                 # update_or_create lets the legacy synchronous path
                 # tolerate re-runs without slamming into the
                 # uq_llm_result_audit_prompt_provider_run constraint.
+                from apps.llm_ranking.services.source_prompt_resolver import (
+                    resolve_source_prompt_id as _resolve_source_prompt_id,
+                )
+                _src_prompt_id = _resolve_source_prompt_id(prompt_text)
                 result, _ = LLMRankingResult.objects.update_or_create(
                     audit=audit,
                     prompt_index=prompt_index,
@@ -1243,6 +1297,7 @@ class LLMRankingService:
                     run_id=0,
                     defaults={
                         "prompt": prompt_text,
+                        "source_prompt_id": _src_prompt_id,
                         "response_text": response_text,
                         "is_mentioned": analysis["is_mentioned"],
                         "mention_rank": analysis["mention_rank"],
@@ -1260,6 +1315,7 @@ class LLMRankingService:
                         "extraction_version": analysis.get("extraction_version", ""),
                     },
                 )
+                LLMRankingService._dispatch_citation_extraction(result.id)
                 all_results.append(result)
 
                 # Update progress after each query

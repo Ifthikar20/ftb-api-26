@@ -39,22 +39,37 @@
           <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M2 14V6l4-4 4 4 4-4v12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg></span>
           <span v-if="!appStore.sidebarCollapsed" class="nav-text">Analytics</span>
         </router-link>
-        <router-link :to="leadsRoute" class="nav-link" exact-active-class="active" style="--nav-color: #22c55e">
-          <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="5" r="3" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M2 14c0-3 3-5 6-5s6 2 6 5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></span>
-          <span v-if="!appStore.sidebarCollapsed" class="nav-text">Leads</span>
-        </router-link>
-
-        <router-link :to="heatmapRoute" class="nav-link" exact-active-class="active" style="--nav-color: #ef4444">
-          <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="1" width="14" height="14" rx="2"/><circle cx="6" cy="6" r="2" fill="currentColor" opacity="0.6"/><circle cx="10" cy="5" r="1.5" fill="currentColor" opacity="0.4"/><circle cx="8" cy="10" r="2.5" fill="currentColor" opacity="0.8"/></svg></span>
-          <span v-if="!appStore.sidebarCollapsed" class="nav-text">Heatmaps</span>
-        </router-link>
-        <router-link :to="keywordsRoute" class="nav-link" exact-active-class="active" style="--nav-color: #eab308">
-          <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 12l4-4 3 3 5-7"/><circle cx="14" cy="4" r="1.5" fill="currentColor"/></svg></span>
-          <span v-if="!appStore.sidebarCollapsed" class="nav-text">Keywords</span>
-        </router-link>
         <router-link :to="llmRankingRoute" class="nav-link" exact-active-class="active" style="--nav-color: #ec4899">
           <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 4v4l3 2"/><path d="M5 2l6 0" stroke-linecap="round"/></svg></span>
           <span v-if="!appStore.sidebarCollapsed" class="nav-text">LLM Ranking</span>
+        </router-link>
+        <router-link :to="promptLibraryRoute" class="nav-link nav-sub" active-class="active" style="--nav-color: #ec4899">
+          <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3h10v10H3z"/><path d="M5 6h6M5 9h4"/></svg></span>
+          <span v-if="!appStore.sidebarCollapsed" class="nav-text">Prompts</span>
+        </router-link>
+        <router-link :to="sourceInfluenceRoute" class="nav-link nav-sub" active-class="active" style="--nav-color: #ec4899">
+          <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 13h12"/><rect x="3" y="8" width="2" height="5"/><rect x="7" y="5" width="2" height="8"/><rect x="11" y="2" width="2" height="11"/></svg></span>
+          <span v-if="!appStore.sidebarCollapsed" class="nav-text">Source Influence</span>
+        </router-link>
+        <router-link :to="brandVaultRoute" class="nav-link nav-sub" active-class="active" style="--nav-color: #ec4899">
+          <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 4l5-2 5 2v5c0 3-2.5 5-5 6-2.5-1-5-3-5-6V4z"/><path d="M6 8l1.5 1.5L10 7"/></svg></span>
+          <span v-if="!appStore.sidebarCollapsed" class="nav-text">Brand Vault</span>
+        </router-link>
+        <router-link :to="accuracyRoute" class="nav-link nav-sub" active-class="active" style="--nav-color: #ec4899">
+          <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M5 8l2 2 4-4"/></svg></span>
+          <span v-if="!appStore.sidebarCollapsed" class="nav-text">Accuracy</span>
+        </router-link>
+        <router-link :to="contentStudioRoute" class="nav-link nav-sub" active-class="active" style="--nav-color: #FF385C">
+          <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 2h7l3 3v9H3z"/><path d="M10 2v3h3"/><path d="M5 8h6M5 11h4"/></svg></span>
+          <span v-if="!appStore.sidebarCollapsed" class="nav-text">Content</span>
+        </router-link>
+        <router-link :to="publishTargetsRoute" class="nav-link nav-sub" active-class="active" style="--nav-color: #FF385C">
+          <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="5" r="2"/><path d="M11 7v4M5 11l5-3M5 11h6"/><circle cx="5" cy="11" r="2"/></svg></span>
+          <span v-if="!appStore.sidebarCollapsed" class="nav-text">Publish targets</span>
+        </router-link>
+        <router-link :to="roiRoute" class="nav-link nav-sub" active-class="active" style="--nav-color: #FF385C">
+          <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 12l4-4 3 3 5-6"/><path d="M10 5h4v4"/></svg></span>
+          <span v-if="!appStore.sidebarCollapsed" class="nav-text">ROI</span>
         </router-link>
 
         <router-link to="/app/integrations" class="nav-link" exact-active-class="active" style="--nav-color: #22c55e">
@@ -266,9 +281,6 @@ const searchPages = [
   { name: 'dashboard', label: 'Dashboard', description: 'Overview of all your projects', category: 'Navigation', route: '/dashboard', icon: '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/><rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>' },
   { name: 'websites', label: 'Projects', description: 'Manage your tracked websites', category: 'Navigation', route: '/websites', icon: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="7"/><line x1="1" y1="8" x2="15" y2="8"/><ellipse cx="8" cy="8" rx="3" ry="7"/></svg>' },
   { name: 'analytics', label: 'Analytics', description: 'Visitor data, traffic sources, engagement', category: 'Intelligence', routeFn: () => analyticsRoute.value, icon: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 14V6l4-4 4 4 4-4v12"/></svg>' },
-  { name: 'leads', label: 'Leads', description: 'Lead capture and pipeline management', category: 'Intelligence', routeFn: () => leadsRoute.value, icon: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="5" r="3"/><path d="M2 14c0-3 3-5 6-5s6 2 6 5"/></svg>' },
-  { name: 'heatmaps', label: 'Heatmaps', description: 'Visual click and scroll behavior', category: 'Intelligence', routeFn: () => heatmapRoute.value, icon: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="1" width="14" height="14" rx="2"/><circle cx="6" cy="6" r="2" fill="currentColor" opacity="0.6"/><circle cx="10" cy="10" r="2.5" fill="currentColor" opacity="0.8"/></svg>' },
-  { name: 'keywords', label: 'Keywords', description: 'Keyword ranking and tracking', category: 'Intelligence', routeFn: () => keywordsRoute.value, icon: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 12l4-4 3 3 5-7"/><circle cx="14" cy="4" r="1.5" fill="currentColor"/></svg>' },
   { name: 'llm-ranking', label: 'LLM Ranking', description: 'AI visibility scoring across LLMs', category: 'Intelligence', routeFn: () => llmRankingRoute.value, icon: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 4v4l3 2"/></svg>' },
   { name: 'billing', label: 'Billing', description: 'Subscription plans and payment', category: 'Account', route: '/billing', icon: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="3" width="14" height="10" rx="2"/><line x1="1" y1="7" x2="15" y2="7"/></svg>' },
   { name: 'settings', label: 'Settings', description: 'Account settings and preferences', category: 'Account', route: '/settings', icon: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="2.5"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.3 3.3l1.4 1.4M11.3 11.3l1.4 1.4M12.7 3.3l-1.4 1.4M4.7 11.3l-1.4 1.4"/></svg>' },
@@ -416,11 +428,14 @@ const websiteId = computed(() => appStore.activeWebsite?.id)
 // Same page + same website = instant (no reload). Different website = fresh instance.
 const pageKey = computed(() => `${route.name || 'page'}-${route.params.websiteId || ''}`)
 const analyticsRoute = computed(() => websiteId.value ? `/analytics/${websiteId.value}` : '/websites')
-const leadsRoute = computed(() => websiteId.value ? `/leads/${websiteId.value}` : '/websites')
-
-const heatmapRoute = computed(() => websiteId.value ? `/heatmap/${websiteId.value}` : '/websites')
-const keywordsRoute = computed(() => websiteId.value ? `/keywords/${websiteId.value}` : '/websites')
 const llmRankingRoute = computed(() => websiteId.value ? `/llm-ranking/${websiteId.value}` : '/websites')
+const promptLibraryRoute = computed(() => websiteId.value ? `/llm-ranking/${websiteId.value}/prompts` : '/websites')
+const sourceInfluenceRoute = computed(() => websiteId.value ? `/llm-ranking/${websiteId.value}/source-influence` : '/websites')
+const brandVaultRoute = computed(() => websiteId.value ? `/llm-ranking/${websiteId.value}/brand-vault` : '/websites')
+const accuracyRoute = computed(() => websiteId.value ? `/llm-ranking/${websiteId.value}/accuracy` : '/websites')
+const contentStudioRoute = computed(() => websiteId.value ? `/llm-ranking/${websiteId.value}/content` : '/websites')
+const publishTargetsRoute = computed(() => websiteId.value ? `/llm-ranking/${websiteId.value}/content/publish-targets` : '/websites')
+const roiRoute = computed(() => websiteId.value ? `/llm-ranking/${websiteId.value}/content/roi` : '/websites')
 
 
 
@@ -433,9 +448,6 @@ function switchWebsite(id) {
   const path = route.path
   const routeMap = [
     { prefix: '/analytics/', target: `/analytics/${id}` },
-    { prefix: '/leads/', target: `/leads/${id}` },
-    { prefix: '/heatmap/', target: `/heatmap/${id}` },
-    { prefix: '/keywords/', target: `/keywords/${id}` },
     { prefix: '/websites/', target: `/websites/${id}` },
     { prefix: '/llm-ranking/', target: `/llm-ranking/${id}` },
   ]
