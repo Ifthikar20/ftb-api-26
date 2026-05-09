@@ -22,6 +22,7 @@ from apps.llm_ranking.models import LLMRankingAudit
 from apps.prompt_library.api.v1.serializers import (
     AutoTemplateRequestSerializer,
     BrandPromptSerializer,
+    GenerateFromContextRequestSerializer,
     IndustrySerializer,
     PreviewSampleRequestSerializer,
     PromptCreateSerializer,
@@ -438,6 +439,80 @@ class PromptSynthesizeView(APIView):
         return Response({
             "created": len(created),
             "prompts": PromptSerializer(created, many=True).data,
+        })
+
+
+class PromptGenerateFromContextView(APIView):
+    """Generate ~20 templated prompts from a free-form context description.
+
+    Calls the synthesis provider (DeepSeek when configured, Anthropic
+    fallback). Optionally persists the generated prompts as ``Prompt`` rows
+    on a website's industry. Throttled per-user via ``TokenBucket`` to
+    keep one user from burning the API budget.
+    """
+
+    permission_classes = [IsAuthenticated]
+    _BUCKET_CAPACITY = 6
+    _BUCKET_REFILL = 6 / 60.0  # 6 calls per minute, smooth refill.
+
+    def post(self, request):
+        from apps.prompt_library.services._hash import text_hash
+        from apps.prompt_library.services.context_generator import (
+            generate_from_context,
+        )
+        from core.resilience import TokenBucket
+
+        bucket = TokenBucket(
+            name=f"prompt_ctx_gen:{request.user.id}",
+            capacity=self._BUCKET_CAPACITY,
+            refill_per_second=self._BUCKET_REFILL,
+        )
+        if not bucket.try_acquire():
+            return Response(
+                {"error": "rate_limited", "detail": "Too many generations. Wait a moment."},
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+
+        serializer = GenerateFromContextRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        items, provider_name = generate_from_context(
+            data["context"], count=data["count"], user=request.user,
+        )
+
+        persisted: list = []
+        if data.get("persist") and data.get("website_id"):
+            website = WebsiteService.get_for_user(
+                user=request.user, website_id=data["website_id"],
+            )
+            slug_hint = (getattr(website, "industry", "") or "").lower().strip().replace(" ", "-")
+            industry = (
+                Industry.objects.filter(slug=slug_hint, is_active=True).first()
+                or Industry.objects.filter(is_active=True).order_by("name").first()
+            )
+            if industry is not None:
+                for item in items:
+                    template_text = item["template_text"]
+                    h = text_hash(template_text)
+                    if Prompt.objects.filter(industry=industry, text_hash=h).exists():
+                        continue
+                    prompt = Prompt.objects.create(
+                        industry=industry,
+                        text=item.get("preview_text") or template_text,
+                        template_text=template_text,
+                        template_variables=item["template_variables"],
+                        style=item["style"],
+                        intent_bucket=item["intent_bucket"],
+                        source=PromptSource.LLM_SYNTH,
+                        text_hash=h,
+                    )
+                    persisted.append(prompt)
+
+        return Response({
+            "generated": items,
+            "provider": provider_name,
+            "persisted": PromptSerializer(persisted, many=True).data,
         })
 
 

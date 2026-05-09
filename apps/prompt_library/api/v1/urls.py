@@ -27,6 +27,11 @@ urlpatterns = [
         name="prompt-library-synthesize",
     ),
     path(
+        "prompts/generate-from-context/",
+        views.PromptGenerateFromContextView.as_view(),
+        name="prompt-library-generate-from-context",
+    ),
+    path(
         "prompts/<uuid:prompt_id>/preview/",
         views.PromptPreviewView.as_view(),
         name="prompt-library-prompt-preview",

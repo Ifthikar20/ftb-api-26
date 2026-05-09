@@ -157,3 +157,21 @@ class SynthesizeRequestSerializer(serializers.Serializer):
 
 class VariableSetUpdateSerializer(serializers.Serializer):
     variables = serializers.DictField(child=serializers.CharField(allow_blank=True))
+
+
+class GenerateFromContextRequestSerializer(serializers.Serializer):
+    """Validate the free-form context input for prompt generation."""
+
+    context = serializers.CharField()
+    count = serializers.IntegerField(min_value=1, max_value=40, default=20)
+    persist = serializers.BooleanField(default=False)
+    website_id = serializers.UUIDField(required=False)
+
+    def validate_context(self, value: str) -> str:
+        cleaned = (value or "").strip()
+        words = [w for w in cleaned.split() if w]
+        if len(words) < 5:
+            raise serializers.ValidationError(
+                "Context must contain at least 5 words.",
+            )
+        return cleaned
