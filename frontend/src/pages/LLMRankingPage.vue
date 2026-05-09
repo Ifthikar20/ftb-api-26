@@ -5382,17 +5382,18 @@ onBeforeUnmount(() => {
   .kpi-strip { grid-template-columns: 1fr; }
 }
 .kpi-card {
-  background: var(--bg-base);
+  background: var(--bg-card);
   border: 1px solid var(--border-color);
-  border-radius: 14px;
+  border-radius: 1rem;
   padding: 18px 18px 16px;
   position: relative;
-  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s;
+  box-shadow: var(--shadow-sm);
+  transition: transform 150ms ease-out, box-shadow 150ms ease-out, border-color 150ms ease-out;
 }
 .kpi-card:hover {
-  border-color: var(--text-muted);
-  box-shadow: 0 8px 24px rgba(15,23,42,0.05);
-  transform: translateY(-1px);
+  border-color: var(--border-hover);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
 }
 .kpi-label {
   display: flex;
@@ -6141,10 +6142,17 @@ onBeforeUnmount(() => {
 
 .schedule-card {
   border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  background: var(--surface-secondary, #fafafa);
-  padding: 14px 16px;
+  border-radius: 1rem;
+  background: var(--bg-card);
+  padding: 16px 18px;
   margin-bottom: 20px;
+  box-shadow: var(--shadow-sm);
+  transition: transform 150ms ease-out, box-shadow 150ms ease-out, border-color 150ms ease-out;
+}
+.schedule-card:hover {
+  border-color: var(--border-hover);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
 }
 .schedule-card-head {
   display: flex; align-items: center; justify-content: space-between;
@@ -6264,16 +6272,22 @@ onBeforeUnmount(() => {
 /* Provider grid */
 .provider-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
 .provider-card {
-  border: none;
-  border-radius: var(--radius-md);
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 1rem;
   padding: 16px;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 6px;
   text-align: center;
-  transition: border-color var(--transition-fast);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.03);
+  box-shadow: var(--shadow-sm);
+  transition: transform 150ms ease-out, box-shadow 150ms ease-out, border-color 150ms ease-out;
+}
+.provider-card:hover {
+  border-color: var(--border-hover);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
 }
 .provider-card.provider-mentioned { border-color: var(--color-success); background: var(--color-success-bg); }
 .provider-card.provider-failed { opacity: 0.5; border-style: dashed; }
@@ -6457,9 +6471,16 @@ onBeforeUnmount(() => {
   gap: 12px;
   border: 1px solid var(--border-color);
   border-left: 3px solid var(--text-muted);
-  border-radius: var(--radius-md);
-  padding: 12px 16px;
-  background: var(--bg-base);
+  border-radius: 1rem;
+  padding: 14px 18px;
+  background: var(--bg-card);
+  box-shadow: var(--shadow-sm);
+  transition: transform 150ms ease-out, box-shadow 150ms ease-out, border-color 150ms ease-out;
+}
+.finding-card:hover {
+  border-color: var(--border-hover);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
 }
 .finding-card.finding-mentioned { border-left-color: var(--color-success); }
 .finding-card.finding-failed { border-left-color: var(--color-danger); opacity: 0.5; }

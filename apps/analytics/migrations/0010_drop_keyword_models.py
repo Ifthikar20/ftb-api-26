@@ -8,21 +8,27 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.DeleteModel(name="KeywordAlertEvent"),
-        migrations.DeleteModel(name="KeywordAlert"),
-        migrations.DeleteModel(name="KeywordRankHistory"),
-        migrations.DeleteModel(name="TrackedKeyword"),
-        migrations.DeleteModel(name="KeywordScanConfig"),
-        migrations.DeleteModel(name="PlatformContent"),
-        migrations.RunSQL(
-            sql=(
-                "DROP TABLE IF EXISTS analytics_keywordalertevent CASCADE; "
-                "DROP TABLE IF EXISTS analytics_keywordalert CASCADE; "
-                "DROP TABLE IF EXISTS analytics_keywordrankhistory CASCADE; "
-                "DROP TABLE IF EXISTS analytics_trackedkeyword CASCADE; "
-                "DROP TABLE IF EXISTS analytics_keywordscanconfig CASCADE; "
-                "DROP TABLE IF EXISTS analytics_platformcontent CASCADE;"
-            ),
-            reverse_sql=migrations.RunSQL.noop,
+        migrations.SeparateDatabaseAndState(
+            state_operations=[
+                migrations.DeleteModel(name="KeywordAlertEvent"),
+                migrations.DeleteModel(name="KeywordAlert"),
+                migrations.DeleteModel(name="KeywordRankHistory"),
+                migrations.DeleteModel(name="TrackedKeyword"),
+                migrations.DeleteModel(name="KeywordScanConfig"),
+                migrations.DeleteModel(name="PlatformContent"),
+            ],
+            database_operations=[
+                migrations.RunSQL(
+                    sql=(
+                        "DROP TABLE IF EXISTS analytics_keywordalertevent CASCADE; "
+                        "DROP TABLE IF EXISTS analytics_keywordalert CASCADE; "
+                        "DROP TABLE IF EXISTS analytics_keywordrankhistory CASCADE; "
+                        "DROP TABLE IF EXISTS analytics_trackedkeyword CASCADE; "
+                        "DROP TABLE IF EXISTS analytics_keywordscanconfig CASCADE; "
+                        "DROP TABLE IF EXISTS analytics_platformcontent CASCADE;"
+                    ),
+                    reverse_sql=migrations.RunSQL.noop,
+                ),
+            ],
         ),
     ]

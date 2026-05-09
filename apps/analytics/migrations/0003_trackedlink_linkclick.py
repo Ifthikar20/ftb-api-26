@@ -7,7 +7,6 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ("analytics", "0002_trackedkeyword_keywordrankhistory"),
-        ("leads", "0002_emailcampaign_campaignrecipient"),
         ("websites", "0001_initial"),
     ]
 
