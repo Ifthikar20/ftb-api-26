@@ -795,7 +795,7 @@ async function onSaveGenerated(prompt) {
     const saved = data?.data || data
     prompt._saved = true
     prompt._savedId = saved?.id || null
-    toast.success('Saved to your prompts.')
+    toast.success('Saved · view in Saved Prompts →')
     loadPrompts()
   } catch (e) {
     toast.error(e.displayMessage || 'Could not save.')
