@@ -1,0 +1,98 @@
+/* ════════════════════════════════════════
+   Air Card — Airbnb-inspired card system
+   ════════════════════════════════════════ */
+
+.air-card {
+  display: block;
+  position: relative;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  text-decoration: none;
+  text-align: left;
+  width: 100%;
+  transition: transform 150ms ease-out, box-shadow 150ms ease-out, border-color 150ms ease-out;
+}
+
+button.air-card { font: inherit; cursor: default; }
+
+.air-card__body { display: block; }
+
+/* Sizes */
+.air-card--sm { border-radius: 0.75rem; box-shadow: var(--shadow-sm); }
+.air-card--sm > .air-card__body { padding: 1rem; }
+
+.air-card--md { border-radius: 1rem; box-shadow: var(--shadow-sm); }
+.air-card--md > .air-card__body { padding: 1.5rem; }
+
+.air-card--lg { border-radius: 1rem; box-shadow: var(--shadow-sm); }
+.air-card--lg > .air-card__body { padding: 2rem; }
+
+.air-card--hero { border-radius: 1.5rem; box-shadow: var(--shadow-md); }
+.air-card--hero > .air-card__body { padding: 2.5rem; }
+
+/* Unpadded variant */
+.air-card--unpadded > .air-card__body { padding: 0; }
+
+/* Media slot */
+.air-card__media {
+  display: block;
+  overflow: hidden;
+  border-top-left-radius: inherit;
+  border-top-right-radius: inherit;
+}
+
+.air-card--has-media > .air-card__body { padding-top: 1rem; }
+.air-card--md.air-card--has-media > .air-card__body { padding-top: 1.25rem; }
+.air-card--lg.air-card--has-media > .air-card__body { padding-top: 1.5rem; }
+.air-card--hero.air-card--has-media > .air-card__body { padding-top: 2rem; }
+
+/* Interactive */
+.air-card--interactive {
+  cursor: pointer;
+}
+.air-card--interactive:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+  border-color: var(--border-hover);
+}
+.air-card--interactive:active { transform: translateY(0); }
+.air-card--interactive:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--bg-card), 0 0 0 4px var(--brand-accent-glow);
+}
+
+/* Header / Footer / Title / Subtitle */
+.air-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.air-card-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+  margin: 0;
+}
+
+.air-card-subtitle {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin: 0.25rem 0 0 0;
+}
+
+.air-card-footer {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}

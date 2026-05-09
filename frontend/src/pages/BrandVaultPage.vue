@@ -7,40 +7,39 @@
         <p v-if="websiteName" class="text-sm text-gray-500">{{ websiteName }}</p>
       </div>
       <div class="flex items-center gap-2">
-        <button
-          class="rounded-md border border-indigo-600 bg-white px-3 py-1.5 text-sm font-medium text-indigo-700 hover:bg-indigo-50"
-          @click="importOpen = true"
-        >
+        <AirButton variant="outline" size="md" @click="importOpen = true">
           Import facts
-        </button>
-        <button
-          class="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+        </AirButton>
+        <AirButton
+          variant="primary"
+          size="md"
+          :loading="extracting"
           :disabled="extracting"
           @click="onReExtract"
         >
           {{ extracting ? 'Queuing...' : 'Re-extract from sources' }}
-        </button>
+        </AirButton>
       </div>
     </header>
 
     <!-- Stats row -->
     <section id="bv-stats" class="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
-      <div class="rounded-lg border border-gray-200 bg-white p-4">
-        <div class="text-xs text-gray-500">Pending review</div>
-        <div class="mt-1 text-2xl font-semibold text-amber-700">{{ stats.pending }}</div>
-      </div>
-      <div class="rounded-lg border border-gray-200 bg-white p-4">
-        <div class="text-xs text-gray-500">Approved</div>
-        <div class="mt-1 text-2xl font-semibold text-emerald-700">{{ stats.approved }}</div>
-      </div>
-      <div class="rounded-lg border border-gray-200 bg-white p-4">
-        <div class="text-xs text-gray-500">Rejected</div>
-        <div class="mt-1 text-2xl font-semibold text-zinc-700">{{ stats.rejected }}</div>
-      </div>
-      <div class="rounded-lg border border-gray-200 bg-white p-4">
-        <div class="text-xs text-gray-500">Auto-approved</div>
-        <div class="mt-1 text-2xl font-semibold text-blue-700">{{ stats.auto }}</div>
-      </div>
+      <AirCard size="md">
+        <AirCardSubtitle class="text-xs uppercase tracking-wide">Pending review</AirCardSubtitle>
+        <div class="mt-1 text-2xl font-semibold" style="color: var(--color-warning)">{{ stats.pending }}</div>
+      </AirCard>
+      <AirCard size="md">
+        <AirCardSubtitle class="text-xs uppercase tracking-wide">Approved</AirCardSubtitle>
+        <div class="mt-1 text-2xl font-semibold" style="color: var(--color-success)">{{ stats.approved }}</div>
+      </AirCard>
+      <AirCard size="md">
+        <AirCardSubtitle class="text-xs uppercase tracking-wide">Rejected</AirCardSubtitle>
+        <div class="mt-1 text-2xl font-semibold" style="color: var(--text-secondary)">{{ stats.rejected }}</div>
+      </AirCard>
+      <AirCard size="md">
+        <AirCardSubtitle class="text-xs uppercase tracking-wide">Auto-approved</AirCardSubtitle>
+        <div class="mt-1 text-2xl font-semibold" style="color: var(--color-info)">{{ stats.auto }}</div>
+      </AirCard>
     </section>
 
     <!-- Filter bar -->
@@ -113,13 +112,9 @@
         v-if="facts.length && hasMore"
         class="flex justify-center border-t border-gray-100 px-3 py-3"
       >
-        <button
-          class="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm hover:bg-gray-50"
-          :disabled="loadingMore"
-          @click="loadMore"
-        >
+        <AirButton variant="secondary" size="sm" :loading="loadingMore" :disabled="loadingMore" @click="loadMore">
           {{ loadingMore ? 'Loading...' : 'Load more' }}
-        </button>
+        </AirButton>
       </div>
     </section>
 
@@ -149,6 +144,9 @@ import FactRow from '@/components/brand_vault/FactRow.vue'
 import EditFactModal from '@/components/brand_vault/EditFactModal.vue'
 import ImportFactsModal from '@/components/brand_vault/ImportFactsModal.vue'
 import OnboardingTooltip from '@/components/OnboardingTooltip.vue'
+import AirButton from '@/components/ui/AirButton.vue'
+import AirCard from '@/components/ui/AirCard.vue'
+import AirCardSubtitle from '@/components/ui/AirCardSubtitle.vue'
 
 const route = useRoute()
 const appStore = useAppStore()

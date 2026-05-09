@@ -41,41 +41,44 @@
         <p class="mt-2 text-sm text-gray-500">
           Run an audit to start tracking accuracy.
         </p>
-        <router-link
+        <AirButton
+          as="router-link"
           :to="`/llm-ranking/${websiteId}`"
-          class="mt-4 inline-block rounded-md bg-pink-500 px-3 py-1.5 text-sm font-medium text-white hover:bg-pink-600"
+          variant="primary"
+          size="md"
+          class="mt-4"
         >
           Run new audit
-        </router-link>
+        </AirButton>
       </div>
 
       <template v-else>
         <!-- Stat row -->
         <section id="acc-stats" class="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
-          <div class="rounded-lg border border-gray-200 bg-white p-4">
-            <div class="text-xs text-gray-500">Total claims</div>
-            <div class="mt-1 text-2xl font-semibold text-gray-900">
+          <AirCard size="md">
+            <AirCardSubtitle class="text-xs uppercase tracking-wide">Total claims</AirCardSubtitle>
+            <div class="mt-1 text-2xl font-semibold" style="color: var(--text-primary)">
               {{ accuracy.total_claims.toLocaleString() }}
             </div>
-          </div>
-          <div class="rounded-lg border border-gray-200 bg-white p-4">
-            <div class="text-xs text-gray-500">Verified</div>
-            <div class="mt-1 text-2xl font-semibold text-emerald-700">
+          </AirCard>
+          <AirCard size="md">
+            <AirCardSubtitle class="text-xs uppercase tracking-wide">Verified</AirCardSubtitle>
+            <div class="mt-1 text-2xl font-semibold" style="color: var(--color-success)">
               {{ accuracy.verified.toLocaleString() }}
             </div>
-          </div>
-          <div class="rounded-lg border border-gray-200 bg-white p-4">
-            <div class="text-xs text-gray-500">Mismatched</div>
-            <div class="mt-1 text-2xl font-semibold text-rose-700">
+          </AirCard>
+          <AirCard size="md">
+            <AirCardSubtitle class="text-xs uppercase tracking-wide">Mismatched</AirCardSubtitle>
+            <div class="mt-1 text-2xl font-semibold" style="color: var(--color-danger)">
               {{ accuracy.mismatched.toLocaleString() }}
             </div>
-          </div>
-          <div class="rounded-lg border border-gray-200 bg-white p-4">
-            <div class="text-xs text-gray-500">Accuracy rate</div>
-            <div class="mt-1 text-2xl font-semibold text-gray-900">
-              {{ accuracyPct }}<span class="text-sm text-gray-500">%</span>
+          </AirCard>
+          <AirCard size="md">
+            <AirCardSubtitle class="text-xs uppercase tracking-wide">Accuracy rate</AirCardSubtitle>
+            <div class="mt-1 text-2xl font-semibold" style="color: var(--text-primary)">
+              {{ accuracyPct }}<span class="text-sm" style="color: var(--text-secondary)">%</span>
             </div>
-          </div>
+          </AirCard>
         </section>
 
         <!-- Severity breakdown bar -->
@@ -142,19 +145,44 @@
           </template>
         </section>
 
-        <!-- Filter bar above mismatch list -->
+        <!-- Severity quick-filter chips -->
         <section class="mb-3 flex flex-wrap items-center gap-2">
-          <select
-            v-model="mmFilters.severity"
-            class="rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs"
-          >
-            <option value="">All severities</option>
-            <option value="critical">Critical</option>
-            <option value="high">High</option>
-            <option value="medium">Medium</option>
-            <option value="low">Low</option>
-            <option value="info">Info</option>
-          </select>
+          <AirChip
+            as="button"
+            :variant="mmFilters.severity === '' ? 'primary' : 'neutral'"
+            size="sm"
+            @click="mmFilters.severity = ''"
+          >All</AirChip>
+          <AirChip
+            as="button"
+            :variant="mmFilters.severity === 'critical' ? 'danger' : 'neutral'"
+            size="sm"
+            @click="mmFilters.severity = mmFilters.severity === 'critical' ? '' : 'critical'"
+          >Critical</AirChip>
+          <AirChip
+            as="button"
+            :variant="mmFilters.severity === 'high' ? 'danger' : 'neutral'"
+            size="sm"
+            @click="mmFilters.severity = mmFilters.severity === 'high' ? '' : 'high'"
+          >High</AirChip>
+          <AirChip
+            as="button"
+            :variant="mmFilters.severity === 'medium' ? 'warning' : 'neutral'"
+            size="sm"
+            @click="mmFilters.severity = mmFilters.severity === 'medium' ? '' : 'medium'"
+          >Medium</AirChip>
+          <AirChip
+            as="button"
+            :variant="mmFilters.severity === 'low' ? 'info' : 'neutral'"
+            size="sm"
+            @click="mmFilters.severity = mmFilters.severity === 'low' ? '' : 'low'"
+          >Low</AirChip>
+          <AirChip
+            as="button"
+            :variant="mmFilters.severity === 'info' ? 'neutral' : 'neutral'"
+            size="sm"
+            @click="mmFilters.severity = mmFilters.severity === 'info' ? '' : 'info'"
+          >Info</AirChip>
           <select
             v-model="mmFilters.type"
             class="rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs"
@@ -195,8 +223,9 @@
             <li
               v-for="mm in mismatches"
               :key="mm.id"
-              class="flex flex-wrap items-start gap-3 px-4 py-3 hover:bg-gray-50"
+              class="flex flex-wrap items-start gap-3 px-4 py-3 hover:bg-gray-50 cursor-pointer transition-colors"
               :class="mm.dismissed ? 'opacity-60' : ''"
+              @click="openMismatch(mm)"
             >
               <div class="flex shrink-0 flex-col gap-1">
                 <SeverityBadge :severity="mm.severity" />
@@ -225,12 +254,9 @@
               <div class="flex shrink-0 flex-col items-end gap-1 text-xs text-gray-500">
                 <span>{{ mm.claim?.provider || '—' }}</span>
                 <span>{{ formatDate(mm.created_at) }}</span>
-                <button
-                  class="rounded-md border border-gray-200 bg-white px-2 py-1 text-xs hover:bg-gray-50"
-                  @click="openMismatch(mm)"
-                >
+                <AirButton variant="ghost" size="xs" @click.stop="openMismatch(mm)">
                   View
-                </button>
+                </AirButton>
               </div>
             </li>
           </ul>
@@ -238,13 +264,15 @@
             v-if="mismatches.length && mmHasMore"
             class="flex justify-center border-t border-gray-100 px-3 py-3"
           >
-            <button
-              class="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm hover:bg-gray-50"
+            <AirButton
+              variant="secondary"
+              size="sm"
+              :loading="mmLoadingMore"
               :disabled="mmLoadingMore"
               @click="loadMoreMismatches"
             >
               {{ mmLoadingMore ? 'Loading...' : 'Load more' }}
-            </button>
+            </AirButton>
           </div>
         </section>
       </template>
@@ -268,6 +296,10 @@ import claimVerifierApi from '@/api/claimVerifier'
 import SeverityBadge from '@/components/claim_verifier/SeverityBadge.vue'
 import MismatchDrawer from '@/components/claim_verifier/MismatchDrawer.vue'
 import OnboardingTooltip from '@/components/OnboardingTooltip.vue'
+import AirButton from '@/components/ui/AirButton.vue'
+import AirCard from '@/components/ui/AirCard.vue'
+import AirCardSubtitle from '@/components/ui/AirCardSubtitle.vue'
+import AirChip from '@/components/ui/AirChip.vue'
 
 const route = useRoute()
 const appStore = useAppStore()

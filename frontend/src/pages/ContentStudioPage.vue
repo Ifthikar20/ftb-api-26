@@ -17,36 +17,36 @@
 
     <!-- Stats strip -->
     <section id="cs-stats" class="mb-10 grid grid-cols-1 gap-4 sm:grid-cols-3">
-      <div class="rounded-2xl border border-zinc-200 bg-white p-7 shadow-sm">
-        <div class="text-xs font-semibold uppercase tracking-wider text-zinc-500">
-          Open briefs
-        </div>
-        <div class="mt-2 flex items-baseline gap-2">
-          <span class="text-3xl font-semibold tabular-nums text-zinc-900">
-            {{ stats.open }}
-          </span>
+      <AirCard size="md">
+        <AirCardHeader>
+          <AirCardSubtitle class="text-xs font-semibold uppercase tracking-wider">
+            Open briefs
+          </AirCardSubtitle>
+        </AirCardHeader>
+        <div class="flex items-baseline gap-2">
+          <span class="text-3xl font-semibold tabular-nums text-zinc-900">{{ stats.open }}</span>
           <span class="text-sm text-zinc-500">waiting for you</span>
         </div>
-      </div>
-      <div class="rounded-2xl border border-zinc-200 bg-white p-7 shadow-sm">
-        <div class="text-xs font-semibold uppercase tracking-wider text-zinc-500">
-          Drafts in progress
-        </div>
-        <div class="mt-2 flex items-baseline gap-2">
-          <span class="text-3xl font-semibold tabular-nums text-zinc-900">
-            {{ stats.drafting }}
-          </span>
+      </AirCard>
+      <AirCard size="md">
+        <AirCardHeader>
+          <AirCardSubtitle class="text-xs font-semibold uppercase tracking-wider">
+            Drafts in progress
+          </AirCardSubtitle>
+        </AirCardHeader>
+        <div class="flex items-baseline gap-2">
+          <span class="text-3xl font-semibold tabular-nums text-zinc-900">{{ stats.drafting }}</span>
           <span class="text-sm text-zinc-500">being written</span>
         </div>
-      </div>
-      <div class="rounded-2xl border border-zinc-200 bg-white p-7 shadow-sm">
-        <div class="text-xs font-semibold uppercase tracking-wider text-zinc-500">
-          Published this month
-        </div>
-        <div class="mt-2 flex items-baseline gap-2">
-          <span class="text-3xl font-semibold tabular-nums text-zinc-900">
-            {{ stats.published }}
-          </span>
+      </AirCard>
+      <AirCard size="md">
+        <AirCardHeader>
+          <AirCardSubtitle class="text-xs font-semibold uppercase tracking-wider">
+            Published this month
+          </AirCardSubtitle>
+        </AirCardHeader>
+        <div class="flex items-baseline gap-2">
+          <span class="text-3xl font-semibold tabular-nums text-zinc-900">{{ stats.published }}</span>
           <span
             v-if="stats.liftPct !== null"
             class="text-sm font-medium"
@@ -55,39 +55,35 @@
             {{ stats.liftPct >= 0 ? '+' : '' }}{{ stats.liftPct.toFixed(1) }}% visibility
           </span>
         </div>
-      </div>
+      </AirCard>
     </section>
 
     <!-- Filter bar -->
     <section id="cs-filters" class="mb-8 flex flex-wrap items-center gap-3">
       <div class="flex flex-wrap items-center gap-2">
-        <button
+        <AirChip
           v-for="g in gapFilters"
           :key="g.value"
-          type="button"
-          class="rounded-full px-4 py-2 text-xs font-semibold transition-colors"
-          :class="filters.gap === g.value
-            ? 'bg-zinc-900 text-white shadow-sm'
-            : 'bg-white text-zinc-600 ring-1 ring-zinc-200 hover:text-zinc-900 hover:bg-zinc-50'"
+          as="button"
+          size="sm"
+          :variant="filters.gap === g.value ? 'primary' : 'neutral'"
           @click="filters.gap = g.value"
         >
           {{ g.label }}
-        </button>
+        </AirChip>
       </div>
       <span class="hidden h-4 w-px bg-zinc-200 sm:block" aria-hidden="true"></span>
       <div class="flex flex-wrap items-center gap-2">
-        <button
+        <AirChip
           v-for="f in formatFilters"
           :key="f.value"
-          type="button"
-          class="rounded-full px-3 py-1.5 text-xs font-medium transition-colors"
-          :class="filters.format === f.value
-            ? 'bg-rose-50 text-rose-700 ring-1 ring-rose-200'
-            : 'bg-white text-zinc-500 ring-1 ring-zinc-200 hover:text-zinc-800'"
+          as="button"
+          size="xs"
+          :variant="filters.format === f.value ? 'primary' : 'neutral'"
           @click="filters.format = f.value"
         >
           {{ f.label }}
-        </button>
+        </AirChip>
       </div>
       <div class="ml-auto flex items-center gap-2">
         <span class="text-xs text-zinc-500">Sort</span>
@@ -127,13 +123,9 @@
         Run an audit to start building your content queue. Once we know where AI assistants
         miss you, we'll suggest exactly what to write.
       </p>
-      <button
-        type="button"
-        class="mt-6 rounded-full bg-rose-500 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-rose-600"
-        @click="goToLLMRanking"
-      >
+      <AirButton variant="primary" size="lg" class="mt-6" @click="goToLLMRanking">
         Open LLM Ranking
-      </button>
+      </AirButton>
     </div>
 
     <!-- Brief grid -->

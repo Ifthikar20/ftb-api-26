@@ -42,34 +42,35 @@
 
       <!-- RIGHT: brief & guards -->
       <aside class="flex flex-col gap-4">
-        <div class="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
+        <AirCard size="sm">
           <div class="mb-3 flex flex-wrap items-center gap-2">
             <GapTypeBadge v-if="brief?.gap_type" :gap="brief.gap_type" />
             <FormatBadge v-if="brief?.target_format" :format="brief.target_format" />
           </div>
-          <h3 class="text-[15px] font-medium text-zinc-900">
+          <h3 class="text-[15px] font-medium" style="color: var(--text-primary)">
             {{ brief?.headline || 'Brief' }}
           </h3>
           <p
             v-if="brief?.description"
-            class="mt-2 text-sm leading-relaxed text-zinc-500"
+            class="mt-2 text-sm leading-relaxed"
+            style="color: var(--text-secondary)"
           >
             {{ brief.description }}
           </p>
-        </div>
+        </AirCard>
 
-        <div class="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
+        <AirCard size="sm">
           <div class="mb-4">
             <QualityScoreBar :score="Number(draft.voice_score) || 0" label="Voice match" />
-            <p v-if="draft.voice_notes" class="mt-1.5 text-xs text-zinc-500">{{ draft.voice_notes }}</p>
+            <p v-if="draft.voice_notes" class="mt-1.5 text-xs" style="color: var(--text-secondary)">{{ draft.voice_notes }}</p>
           </div>
           <div>
             <QualityScoreBar :score="Number(draft.accuracy_score) || 0" label="Accuracy" />
-            <p v-if="draft.accuracy_notes" class="mt-1.5 text-xs text-zinc-500">{{ draft.accuracy_notes }}</p>
+            <p v-if="draft.accuracy_notes" class="mt-1.5 text-xs" style="color: var(--text-secondary)">{{ draft.accuracy_notes }}</p>
           </div>
-        </div>
+        </AirCard>
 
-        <div class="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
+        <AirCard size="sm">
           <button
             type="button"
             class="flex w-full items-center justify-between text-left"
@@ -101,16 +102,17 @@
               <span class="ml-2">grounded fact reference</span>
             </div>
           </div>
-        </div>
+        </AirCard>
 
-        <button
-          type="button"
-          class="rounded-2xl border border-zinc-200 bg-white px-5 py-3 text-sm font-semibold text-zinc-800 shadow-sm transition-colors hover:bg-zinc-50 disabled:opacity-50"
+        <AirButton
+          variant="outline"
+          size="md"
+          :loading="regenerating"
           :disabled="regenerating"
           @click="regenerate"
         >
           {{ regenerating ? 'Regenerating...' : 'Regenerate draft' }}
-        </button>
+        </AirButton>
       </aside>
     </div>
 
@@ -123,34 +125,28 @@
       v-if="draft"
       class="sticky bottom-4 z-30 mt-8 flex flex-wrap items-center justify-end gap-2 rounded-full border border-zinc-200 bg-white/95 px-4 py-2.5 shadow-md backdrop-blur"
     >
-      <button
-        type="button"
-        class="rounded-full px-4 py-2 text-sm font-semibold text-zinc-700 hover:bg-zinc-100 disabled:opacity-50"
-        :disabled="saving"
-        @click="save"
-      >
+      <AirButton variant="ghost" size="md" :loading="saving" :disabled="saving" @click="save">
         {{ saving ? 'Saving...' : 'Save draft' }}
-      </button>
-      <button
-        type="button"
-        class="rounded-full border border-rose-200 px-4 py-2 text-sm font-semibold text-rose-600 transition-colors hover:bg-rose-50 disabled:opacity-50"
+      </AirButton>
+      <AirButton
+        variant="outline"
+        size="md"
+        :loading="approving"
         :disabled="approving || draft.status === 'approved' || draft.status === 'published'"
         @click="approve"
       >
         {{ draft.status === 'approved' ? 'Approved' : (approving ? 'Approving...' : 'Approve') }}
-      </button>
+      </AirButton>
 
       <div class="relative">
-        <button
-          type="button"
-          class="inline-flex items-center gap-1.5 rounded-full bg-rose-500 px-5 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-rose-600"
-          @click="publishMenuOpen = !publishMenuOpen"
-        >
+        <AirButton variant="primary" size="md" @click="publishMenuOpen = !publishMenuOpen">
           Publish
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M3 5l3 3 3-3" />
-          </svg>
-        </button>
+          <template #iconRight>
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 5l3 3 3-3" />
+            </svg>
+          </template>
+        </AirButton>
         <div
           v-if="publishMenuOpen"
           class="absolute bottom-full right-0 mb-2 w-72 rounded-2xl border border-zinc-200 bg-white p-2 shadow-lg"
@@ -182,16 +178,14 @@
       </div>
 
       <div class="relative">
-        <button
-          type="button"
-          class="inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold text-zinc-700 hover:bg-zinc-100"
-          @click="exportMenuOpen = !exportMenuOpen"
-        >
+        <AirButton variant="ghost" size="md" @click="exportMenuOpen = !exportMenuOpen">
           Export
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M3 5l3 3 3-3" />
-          </svg>
-        </button>
+          <template #iconRight>
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 5l3 3 3-3" />
+            </svg>
+          </template>
+        </AirButton>
         <div
           v-if="exportMenuOpen"
           class="absolute bottom-full right-0 mb-2 w-44 rounded-2xl border border-zinc-200 bg-white p-2 shadow-lg"
@@ -225,21 +219,18 @@
             You can change targets later.
           </p>
           <div class="mt-6 flex justify-end gap-2">
-            <button
-              type="button"
-              class="rounded-full px-4 py-2 text-sm font-semibold text-zinc-700 hover:bg-zinc-100"
-              @click="publishConfirm = null"
-            >
+            <AirButton variant="ghost" size="md" @click="publishConfirm = null">
               Cancel
-            </button>
-            <button
-              type="button"
-              class="rounded-full bg-rose-500 px-5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-rose-600 disabled:opacity-50"
+            </AirButton>
+            <AirButton
+              variant="primary"
+              size="md"
+              :loading="publishing"
               :disabled="publishing"
               @click="doPublish"
             >
               {{ publishing ? 'Publishing...' : 'Confirm publish' }}
-            </button>
+            </AirButton>
           </div>
         </div>
       </div>
@@ -256,6 +247,8 @@ import DraftEditor from '@/components/content_studio/DraftEditor.vue'
 import GapTypeBadge from '@/components/content_studio/GapTypeBadge.vue'
 import FormatBadge from '@/components/content_studio/FormatBadge.vue'
 import QualityScoreBar from '@/components/content_studio/QualityScoreBar.vue'
+import AirButton from '@/components/ui/AirButton.vue'
+import AirCard from '@/components/ui/AirCard.vue'
 
 const route = useRoute()
 const router = useRouter()

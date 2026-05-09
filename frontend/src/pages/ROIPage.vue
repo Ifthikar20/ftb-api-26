@@ -14,21 +14,18 @@
     </header>
 
     <!-- Aggregate -->
-    <section
-      v-if="!loading && rows.length"
-      class="mb-10 rounded-3xl border border-zinc-200 bg-white p-8 shadow-sm"
-    >
-      <p class="text-xl font-medium leading-snug text-zinc-900">
+    <AirCard v-if="!loading && rows.length" size="hero" class="mb-10">
+      <p class="text-xl font-medium leading-snug" style="color: var(--text-primary)">
         Drafts published have lifted your visibility by
-        <span :class="aggregateLift >= 0 ? 'text-emerald-600' : 'text-rose-600'">
+        <span :style="`color: ${aggregateLift >= 0 ? 'var(--color-success)' : 'var(--color-danger)'}`">
           {{ aggregateLift >= 0 ? '+' : '' }}{{ aggregateLift.toFixed(1) }} pts
         </span>
         this quarter.
       </p>
-      <p class="mt-2 text-sm text-zinc-500">
+      <p class="mt-2 text-sm" style="color: var(--text-secondary)">
         Across {{ rows.length }} {{ rows.length === 1 ? 'measured draft' : 'measured drafts' }}.
       </p>
-    </section>
+    </AirCard>
 
     <div v-if="loading" class="grid gap-4">
       <div v-for="i in 4" :key="i" class="h-24 animate-pulse rounded-2xl border border-zinc-200 bg-white"></div>
@@ -52,7 +49,9 @@
     </div>
 
     <div v-else class="grid gap-4">
-      <ROITimelineCard v-for="r in rows" :key="r.id" :row="r" />
+      <AirCard v-for="r in rows" :key="r.id" size="md">
+        <ROITimelineCard :row="r" />
+      </AirCard>
     </div>
   </div>
 </template>
@@ -62,6 +61,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import contentStudioApi from '@/api/contentStudio'
 import ROITimelineCard from '@/components/content_studio/ROITimelineCard.vue'
+import AirCard from '@/components/ui/AirCard.vue'
 
 const route = useRoute()
 const websiteId = computed(() => route.params.websiteId)

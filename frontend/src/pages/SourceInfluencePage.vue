@@ -47,9 +47,14 @@
         <p class="si-empty-copy">
           Run an audit to start tracking which sources LLMs cite for your category.
         </p>
-        <router-link :to="`/llm-ranking/${websiteId}`" class="si-btn-primary">
+        <AirButton
+          as="router-link"
+          :to="`/llm-ranking/${websiteId}`"
+          variant="primary"
+          size="md"
+        >
           Run new audit
-        </router-link>
+        </AirButton>
       </div>
 
       <template v-else>
@@ -197,9 +202,14 @@
               <div class="si-rec-body">
                 <div class="si-rec-headline">{{ rec.headline }}</div>
                 <p class="si-rec-desc" v-html="rec.description"></p>
-                <button v-if="rec.cta" class="si-btn-secondary" @click="rec.action && rec.action()">
+                <AirButton
+                  v-if="rec.cta"
+                  variant="outline"
+                  size="sm"
+                  @click="rec.action && rec.action()"
+                >
                   {{ rec.cta }}
-                </button>
+                </AirButton>
               </div>
             </div>
           </div>
@@ -226,6 +236,7 @@ import citationsApi from '@/api/citations'
 import SourceClassBadge from '@/components/citations/SourceClassBadge.vue'
 import SourceBreakdownBar from '@/components/citations/SourceBreakdownBar.vue'
 import OnboardingTooltip from '@/components/OnboardingTooltip.vue'
+import AirButton from '@/components/ui/AirButton.vue'
 
 const tourSteps = [
   {

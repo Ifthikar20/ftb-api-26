@@ -112,6 +112,14 @@ const routes = [
     }
 ]
 
+if (import.meta.env.DEV) {
+    routes.unshift({
+        path: '/design-system',
+        name: 'design-system',
+        component: () => import('@/pages/_DesignSystem.vue'),
+    })
+}
+
 const router = createRouter({
     history: createWebHistory(),
     routes,

@@ -13,16 +13,14 @@
           or a GitHub repo — pick a default and you can publish in one click.
         </p>
       </div>
-      <button
-        type="button"
-        class="inline-flex items-center gap-2 rounded-full bg-rose-500 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-rose-600"
-        @click="openCreate"
-      >
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-          <path d="M7 2v10M2 7h10" />
-        </svg>
+      <AirButton variant="primary" size="md" @click="openCreate">
+        <template #iconLeft>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M7 2v10M2 7h10" />
+          </svg>
+        </template>
         Add target
-      </button>
+      </AirButton>
     </header>
 
     <div v-if="loading" class="grid gap-4">
@@ -43,23 +41,19 @@
         Add a target so approved drafts can leave the studio. We support webhooks, WordPress,
         Ghost, email, and GitHub.
       </p>
-      <button
-        type="button"
-        class="mt-6 rounded-full bg-rose-500 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-rose-600"
-        @click="openCreate"
-      >
+      <AirButton variant="primary" size="md" class="mt-6" @click="openCreate">
         Add your first target
-      </button>
+      </AirButton>
     </div>
 
     <div v-else class="grid gap-4">
-      <PublishTargetCard
-        v-for="t in targets"
-        :key="t.id"
-        :target="t"
-        @edit="openEdit"
-        @delete="confirmDelete = $event"
-      />
+      <AirCard v-for="t in targets" :key="t.id" size="md" interactive>
+        <PublishTargetCard
+          :target="t"
+          @edit="openEdit"
+          @delete="confirmDelete = $event"
+        />
+      </AirCard>
     </div>
 
     <PublishTargetForm
@@ -82,21 +76,18 @@
             You can re-add it any time.
           </p>
           <div class="mt-6 flex justify-end gap-2">
-            <button
-              type="button"
-              class="rounded-full px-4 py-2 text-sm font-semibold text-zinc-700 hover:bg-zinc-100"
-              @click="confirmDelete = null"
-            >
+            <AirButton variant="ghost" size="md" @click="confirmDelete = null">
               Cancel
-            </button>
-            <button
-              type="button"
-              class="rounded-full bg-rose-500 px-5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-rose-600 disabled:opacity-50"
+            </AirButton>
+            <AirButton
+              variant="danger"
+              size="md"
+              :loading="deleting"
               :disabled="deleting"
               @click="onDelete"
             >
               {{ deleting ? 'Removing...' : 'Remove target' }}
-            </button>
+            </AirButton>
           </div>
         </div>
       </div>
@@ -111,6 +102,8 @@ import { useToast } from '@/composables/useToast'
 import contentStudioApi from '@/api/contentStudio'
 import PublishTargetCard from '@/components/content_studio/PublishTargetCard.vue'
 import PublishTargetForm from '@/components/content_studio/PublishTargetForm.vue'
+import AirButton from '@/components/ui/AirButton.vue'
+import AirCard from '@/components/ui/AirCard.vue'
 
 const route = useRoute()
 const toast = useToast()
