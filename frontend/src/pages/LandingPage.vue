@@ -46,42 +46,57 @@
 
         <!-- Framer-style animated visualisation -->
         <div class="hero-right anim" data-anim="fade-up" data-delay="220">
-          <div class="hero-viz">
-            <div class="hero-viz-head">
-              <span class="hero-viz-dot is-anthropic"></span>
-              <span class="hero-viz-dot is-openai"></span>
-              <span class="hero-viz-dot is-google"></span>
-              <span class="hero-viz-dot is-perplexity"></span>
-              <span class="hero-viz-title">Live audit · 4 providers</span>
-              <span class="hero-viz-tag">+12 pts</span>
+          <div class="probe">
+            <!-- Prompt bar -->
+            <div class="probe-prompt">
+              <span class="probe-prompt-label">Prompt</span>
+              <span class="probe-prompt-text">
+                <span class="probe-typer">Best CRM for small teams?</span>
+                <span class="probe-caret"></span>
+              </span>
             </div>
-            <div class="hero-viz-body">
+
+            <!-- Four streaming AI replies -->
+            <div class="probe-grid">
               <div
-                v-for="(p, idx) in heroProviders"
-                :key="p.name"
-                class="hero-viz-row"
-                :style="{ animationDelay: (0.2 + idx * 0.18) + 's' }"
+                v-for="(p, idx) in probeReplies"
+                :key="p.key"
+                class="probe-card"
+                :class="'is-' + p.key"
+                :style="{ '--d': (idx * 0.45) + 's' }"
               >
-                <div class="hero-viz-row-head">
-                  <span class="hero-viz-provider">
-                    <span class="hero-viz-dot" :class="'is-' + p.key"></span>
-                    {{ p.name }}
+                <div class="probe-card-head">
+                  <span class="probe-logo" :class="'is-' + p.key">{{ p.glyph }}</span>
+                  <span class="probe-name">{{ p.name }}</span>
+                  <span class="probe-status">
+                    <span class="probe-status-dot"></span>
+                    <span class="probe-status-txt">answered</span>
                   </span>
-                  <span class="hero-viz-pct">{{ p.pct }}%</span>
                 </div>
-                <div class="hero-viz-bar">
-                  <div
-                    class="hero-viz-bar-fill"
-                    :class="'is-' + p.key"
-                    :style="{ '--target-w': p.pct + '%', animationDelay: (0.3 + idx * 0.18) + 's' }"
-                  ></div>
+                <div class="probe-stream">
+                  <span class="probe-stream-text">{{ p.before }}</span>
+                  <mark class="probe-mark">{{ p.brand }}</mark>
+                  <span class="probe-stream-text">{{ p.after }}</span>
                 </div>
-                <div class="hero-viz-meta">{{ p.cited }} citations · {{ p.sources }}</div>
+                <div class="probe-tags">
+                  <span v-for="src in p.sources" :key="src" class="probe-tag">{{ src }}</span>
+                </div>
               </div>
             </div>
-            <div class="hero-viz-foot">
-              <span class="hero-viz-pulse"></span>
-              <span>Brand mentioned in 38% of category prompts</span>
+
+            <!-- Summary footer -->
+            <div class="probe-foot">
+              <div class="probe-ring" aria-hidden="true">
+                <svg viewBox="0 0 36 36">
+                  <circle class="probe-ring-bg" cx="18" cy="18" r="15.9"/>
+                  <circle class="probe-ring-fg" cx="18" cy="18" r="15.9"/>
+                </svg>
+                <span class="probe-ring-num">38<i>%</i></span>
+              </div>
+              <div class="probe-foot-copy">
+                <div class="probe-foot-h">Visibility score</div>
+                <div class="probe-foot-sub">Your brand surfaced in 38% of category prompts <span class="probe-delta">+12 this week</span></div>
+              </div>
             </div>
           </div>
         </div>
@@ -692,6 +707,39 @@ const heroProviders = [
   { key: 'perplexity', name: 'Perplexity', pct: 64, cited: 21, sources: 'Reddit · Quora · Stack Overflow' },
 ]
 
+// Hero "probe" animation — shows the FetchBot loop: ask a prompt,
+// four AIs answer, your brand surfaces in each reply.
+const probeReplies = [
+  {
+    key: 'anthropic', name: 'Claude', glyph: 'C',
+    before: 'For 5–20 person teams I usually point people to ',
+    brand: 'Acme CRM',
+    after: '. The pipeline view is clean and onboarding takes minutes.',
+    sources: ['Reddit', 'TechCrunch'],
+  },
+  {
+    key: 'openai', name: 'GPT-4', glyph: 'G',
+    before: 'A solid pick at this size is ',
+    brand: 'Acme CRM',
+    after: ' — strong automation, fair pricing, native email sync.',
+    sources: ['Wikipedia', 'NYT'],
+  },
+  {
+    key: 'google', name: 'Gemini', glyph: 'G',
+    before: 'Most reviewers in 2026 recommend ',
+    brand: 'Acme CRM',
+    after: ' for small teams who need quick setup and shared inboxes.',
+    sources: ['Bloomberg', 'gov'],
+  },
+  {
+    key: 'perplexity', name: 'Perplexity', glyph: 'P',
+    before: 'Top community pick is ',
+    brand: 'Acme CRM',
+    after: '. Frequently cited for its lightweight UI and Slack hooks.',
+    sources: ['Quora', 'Stack Overflow'],
+  },
+]
+
 const features = [
   {
     title: 'Analytics',
@@ -1115,78 +1163,17 @@ em { color: #5B8DEF; font-style: italic; }
 }
 
 /* Framer-style hero visualisation */
-.hero-viz {
-  background: #ffffff;
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  border-radius: 22px;
-  padding: 22px;
-  box-shadow:
-    0 1px 2px rgba(15, 23, 42, 0.04),
-    0 24px 60px rgba(15, 23, 42, 0.10);
-  position: relative;
-  overflow: hidden;
-}
-.hero-viz::before {
-  content: '';
-  position: absolute;
-  inset: -40%;
-  background: radial-gradient(ellipse at top right, rgba(201, 160, 80, 0.10), transparent 60%);
-  pointer-events: none;
-}
-.hero-viz-head {
-  display: flex; align-items: center; gap: 6px;
-  padding-bottom: 14px;
-  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
-  margin-bottom: 16px;
-}
-.hero-viz-title {
-  margin-left: 8px;
-  font-size: 12px;
-  color: #6e6a65;
-  font-weight: 500;
-}
-.hero-viz-tag {
-  margin-left: auto;
-  display: inline-flex; align-items: center;
-  padding: 3px 10px;
-  border-radius: 9999px;
-  background: rgba(16, 185, 129, 0.12);
-  color: #059669;
-  font-size: 12px;
-  font-weight: 600;
-}
+/* Shared dot + bar utilities (reused in feature mockups) */
 .hero-viz-dot {
   width: 8px; height: 8px; border-radius: 9999px;
   flex-shrink: 0;
   background: #cbd5e1;
+  display: inline-block;
 }
 .hero-viz-dot.is-anthropic  { background: #d97706; }
 .hero-viz-dot.is-openai     { background: #10b981; }
 .hero-viz-dot.is-google     { background: #4285f4; }
 .hero-viz-dot.is-perplexity { background: #5b6cff; }
-
-.hero-viz-row {
-  margin-bottom: 16px;
-  opacity: 0;
-  transform: translateY(6px);
-  animation: hero-row-in 0.5s ease-out forwards;
-}
-.hero-viz-row:last-child { margin-bottom: 0; }
-@keyframes hero-row-in {
-  to { opacity: 1; transform: translateY(0); }
-}
-.hero-viz-row-head {
-  display: flex; align-items: center; justify-content: space-between;
-  margin-bottom: 6px;
-}
-.hero-viz-provider {
-  display: inline-flex; align-items: center; gap: 8px;
-  font-size: 13px; font-weight: 600; color: #1f2937;
-}
-.hero-viz-pct {
-  font-size: 13px; font-weight: 600; color: #1f2937;
-  font-variant-numeric: tabular-nums;
-}
 .hero-viz-bar {
   position: relative;
   height: 8px;
@@ -1208,30 +1195,229 @@ em { color: #5B8DEF; font-style: italic; }
 @keyframes hero-bar-fill {
   to { width: var(--target-w); }
 }
-.hero-viz-meta {
-  margin-top: 6px;
-  font-size: 11.5px;
-  color: #94a3b8;
+
+/* ─── Hero "probe" animation — Framer-style narrative ─── */
+.probe {
+  position: relative;
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 24px;
+  padding: 20px;
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    0 30px 70px rgba(15, 23, 42, 0.12);
+  overflow: hidden;
 }
-.hero-viz-foot {
-  display: flex; align-items: center; gap: 8px;
-  margin-top: 18px;
-  padding-top: 14px;
-  border-top: 1px solid rgba(15, 23, 42, 0.06);
-  font-size: 12.5px;
-  color: #6e6a65;
+.probe::before {
+  content: '';
+  position: absolute; inset: -40%;
+  background: radial-gradient(ellipse at top right, rgba(201, 160, 80, 0.10), transparent 60%);
+  pointer-events: none;
 }
-.hero-viz-pulse {
-  width: 8px; height: 8px;
-  border-radius: 9999px;
-  background: #10b981;
-  box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.55);
-  animation: hero-pulse 1.6s ease-out infinite;
+
+/* Prompt typing bar */
+.probe-prompt {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 14px;
+  background: linear-gradient(180deg, #fbfaf7 0%, #ffffff 100%);
+  margin-bottom: 14px;
+}
+.probe-prompt-label {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.08em;
+  text-transform: uppercase; color: #c9a050;
+  padding: 4px 8px; border-radius: 6px;
+  background: rgba(201, 160, 80, 0.10);
   flex-shrink: 0;
 }
-@keyframes hero-pulse {
-  70% { box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
+.probe-prompt-text {
+  font-size: 14px; color: #1f2937; font-weight: 500;
+  display: inline-flex; align-items: center; min-width: 0;
+}
+.probe-typer {
+  display: inline-block;
+  white-space: nowrap; overflow: hidden;
+  border-right: none;
+  width: 0;
+  animation: probe-type 6s steps(28) infinite;
+}
+.probe-caret {
+  display: inline-block;
+  width: 2px; height: 16px;
+  background: #c9a050;
+  margin-left: 2px;
+  animation: probe-blink 1s step-end infinite;
+}
+@keyframes probe-type {
+  0%        { width: 0; }
+  35%, 75%  { width: 14ch; }
+  100%      { width: 0; }
+}
+@keyframes probe-blink {
+  50% { opacity: 0; }
+}
+
+/* 2x2 reply grid */
+.probe-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.probe-card {
+  position: relative;
+  padding: 12px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 12px;
+  background: #fff;
+  opacity: 0;
+  transform: translateY(8px);
+  animation: probe-card-in 0.55s cubic-bezier(0.16, 1, 0.3, 1) var(--d, 0s) forwards;
+  overflow: hidden;
+}
+@keyframes probe-card-in {
+  to { opacity: 1; transform: translateY(0); }
+}
+.probe-card::after {
+  /* sweeping highlight that runs once when the card lands */
+  content: '';
+  position: absolute; inset: 0;
+  background: linear-gradient(105deg, transparent 30%, rgba(201, 160, 80, 0.18) 50%, transparent 70%);
+  transform: translateX(-100%);
+  animation: probe-sweep 1.2s ease-out var(--d, 0s) forwards;
+  pointer-events: none;
+}
+@keyframes probe-sweep {
+  to { transform: translateX(100%); }
+}
+
+.probe-card-head {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 8px;
+}
+.probe-logo {
+  width: 22px; height: 22px; border-radius: 6px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700; color: #fff;
+  flex-shrink: 0;
+}
+.probe-logo.is-anthropic  { background: #d97706; }
+.probe-logo.is-openai     { background: #10b981; }
+.probe-logo.is-google     { background: #4285f4; }
+.probe-logo.is-perplexity { background: #5b6cff; }
+.probe-name {
+  font-size: 13px; font-weight: 600; color: #1f2937;
+  flex: 1;
+}
+.probe-status {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 10.5px; font-weight: 600; color: #059669;
+  text-transform: uppercase; letter-spacing: 0.04em;
+}
+.probe-status-dot {
+  width: 6px; height: 6px; border-radius: 9999px;
+  background: #10b981;
+  box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.5);
+  animation: probe-pulse 1.8s ease-out infinite;
+}
+@keyframes probe-pulse {
+  70%  { box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
   100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+}
+
+.probe-stream {
+  font-size: 12.5px; line-height: 1.5; color: #4b5563;
+  margin-bottom: 8px;
+}
+.probe-mark {
+  background: linear-gradient(120deg, rgba(201, 160, 80, 0.0) 0%, rgba(201, 160, 80, 0.30) 50%, rgba(201, 160, 80, 0.0) 100%);
+  background-size: 220% 100%;
+  background-position: 100% 0;
+  color: #1f2937;
+  font-weight: 700;
+  padding: 1px 4px;
+  border-radius: 4px;
+  animation: probe-highlight 4s ease-in-out infinite;
+}
+@keyframes probe-highlight {
+  0%, 30%   { background-position: 100% 0; box-shadow: 0 0 0 rgba(201, 160, 80, 0); }
+  55%, 85%  { background-position: 0% 0;   box-shadow: 0 0 18px rgba(201, 160, 80, 0.35); }
+  100%      { background-position: -100% 0; box-shadow: 0 0 0 rgba(201, 160, 80, 0); }
+}
+
+.probe-tags {
+  display: flex; flex-wrap: wrap; gap: 4px;
+}
+.probe-tag {
+  font-size: 10.5px; font-weight: 500;
+  padding: 2px 7px;
+  border-radius: 9999px;
+  background: rgba(15, 23, 42, 0.05);
+  color: #6e6a65;
+}
+
+/* Footer score ring */
+.probe-foot {
+  display: flex; align-items: center; gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  border-radius: 14px;
+  background: linear-gradient(180deg, #fbfaf7 0%, #ffffff 100%);
+}
+.probe-ring {
+  position: relative;
+  width: 56px; height: 56px;
+  flex-shrink: 0;
+}
+.probe-ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.probe-ring-bg {
+  fill: none; stroke: rgba(15, 23, 42, 0.08); stroke-width: 3;
+}
+.probe-ring-fg {
+  fill: none;
+  stroke: url(#probe-grad-fallback);
+  stroke: #c9a050;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-dasharray: 100;
+  stroke-dashoffset: 100;
+  animation: probe-ring-fill 2s cubic-bezier(0.16, 1, 0.3, 1) 1.4s forwards;
+}
+@keyframes probe-ring-fill {
+  to { stroke-dashoffset: 62; }  /* 38% of 100 */
+}
+.probe-ring-num {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px; font-weight: 700; color: #1f2937;
+  font-variant-numeric: tabular-nums;
+}
+.probe-ring-num i { font-style: normal; font-size: 10px; color: #6e6a65; margin-left: 1px; }
+.probe-foot-copy { min-width: 0; }
+.probe-foot-h { font-size: 13px; font-weight: 700; color: #1f2937; }
+.probe-foot-sub { font-size: 11.5px; color: #6e6a65; margin-top: 2px; line-height: 1.4; }
+.probe-delta {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 1px 7px;
+  border-radius: 9999px;
+  background: rgba(16, 185, 129, 0.12);
+  color: #059669;
+  font-weight: 600; font-size: 10.5px;
+}
+
+@media (max-width: 720px) {
+  .probe-grid { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .probe-typer { animation: none; width: 14ch; }
+  .probe-caret { animation: none; opacity: 0.6; }
+  .probe-card { opacity: 1; transform: none; animation: none; }
+  .probe-card::after { display: none; }
+  .probe-mark { animation: none; background-position: 0 0; }
+  .probe-ring-fg { animation: none; stroke-dashoffset: 62; }
+  .probe-status-dot { animation: none; }
 }
 
 /* word-cycle transition (reused from the deleted features section) */
