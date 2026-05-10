@@ -182,21 +182,28 @@
             </ul>
           </div>
           <div class="feature-visual" :class="'is-' + f.key">
-            <!-- PROMPT LIBRARY -->
+            <!-- PROMPT LIBRARY — typewriter cycling through demand-side prompts -->
             <div v-if="f.key === 'prompt'" class="mock-card">
               <div class="mock-search">
                 <span class="mock-search-icon"></span>
-                <span class="mock-search-text">best ai analytics tool for small saas</span>
+                <span class="mock-search-text">{{ typedPrompt }}</span>
                 <span class="mock-search-caret">|</span>
               </div>
               <div class="mock-rows">
-                <div v-for="(p, idx) in promptRows" :key="p.q" class="mock-prompt-row" :style="{ animationDelay: (0.2 + idx * 0.18) + 's' }">
-                  <span class="mock-q">{{ p.q }}</span>
-                  <span class="mock-chip" :class="'is-' + p.style">{{ p.style }}</span>
-                  <div class="mock-trend">
-                    <div class="mock-trend-bar" :style="{ '--target-w': p.trend + '%', animationDelay: (0.4 + idx * 0.18) + 's' }"></div>
+                <transition-group name="mock-row-stagger" tag="div">
+                  <div
+                    v-for="(p, idx) in visiblePromptRows"
+                    :key="p.id"
+                    class="mock-prompt-row"
+                    :style="{ animationDelay: (0.05 + idx * 0.10) + 's' }"
+                  >
+                    <span class="mock-q">{{ p.q }}</span>
+                    <span class="mock-chip" :class="'is-' + p.style">{{ p.style }}</span>
+                    <div class="mock-trend">
+                      <div class="mock-trend-bar" :style="{ '--target-w': p.trend + '%', animationDelay: (0.25 + idx * 0.10) + 's' }"></div>
+                    </div>
                   </div>
-                </div>
+                </transition-group>
               </div>
             </div>
 
@@ -250,27 +257,6 @@
                 <button class="mock-btn">Approve</button>
                 <button class="mock-btn is-primary">Publish</button>
               </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ═══ Audit loop diagram ═══ -->
-    <section class="loop-diagram anim" data-anim="fade-up">
-      <div class="wrap">
-        <h2 class="sec-h sec-h-grad anim" data-anim="fade-up">A closed loop,<br/><em>not a one-shot report.</em></h2>
-        <p class="sec-sub anim" data-anim="fade-up" data-delay="60">
-          Audit, fix, re-probe, attribute. Every step compounds the last.
-        </p>
-        <div class="loop-track">
-          <div v-for="(step, i) in loopSteps" :key="step.label" class="loop-step anim" data-anim="fade-up" :data-delay="i * 70">
-            <div class="loop-icon" v-html="step.icon"></div>
-            <div class="loop-num">{{ i + 1 }}</div>
-            <div class="loop-label">{{ step.label }}</div>
-            <div class="loop-desc">{{ step.desc }}</div>
-            <div v-if="i < loopSteps.length - 1" class="loop-arrow" aria-hidden="true">
-              <svg viewBox="0 0 40 12" width="40" height="12"><path d="M0 6 H34 M28 1 L34 6 L28 11" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </div>
           </div>
         </div>
@@ -699,7 +685,12 @@ onMounted(() => {
     finalObs && finalObs.disconnect()
     clearInterval(cycleTimer)
     stopFeatureAutoAdvance()
+    if (_promptCycleStop) _promptCycleStop()
   })
+
+  // Demand-prompt cycler — kicks in after the page hydrates so the search
+  // bar starts typing the first example almost immediately.
+  setTimeout(startPromptCycle, 400)
 })
 
 const categories = ['ChatGPT', 'Claude', 'Gemini', 'Perplexity']
@@ -875,33 +866,77 @@ const showcaseFeatures = [
   },
 ]
 
-const promptRows = [
-  { q: 'best ai analytics tool for small saas', style: 'comparison', trend: 82 },
-  { q: 'how to track llm visibility in 2026', style: 'how-to', trend: 64 },
-  { q: 'fetchbot vs bluefish alternatives', style: 'vs', trend: 47 },
+// Demand-side prompt examples — the typed search bar cycles through
+// these one at a time; each becomes a row beneath with a category chip
+// + animated trend bar.
+const PROMPT_EXAMPLES = [
+  { q: 'best ai analytics tool for small saas',     style: 'comparison', trend: 82 },
+  { q: 'how to track llm visibility in 2026',       style: 'how-to',     trend: 64 },
+  { q: 'fetchbot vs bluefish alternatives',         style: 'vs',         trend: 47 },
+  { q: 'why does perplexity keep mentioning notion',style: 'question',   trend: 71 },
+  { q: 'cheapest geo platform for an indie founder',style: 'local',      trend: 58 },
+  { q: 'is there a free chatgpt visibility tracker',style: 'question',   trend: 76 },
 ]
+
+const typedPrompt = ref('')
+const visiblePromptRows = ref([])
+
+let _promptCycleStop = null
+function startPromptCycle() {
+  if (_promptCycleStop) return
+  let idx = 0
+  let cancelled = false
+  let timer = null
+  const tickIn = (text, target, speed) => new Promise(resolve => {
+    let i = target.length
+    typedPrompt.value = text
+    const t = setInterval(() => {
+      if (cancelled) { clearInterval(t); resolve(); return }
+      i--
+      typedPrompt.value = target.slice(0, i)
+      if (i <= 0) { clearInterval(t); resolve() }
+    }, speed)
+  })
+  const typeIn = (target, speed) => new Promise(resolve => {
+    let i = 0
+    typedPrompt.value = ''
+    const t = setInterval(() => {
+      if (cancelled) { clearInterval(t); resolve(); return }
+      i++
+      typedPrompt.value = target.slice(0, i)
+      if (i >= target.length) { clearInterval(t); resolve() }
+    }, speed)
+  })
+  const wait = (ms) => new Promise(r => { timer = setTimeout(r, ms) })
+
+  const loop = async () => {
+    while (!cancelled) {
+      const ex = PROMPT_EXAMPLES[idx]
+      // Type into the search bar
+      await typeIn(ex.q, 45)
+      if (cancelled) break
+      await wait(420)
+      // Push a new row at the top, keep last 3
+      const row = { ...ex, id: 'r-' + Date.now() + '-' + idx }
+      visiblePromptRows.value = [row, ...visiblePromptRows.value].slice(0, 3)
+      await wait(1500)
+      if (cancelled) break
+      // Backspace before the next prompt
+      await tickIn(ex.q, ex.q, 18)
+      if (cancelled) break
+      await wait(120)
+      idx = (idx + 1) % PROMPT_EXAMPLES.length
+    }
+  }
+  loop()
+  _promptCycleStop = () => { cancelled = true; if (timer) clearTimeout(timer) }
+}
 
 const sourceShares = [
   { provider: 'Claude',     segments: [{cls:'reddit',pct:18},{cls:'news',pct:14},{cls:'wiki',pct:38},{cls:'blog',pct:20},{cls:'own',pct:10}] },
   { provider: 'GPT-4',      segments: [{cls:'reddit',pct:12},{cls:'news',pct:24},{cls:'wiki',pct:30},{cls:'blog',pct:24},{cls:'own',pct:10}] },
   { provider: 'Gemini',     segments: [{cls:'reddit',pct:10},{cls:'news',pct:42},{cls:'wiki',pct:18},{cls:'blog',pct:22},{cls:'own',pct:8}] },
   { provider: 'Perplexity', segments: [{cls:'reddit',pct:38},{cls:'news',pct:16},{cls:'wiki',pct:12},{cls:'blog',pct:22},{cls:'own',pct:12}] },
-]
-
-/* ── Audit loop diagram ── */
-const loopSteps = [
-  { label: 'Search', desc: 'Mine real prompts',
-    icon: '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>' },
-  { label: 'Audit', desc: 'Probe four LLMs',
-    icon: '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>' },
-  { label: 'Extract', desc: 'Pull citations',
-    icon: '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>' },
-  { label: 'Verify', desc: 'Brand Vault check',
-    icon: '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l8 4v6c0 5-3.5 9-8 10-4.5-1-8-5-8-10V6z"/><path d="M9 12l2 2 4-4"/></svg>' },
-  { label: 'Generate', desc: 'Draft + publish',
-    icon: '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4z"/></svg>' },
-  { label: 'Re-probe', desc: 'Attribute the lift',
-    icon: '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>' },
 ]
 
 /* ── FAQ items ── */
@@ -2555,9 +2590,20 @@ em { color: #5B8DEF; font-style: italic; }
   background: rgba(201,160,80,0.14);
   color: #8a6d2a;
 }
-.mock-chip.is-comparison { background: rgba(74,127,176,0.14); color: #345f86; }
-.mock-chip.is-how-to { background: rgba(110,165,110,0.16); color: #3f6b3f; }
-.mock-chip.is-vs { background: rgba(198,90,47,0.14); color: #8a3d18; }
+.mock-chip.is-comparison { background: rgba(74,127,176,0.14);  color: #345f86; }
+.mock-chip.is-how-to     { background: rgba(110,165,110,0.16); color: #3f6b3f; }
+.mock-chip.is-vs         { background: rgba(198,90,47,0.14);   color: #8a3d18; }
+.mock-chip.is-question   { background: rgba(126,34,206,0.12);  color: #5b21b6; }
+.mock-chip.is-local      { background: rgba(217,119,6,0.14);   color: #92400e; }
+.mock-chip.is-story      { background: rgba(15,118,110,0.14);  color: #115e59; }
+
+/* Cycler: rows fade in from the top, push older rows down. The
+   transition-group + per-row absolute positioning would be over-
+   engineered for 3 rows, so we use a simple opacity+translate. */
+.mock-row-stagger-enter-active { transition: opacity .35s ease, transform .35s cubic-bezier(.16,1,.3,1); }
+.mock-row-stagger-enter-from   { opacity: 0; transform: translateY(-6px); }
+.mock-row-stagger-leave-active { transition: opacity .25s ease; }
+.mock-row-stagger-leave-to     { opacity: 0; }
 .mock-trend {
   height: 6px; border-radius: 4px;
   background: #ece6da;
@@ -2692,63 +2738,6 @@ em { color: #5B8DEF; font-style: italic; }
   color: #fff;
   border-color: #131718;
 }
-
-/* ── Loop diagram ── */
-.loop-diagram {
-  position: relative;
-  padding: 96px 0 80px;
-  z-index: 1;
-}
-.loop-track {
-  display: flex;
-  align-items: stretch;
-  justify-content: space-between;
-  gap: 8px;
-  margin-top: 16px;
-  flex-wrap: wrap;
-}
-.loop-step {
-  flex: 1 1 140px;
-  min-width: 140px;
-  position: relative;
-  background: #ffffff;
-  border: 1px solid #ece6da;
-  border-radius: 14px;
-  padding: 18px 16px 16px;
-  text-align: center;
-  transition: transform 0.25s ease, box-shadow 0.25s ease;
-}
-.loop-step:hover { transform: translateY(-2px); box-shadow: 0 18px 40px -24px rgba(20,23,24,0.2); }
-.loop-icon {
-  display: inline-flex;
-  width: 38px; height: 38px;
-  border-radius: 10px;
-  background: rgba(201,160,80,0.12);
-  color: var(--brand-accent, #c9a050);
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 8px;
-}
-.loop-num {
-  position: absolute;
-  top: 10px; right: 12px;
-  font-size: 11px;
-  font-weight: 700;
-  color: #c0b8a6;
-  letter-spacing: 0.1em;
-}
-.loop-label { font-size: 14.5px; font-weight: 700; color: #131718; }
-.loop-desc { margin-top: 4px; font-size: 12.5px; color: #6b7680; }
-.loop-arrow {
-  position: absolute;
-  right: -22px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: var(--brand-accent, #c9a050);
-  opacity: 0.7;
-  animation: arrowPulse 2.4s ease-in-out infinite;
-}
-@keyframes arrowPulse { 0%,100% { opacity: 0.4; transform: translate(-2px,-50%);} 50% { opacity: 0.95; transform: translate(2px,-50%);} }
 
 /* ── Pull quote ── */
 .pull-quote {
