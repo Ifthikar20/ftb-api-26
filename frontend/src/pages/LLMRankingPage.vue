@@ -663,12 +663,47 @@
 
                   <div class="pt-detail-section">
                     <div class="pt-detail-label">Per-provider results</div>
-                    <div v-for="r in p.responses" :key="r.provider" class="pt-detail-row">
-                      <span class="pt-detail-prov">{{ providerLabel(r.provider) }}</span>
-                      <span v-if="r.is_mentioned" class="pt-detail-rank">{{ r.mention_rank ? '#' + r.mention_rank : 'mentioned' }}</span>
-                      <span v-else-if="r.query_succeeded" class="pt-detail-rank pt-detail-miss">not mentioned</span>
-                      <span v-else class="pt-detail-rank pt-detail-fail">API failed</span>
-                      <span class="pt-detail-context">{{ (r.mention_context || '').slice(0, 220) || (r.response_text || '').slice(0, 220) }}</span>
+                    <div v-for="r in p.responses" :key="r.provider" class="pt-resp-card">
+                      <div class="pt-resp-head">
+                        <span class="pt-resp-prov-dot" :class="'is-' + (r.provider || '').toLowerCase().replace(/[^a-z0-9]/g, '')"></span>
+                        <span class="pt-resp-prov">{{ providerLabel(r.provider) }}</span>
+                        <span v-if="r.is_mentioned" class="pt-resp-badge is-hit">
+                          {{ r.mention_rank ? 'rank #' + r.mention_rank : 'mentioned' }}
+                        </span>
+                        <span v-else-if="r.query_succeeded" class="pt-resp-badge is-miss">not mentioned</span>
+                        <span v-else class="pt-resp-badge is-fail">API failed</span>
+                        <span v-if="r.sentiment" class="pt-resp-badge pt-sentiment" :class="'pt-sentiment-' + r.sentiment">{{ r.sentiment }}</span>
+                        <div class="pt-resp-actions">
+                          <button
+                            v-if="(r.response_text || r.mention_context || '').length > 220"
+                            type="button"
+                            class="pt-resp-btn"
+                            @click.stop="toggleResponseExpand(p.text + '|' + r.provider)"
+                          >
+                            {{ isResponseExpanded(p.text + '|' + r.provider) ? 'Collapse' : 'Show full response' }}
+                          </button>
+                          <button
+                            v-if="r.response_text || r.mention_context"
+                            type="button"
+                            class="pt-resp-btn"
+                            @click.stop="copyResponse(r.response_text || r.mention_context)"
+                          >Copy</button>
+                        </div>
+                      </div>
+                      <div
+                        v-if="r.response_text || r.mention_context"
+                        class="pt-resp-body"
+                        :class="{ 'is-expanded': isResponseExpanded(p.text + '|' + r.provider) }"
+                      >
+                        <span class="pt-resp-text">
+                          {{
+                            isResponseExpanded(p.text + '|' + r.provider)
+                              ? (r.response_text || r.mention_context)
+                              : (r.mention_context || r.response_text || '').slice(0, 220) + ((r.response_text || r.mention_context || '').length > 220 ? '…' : '')
+                          }}
+                        </span>
+                      </div>
+                      <div v-else class="pt-resp-empty">No response captured.</div>
                     </div>
                   </div>
 
@@ -2876,6 +2911,27 @@ function togglePrompt(text) {
   if (s.has(text)) s.delete(text)
   else s.add(text)
   expandedPrompts.value = s
+}
+
+// Per-(prompt, provider) "show full response" toggle. Key shape: 'prompt|provider'.
+const expandedResponses = ref(new Set())
+function toggleResponseExpand(key) {
+  const s = new Set(expandedResponses.value)
+  if (s.has(key)) s.delete(key)
+  else s.add(key)
+  expandedResponses.value = s
+}
+function isResponseExpanded(key) {
+  return expandedResponses.value.has(key)
+}
+async function copyResponse(text) {
+  if (!text) return
+  try {
+    await navigator.clipboard.writeText(text)
+    toast.success('Response copied')
+  } catch {
+    toast.error('Could not copy to clipboard')
+  }
 }
 
 // Per-prompt 0-100 score. Mirrors compute_overall_score on the server so
@@ -6977,6 +7033,99 @@ onBeforeUnmount(() => {
   color: var(--text-secondary);
   font-style: italic;
   line-height: 1.45;
+}
+
+/* Per-provider response card (expandable + copyable) */
+.pt-resp-card {
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-bottom: 8px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.pt-resp-card:hover { border-color: rgba(255, 107, 53, 0.35); box-shadow: 0 4px 12px rgba(15, 23, 42, 0.04); }
+.pt-resp-head {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.pt-resp-prov-dot {
+  width: 8px; height: 8px; border-radius: 9999px;
+  background: #cbd5e1;
+  flex-shrink: 0;
+}
+.pt-resp-prov-dot.isclaude   { background: #d97706; }
+.pt-resp-prov-dot.isgpt4     { background: #10b981; }
+.pt-resp-prov-dot.isgemini   { background: #4285f4; }
+.pt-resp-prov-dot.isperplexity { background: #5b6cff; }
+.pt-resp-prov {
+  font-weight: 600;
+  font-size: 13px;
+  color: #0f172a;
+}
+.pt-resp-badge {
+  display: inline-flex; align-items: center;
+  padding: 2px 9px;
+  font-size: 11px; font-weight: 600;
+  border-radius: 9999px;
+  text-transform: lowercase;
+  letter-spacing: 0.01em;
+}
+.pt-resp-badge.is-hit { background: rgba(16, 185, 129, 0.12); color: #047857; }
+.pt-resp-badge.is-miss { background: rgba(15, 23, 42, 0.06); color: #64748b; }
+.pt-resp-badge.is-fail { background: rgba(220, 38, 38, 0.10); color: #b91c1c; }
+.pt-resp-badge.pt-sentiment-positive { background: rgba(16, 185, 129, 0.12); color: #047857; }
+.pt-resp-badge.pt-sentiment-neutral  { background: rgba(15, 23, 42, 0.06);  color: #475569; }
+.pt-resp-badge.pt-sentiment-negative { background: rgba(220, 38, 38, 0.10); color: #b91c1c; }
+.pt-resp-actions {
+  margin-left: auto;
+  display: inline-flex; gap: 6px;
+}
+.pt-resp-btn {
+  border: 1px solid rgba(15, 23, 42, 0.10);
+  background: #ffffff;
+  color: #1f2937;
+  font-size: 11.5px;
+  font-weight: 600;
+  border-radius: 7px;
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.pt-resp-btn:hover {
+  background: #ff6b35;
+  border-color: #ff6b35;
+  color: #ffffff;
+}
+.pt-resp-body {
+  background: #f8fafc;
+  border-radius: 8px;
+  padding: 10px 12px;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  max-height: 96px;
+  overflow: hidden;
+  position: relative;
+  transition: max-height 0.25s ease;
+}
+.pt-resp-body.is-expanded {
+  max-height: none;
+}
+.pt-resp-body:not(.is-expanded)::after {
+  content: '';
+  position: absolute; left: 0; right: 0; bottom: 0; height: 32px;
+  background: linear-gradient(180deg, rgba(248, 250, 252, 0) 0%, rgba(248, 250, 252, 1) 100%);
+  pointer-events: none;
+}
+.pt-resp-text {
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: #334155;
+  white-space: pre-wrap;
+}
+.pt-resp-empty {
+  font-size: 12px;
+  color: #94a3b8;
+  font-style: italic;
 }
 
 .pt-comp-chip {
