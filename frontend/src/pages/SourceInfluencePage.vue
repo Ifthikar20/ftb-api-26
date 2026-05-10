@@ -53,6 +53,30 @@
         </ul>
       </div>
 
+      <div v-else-if="promptTab === 'env'" class="mt-envtab">
+        <div v-if="loadingEnvs" class="mt-muted">Loading environments…</div>
+        <div v-else-if="!envs.length" class="mt-empty">
+          No test environments yet. Build a prompt selection here and
+          press <strong>Save as environment</strong> to create one, or
+          create envs from the Saved view of the Prompt Library.
+        </div>
+        <ul v-else class="mt-env-list">
+          <li
+            v-for="env in envs"
+            :key="env.id"
+            class="mt-env-card"
+            :class="{ 'is-on': selectedEnvId === env.id }"
+            @click="applyEnvSelection(env)"
+          >
+            <div class="mt-env-card-head">
+              <span class="mt-env-name">{{ env.name }}</span>
+              <span class="mt-env-pill">{{ env.prompt_count || (env.prompt_ids || []).length }} prompts</span>
+            </div>
+            <div class="mt-env-sub">Loaded into the run when selected.</div>
+          </li>
+        </ul>
+      </div>
+
       <div v-else-if="promptTab === 'custom'" class="mt-custom">
         <textarea
           v-model="customDraft"
@@ -88,7 +112,12 @@
       <div v-if="selectedPrompts.length" class="mt-pool">
         <div class="mt-pool-head">
           <span>{{ selectedPrompts.length }} prompt{{ selectedPrompts.length === 1 ? '' : 's' }} ready</span>
-          <button class="mt-pool-clear" @click="clearAll">Clear all</button>
+          <div class="mt-pool-actions">
+            <button v-if="canSaveAsEnv" class="mt-pool-save" @click="saveSelectionAsEnv">
+              Save as environment
+            </button>
+            <button class="mt-pool-clear" @click="clearAll">Clear all</button>
+          </div>
         </div>
         <ul class="mt-pool-list">
           <li v-for="(p, i) in selectedPrompts" :key="p.uid" class="mt-pool-item">
@@ -233,17 +262,23 @@ const brandLabel = computed(() => {
 // ── Step 1: prompts ──────────────────────────────────────────────
 const promptTabs = [
   { value: 'saved',  label: 'From saved' },
+  { value: 'env',    label: 'Environment' },
   { value: 'custom', label: 'Custom' },
   { value: 'upload', label: 'Upload .md' },
 ]
 const promptTab = ref('saved')
 
-const savedPrompts = ref([])
+const savedPrompts = ref([])     // [{ id (brand_prompt_id), text, style }]
 const loadingSaved = ref(true)
 const selectedSavedIds = ref(new Set())
-const selectedPrompts = ref([])  // {uid, text, source}
+const selectedPrompts = ref([])  // {uid, text, source, savedId?}
 let _uid = 0
 const nextUid = () => ++_uid
+
+// Test environments
+const envs = ref([])
+const loadingEnvs = ref(false)
+const selectedEnvId = ref(null)
 
 async function loadSaved() {
   loadingSaved.value = true
@@ -259,6 +294,78 @@ async function loadSaved() {
     savedPrompts.value = []
   } finally {
     loadingSaved.value = false
+  }
+}
+
+async function loadEnvs() {
+  loadingEnvs.value = true
+  try {
+    const { data } = await promptLibrary.listTestEnvironments(websiteId)
+    const rows = data?.data || data || []
+    envs.value = Array.isArray(rows) ? rows : []
+  } catch {
+    envs.value = []
+  } finally {
+    loadingEnvs.value = false
+  }
+}
+
+// Replace the current selection with whatever is in `env`. Treats the
+// env's prompt_ids as authoritative; anything not loaded into
+// savedPrompts is silently skipped (e.g. if the user deleted the
+// underlying BrandPrompt after creating the env).
+function applyEnvSelection(env) {
+  if (!env) return
+  selectedEnvId.value = env.id
+  const ids = new Set(env.prompt_ids || [])
+  const matched = savedPrompts.value.filter((p) => ids.has(p.id))
+  selectedSavedIds.value = new Set(matched.map((p) => p.id))
+  selectedPrompts.value = matched.map((p) => ({
+    uid: nextUid(), text: p.text, source: 'env', savedId: p.id,
+  }))
+  if (matched.length === 0) {
+    toast.info('This environment has no saved prompts.')
+  }
+}
+
+// Preselect prompts from a `?prompts=<csv>` query — set by the Saved
+// page's 'Run as Model Test' bulk action.
+function applyQueryPreselect() {
+  const raw = (route.query.prompts || '').toString().trim()
+  if (!raw) return
+  const ids = new Set(raw.split(',').filter(Boolean))
+  if (!ids.size) return
+  const matched = savedPrompts.value.filter((p) => ids.has(p.id))
+  if (!matched.length) return
+  selectedSavedIds.value = new Set(matched.map((p) => p.id))
+  selectedPrompts.value = matched.map((p) => ({
+    uid: nextUid(), text: p.text, source: 'env', savedId: p.id,
+  }))
+  if (route.query.env) selectedEnvId.value = route.query.env.toString()
+}
+
+async function saveSelectionAsEnv() {
+  const savedIds = selectedPrompts.value
+    .map((p) => p.savedId).filter(Boolean)
+  if (!savedIds.length) {
+    toast.error('Select at least one saved prompt before saving as env.')
+    return
+  }
+  const name = window.prompt('Name this environment:', `Env ${envs.value.length + 1}`)
+  if (!name || !name.trim()) return
+  try {
+    const { data } = await promptLibrary.createTestEnvironment(
+      websiteId, name.trim(), savedIds,
+    )
+    const env = data?.data || data
+    envs.value = [env, ...envs.value]
+    selectedEnvId.value = env.id
+    toast.success(`Saved "${env.name}".`)
+  } catch (e) {
+    const msg = e.response?.status === 409
+      ? 'An environment with that name already exists.'
+      : (e.displayMessage || 'Could not save env.')
+    toast.error(msg)
   }
 }
 
@@ -330,6 +437,13 @@ function clearAll() {
 }
 
 const promptCount = computed(() => selectedPrompts.value.length)
+
+// Only meaningful when every selected prompt has a BrandPrompt id —
+// custom-typed and md-uploaded prompts can't be stored in an env yet.
+const canSaveAsEnv = computed(
+  () => selectedPrompts.value.length > 0
+    && selectedPrompts.value.every((p) => !!p.savedId),
+)
 
 // ── Step 2: models ───────────────────────────────────────────────
 const providerOptions = ref([
@@ -461,7 +575,10 @@ function highlightBrand(text) {
   return out
 }
 
-onMounted(loadSaved)
+onMounted(async () => {
+  await Promise.all([loadSaved(), loadEnvs()])
+  applyQueryPreselect()
+})
 </script>
 
 <style scoped>
@@ -573,6 +690,31 @@ onMounted(loadSaved)
   border: 0; background: transparent; color: #ef4444;
   font-size: 11.5px; font-weight: 600; cursor: pointer;
 }
+.mt-pool-actions { display: inline-flex; align-items: center; gap: 14px; }
+.mt-pool-save {
+  border: 1px solid #ff6b35; background: transparent; color: #ff6b35;
+  padding: 4px 12px; border-radius: 9999px;
+  font-size: 11.5px; font-weight: 600; cursor: pointer;
+}
+.mt-pool-save:hover { background: rgba(255, 107, 53, 0.08); }
+
+/* Env tab list */
+.mt-envtab { display: flex; flex-direction: column; gap: 10px; }
+.mt-env-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+.mt-env-card {
+  padding: 12px 14px; border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 12px; background: #fff; cursor: pointer;
+  transition: all 0.15s;
+}
+.mt-env-card:hover { border-color: rgba(255, 107, 53, 0.30); }
+.mt-env-card.is-on { border-color: #ff6b35; background: rgba(255, 107, 53, 0.04); }
+.mt-env-card-head { display: flex; align-items: center; gap: 8px; }
+.mt-env-name { font-size: 13.5px; font-weight: 600; color: #0f172a; flex: 1; }
+.mt-env-pill {
+  font-size: 10.5px; font-weight: 600; padding: 2px 8px;
+  border-radius: 9999px; background: rgba(15, 23, 42, 0.06); color: #475569;
+}
+.mt-env-sub { font-size: 11.5px; color: #64748b; margin-top: 4px; }
 .mt-pool-list { list-style: none; margin: 0; padding: 0; }
 .mt-pool-item {
   display: flex; align-items: center; gap: 10px;

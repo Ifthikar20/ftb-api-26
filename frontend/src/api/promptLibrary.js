@@ -71,4 +71,38 @@ export default {
 
     disable: (promptId) =>
         api.post(`/prompt-library/prompts/${promptId}/disable/`),
+
+    // ── Test environments ─────────────────────────────────────────
+    // Named buckets of BrandPrompts. Shared surface between the Saved
+    // view (group by env, bulk-move prompts) and the Model Test page
+    // (load an env's prompts into the run builder).
+    listTestEnvironments: (websiteId) =>
+        api.get(`/prompt-library/websites/${websiteId}/test-environments/`),
+
+    createTestEnvironment: (websiteId, name, promptIds = []) =>
+        api.post(`/prompt-library/websites/${websiteId}/test-environments/`, {
+            name,
+            prompt_ids: promptIds,
+        }),
+
+    renameTestEnvironment: (websiteId, envId, name) =>
+        api.patch(
+            `/prompt-library/websites/${websiteId}/test-environments/${envId}/`,
+            { name },
+        ),
+
+    deleteTestEnvironment: (websiteId, envId) =>
+        api.delete(`/prompt-library/websites/${websiteId}/test-environments/${envId}/`),
+
+    addPromptsToEnv: (websiteId, envId, brandPromptIds) =>
+        api.post(
+            `/prompt-library/websites/${websiteId}/test-environments/${envId}/prompts/`,
+            { brand_prompt_ids: brandPromptIds },
+        ),
+
+    removePromptsFromEnv: (websiteId, envId, brandPromptIds) =>
+        api.delete(
+            `/prompt-library/websites/${websiteId}/test-environments/${envId}/prompts/`,
+            { data: { brand_prompt_ids: brandPromptIds } },
+        ),
 }

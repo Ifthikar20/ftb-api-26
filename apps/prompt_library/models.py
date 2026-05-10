@@ -247,3 +247,45 @@ class PromptVariableSet(TimestampMixin):
 
     def __str__(self):
         return f"PromptVariableSet({self.website_id})"
+
+
+class TestEnvironment(TimestampMixin):
+    """A named bucket of saved BrandPrompts that can be loaded into the
+    Model Test page as a single batch.
+
+    Created either from the Model Test page ('Save current selection as env')
+    or from the Saved view bulk-action bar ('Add to env'). Visible on both
+    surfaces — the M2M is the single source of truth.
+
+    Soft-delete is not needed: removing an env is non-destructive because
+    the underlying BrandPrompt rows are unaffected. The env just stops
+    grouping them.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    website = models.ForeignKey(
+        "websites.Website",
+        related_name="test_environments",
+        on_delete=models.CASCADE,
+    )
+    name = models.CharField(max_length=120)
+    created_by = models.ForeignKey(
+        "accounts.User",
+        related_name="created_test_environments",
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+    )
+    prompts = models.ManyToManyField(
+        BrandPrompt,
+        related_name="test_environments",
+        blank=True,
+    )
+
+    class Meta:
+        db_table = "prompt_library_testenvironment"
+        unique_together = [("website", "name")]
+        indexes = [models.Index(fields=["website", "-created_at"])]
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"TestEnvironment({self.name} · w={self.website_id})"

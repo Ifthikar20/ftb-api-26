@@ -31,6 +31,7 @@ from apps.prompt_library.api.v1.serializers import (
     PromptVariableSetSerializer,
     SmokeTestRequestSerializer,
     SynthesizeRequestSerializer,
+    TestEnvironmentSerializer,
     UseLibrarySampleRequestSerializer,
     VariableSetUpdateSerializer,
 )
@@ -41,6 +42,7 @@ from apps.prompt_library.models import (
     PromptSampleRun,
     PromptSource,
     PromptVariableSet,
+    TestEnvironment,
 )
 from apps.prompt_library.services.sampler_service import sample_prompts_for_audit
 from apps.websites.services.website_service import WebsiteService
@@ -598,3 +600,128 @@ class PromptToggleView(APIView):
             return Response({"error": "unknown_action"}, status=400)
         prompt.save(update_fields=["is_active", "updated_at"])
         return Response(PromptSerializer(prompt).data)
+
+
+# ── Test Environments ─────────────────────────────────────────────
+# An env is a named bucket of BrandPrompts on a Website. Created from
+# either the Saved view ("Add selected to env") or the Model Test page
+# ("Save current selection as env"). Lives in the same persistence so
+# both surfaces see the same data.
+
+
+class _EnvViewMixin:
+    """Shared helpers — load env scoped to a website the user owns."""
+
+    permission_classes = [IsAuthenticated]
+
+    def _get_env(self, request, website_id, env_id) -> TestEnvironment:
+        website = WebsiteService.get_for_user(
+            user=request.user, website_id=website_id,
+        )
+        return get_object_or_404(
+            TestEnvironment, id=env_id, website=website,
+        )
+
+
+class TestEnvironmentListView(APIView):
+    """GET (list) and POST (create) for envs on a single website."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, website_id):
+        website = WebsiteService.get_for_user(
+            user=request.user, website_id=website_id,
+        )
+        qs = (
+            TestEnvironment.objects.filter(website=website)
+            .prefetch_related("prompts")
+            .order_by("-created_at")
+        )
+        return Response(TestEnvironmentSerializer(qs, many=True).data)
+
+    def post(self, request, website_id):
+        website = WebsiteService.get_for_user(
+            user=request.user, website_id=website_id,
+        )
+        serializer = TestEnvironmentSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        name = serializer.validated_data["name"]
+        if TestEnvironment.objects.filter(website=website, name=name).exists():
+            return Response(
+                {"error": f"An environment named '{name}' already exists."},
+                status=status.HTTP_409_CONFLICT,
+            )
+        env = TestEnvironment.objects.create(
+            website=website, name=name, created_by=request.user,
+        )
+        # Optional initial prompt ids — saves the FE a second POST.
+        prompt_ids = request.data.get("prompt_ids") or []
+        if isinstance(prompt_ids, list) and prompt_ids:
+            bps = BrandPrompt.objects.filter(
+                website=website, id__in=prompt_ids,
+            )
+            env.prompts.add(*bps)
+        return Response(
+            TestEnvironmentSerializer(env).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class TestEnvironmentDetailView(_EnvViewMixin, APIView):
+    """GET (detail), PATCH (rename), DELETE for a single env."""
+
+    def get(self, request, website_id, env_id):
+        env = self._get_env(request, website_id, env_id)
+        return Response(TestEnvironmentSerializer(env).data)
+
+    def patch(self, request, website_id, env_id):
+        env = self._get_env(request, website_id, env_id)
+        new_name = (request.data.get("name") or "").strip()
+        if not new_name:
+            return Response({"error": "Name is required."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        if (TestEnvironment.objects
+                .filter(website=env.website, name=new_name)
+                .exclude(id=env.id).exists()):
+            return Response(
+                {"error": f"An environment named '{new_name}' already exists."},
+                status=status.HTTP_409_CONFLICT,
+            )
+        env.name = new_name
+        env.save(update_fields=["name", "updated_at"])
+        return Response(TestEnvironmentSerializer(env).data)
+
+    def delete(self, request, website_id, env_id):
+        env = self._get_env(request, website_id, env_id)
+        env.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class TestEnvironmentPromptsView(_EnvViewMixin, APIView):
+    """Add/remove BrandPrompt rows from an env's prompt set.
+
+    POST   /<env_id>/prompts/  { brand_prompt_ids: [..] }
+    DELETE /<env_id>/prompts/  { brand_prompt_ids: [..] }
+    """
+
+    def post(self, request, website_id, env_id):
+        env = self._get_env(request, website_id, env_id)
+        ids = request.data.get("brand_prompt_ids") or []
+        if not isinstance(ids, list) or not ids:
+            return Response({"error": "brand_prompt_ids must be a non-empty list."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        # Scope the lookup to this website so a malicious caller can't
+        # graft prompts from another tenant into this env.
+        bps = BrandPrompt.objects.filter(website=env.website, id__in=ids)
+        env.prompts.add(*bps)
+        return Response(TestEnvironmentSerializer(env).data)
+
+    def delete(self, request, website_id, env_id):
+        env = self._get_env(request, website_id, env_id)
+        ids = request.data.get("brand_prompt_ids") or []
+        if not isinstance(ids, list) or not ids:
+            return Response({"error": "brand_prompt_ids must be a non-empty list."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        bps = BrandPrompt.objects.filter(website=env.website, id__in=ids)
+        env.prompts.remove(*bps)
+        return Response(TestEnvironmentSerializer(env).data)
