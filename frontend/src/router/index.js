@@ -37,20 +37,9 @@ const routes = [
         meta: { public: true }
     },
 
-    /* ── Public Integrations Showcase ── */
-    {
-        path: '/integrations',
-        name: 'public-integrations',
-        component: () => import('@/pages/public/PublicIntegrationsPage.vue'),
-        meta: { public: true }
-    },
-    {
-        path: '/integration/:slug',
-        name: 'integration-detail',
-        component: () => import('@/pages/public/IntegrationDetailPage.vue'),
-        meta: { public: true },
-        props: true
-    },
+    /* ── Public Integrations Showcase ── hidden for now; redirect to landing ── */
+    { path: '/integrations',          redirect: '/' },
+    { path: '/integration/:slug',     redirect: '/' },
 
     /* ── Auth (public) ── */
     {
@@ -138,7 +127,7 @@ let sessionRestored = false
 // Routes exempt from the onboarding/paywall gate (user is mid-flow fixing their state)
 const GATE_EXEMPT = new Set([
     'login', 'register', 'forgot-password', 'verify-email',
-    'landing', 'terms', 'privacy', 'public-integrations', 'integration-detail',
+    'landing', 'terms', 'privacy',
     'onboarding', 'app-onboarding', 'paywall', 'not-found',
 ])
 

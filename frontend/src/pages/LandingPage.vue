@@ -12,7 +12,6 @@
           <a href="#features">Features</a>
           <a href="#how">How It Works</a>
           <a href="#pricing">Pricing</a>
-          <router-link to="/integrations">Integrations</router-link>
         </div>
         <div class="nav-right">
           <router-link to="/login" class="nav-link-text">Log In</router-link>
@@ -390,7 +389,6 @@
             <a href="#features">Features</a>
             <a href="#how">How it works</a>
             <a href="#pricing">Pricing</a>
-            <router-link to="/integrations">Integrations</router-link>
             <a href="#faq">FAQ</a>
           </div>
 
@@ -1128,8 +1126,8 @@ em { color: #5B8DEF; font-style: italic; }
   font-weight: 600;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--brand-accent, #c9a050);
-  background: rgba(201, 160, 80, 0.12);
+  color: var(--brand-accent, #ff6b35);
+  background: rgba(255, 107, 53, 0.12);
   padding: 6px 12px;
   border-radius: 9999px;
   margin-bottom: 18px;
@@ -1142,7 +1140,7 @@ em { color: #5B8DEF; font-style: italic; }
 }
 .hero-word {
   display: inline-block;
-  color: var(--brand-accent, #c9a050);
+  color: var(--brand-accent, #ff6b35);
   font-weight: 600;
 }
 .hero-bullets {
@@ -1158,7 +1156,7 @@ em { color: #5B8DEF; font-style: italic; }
 .hero-bullets li { display: flex; align-items: center; gap: 10px; }
 .hero-bullet-dot {
   width: 6px; height: 6px; border-radius: 9999px;
-  background: var(--brand-accent, #c9a050);
+  background: var(--brand-accent, #ff6b35);
   flex-shrink: 0;
 }
 
@@ -1211,7 +1209,7 @@ em { color: #5B8DEF; font-style: italic; }
 .probe::before {
   content: '';
   position: absolute; inset: -40%;
-  background: radial-gradient(ellipse at top right, rgba(201, 160, 80, 0.10), transparent 60%);
+  background: radial-gradient(ellipse at top right, rgba(255, 107, 53, 0.10), transparent 60%);
   pointer-events: none;
 }
 
@@ -1226,9 +1224,9 @@ em { color: #5B8DEF; font-style: italic; }
 }
 .probe-prompt-label {
   font-size: 10px; font-weight: 700; letter-spacing: 0.08em;
-  text-transform: uppercase; color: #c9a050;
+  text-transform: uppercase; color: #ff6b35;
   padding: 4px 8px; border-radius: 6px;
-  background: rgba(201, 160, 80, 0.10);
+  background: rgba(255, 107, 53, 0.10);
   flex-shrink: 0;
 }
 .probe-prompt-text {
@@ -1245,7 +1243,7 @@ em { color: #5B8DEF; font-style: italic; }
 .probe-caret {
   display: inline-block;
   width: 2px; height: 16px;
-  background: #c9a050;
+  background: #ff6b35;
   margin-left: 2px;
   animation: probe-blink 1s step-end infinite;
 }
@@ -1283,7 +1281,7 @@ em { color: #5B8DEF; font-style: italic; }
   /* sweeping highlight that runs once when the card lands */
   content: '';
   position: absolute; inset: 0;
-  background: linear-gradient(105deg, transparent 30%, rgba(201, 160, 80, 0.18) 50%, transparent 70%);
+  background: linear-gradient(105deg, transparent 30%, rgba(255, 107, 53, 0.18) 50%, transparent 70%);
   transform: translateX(-100%);
   animation: probe-sweep 1.2s ease-out var(--d, 0s) forwards;
   pointer-events: none;
@@ -1331,7 +1329,7 @@ em { color: #5B8DEF; font-style: italic; }
   margin-bottom: 8px;
 }
 .probe-mark {
-  background: linear-gradient(120deg, rgba(201, 160, 80, 0.0) 0%, rgba(201, 160, 80, 0.30) 50%, rgba(201, 160, 80, 0.0) 100%);
+  background: linear-gradient(120deg, rgba(255, 107, 53, 0.0) 0%, rgba(255, 107, 53, 0.30) 50%, rgba(255, 107, 53, 0.0) 100%);
   background-size: 220% 100%;
   background-position: 100% 0;
   color: #1f2937;
@@ -1341,9 +1339,9 @@ em { color: #5B8DEF; font-style: italic; }
   animation: probe-highlight 4s ease-in-out infinite;
 }
 @keyframes probe-highlight {
-  0%, 30%   { background-position: 100% 0; box-shadow: 0 0 0 rgba(201, 160, 80, 0); }
-  55%, 85%  { background-position: 0% 0;   box-shadow: 0 0 18px rgba(201, 160, 80, 0.35); }
-  100%      { background-position: -100% 0; box-shadow: 0 0 0 rgba(201, 160, 80, 0); }
+  0%, 30%   { background-position: 100% 0; box-shadow: 0 0 0 rgba(255, 107, 53, 0); }
+  55%, 85%  { background-position: 0% 0;   box-shadow: 0 0 18px rgba(255, 107, 53, 0.35); }
+  100%      { background-position: -100% 0; box-shadow: 0 0 0 rgba(255, 107, 53, 0); }
 }
 
 .probe-tags {
@@ -1377,7 +1375,7 @@ em { color: #5B8DEF; font-style: italic; }
 .probe-ring-fg {
   fill: none;
   stroke: url(#probe-grad-fallback);
-  stroke: #c9a050;
+  stroke: #ff6b35;
   stroke-width: 3;
   stroke-linecap: round;
   stroke-dasharray: 100;
@@ -2043,10 +2041,10 @@ em { color: #5B8DEF; font-style: italic; }
   transition: transform 0.15s ease-out, color 0.15s ease-out, border-color 0.15s ease-out, box-shadow 0.15s ease-out;
 }
 .footer-social:hover {
-  color: var(--brand-accent, #c9a050);
-  border-color: var(--brand-accent, #c9a050);
+  color: var(--brand-accent, #ff6b35);
+  border-color: var(--brand-accent, #ff6b35);
   transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(201, 160, 80, 0.18);
+  box-shadow: 0 6px 16px rgba(255, 107, 53, 0.18);
 }
 
 .footer-col { display: flex; flex-direction: column; gap: 10px; }
@@ -2065,7 +2063,7 @@ em { color: #5B8DEF; font-style: italic; }
   transition: color 0.12s ease;
 }
 .footer-col a:hover {
-  color: var(--brand-accent, #c9a050);
+  color: var(--brand-accent, #ff6b35);
 }
 
 .footer-bottom {
@@ -2507,7 +2505,7 @@ em { color: #5B8DEF; font-style: italic; }
   color: #5e6b73;
 }
 .sec-h-grad {
-  background: linear-gradient(110deg, #131718 0%, #131718 55%, var(--brand-accent, #c9a050) 100%);
+  background: linear-gradient(110deg, #131718 0%, #131718 55%, var(--brand-accent, #ff6b35) 100%);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -2523,7 +2521,7 @@ em { color: #5B8DEF; font-style: italic; }
   opacity: 0.32;
   pointer-events: none;
   z-index: 0;
-  background: radial-gradient(circle, var(--brand-accent, #c9a050) 0%, rgba(201,160,80,0) 70%);
+  background: radial-gradient(circle, var(--brand-accent, #ff6b35) 0%, rgba(255,107,53,0) 70%);
 }
 .orb-1 { width: 520px; height: 520px; top: 600px; left: -180px; animation: orbDrift 22s ease-in-out infinite; }
 .orb-2 { width: 420px; height: 420px; top: 1900px; right: -160px; opacity: 0.24; animation: orbDrift 28s ease-in-out -8s infinite reverse; }
@@ -2563,7 +2561,7 @@ em { color: #5B8DEF; font-style: italic; }
   font-family: 'Geist', 'Plus Jakarta Sans', sans-serif;
 }
 .marquee-item.is-label {
-  color: var(--brand-accent, #c9a050);
+  color: var(--brand-accent, #ff6b35);
   text-transform: uppercase;
   font-weight: 600;
   letter-spacing: 0.18em;
@@ -2612,7 +2610,7 @@ em { color: #5B8DEF; font-style: italic; }
 }
 .count-up-prefix, .count-up-suffix {
   font-size: 36px;
-  color: var(--brand-accent, #c9a050);
+  color: var(--brand-accent, #ff6b35);
 }
 .count-up-label {
   margin-top: 18px;
@@ -2649,7 +2647,7 @@ em { color: #5B8DEF; font-style: italic; }
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.22em;
-  color: var(--brand-accent, #c9a050);
+  color: var(--brand-accent, #ff6b35);
   text-transform: uppercase;
 }
 .feature-h {
@@ -2685,9 +2683,9 @@ em { color: #5B8DEF; font-style: italic; }
   width: 8px; height: 8px;
   margin-top: 7px;
   border-radius: 50%;
-  background: var(--brand-accent, #c9a050);
+  background: var(--brand-accent, #ff6b35);
   flex-shrink: 0;
-  box-shadow: 0 0 0 4px rgba(201, 160, 80, 0.12);
+  box-shadow: 0 0 0 4px rgba(255, 107, 53, 0.12);
 }
 
 /* Mock visuals shared */
@@ -2737,7 +2735,7 @@ em { color: #5B8DEF; font-style: italic; }
 }
 .mock-search-text { flex: 1; }
 .mock-search-caret {
-  color: var(--brand-accent, #c9a050);
+  color: var(--brand-accent, #ff6b35);
   animation: caretBlink 1s steps(1) infinite;
 }
 @keyframes caretBlink { 50% { opacity: 0; } }
@@ -2764,7 +2762,7 @@ em { color: #5B8DEF; font-style: italic; }
   letter-spacing: 0.08em;
   padding: 3px 8px;
   border-radius: 999px;
-  background: rgba(201,160,80,0.14);
+  background: rgba(255,107,53,0.14);
   color: #8a6d2a;
 }
 .mock-chip.is-comparison { background: rgba(74,127,176,0.14);  color: #345f86; }
@@ -2788,7 +2786,7 @@ em { color: #5B8DEF; font-style: italic; }
 }
 .mock-trend-bar {
   width: 0; height: 100%;
-  background: linear-gradient(90deg, var(--brand-accent, #c9a050), #d9b770);
+  background: linear-gradient(90deg, var(--brand-accent, #ff6b35), #3b82f6);
   border-radius: 4px;
   animation: barFill 1.1s cubic-bezier(0.22,1,0.36,1) forwards;
 }
@@ -2810,7 +2808,7 @@ em { color: #5B8DEF; font-style: italic; }
 }
 .mock-mini-head { display:flex; align-items:center; gap:8px; font-size: 12.5px; }
 .mock-mini-name { flex: 1; font-weight: 600; color: #2d3640; }
-.mock-mini-pct { color: var(--brand-accent, #c9a050); font-weight: 600; }
+.mock-mini-pct { color: var(--brand-accent, #ff6b35); font-weight: 600; }
 .mock-mini-meta { margin-top: 8px; font-size: 11.5px; color: #6b7680; }
 
 /* Source bars */
@@ -2849,7 +2847,7 @@ em { color: #5B8DEF; font-style: italic; }
 .seg-news   { background: #4a7fb0; }
 .seg-wiki   { background: #6b7680; }
 .seg-blog   { background: #d9b770; }
-.seg-own    { background: var(--brand-accent, #c9a050); }
+.seg-own    { background: var(--brand-accent, #ff6b35); }
 .mock-source-legend {
   display: flex;
   flex-wrap: wrap;
@@ -2873,7 +2871,7 @@ em { color: #5B8DEF; font-style: italic; }
   font-size: 11px;
   padding: 3px 8px;
   border-radius: 999px;
-  background: rgba(201,160,80,0.14);
+  background: rgba(255,107,53,0.14);
   color: #8a6d2a;
   font-weight: 600;
 }
@@ -2937,7 +2935,7 @@ em { color: #5B8DEF; font-style: italic; }
   display: block;
   font-size: 80px;
   line-height: 0.4;
-  color: var(--brand-accent, #c9a050);
+  color: var(--brand-accent, #ff6b35);
   margin-bottom: 18px;
 }
 .pq-attr {
@@ -2987,7 +2985,7 @@ em { color: #5B8DEF; font-style: italic; }
 .faq-plus::before, .faq-plus::after {
   content: '';
   position: absolute;
-  background: var(--brand-accent, #c9a050);
+  background: var(--brand-accent, #ff6b35);
   border-radius: 1px;
   transition: transform 0.25s ease;
 }
@@ -3006,7 +3004,7 @@ em { color: #5B8DEF; font-style: italic; }
 .final-cta-glow {
   position: absolute;
   inset: 0;
-  background: radial-gradient(ellipse at 50% 50%, rgba(201,160,80,0.18) 0%, rgba(245,239,230,0) 60%);
+  background: radial-gradient(ellipse at 50% 50%, rgba(255,107,53,0.18) 0%, rgba(245,239,230,0) 60%);
   pointer-events: none;
 }
 .final-cta .cta-inner { position: relative; z-index: 1; }
