@@ -97,6 +97,199 @@
       </div>
     </section>
 
+    <!-- ═══ Background blur orbs ═══ -->
+    <div class="orb orb-1" aria-hidden="true"></div>
+    <div class="orb orb-2" aria-hidden="true"></div>
+    <div class="orb orb-3" aria-hidden="true"></div>
+
+    <!-- ═══ Trust strip ═══ -->
+    <section class="trust anim" data-anim="fade-up">
+      <div class="marquee">
+        <div class="marquee-track">
+          <span class="marquee-item is-label">Trusted Probes</span>
+          <span class="marquee-sep">·</span>
+          <span class="marquee-item">Anthropic Claude</span>
+          <span class="marquee-sep">·</span>
+          <span class="marquee-item">OpenAI GPT-4</span>
+          <span class="marquee-sep">·</span>
+          <span class="marquee-item">Google Gemini</span>
+          <span class="marquee-sep">·</span>
+          <span class="marquee-item">Perplexity</span>
+          <span class="marquee-sep">·</span>
+          <span class="marquee-item">DeepSeek (synthesis)</span>
+          <span class="marquee-sep">·</span>
+          <!-- duplicate for seamless loop -->
+          <span class="marquee-item is-label">Trusted Probes</span>
+          <span class="marquee-sep">·</span>
+          <span class="marquee-item">Anthropic Claude</span>
+          <span class="marquee-sep">·</span>
+          <span class="marquee-item">OpenAI GPT-4</span>
+          <span class="marquee-sep">·</span>
+          <span class="marquee-item">Google Gemini</span>
+          <span class="marquee-sep">·</span>
+          <span class="marquee-item">Perplexity</span>
+          <span class="marquee-sep">·</span>
+          <span class="marquee-item">DeepSeek (synthesis)</span>
+          <span class="marquee-sep">·</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ Stats / Why GEO matters ═══ -->
+    <section class="stats anim" data-anim="fade-up" ref="statsSection">
+      <div class="wrap">
+        <h2 class="sec-h sec-h-grad anim" data-anim="fade-up">AI search is the new search.<br/><em>Your brand isn't ready for it.</em></h2>
+        <p class="sec-sub anim" data-anim="fade-up" data-delay="60">
+          ChatGPT and Perplexity already shape millions of buying decisions every day.
+          The brands that show up in those answers are the ones writing the right things in the right places.
+        </p>
+        <div class="count-up-grid">
+          <div class="count-up-card anim" data-anim="fade-up" data-delay="80">
+            <div class="count-up-num">{{ stat0Display }}<span class="count-up-suffix">%</span></div>
+            <div class="count-up-label">Buyers using LLMs to research</div>
+            <div class="count-up-note">of B2B buyers say AI assistants influence their purchase research</div>
+          </div>
+          <div class="count-up-card anim" data-anim="fade-up" data-delay="160">
+            <div class="count-up-num">{{ stat1Display }}<span class="count-up-suffix">x</span></div>
+            <div class="count-up-label">Visibility gap</div>
+            <div class="count-up-note">average gap between dominant brand and tail brand in LLM citations</div>
+          </div>
+          <div class="count-up-card anim" data-anim="fade-up" data-delay="240">
+            <div class="count-up-num"><span class="count-up-prefix">&lt;</span>{{ stat2Display }}<span class="count-up-suffix">%</span></div>
+            <div class="count-up-label">Tracking GEO</div>
+            <div class="count-up-note">of brands actively measure their LLM presence today</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ Feature showcase — alternating rows ═══ -->
+    <section class="feature-showcase" id="features">
+      <div class="wrap">
+        <div
+          v-for="(f, i) in showcaseFeatures"
+          :key="f.key"
+          class="feature-row anim"
+          :class="{ 'is-reverse': i % 2 === 1 }"
+          data-anim="fade-up"
+        >
+          <div class="feature-copy">
+            <span class="feature-eyebrow">{{ f.eyebrow }}</span>
+            <h2 class="feature-h">{{ f.headline }}</h2>
+            <p class="feature-desc">{{ f.desc }}</p>
+            <ul class="feature-bullets">
+              <li v-for="b in f.bullets" :key="b"><span class="feature-bullet-dot"></span>{{ b }}</li>
+            </ul>
+          </div>
+          <div class="feature-visual" :class="'is-' + f.key">
+            <!-- PROMPT LIBRARY -->
+            <div v-if="f.key === 'prompt'" class="mock-card">
+              <div class="mock-search">
+                <span class="mock-search-icon"></span>
+                <span class="mock-search-text">best ai analytics tool for small saas</span>
+                <span class="mock-search-caret">|</span>
+              </div>
+              <div class="mock-rows">
+                <div v-for="(p, idx) in promptRows" :key="p.q" class="mock-prompt-row" :style="{ animationDelay: (0.2 + idx * 0.18) + 's' }">
+                  <span class="mock-q">{{ p.q }}</span>
+                  <span class="mock-chip" :class="'is-' + p.style">{{ p.style }}</span>
+                  <div class="mock-trend">
+                    <div class="mock-trend-bar" :style="{ '--target-w': p.trend + '%', animationDelay: (0.4 + idx * 0.18) + 's' }"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- MULTI-LLM PROBING -->
+            <div v-else-if="f.key === 'probe'" class="mock-card mock-grid">
+              <div v-for="(p, idx) in heroProviders" :key="p.key" class="mock-mini" :style="{ animationDelay: (0.15 + idx * 0.15) + 's' }">
+                <div class="mock-mini-head">
+                  <span class="hero-viz-dot" :class="'is-' + p.key"></span>
+                  <span class="mock-mini-name">{{ p.name }}</span>
+                  <span class="mock-mini-pct">{{ p.pct }}%</span>
+                </div>
+                <div class="hero-viz-bar">
+                  <div class="hero-viz-bar-fill" :class="'is-' + p.key" :style="{ '--target-w': p.pct + '%', animationDelay: (0.3 + idx * 0.15) + 's' }"></div>
+                </div>
+                <div class="mock-mini-meta">{{ p.cited }} citations</div>
+              </div>
+            </div>
+
+            <!-- SOURCE INFLUENCE -->
+            <div v-else-if="f.key === 'source'" class="mock-card">
+              <div class="mock-source-title">Source mix per provider</div>
+              <div v-for="(s, idx) in sourceShares" :key="s.provider" class="mock-source-row" :style="{ animationDelay: (0.15 + idx * 0.12) + 's' }">
+                <span class="mock-source-label">{{ s.provider }}</span>
+                <div class="mock-stack">
+                  <span v-for="seg in s.segments" :key="seg.cls" class="mock-seg" :class="'seg-' + seg.cls" :style="{ '--target-w': seg.pct + '%', animationDelay: (0.3 + idx * 0.12) + 's' }"></span>
+                </div>
+              </div>
+              <div class="mock-source-legend">
+                <span><i class="seg-reddit"></i>Reddit</span>
+                <span><i class="seg-news"></i>News</span>
+                <span><i class="seg-wiki"></i>Wikipedia</span>
+                <span><i class="seg-blog"></i>Blogs</span>
+                <span><i class="seg-own"></i>Your site</span>
+              </div>
+            </div>
+
+            <!-- CONTENT STUDIO -->
+            <div v-else-if="f.key === 'studio'" class="mock-card">
+              <div class="mock-draft-head">
+                <span class="mock-chip is-draft">Draft</span>
+                <span class="mock-chip-prov">Claude</span>
+              </div>
+              <div class="mock-draft-title">How AI analytics tools rank for SMB SaaS in 2026</div>
+              <div class="mock-draft-line w-95"></div>
+              <div class="mock-draft-line w-88"></div>
+              <div class="mock-draft-line w-92"></div>
+              <div class="mock-draft-line w-70"></div>
+              <div class="mock-draft-line w-85"></div>
+              <div class="mock-draft-actions">
+                <button class="mock-btn">Save</button>
+                <button class="mock-btn">Approve</button>
+                <button class="mock-btn is-primary">Publish</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ Audit loop diagram ═══ -->
+    <section class="loop-diagram anim" data-anim="fade-up">
+      <div class="wrap">
+        <h2 class="sec-h sec-h-grad anim" data-anim="fade-up">A closed loop,<br/><em>not a one-shot report.</em></h2>
+        <p class="sec-sub anim" data-anim="fade-up" data-delay="60">
+          Audit, fix, re-probe, attribute. Every step compounds the last.
+        </p>
+        <div class="loop-track">
+          <div v-for="(step, i) in loopSteps" :key="step.label" class="loop-step anim" data-anim="fade-up" :data-delay="i * 70">
+            <div class="loop-icon" v-html="step.icon"></div>
+            <div class="loop-num">{{ i + 1 }}</div>
+            <div class="loop-label">{{ step.label }}</div>
+            <div class="loop-desc">{{ step.desc }}</div>
+            <div v-if="i < loopSteps.length - 1" class="loop-arrow" aria-hidden="true">
+              <svg viewBox="0 0 40 12" width="40" height="12"><path d="M0 6 H34 M28 1 L34 6 L28 11" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ Quote / pilot ═══ -->
+    <section class="pull-quote anim" data-anim="fade-up">
+      <div class="wrap">
+        <blockquote class="pq-text">
+          <span class="pq-mark">&ldquo;</span>
+          We were measuring SEO every week and missing the entire AI side of search.
+          Within two weeks of running this we found three Reddit threads where
+          competitors had locked us out &mdash; and shipped fixes.
+        </blockquote>
+        <div class="pq-attr">Internal pilot &middot; Q1 2026</div>
+      </div>
+    </section>
+
     <!-- ═══ How It Works ═══ -->
     <section class="how" id="how">
       <div class="wrap">
@@ -135,14 +328,43 @@
       </div>
     </section>
 
+    <!-- ═══ FAQ ═══ -->
+    <section class="faq anim" data-anim="fade-up">
+      <div class="wrap faq-wrap">
+        <h2 class="sec-h sec-h-grad anim" data-anim="fade-up">Questions,<br/><em>answered plainly.</em></h2>
+        <div class="faq-list">
+          <details v-for="(item, i) in faqItems" :key="i" class="faq-item anim" data-anim="fade-up" :data-delay="i * 60">
+            <summary>
+              <span>{{ item.q }}</span>
+              <span class="faq-plus" aria-hidden="true"></span>
+            </summary>
+            <div class="faq-a">{{ item.a }}</div>
+          </details>
+        </div>
+      </div>
+    </section>
+
     <!-- ═══ Final CTA ═══ -->
-    <section class="final-cta anim" data-anim="fade-up">
+    <section class="final-cta anim" data-anim="fade-up" ref="finalCtaSection">
+      <div class="final-cta-glow" aria-hidden="true"></div>
       <div class="wrap cta-inner">
         <h2>Ready to grow <em>smarter?</em></h2>
         <p>Start your AI visibility audit in minutes.</p>
         <router-link to="/register" class="btn-primary">Get Started</router-link>
       </div>
     </section>
+
+    <!-- ═══ Sticky CTA pill ═══ -->
+    <transition name="sticky-cta">
+      <router-link
+        v-if="showStickyCta"
+        to="/register"
+        class="sticky-cta"
+      >
+        Run a free audit
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+      </router-link>
+    </transition>
 
     <!-- ═══ Footer ═══ -->
     <footer class="footer">
