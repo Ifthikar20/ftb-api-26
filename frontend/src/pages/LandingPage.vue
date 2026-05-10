@@ -597,9 +597,38 @@ onMounted(() => {
   runTypewriter()
   startFeatureAutoAdvance()
 
+  // Count-up stats observer
+  let statsObs = null
+  if (statsSection.value) {
+    statsObs = new IntersectionObserver((entries) => {
+      entries.forEach(e => { if (e.isIntersecting) { animateStats(); statsObs && statsObs.disconnect() } })
+    }, { threshold: 0.3 })
+    statsObs.observe(statsSection.value)
+  }
+
+  // Sticky CTA: show after hero, hide on final CTA
+  const heroEl = document.querySelector('.hero')
+  let heroObs = null
+  if (heroEl) {
+    heroObs = new IntersectionObserver((entries) => {
+      entries.forEach(e => { pastHero = !e.isIntersecting || e.intersectionRatio < 0.2; updateStickyCta() })
+    }, { threshold: [0, 0.2, 0.5] })
+    heroObs.observe(heroEl)
+  }
+  let finalObs = null
+  if (finalCtaSection.value) {
+    finalObs = new IntersectionObserver((entries) => {
+      entries.forEach(e => { onFinalCta = e.isIntersecting; updateStickyCta() })
+    }, { threshold: 0.2 })
+    finalObs.observe(finalCtaSection.value)
+  }
+
   onUnmounted(() => {
     window.removeEventListener('scroll', onScroll)
     obs.disconnect()
+    statsObs && statsObs.disconnect()
+    heroObs && heroObs.disconnect()
+    finalObs && finalObs.disconnect()
     clearInterval(cycleTimer)
     stopFeatureAutoAdvance()
   })
@@ -729,6 +758,134 @@ const plans = [
     featured: false,
   },
 ]
+
+/* ── Showcase features (alternating rows) ── */
+const showcaseFeatures = [
+  {
+    key: 'prompt',
+    eyebrow: 'PROMPT LIBRARY',
+    headline: 'Test what your customers actually ask AI.',
+    desc: "We mine real demand from Reddit, Quora, and search trends, then let DeepSeek paraphrase variations. Your audit set looks like real user questions, not SEO listicles.",
+    bullets: [
+      'Real demand mined from Reddit, Quora, and Google Trends',
+      'DeepSeek-generated paraphrase variants for coverage',
+      'Style + length chips to match how buyers actually search',
+    ],
+  },
+  {
+    key: 'probe',
+    eyebrow: 'MULTI-LLM PROBING',
+    headline: 'Run the same prompts across Claude, GPT-4, Gemini, and Perplexity in one audit.',
+    desc: "We fan out asynchronously, capture the raw responses, and extract every brand mention, citation, and claim. One score, four perspectives.",
+    bullets: [
+      'Async fan-out across all four target LLMs',
+      'Extract brand mentions, citations, and claims',
+      'One unified visibility score, four perspectives',
+    ],
+  },
+  {
+    key: 'source',
+    eyebrow: 'SOURCE INFLUENCE',
+    headline: 'See exactly where each LLM gets its answers in your category.',
+    desc: "Perplexity reads from Reddit. Gemini leans on news. Claude favours Wikipedia. Knowing which source a model trusts is half the battle.",
+    bullets: [
+      'Per-provider source mix breakdown',
+      'Citation confidence scoring',
+      'Spot which Reddit threads or articles dominate',
+    ],
+  },
+  {
+    key: 'studio',
+    eyebrow: 'CONTENT STUDIO',
+    headline: 'Auto-draft the content that closes your gaps. Publish in one click.',
+    desc: "We turn each visibility gap into a brief, draft it grounded in your verified Brand Vault facts, and publish to WordPress / Webflow / Shopify / HubSpot. Re-probe in 14 days, attribute the lift.",
+    bullets: [
+      'Brand Vault-grounded drafts (no hallucinations)',
+      'One-click publish to WordPress, Webflow, Shopify, HubSpot',
+      'Re-probe in 14 days to attribute the lift',
+    ],
+  },
+]
+
+const promptRows = [
+  { q: 'best ai analytics tool for small saas', style: 'comparison', trend: 82 },
+  { q: 'how to track llm visibility in 2026', style: 'how-to', trend: 64 },
+  { q: 'fetchbot vs bluefish alternatives', style: 'vs', trend: 47 },
+]
+
+const sourceShares = [
+  { provider: 'Claude',     segments: [{cls:'reddit',pct:18},{cls:'news',pct:14},{cls:'wiki',pct:38},{cls:'blog',pct:20},{cls:'own',pct:10}] },
+  { provider: 'GPT-4',      segments: [{cls:'reddit',pct:12},{cls:'news',pct:24},{cls:'wiki',pct:30},{cls:'blog',pct:24},{cls:'own',pct:10}] },
+  { provider: 'Gemini',     segments: [{cls:'reddit',pct:10},{cls:'news',pct:42},{cls:'wiki',pct:18},{cls:'blog',pct:22},{cls:'own',pct:8}] },
+  { provider: 'Perplexity', segments: [{cls:'reddit',pct:38},{cls:'news',pct:16},{cls:'wiki',pct:12},{cls:'blog',pct:22},{cls:'own',pct:12}] },
+]
+
+/* ── Audit loop diagram ── */
+const loopSteps = [
+  { label: 'Search', desc: 'Mine real prompts',
+    icon: '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>' },
+  { label: 'Audit', desc: 'Probe four LLMs',
+    icon: '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>' },
+  { label: 'Extract', desc: 'Pull citations',
+    icon: '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>' },
+  { label: 'Verify', desc: 'Brand Vault check',
+    icon: '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l8 4v6c0 5-3.5 9-8 10-4.5-1-8-5-8-10V6z"/><path d="M9 12l2 2 4-4"/></svg>' },
+  { label: 'Generate', desc: 'Draft + publish',
+    icon: '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4z"/></svg>' },
+  { label: 'Re-probe', desc: 'Attribute the lift',
+    icon: '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>' },
+]
+
+/* ── FAQ items ── */
+const faqItems = [
+  { q: 'Is this just SEO with extra steps?',
+    a: 'No. SEO measures Google rankings; we measure how often AI assistants like ChatGPT mention you in their answers. Separate signal, separate playbook.' },
+  { q: 'How is this different from Bluefish or Evertune?',
+    a: 'We measure AND generate the content to close gaps. They diagnose, you hire writers. We give you SMB-friendly pricing and the full loop.' },
+  { q: 'Will using DeepSeek for synthesis affect the audit results?',
+    a: 'No. Audits run only against the four target LLMs (Claude, GPT-4, Gemini, Perplexity). DeepSeek is used purely for cheap offline tooling.' },
+  { q: 'Do I need to install a tracking pixel?',
+    a: 'No. We probe LLMs directly via API. Connect your website URL and we crawl it for Brand Vault facts, but no script lives on your site.' },
+  { q: 'How accurate are the citations?',
+    a: 'Perplexity and Gemini grounded mode return native citations, so 100% accurate there. Claude and GPT-4 are extracted via regex + LLM-assisted parsing; we mark each citation with a confidence score.' },
+]
+
+/* ── Animated count-up stats ── */
+const STAT_TARGETS = [74, 3.2, 10]
+const stat0 = ref(0)
+const stat1 = ref(0)
+const stat2 = ref(0)
+const stat0Display = computed(() => Math.round(stat0.value).toString())
+const stat1Display = computed(() => stat1.value.toFixed(1))
+const stat2Display = computed(() => Math.round(stat2.value).toString())
+const statsSection = ref(null)
+let statsAnimated = false
+
+function animateStats() {
+  if (statsAnimated) return
+  statsAnimated = true
+  const start = performance.now()
+  const dur = 1600
+  function frame(t) {
+    const p = Math.min(1, (t - start) / dur)
+    const eased = 1 - Math.pow(1 - p, 3)
+    stat0.value = STAT_TARGETS[0] * eased
+    stat1.value = STAT_TARGETS[1] * eased
+    stat2.value = STAT_TARGETS[2] * eased
+    if (p < 1) requestAnimationFrame(frame)
+  }
+  requestAnimationFrame(frame)
+}
+
+/* ── Sticky CTA visibility ── */
+const showStickyCta = ref(false)
+const finalCtaSection = ref(null)
+let pastHero = false
+let onFinalCta = false
+
+function updateStickyCta() {
+  showStickyCta.value = pastHero && !onFinalCta
+}
 </script>
 
 <style scoped>
@@ -1931,5 +2088,623 @@ em { color: #5B8DEF; font-style: italic; }
   .tool-card { min-height: auto; }
   .tools-head { flex-direction: column; align-items: flex-start; gap: 20px; }
   .tools-bottom { flex-direction: column; align-items: flex-start; gap: 18px; }
+}
+
+/* ═════════════════════════════════════════
+   Framer-style enhancements
+   Trust strip · Stats · Feature showcase
+   Loop diagram · Quote · FAQ · Sticky CTA
+   ═════════════════════════════════════════ */
+
+/* ── Smooth scroll (global, unscoped) ── */
+</style>
+<style>
+:root { scroll-behavior: smooth; }
+</style>
+<style scoped>
+
+/* ── Section heading shared ── */
+.sec-sub {
+  max-width: 640px;
+  margin: 14px auto 48px;
+  text-align: center;
+  font-size: 17px;
+  line-height: 1.55;
+  color: #5e6b73;
+}
+.sec-h-grad {
+  background: linear-gradient(110deg, #131718 0%, #131718 55%, var(--brand-accent, #c9a050) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  letter-spacing: -0.02em;
+  font-weight: 600;
+}
+
+/* ── Background blur orbs ── */
+.orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(90px);
+  opacity: 0.32;
+  pointer-events: none;
+  z-index: 0;
+  background: radial-gradient(circle, var(--brand-accent, #c9a050) 0%, rgba(201,160,80,0) 70%);
+}
+.orb-1 { width: 520px; height: 520px; top: 600px; left: -180px; animation: orbDrift 22s ease-in-out infinite; }
+.orb-2 { width: 420px; height: 420px; top: 1900px; right: -160px; opacity: 0.24; animation: orbDrift 28s ease-in-out -8s infinite reverse; }
+.orb-3 { width: 460px; height: 460px; top: 3400px; left: 40%; opacity: 0.18; animation: orbDrift 32s ease-in-out -14s infinite; }
+@keyframes orbDrift {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50%      { transform: translate(40px, -30px) scale(1.08); }
+}
+
+/* ── Trust strip / marquee ── */
+.trust {
+  position: relative;
+  padding: 32px 0 12px;
+  overflow: hidden;
+  z-index: 1;
+}
+.marquee {
+  position: relative;
+  overflow: hidden;
+  mask-image: linear-gradient(90deg, transparent 0, #000 12%, #000 88%, transparent 100%);
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 12%, #000 88%, transparent 100%);
+}
+.marquee-track {
+  display: inline-flex;
+  align-items: center;
+  gap: 24px;
+  white-space: nowrap;
+  animation: marqueeRoll 30s linear infinite;
+  will-change: transform;
+}
+.marquee:hover .marquee-track { animation-play-state: paused; }
+.marquee-item {
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: #5e6b73;
+  font-family: 'Geist', 'Plus Jakarta Sans', sans-serif;
+}
+.marquee-item.is-label {
+  color: var(--brand-accent, #c9a050);
+  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  font-size: 12px;
+}
+.marquee-sep { color: #c9c2b6; font-size: 14px; }
+@keyframes marqueeRoll {
+  from { transform: translateX(0%); }
+  to   { transform: translateX(-50%); }
+}
+
+/* ── Stats / count-up ── */
+.stats {
+  position: relative;
+  padding: 96px 0 80px;
+  z-index: 1;
+}
+.count-up-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+  margin-top: 12px;
+}
+.count-up-card {
+  background: #ffffff;
+  border: 1px solid #ece6da;
+  border-radius: 18px;
+  padding: 36px 28px;
+  text-align: left;
+  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+}
+.count-up-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 18px 40px -24px rgba(20, 23, 24, 0.18);
+  border-color: #d9cfbb;
+}
+.count-up-num {
+  font-family: 'DM Serif Display', 'Plus Jakarta Sans', serif;
+  font-size: 64px;
+  line-height: 1;
+  color: #131718;
+  letter-spacing: -0.03em;
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+}
+.count-up-prefix, .count-up-suffix {
+  font-size: 36px;
+  color: var(--brand-accent, #c9a050);
+}
+.count-up-label {
+  margin-top: 18px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #131718;
+  letter-spacing: -0.01em;
+}
+.count-up-note {
+  margin-top: 6px;
+  font-size: 13.5px;
+  color: #6b7680;
+  line-height: 1.5;
+}
+
+/* ── Feature showcase ── */
+.feature-showcase {
+  position: relative;
+  padding: 80px 0 40px;
+  z-index: 1;
+}
+.feature-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 80px;
+  align-items: center;
+  padding: 70px 0;
+  min-height: 60vh;
+}
+.feature-row.is-reverse .feature-copy { order: 2; }
+.feature-row.is-reverse .feature-visual { order: 1; }
+.feature-eyebrow {
+  font-family: 'Geist', sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  color: var(--brand-accent, #c9a050);
+  text-transform: uppercase;
+}
+.feature-h {
+  margin: 16px 0 18px;
+  font-size: 38px;
+  line-height: 1.12;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  color: #131718;
+}
+.feature-desc {
+  max-width: 36rem;
+  font-size: 16.5px;
+  line-height: 1.6;
+  color: #4a5560;
+}
+.feature-bullets {
+  list-style: none;
+  padding: 0;
+  margin: 22px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.feature-bullets li {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  font-size: 14.5px;
+  color: #2d3640;
+}
+.feature-bullet-dot {
+  width: 8px; height: 8px;
+  margin-top: 7px;
+  border-radius: 50%;
+  background: var(--brand-accent, #c9a050);
+  flex-shrink: 0;
+  box-shadow: 0 0 0 4px rgba(201, 160, 80, 0.12);
+}
+
+/* Mock visuals shared */
+.feature-visual {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+.mock-card {
+  width: 100%;
+  max-width: 460px;
+  background: #ffffff;
+  border: 1px solid #ece6da;
+  border-radius: 18px;
+  padding: 22px;
+  box-shadow: 0 30px 60px -32px rgba(20, 23, 24, 0.22);
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+.mock-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 36px 70px -32px rgba(20, 23, 24, 0.28);
+}
+.mock-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #f8f4ec;
+  border: 1px solid #ece6da;
+  font-size: 13.5px;
+  color: #2d3640;
+}
+.mock-search-icon {
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  border: 1.6px solid #8a8275;
+  position: relative;
+}
+.mock-search-icon::after {
+  content: ''; position: absolute;
+  width: 6px; height: 1.6px;
+  background: #8a8275;
+  bottom: -3px; right: -3px;
+  transform: rotate(45deg);
+}
+.mock-search-text { flex: 1; }
+.mock-search-caret {
+  color: var(--brand-accent, #c9a050);
+  animation: caretBlink 1s steps(1) infinite;
+}
+@keyframes caretBlink { 50% { opacity: 0; } }
+
+.mock-rows { margin-top: 14px; display: flex; flex-direction: column; gap: 10px; }
+.mock-prompt-row {
+  display: grid;
+  grid-template-columns: 1fr auto 80px;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #fbf8f1;
+  border: 1px solid #f0e9d9;
+  opacity: 0;
+  animation: fadeSlide 0.55s ease forwards;
+}
+@keyframes fadeSlide { from { opacity:0; transform: translateY(6px);} to {opacity:1; transform:none;} }
+.mock-q { font-size: 13px; color: #2d3640; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.mock-chip {
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(201,160,80,0.14);
+  color: #8a6d2a;
+}
+.mock-chip.is-comparison { background: rgba(74,127,176,0.14); color: #345f86; }
+.mock-chip.is-how-to { background: rgba(110,165,110,0.16); color: #3f6b3f; }
+.mock-chip.is-vs { background: rgba(198,90,47,0.14); color: #8a3d18; }
+.mock-trend {
+  height: 6px; border-radius: 4px;
+  background: #ece6da;
+  overflow: hidden;
+}
+.mock-trend-bar {
+  width: 0; height: 100%;
+  background: linear-gradient(90deg, var(--brand-accent, #c9a050), #d9b770);
+  border-radius: 4px;
+  animation: barFill 1.1s cubic-bezier(0.22,1,0.36,1) forwards;
+}
+@keyframes barFill { to { width: var(--target-w, 50%); } }
+
+/* Probe mini grid */
+.mock-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.mock-mini {
+  background: #fbf8f1;
+  border: 1px solid #f0e9d9;
+  border-radius: 12px;
+  padding: 12px;
+  opacity: 0;
+  animation: fadeSlide 0.55s ease forwards;
+}
+.mock-mini-head { display:flex; align-items:center; gap:8px; font-size: 12.5px; }
+.mock-mini-name { flex: 1; font-weight: 600; color: #2d3640; }
+.mock-mini-pct { color: var(--brand-accent, #c9a050); font-weight: 600; }
+.mock-mini-meta { margin-top: 8px; font-size: 11.5px; color: #6b7680; }
+
+/* Source bars */
+.mock-source-title {
+  font-size: 12px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #8a8275;
+  margin-bottom: 12px;
+  font-weight: 600;
+}
+.mock-source-row {
+  display: grid;
+  grid-template-columns: 86px 1fr;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+  opacity: 0;
+  animation: fadeSlide 0.55s ease forwards;
+}
+.mock-source-label { font-size: 13px; color: #2d3640; font-weight: 500; }
+.mock-stack {
+  display: flex;
+  height: 14px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #f0e9d9;
+}
+.mock-seg {
+  width: 0;
+  height: 100%;
+  display: block;
+  animation: barFill 1.1s cubic-bezier(0.22,1,0.36,1) forwards;
+}
+.seg-reddit { background: #c65a2f; }
+.seg-news   { background: #4a7fb0; }
+.seg-wiki   { background: #6b7680; }
+.seg-blog   { background: #d9b770; }
+.seg-own    { background: var(--brand-accent, #c9a050); }
+.mock-source-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 14px;
+  font-size: 11.5px;
+  color: #6b7680;
+}
+.mock-source-legend i {
+  display: inline-block;
+  width: 10px; height: 10px;
+  border-radius: 3px;
+  margin-right: 6px;
+  vertical-align: -1px;
+}
+
+/* Studio draft mock */
+.mock-draft-head { display:flex; gap: 8px; align-items:center; margin-bottom: 10px; }
+.mock-chip.is-draft { background: rgba(20,23,24,0.08); color: #2d3640; }
+.mock-chip-prov {
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(201,160,80,0.14);
+  color: #8a6d2a;
+  font-weight: 600;
+}
+.mock-draft-title {
+  font-family: 'DM Serif Display', serif;
+  font-size: 19px;
+  line-height: 1.25;
+  color: #131718;
+  margin: 4px 0 16px;
+}
+.mock-draft-line {
+  height: 8px;
+  border-radius: 4px;
+  background: #f0e9d9;
+  margin-bottom: 8px;
+}
+.mock-draft-line.w-95 { width: 95%; }
+.mock-draft-line.w-88 { width: 88%; }
+.mock-draft-line.w-92 { width: 92%; }
+.mock-draft-line.w-70 { width: 70%; }
+.mock-draft-line.w-85 { width: 85%; }
+.mock-draft-actions {
+  display: flex; gap: 8px; margin-top: 16px;
+}
+.mock-btn {
+  border: 1px solid #ece6da;
+  background: #fff;
+  color: #2d3640;
+  font-size: 12.5px;
+  font-weight: 600;
+  border-radius: 8px;
+  padding: 7px 14px;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+.mock-btn:hover { background: #f8f4ec; }
+.mock-btn.is-primary {
+  background: #131718;
+  color: #fff;
+  border-color: #131718;
+}
+
+/* ── Loop diagram ── */
+.loop-diagram {
+  position: relative;
+  padding: 96px 0 80px;
+  z-index: 1;
+}
+.loop-track {
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 16px;
+  flex-wrap: wrap;
+}
+.loop-step {
+  flex: 1 1 140px;
+  min-width: 140px;
+  position: relative;
+  background: #ffffff;
+  border: 1px solid #ece6da;
+  border-radius: 14px;
+  padding: 18px 16px 16px;
+  text-align: center;
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+.loop-step:hover { transform: translateY(-2px); box-shadow: 0 18px 40px -24px rgba(20,23,24,0.2); }
+.loop-icon {
+  display: inline-flex;
+  width: 38px; height: 38px;
+  border-radius: 10px;
+  background: rgba(201,160,80,0.12);
+  color: var(--brand-accent, #c9a050);
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 8px;
+}
+.loop-num {
+  position: absolute;
+  top: 10px; right: 12px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #c0b8a6;
+  letter-spacing: 0.1em;
+}
+.loop-label { font-size: 14.5px; font-weight: 700; color: #131718; }
+.loop-desc { margin-top: 4px; font-size: 12.5px; color: #6b7680; }
+.loop-arrow {
+  position: absolute;
+  right: -22px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--brand-accent, #c9a050);
+  opacity: 0.7;
+  animation: arrowPulse 2.4s ease-in-out infinite;
+}
+@keyframes arrowPulse { 0%,100% { opacity: 0.4; transform: translate(-2px,-50%);} 50% { opacity: 0.95; transform: translate(2px,-50%);} }
+
+/* ── Pull quote ── */
+.pull-quote {
+  position: relative;
+  padding: 80px 0;
+  z-index: 1;
+}
+.pq-text {
+  max-width: 880px;
+  margin: 0 auto;
+  font-family: 'DM Serif Display', serif;
+  font-size: 32px;
+  line-height: 1.35;
+  color: #131718;
+  letter-spacing: -0.015em;
+  text-align: center;
+  position: relative;
+}
+.pq-mark {
+  display: block;
+  font-size: 80px;
+  line-height: 0.4;
+  color: var(--brand-accent, #c9a050);
+  margin-bottom: 18px;
+}
+.pq-attr {
+  margin-top: 24px;
+  text-align: center;
+  font-size: 13px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #8a8275;
+  font-weight: 600;
+}
+
+/* ── FAQ ── */
+.faq {
+  position: relative;
+  padding: 80px 0;
+  z-index: 1;
+}
+.faq-wrap { max-width: 880px; }
+.faq-list { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; }
+.faq-item {
+  background: #ffffff;
+  border: 1px solid #ece6da;
+  border-radius: 14px;
+  padding: 4px 4px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.faq-item[open] { border-color: #d9cfbb; box-shadow: 0 18px 40px -28px rgba(20,23,24,0.18); }
+.faq-item summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 18px 22px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #131718;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  letter-spacing: -0.01em;
+}
+.faq-item summary::-webkit-details-marker { display: none; }
+.faq-plus {
+  position: relative;
+  width: 16px; height: 16px;
+  flex-shrink: 0;
+}
+.faq-plus::before, .faq-plus::after {
+  content: '';
+  position: absolute;
+  background: var(--brand-accent, #c9a050);
+  border-radius: 1px;
+  transition: transform 0.25s ease;
+}
+.faq-plus::before { left: 0; right: 0; top: 7px; height: 2px; }
+.faq-plus::after  { top: 0; bottom: 0; left: 7px; width: 2px; }
+.faq-item[open] .faq-plus::after { transform: scaleY(0); }
+.faq-a {
+  padding: 0 22px 20px;
+  font-size: 15px;
+  line-height: 1.6;
+  color: #4a5560;
+}
+
+/* ── Final CTA glow ── */
+.final-cta { position: relative; overflow: hidden; }
+.final-cta-glow {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at 50% 50%, rgba(201,160,80,0.18) 0%, rgba(245,239,230,0) 60%);
+  pointer-events: none;
+}
+.final-cta .cta-inner { position: relative; z-index: 1; }
+.final-cta h2 { font-size: 56px; }
+
+/* ── Sticky CTA pill ── */
+.sticky-cta {
+  position: fixed;
+  bottom: 22px;
+  right: 22px;
+  z-index: 60;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 18px;
+  border-radius: 999px;
+  background: #131718;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  text-decoration: none;
+  box-shadow: 0 16px 40px -12px rgba(20,23,24,0.42), 0 0 0 1px rgba(255,255,255,0.04) inset;
+  transition: transform 0.22s ease, box-shadow 0.22s ease;
+}
+.sticky-cta:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 24px 50px -14px rgba(20,23,24,0.5);
+}
+.sticky-cta-enter-from, .sticky-cta-leave-to {
+  opacity: 0;
+  transform: translateY(20px);
+}
+.sticky-cta-enter-active, .sticky-cta-leave-active {
+  transition: opacity 0.35s ease, transform 0.35s ease;
+}
+
+/* ── Responsive ── */
+@media (max-width: 900px) {
+  .count-up-grid { grid-template-columns: 1fr; }
+  .feature-row { grid-template-columns: 1fr; gap: 40px; padding: 50px 0; min-height: 0; }
+  .feature-row.is-reverse .feature-copy { order: 1; }
+  .feature-row.is-reverse .feature-visual { order: 2; }
+  .feature-h { font-size: 30px; }
+  .pq-text { font-size: 24px; }
+  .loop-arrow { display: none; }
+  .final-cta h2 { font-size: 40px; }
 }
 </style>
