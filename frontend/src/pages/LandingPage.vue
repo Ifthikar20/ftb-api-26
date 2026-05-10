@@ -368,12 +368,80 @@
 
     <!-- ═══ Footer ═══ -->
     <footer class="footer">
-      <div class="wrap footer-row">
-        <div class="footer-brand">
-          <img src="/images/fb-logo.png" alt="FetchBot" class="footer-logo" />
-          <span>FetchBot</span>
+      <div class="wrap">
+        <!-- Top row: brand + 4 link columns -->
+        <div class="footer-grid">
+          <div class="footer-brand-col">
+            <div class="footer-brand">
+              <img src="/images/fb-logo.png" alt="FetchBot" class="footer-logo" />
+              <span>FetchBot</span>
+            </div>
+            <p class="footer-tagline">
+              Generative Engine Optimization for brands that want to be found
+              by AI assistants. Measure, verify, and close the gap.
+            </p>
+            <div class="footer-socials">
+              <a href="https://twitter.com/fetchbot" target="_blank" rel="noopener" aria-label="Twitter / X" class="footer-social">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+              </a>
+              <a href="https://linkedin.com/company/fetchbot" target="_blank" rel="noopener" aria-label="LinkedIn" class="footer-social">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M20.45 20.45h-3.55v-5.57c0-1.33-.02-3.04-1.85-3.04-1.85 0-2.13 1.45-2.13 2.94v5.67H9.37V9h3.41v1.56h.05c.47-.9 1.63-1.85 3.36-1.85 3.6 0 4.26 2.37 4.26 5.45zM5.34 7.43a2.06 2.06 0 1 1 0-4.12 2.06 2.06 0 0 1 0 4.12zM7.12 20.45H3.56V9h3.56zM22.22 0H1.77C.79 0 0 .77 0 1.72v20.56C0 23.23.79 24 1.77 24h20.45C23.21 24 24 23.23 24 22.28V1.72C24 .77 23.21 0 22.22 0z"/></svg>
+              </a>
+              <a href="https://github.com/fetchbot" target="_blank" rel="noopener" aria-label="GitHub" class="footer-social">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.3 3.44 9.8 8.21 11.39.6.11.82-.26.82-.58v-2.04c-3.34.73-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.09-.74.08-.73.08-.73 1.21.09 1.85 1.24 1.85 1.24 1.07 1.84 2.81 1.31 3.5 1 .11-.78.42-1.31.76-1.61-2.66-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.13-.3-.54-1.52.12-3.18 0 0 1.01-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.29-1.55 3.3-1.23 3.3-1.23.66 1.66.25 2.88.12 3.18.77.84 1.24 1.91 1.24 3.22 0 4.61-2.81 5.62-5.49 5.92.43.37.81 1.1.81 2.22v3.29c0 .32.22.7.83.58A12.01 12.01 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+              </a>
+            </div>
+          </div>
+
+          <div class="footer-col">
+            <div class="footer-col-title">Product</div>
+            <a href="#features">Features</a>
+            <a href="#how">How it works</a>
+            <a href="#pricing">Pricing</a>
+            <router-link to="/integrations">Integrations</router-link>
+            <a href="#faq">FAQ</a>
+          </div>
+
+          <div class="footer-col">
+            <div class="footer-col-title">Resources</div>
+            <a href="https://docs.fetchbot.ai" target="_blank" rel="noopener">Documentation</a>
+            <a href="https://docs.fetchbot.ai/api" target="_blank" rel="noopener">API reference</a>
+            <a href="/blog">Blog</a>
+            <a href="/changelog">Changelog</a>
+            <a href="/status" target="_blank" rel="noopener">Status</a>
+          </div>
+
+          <div class="footer-col">
+            <div class="footer-col-title">Company</div>
+            <a href="/about">About</a>
+            <a href="/contact">Contact us</a>
+            <a href="mailto:hello@fetchbot.ai">hello@fetchbot.ai</a>
+            <a href="/careers">Careers</a>
+            <a href="/security">Security</a>
+          </div>
+
+          <div class="footer-col">
+            <div class="footer-col-title">Legal</div>
+            <router-link to="/terms">Terms of Service</router-link>
+            <router-link to="/privacy">Privacy Policy</router-link>
+            <a href="/dpa">Data Processing Agreement</a>
+            <a href="/cookies">Cookie Policy</a>
+            <a href="/ai-policy">Responsible AI Use</a>
+          </div>
         </div>
-        <span class="footer-copy">2026 FetchBot. Privacy. Terms.</span>
+
+        <!-- Bottom row: copy + meta links -->
+        <div class="footer-bottom">
+          <span class="footer-copy">© 2026 FetchBot, Inc. All rights reserved.</span>
+          <div class="footer-meta">
+            <span class="footer-meta-item">
+              <span class="footer-status-dot"></span>
+              All systems operational
+            </span>
+            <span class="footer-meta-divider">·</span>
+            <span class="footer-meta-item">Made with care for the AI-search era</span>
+          </div>
+        </div>
       </div>
     </footer>
   </div>
@@ -1706,11 +1774,125 @@ em { color: #5B8DEF; font-style: italic; }
 .cta-inner p { font-size: 15px; color: #6e6a65; margin-bottom: 28px; }
 
 /* ── Footer ── */
-.footer { padding: 24px 0; border-top: 1px solid rgba(0,0,0,0.06); }
-.footer-row { display: flex; align-items: center; justify-content: space-between; }
-.footer-brand { display: flex; align-items: center; gap: 8px; font-family: 'DM Serif Display', Georgia, serif; font-size: 16px; }
-.footer-logo { width: 28px; height: 28px; object-fit: contain; }
-.footer-copy { font-size: 11px; color: #a09a93; }
+/* ── Footer ─────────────────────────────────────────────── */
+.footer {
+  padding: 80px 0 32px;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  background: #faf6ef;
+  color: #4a4540;
+}
+.footer-grid {
+  display: grid;
+  grid-template-columns: 1.4fr repeat(4, 1fr);
+  gap: 48px 32px;
+  padding-bottom: 56px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+@media (max-width: 980px) {
+  .footer-grid { grid-template-columns: 1fr 1fr; gap: 40px 24px; }
+  .footer-brand-col { grid-column: 1 / -1; }
+}
+@media (max-width: 600px) {
+  .footer-grid { grid-template-columns: 1fr; }
+}
+
+.footer-brand-col { max-width: 320px; }
+.footer-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: 'DM Serif Display', Georgia, serif;
+  font-size: 20px;
+  color: #1f2937;
+  margin-bottom: 14px;
+}
+.footer-logo { width: 32px; height: 32px; object-fit: contain; }
+.footer-tagline {
+  font-size: 13.5px;
+  line-height: 1.65;
+  color: #6e6a65;
+  margin: 0 0 18px;
+}
+
+.footer-socials {
+  display: flex;
+  gap: 8px;
+}
+.footer-social {
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  background: #ffffff;
+  color: #4a4540;
+  transition: transform 0.15s ease-out, color 0.15s ease-out, border-color 0.15s ease-out, box-shadow 0.15s ease-out;
+}
+.footer-social:hover {
+  color: var(--brand-accent, #c9a050);
+  border-color: var(--brand-accent, #c9a050);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(201, 160, 80, 0.18);
+}
+
+.footer-col { display: flex; flex-direction: column; gap: 10px; }
+.footer-col-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #1f2937;
+  margin-bottom: 8px;
+}
+.footer-col a {
+  font-size: 13.5px;
+  color: #6e6a65;
+  text-decoration: none;
+  transition: color 0.12s ease;
+}
+.footer-col a:hover {
+  color: var(--brand-accent, #c9a050);
+}
+
+.footer-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding-top: 28px;
+}
+.footer-copy {
+  font-size: 12.5px;
+  color: #a09a93;
+}
+.footer-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: #a09a93;
+}
+.footer-meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.footer-meta-divider { color: #cbc5bd; }
+.footer-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background: #10b981;
+  box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.55);
+  animation: footer-status-pulse 1.8s ease-out infinite;
+}
+@keyframes footer-status-pulse {
+  70% { box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+}
 
 /* ── Responsive ── */
 @media (max-width: 900px) {
