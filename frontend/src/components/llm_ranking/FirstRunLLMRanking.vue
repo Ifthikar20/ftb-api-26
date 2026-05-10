@@ -49,7 +49,14 @@
       </div>
       <ul v-else class="prompt-list">
         <li v-for="(p, i) in prompts" :key="i" class="prompt-item">
-          <span class="prompt-text">{{ p }}</span>
+          <div class="prompt-main">
+            <span class="prompt-text">{{ promptText(p) }}</span>
+            <div v-if="promptMeta(p)" class="prompt-meta">
+              <span v-if="promptMeta(p).type" class="prompt-tag">{{ formatType(promptMeta(p).type) }}</span>
+              <span v-if="promptMeta(p).funnel_stage" class="prompt-tag is-funnel">{{ promptMeta(p).funnel_stage }} funnel</span>
+            </div>
+            <p v-if="promptMeta(p)?.rationale" class="prompt-rationale">{{ promptMeta(p).rationale }}</p>
+          </div>
           <button type="button" class="prompt-remove" @click="removePrompt(i)" title="Remove">×</button>
         </li>
       </ul>
@@ -155,6 +162,20 @@ function removePrompt(i) {
   prompts.value.splice(i, 1)
 }
 
+// The /preview endpoint returns either plain strings or
+// {text, type, funnel_stage, rationale} dicts. Normalise on read so the
+// template can render either shape, and flatten before we POST the audit.
+function promptText(p) {
+  if (!p) return ''
+  return typeof p === 'string' ? p : (p.text || '')
+}
+function promptMeta(p) {
+  return p && typeof p === 'object' ? p : null
+}
+function formatType(t) {
+  return String(t || '').replace(/_/g, ' ')
+}
+
 function addPrompt() {
   const text = newPrompt.value.trim()
   if (!text) return
@@ -162,7 +183,7 @@ function addPrompt() {
     error.value = 'Maximum 10 prompts per audit.'
     return
   }
-  prompts.value.push(text)
+  prompts.value.push({ text, type: 'custom', funnel_stage: 'mid', rationale: '' })
   newPrompt.value = ''
 }
 
@@ -170,8 +191,12 @@ async function runAudit() {
   error.value = ''
   running.value = true
   try {
+    const flatPrompts = prompts.value
+      .map(promptText)
+      .map((s) => (s || '').trim())
+      .filter(Boolean)
     const res = await llmRankingApi.runAudit(props.website.id, {
-      custom_prompts: prompts.value,
+      custom_prompts: flatPrompts,
       providers: selectedProviders.value,
     })
     const data = res.data?.data || res.data
@@ -277,20 +302,54 @@ async function runAudit() {
 
 .prompt-item {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  padding: 10px 12px;
-  margin-bottom: 6px;
-  background: var(--bg-primary, #0b0d12);
-  border: 1px solid var(--border-subtle, #2a2f3a);
-  border-radius: 8px;
+  padding: 14px 16px;
+  margin-bottom: 8px;
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 12px;
   gap: 12px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
-
+.prompt-item:hover {
+  border-color: rgba(255, 107, 53, 0.35);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.04);
+}
+.prompt-main {
+  flex: 1; min-width: 0;
+}
 .prompt-text {
-  color: var(--text-primary);
-  font-size: 0.92rem;
-  flex: 1;
+  display: block;
+  color: #0f172a;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.45;
+}
+.prompt-meta {
+  display: flex; gap: 6px; flex-wrap: wrap;
+  margin-top: 6px;
+}
+.prompt-tag {
+  display: inline-block;
+  padding: 2px 8px;
+  font-size: 11px; font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: capitalize;
+  border-radius: 9999px;
+  background: rgba(59, 130, 246, 0.12);
+  color: #1d4ed8;
+}
+.prompt-tag.is-funnel {
+  background: rgba(255, 107, 53, 0.10);
+  color: #c2410c;
+}
+.prompt-rationale {
+  margin: 8px 0 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: #64748b;
+  font-style: italic;
 }
 
 .prompt-remove {
