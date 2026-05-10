@@ -162,17 +162,13 @@
         <div v-if="generating && !generatedPrompts.length" class="pl-skeleton-wrap">
           <div class="pl-skeleton-status">
             <span class="pl-skeleton-pulse"></span>
-            <span>Probing for prompts in your category…</span>
+            <span>Loading your prompt library…</span>
           </div>
-          <div v-for="n in 5" :key="'sk-' + n" class="pl-skeleton-row" :style="{ animationDelay: (n * 0.08) + 's' }">
-            <div class="pl-skel pl-skel-id"></div>
-            <div class="pl-skel pl-skel-chip"></div>
+          <div v-for="n in 4" :key="'sk-' + n" class="pl-skeleton-row" :style="{ animationDelay: (n * 0.12) + 's' }">
             <div class="pl-skel-prompt-col">
-              <div class="pl-skel pl-skel-line w-90"></div>
-              <div class="pl-skel pl-skel-line w-60"></div>
+              <div class="pl-skel pl-skel-line w-85"></div>
+              <div class="pl-skel pl-skel-line w-55"></div>
             </div>
-            <div class="pl-skel pl-skel-trend"></div>
-            <div class="pl-skel pl-skel-status"></div>
             <div class="pl-skel pl-skel-action"></div>
           </div>
         </div>
@@ -1869,7 +1865,10 @@ watch(websiteId, loadVariables)
 /* ── Empty state inside the results table ───────────────────── */
 /* ── Skeleton loading rows ──────────────────────────────────── */
 .pl-skeleton-wrap {
-  padding: 20px 24px 28px;
+  padding: 28px 24px 36px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
 .pl-skeleton-status {
   display: inline-flex;
@@ -1877,10 +1876,11 @@ watch(websiteId, loadVariables)
   gap: 10px;
   font-size: 13px;
   color: var(--text-secondary);
-  margin-bottom: 18px;
+  margin-bottom: 14px;
   padding: 8px 14px;
   background: var(--bg-surface, rgba(15, 23, 42, 0.04));
   border-radius: 9999px;
+  align-self: flex-start;
 }
 .pl-skeleton-pulse {
   width: 8px;
@@ -1897,13 +1897,14 @@ watch(websiteId, loadVariables)
 .pl-skeleton-row {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 14px 0;
-  border-top: 1px solid var(--border-color);
+  gap: 24px;
+  padding: 22px 20px;
+  background: var(--bg-elevated, rgba(15, 23, 42, 0.02));
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
   opacity: 0;
   animation: pl-skel-fade 0.4s ease-out forwards;
 }
-.pl-skeleton-row:first-of-type { border-top: 0; }
 @keyframes pl-skel-fade { to { opacity: 1; } }
 .pl-skel {
   background: linear-gradient(
@@ -1921,15 +1922,11 @@ watch(websiteId, loadVariables)
   0%   { background-position: 200% 0; }
   100% { background-position: -200% 0; }
 }
-.pl-skel-id      { width: 64px; height: 22px; border-radius: 9999px; flex-shrink: 0; }
-.pl-skel-chip    { width: 70px; height: 18px; border-radius: 9999px; flex-shrink: 0; }
-.pl-skel-prompt-col { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
-.pl-skel-line    { height: 12px; }
-.pl-skel-line.w-90 { width: 90%; }
-.pl-skel-line.w-60 { width: 60%; }
-.pl-skel-trend   { width: 110px; height: 8px; border-radius: 9999px; flex-shrink: 0; }
-.pl-skel-status  { width: 70px; height: 18px; border-radius: 9999px; flex-shrink: 0; }
-.pl-skel-action  { width: 60px; height: 28px; border-radius: 9999px; flex-shrink: 0; }
+.pl-skel-prompt-col { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+.pl-skel-line    { height: 14px; }
+.pl-skel-line.w-85 { width: 85%; }
+.pl-skel-line.w-55 { width: 55%; }
+.pl-skel-action  { width: 88px; height: 32px; border-radius: 9999px; flex-shrink: 0; }
 
 /* ── Source / 'Last seen on' chip in the expanded detail ────── */
 .pl-source-chip {
