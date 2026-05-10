@@ -11,6 +11,11 @@
 
     <!-- Tab toggle: Search vs Saved -->
     <div class="pl-tabs" role="tablist">
+      <span
+        class="pl-tab-indicator"
+        :style="{ transform: `translateX(${activeTab === 'saved' ? '100%' : '0%'})` }"
+        aria-hidden="true"
+      ></span>
       <button
         class="pl-tab"
         :class="{ 'is-active': activeTab === 'search' }"
@@ -18,7 +23,11 @@
         :aria-selected="activeTab === 'search'"
         @click="activeTab = 'search'"
       >
-        Search
+        <svg class="pl-tab-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="7" stroke-linecap="round"/>
+          <path d="M21 21l-4.35-4.35" stroke-linecap="round"/>
+        </svg>
+        <span>Search</span>
       </button>
       <button
         class="pl-tab"
@@ -27,7 +36,10 @@
         :aria-selected="activeTab === 'saved'"
         @click="activeTab = 'saved'"
       >
-        Saved
+        <svg class="pl-tab-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span>Saved</span>
         <span v-if="savedTableRef && savedTableRef.count" class="pl-tab-count">
           {{ savedTableRef.count }}
         </span>
@@ -144,21 +156,40 @@
 
 
       <AirCard size="md" :padded="false">
-        <!-- Empty / loading / error state — rendered outside the table so
-             there's no horizontal scrollbar when there's nothing to show -->
-        <div v-if="!generatedPrompts.length" class="pl-empty-state">
+        <!-- Skeleton rows while we wait for the synthesis call to come back.
+             More tactile than a spinning bar — feels like the table is
+             populating itself. -->
+        <div v-if="generating && !generatedPrompts.length" class="pl-skeleton-wrap">
+          <div class="pl-skeleton-status">
+            <span class="pl-skeleton-pulse"></span>
+            <span>Probing for prompts in your category…</span>
+          </div>
+          <div v-for="n in 5" :key="'sk-' + n" class="pl-skeleton-row" :style="{ animationDelay: (n * 0.08) + 's' }">
+            <div class="pl-skel pl-skel-id"></div>
+            <div class="pl-skel pl-skel-chip"></div>
+            <div class="pl-skel-prompt-col">
+              <div class="pl-skel pl-skel-line w-90"></div>
+              <div class="pl-skel pl-skel-line w-60"></div>
+            </div>
+            <div class="pl-skel pl-skel-trend"></div>
+            <div class="pl-skel pl-skel-status"></div>
+            <div class="pl-skel pl-skel-action"></div>
+          </div>
+        </div>
+
+        <!-- Empty / error state — rendered outside the table so there's no
+             horizontal scrollbar when there's nothing to show -->
+        <div v-else-if="!generatedPrompts.length" class="pl-empty-state">
           <div class="pl-empty-icon" aria-hidden="true">
             <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
               <circle cx="11" cy="11" r="7" stroke-linecap="round"/>
               <path d="M21 21l-4.35-4.35" stroke-linecap="round"/>
             </svg>
           </div>
-          <div v-if="generating" class="pl-empty-title">Searching…</div>
-          <div v-else-if="generationError" class="pl-empty-title">No prompts for that scenario</div>
+          <div v-if="generationError" class="pl-empty-title">No prompts for that scenario</div>
           <div v-else class="pl-empty-title">No prompts yet</div>
           <div class="pl-empty-sub">
-            <template v-if="generating">Generating natural-feeling prompts based on your scenario.</template>
-            <template v-else-if="generationError">Try adding a few more words or a specific place.</template>
+            <template v-if="generationError">Try adding a few more words or a specific place.</template>
             <template v-else>Type a scenario above and hit Search to populate this table.</template>
           </div>
         </div>
@@ -273,8 +304,14 @@
                     <div class="pl-detail-inner">
                       <div class="pl-detail-grid">
                         <div class="pl-detail-block">
-                          <div class="pl-detail-label">Source</div>
-                          <div class="pl-detail-value">{{ generationProvider || 'deepseek' }}</div>
+                          <div class="pl-detail-label">Last seen on</div>
+                          <div class="pl-detail-value">
+                            <span class="pl-source-chip" :class="'is-' + (p.seen_in || 'ai_chat')">
+                              <span class="pl-source-dot"></span>
+                              {{ seenInLabel(p.seen_in) }}
+                              <template v-if="p.community"> · {{ p.community }}</template>
+                            </span>
+                          </div>
                         </div>
                         <div class="pl-detail-block">
                           <div class="pl-detail-label">Intent</div>
@@ -632,6 +669,23 @@ function formatRowId(p) {
 function wordCountOf(p) {
   const t = (p?.prompt_text || p?.template_text || '').trim()
   return t ? t.split(/\s+/).filter(Boolean).length : 0
+}
+
+function seenInLabel(key) {
+  const map = {
+    reddit: 'Reddit',
+    quora: 'Quora',
+    google_search: 'Google search',
+    hacker_news: 'Hacker News',
+    yelp: 'Yelp',
+    tiktok: 'TikTok',
+    youtube_comments: 'YouTube comments',
+    twitter: 'X / Twitter',
+    forum: 'Forum',
+    news_comments: 'News comments',
+    ai_chat: 'AI chat',
+  }
+  return map[key] || 'AI chat'
 }
 
 function trendBarClass(score) {
@@ -1136,19 +1190,36 @@ watch(websiteId, loadVariables)
 
 /* ── Tabs (Search / Saved) ──────────────────────────────────── */
 .pl-tabs {
+  position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px;
-  background: var(--bg-surface, rgba(0, 0, 0, 0.04));
+  padding: 5px;
+  background: var(--bg-surface, rgba(15, 23, 42, 0.06));
   border-radius: 9999px;
   margin-bottom: 28px;
+  isolation: isolate;
+}
+.pl-tab-indicator {
+  position: absolute;
+  top: 5px;
+  bottom: 5px;
+  left: 5px;
+  width: calc(50% - 5px);
+  background: var(--bg-card, #ffffff);
+  border-radius: 9999px;
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.06),
+    0 4px 12px rgba(15, 23, 42, 0.06);
+  transition: transform 0.32s cubic-bezier(0.32, 0.72, 0, 1);
+  z-index: 0;
 }
 .pl-tab {
+  position: relative;
+  z-index: 1;
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 18px;
+  padding: 9px 22px;
   border: 0;
   background: transparent;
   color: var(--text-secondary);
@@ -1157,14 +1228,24 @@ watch(websiteId, loadVariables)
   font-family: inherit;
   border-radius: 9999px;
   cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+  transition: color 0.2s ease;
+  letter-spacing: 0.005em;
+  flex: 1;
+  justify-content: center;
+  min-width: 130px;
+}
+.pl-tab-icon {
+  flex-shrink: 0;
+  opacity: 0.6;
+  transition: opacity 0.2s ease, transform 0.2s ease;
 }
 .pl-tab:hover { color: var(--text-primary); }
+.pl-tab:hover .pl-tab-icon { opacity: 0.85; }
 .pl-tab.is-active {
-  background: var(--bg-card);
   color: var(--text-primary);
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+  font-weight: 600;
 }
+.pl-tab.is-active .pl-tab-icon { opacity: 1; transform: scale(1.05); }
 .pl-tab-count {
   display: inline-flex;
   align-items: center;
@@ -1786,6 +1867,111 @@ watch(websiteId, loadVariables)
 .pl-tooltip-foot { margin: 6px 0 0; padding-top: 8px; border-top: 1px solid var(--border-color); color: var(--text-muted); font-size: 11px; }
 
 /* ── Empty state inside the results table ───────────────────── */
+/* ── Skeleton loading rows ──────────────────────────────────── */
+.pl-skeleton-wrap {
+  padding: 20px 24px 28px;
+}
+.pl-skeleton-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 18px;
+  padding: 8px 14px;
+  background: var(--bg-surface, rgba(15, 23, 42, 0.04));
+  border-radius: 9999px;
+}
+.pl-skeleton-pulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background: var(--brand-accent);
+  box-shadow: 0 0 0 0 var(--brand-accent-glow, rgba(91, 141, 239, 0.5));
+  animation: pl-skel-pulse 1.4s ease-out infinite;
+}
+@keyframes pl-skel-pulse {
+  70%  { box-shadow: 0 0 0 8px rgba(91, 141, 239, 0); }
+  100% { box-shadow: 0 0 0 0  rgba(91, 141, 239, 0); }
+}
+.pl-skeleton-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 0;
+  border-top: 1px solid var(--border-color);
+  opacity: 0;
+  animation: pl-skel-fade 0.4s ease-out forwards;
+}
+.pl-skeleton-row:first-of-type { border-top: 0; }
+@keyframes pl-skel-fade { to { opacity: 1; } }
+.pl-skel {
+  background: linear-gradient(
+    90deg,
+    rgba(15, 23, 42, 0.04) 0%,
+    rgba(15, 23, 42, 0.10) 50%,
+    rgba(15, 23, 42, 0.04) 100%
+  );
+  background-size: 200% 100%;
+  animation: pl-skel-shimmer 1.4s ease-in-out infinite;
+  border-radius: 6px;
+  height: 14px;
+}
+@keyframes pl-skel-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+.pl-skel-id      { width: 64px; height: 22px; border-radius: 9999px; flex-shrink: 0; }
+.pl-skel-chip    { width: 70px; height: 18px; border-radius: 9999px; flex-shrink: 0; }
+.pl-skel-prompt-col { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.pl-skel-line    { height: 12px; }
+.pl-skel-line.w-90 { width: 90%; }
+.pl-skel-line.w-60 { width: 60%; }
+.pl-skel-trend   { width: 110px; height: 8px; border-radius: 9999px; flex-shrink: 0; }
+.pl-skel-status  { width: 70px; height: 18px; border-radius: 9999px; flex-shrink: 0; }
+.pl-skel-action  { width: 60px; height: 28px; border-radius: 9999px; flex-shrink: 0; }
+
+/* ── Source / 'Last seen on' chip in the expanded detail ────── */
+.pl-source-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  border-radius: 9999px;
+  font-size: 13px;
+  font-weight: 500;
+  background: var(--bg-surface, rgba(15, 23, 42, 0.04));
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+}
+.pl-source-dot {
+  width: 7px; height: 7px; border-radius: 9999px;
+  background: var(--text-muted);
+  flex-shrink: 0;
+}
+.pl-source-chip.is-reddit           { background: rgba(255, 69, 0, 0.10);  color: #c4400a; }
+.pl-source-chip.is-reddit .pl-source-dot { background: #ff4500; }
+.pl-source-chip.is-quora            { background: rgba(185, 43, 39, 0.10); color: #9b2420; }
+.pl-source-chip.is-quora .pl-source-dot { background: #b92b27; }
+.pl-source-chip.is-google_search    { background: rgba(66, 133, 244, 0.10); color: #1f57c1; }
+.pl-source-chip.is-google_search .pl-source-dot { background: #4285f4; }
+.pl-source-chip.is-hacker_news      { background: rgba(255, 102, 0, 0.10); color: #c44d00; }
+.pl-source-chip.is-hacker_news .pl-source-dot { background: #ff6600; }
+.pl-source-chip.is-yelp             { background: rgba(217, 38, 41, 0.10); color: #ad1f22; }
+.pl-source-chip.is-yelp .pl-source-dot { background: #d92629; }
+.pl-source-chip.is-tiktok           { background: rgba(0, 0, 0, 0.06); color: #1a1a1a; }
+.pl-source-chip.is-tiktok .pl-source-dot { background: linear-gradient(135deg, #25f4ee, #fe2c55); }
+.pl-source-chip.is-youtube_comments { background: rgba(255, 0, 0, 0.10); color: #b80000; }
+.pl-source-chip.is-youtube_comments .pl-source-dot { background: #ff0000; }
+.pl-source-chip.is-twitter          { background: rgba(15, 20, 25, 0.06); color: #1a1f24; }
+.pl-source-chip.is-twitter .pl-source-dot { background: #0f1419; }
+.pl-source-chip.is-forum            { background: rgba(20, 116, 110, 0.10); color: #0e6660; }
+.pl-source-chip.is-forum .pl-source-dot { background: #14746e; }
+.pl-source-chip.is-news_comments    { background: rgba(37, 99, 235, 0.10); color: #1d4ed8; }
+.pl-source-chip.is-news_comments .pl-source-dot { background: #2563eb; }
+.pl-source-chip.is-ai_chat          { background: rgba(126, 34, 206, 0.10); color: #6e21b8; }
+.pl-source-chip.is-ai_chat .pl-source-dot { background: #7e22ce; }
+
 .pl-empty-state {
   display: flex;
   flex-direction: column;
