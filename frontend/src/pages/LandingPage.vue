@@ -337,6 +337,10 @@
 
     <!-- ═══ Final CTA ═══ -->
     <section class="final-cta anim" data-anim="fade-up" ref="finalCtaSection">
+      <video class="final-cta-video" autoplay muted loop playsinline aria-hidden="true">
+        <source src="/videos/watercolor-main.mp4" type="video/mp4" />
+      </video>
+      <div class="final-cta-overlay" aria-hidden="true"></div>
       <div class="final-cta-glow" aria-hidden="true"></div>
       <div class="wrap cta-inner">
         <h2>Ready to grow <em>smarter?</em></h2>
@@ -1238,7 +1242,7 @@ em { color: #5B8DEF; font-style: italic; }
   white-space: nowrap; overflow: hidden;
   border-right: none;
   width: 0;
-  animation: probe-type 6s steps(28) infinite;
+  animation: probe-type 7s steps(26) infinite;
 }
 .probe-caret {
   display: inline-block;
@@ -1249,8 +1253,8 @@ em { color: #5B8DEF; font-style: italic; }
 }
 @keyframes probe-type {
   0%        { width: 0; }
-  35%, 75%  { width: 14ch; }
-  100%      { width: 0; }
+  35%, 80%  { width: 26ch; }
+  90%, 100% { width: 0; }
 }
 @keyframes probe-blink {
   50% { opacity: 0; }
@@ -1409,7 +1413,7 @@ em { color: #5B8DEF; font-style: italic; }
   .probe-grid { grid-template-columns: 1fr; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .probe-typer { animation: none; width: 14ch; }
+  .probe-typer { animation: none; width: auto; }
   .probe-caret { animation: none; opacity: 0.6; }
   .probe-card { opacity: 1; transform: none; animation: none; }
   .probe-card::after { display: none; }
@@ -2871,8 +2875,8 @@ em { color: #5B8DEF; font-style: italic; }
   font-size: 11px;
   padding: 3px 8px;
   border-radius: 999px;
-  background: rgba(255,107,53,0.14);
-  color: #8a6d2a;
+  background: rgba(59, 130, 246, 0.14);
+  color: #1d4ed8;
   font-weight: 600;
 }
 .mock-draft-title {
@@ -2885,7 +2889,7 @@ em { color: #5B8DEF; font-style: italic; }
 .mock-draft-line {
   height: 8px;
   border-radius: 4px;
-  background: #f0e9d9;
+  background: #e2e8f0;
   margin-bottom: 8px;
 }
 .mock-draft-line.w-95 { width: 95%; }
@@ -2897,9 +2901,9 @@ em { color: #5B8DEF; font-style: italic; }
   display: flex; gap: 8px; margin-top: 16px;
 }
 .mock-btn {
-  border: 1px solid #ece6da;
+  border: 1px solid #e2e8f0;
   background: #fff;
-  color: #2d3640;
+  color: #1f2937;
   font-size: 12.5px;
   font-weight: 600;
   border-radius: 8px;
@@ -2907,12 +2911,13 @@ em { color: #5B8DEF; font-style: italic; }
   cursor: pointer;
   transition: all 0.18s ease;
 }
-.mock-btn:hover { background: #f8f4ec; }
+.mock-btn:hover { background: #f1f5f9; }
 .mock-btn.is-primary {
-  background: #131718;
+  background: #ff6b35;
   color: #fff;
-  border-color: #131718;
+  border-color: #ff6b35;
 }
+.mock-btn.is-primary:hover { background: #ff5722; }
 
 /* ── Pull quote ── */
 .pull-quote {
@@ -2999,16 +3004,35 @@ em { color: #5B8DEF; font-style: italic; }
   color: #4a5560;
 }
 
-/* ── Final CTA glow ── */
-.final-cta { position: relative; overflow: hidden; }
+/* ── Final CTA with video background ── */
+.final-cta { position: relative; overflow: hidden; isolation: isolate; }
+.final-cta-video {
+  position: absolute;
+  inset: 0;
+  width: 100%; height: 100%;
+  object-fit: cover;
+  z-index: 0;
+  pointer-events: none;
+}
+.final-cta-overlay {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(15, 23, 42, 0.55) 0%, rgba(15, 23, 42, 0.72) 100%),
+    radial-gradient(ellipse at 50% 50%, rgba(255, 107, 53, 0.25) 0%, transparent 60%);
+  z-index: 1;
+  pointer-events: none;
+}
 .final-cta-glow {
   position: absolute;
   inset: 0;
-  background: radial-gradient(ellipse at 50% 50%, rgba(255,107,53,0.18) 0%, rgba(245,239,230,0) 60%);
+  background: radial-gradient(ellipse at 50% 50%, rgba(59, 130, 246, 0.18) 0%, transparent 60%);
   pointer-events: none;
+  z-index: 2;
 }
-.final-cta .cta-inner { position: relative; z-index: 1; }
-.final-cta h2 { font-size: 56px; }
+.final-cta .cta-inner { position: relative; z-index: 3; }
+.final-cta h2 { font-size: 56px; color: #fff; }
+.final-cta p { color: rgba(255, 255, 255, 0.85); }
 
 /* ── Sticky CTA pill ── */
 .sticky-cta {
