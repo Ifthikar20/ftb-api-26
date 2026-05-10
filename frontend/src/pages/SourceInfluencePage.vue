@@ -1,15 +1,33 @@
 <template>
-  <div class="mx-auto max-w-7xl px-6 py-8">
-    <!-- Header -->
-    <header id="si-header" class="mb-6 flex flex-wrap items-start justify-between gap-4">
-      <div>
-        <h1 class="text-2xl font-semibold tracking-tight" style="color: var(--text-primary)">
-          Source Influence
-        </h1>
-        <p v-if="websiteName" class="mt-1 text-sm" style="color: var(--text-secondary)">
-          {{ websiteName }}
+  <div class="si-page mx-auto max-w-7xl px-6 py-8">
+    <!-- Intro card: explain what this page does so users aren't lost. -->
+    <header id="si-header" class="si-intro">
+      <div class="si-intro-left">
+        <span class="si-intro-eyebrow">Citation intelligence</span>
+        <h1 class="si-intro-h">Source Influence</h1>
+        <p class="si-intro-sub">
+          Every time Claude, GPT-4, Gemini, or Perplexity answers a question in your
+          category, it cites a handful of sources. This page rolls up those citations so you can see
+          <strong>which websites the AIs trust most</strong>, where your brand shows up,
+          and which domains you should be earning links from next.
         </p>
+        <p v-if="websiteName" class="si-intro-meta">For <strong>{{ websiteName }}</strong></p>
       </div>
+      <div class="si-intro-right">
+        <div class="si-howto">
+          <div class="si-howto-h">What to do here</div>
+          <ol class="si-howto-list">
+            <li>Pick a window (7 / 30 / 90 days) and a provider.</li>
+            <li>Scan the top-line stats — your share vs competitors.</li>
+            <li>Open <em>Top domains</em> to find pitch / partnership targets.</li>
+            <li>Act on the recommendations at the bottom.</li>
+          </ol>
+        </div>
+      </div>
+    </header>
+
+    <!-- Filter row -->
+    <div class="si-filter-row">
       <div id="si-controls" class="flex flex-wrap items-center gap-2">
         <div class="flex flex-wrap items-center gap-2">
           <AirChip
@@ -37,7 +55,7 @@
           </AirChip>
         </div>
       </div>
-    </header>
+    </div>
 
     <div v-if="loading" class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
       <div
@@ -281,8 +299,7 @@
             <AirCard v-for="(rec, i) in recommendations" :key="i" size="md" interactive>
               <div class="flex items-start gap-3">
                 <div
-                  class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
-                  :style="{ background: 'var(--brand-accent-glow)', color: 'var(--brand-accent)' }"
+                  class="si-rec-icon flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
                 >
                   <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
                     <circle cx="10" cy="10" r="8" />
@@ -317,8 +334,6 @@
       :provider="drawerProvider"
       :prompt="drawerPrompt"
     />
-
-    <OnboardingTooltip storage-key="fb_tour_source_influence_v1" :steps="tourSteps" />
   </div>
 </template>
 
@@ -329,45 +344,11 @@ import { useAppStore } from '@/stores/app'
 import citationsApi from '@/api/citations'
 import SourceClassBadge from '@/components/citations/SourceClassBadge.vue'
 import SourceBreakdownBar from '@/components/citations/SourceBreakdownBar.vue'
-import OnboardingTooltip from '@/components/OnboardingTooltip.vue'
 import AirButton from '@/components/ui/AirButton.vue'
 import AirCard from '@/components/ui/AirCard.vue'
 import AirCardSubtitle from '@/components/ui/AirCardSubtitle.vue'
 import AirChip from '@/components/ui/AirChip.vue'
 import CitationsDrawer from '@/components/citations/CitationsDrawer.vue'
-
-const tourSteps = [
-  {
-    target: '#si-header',
-    title: 'Source Influence',
-    message: 'See which websites AI assistants pull from when answering questions about your category. Knowing this tells you where to invest content effort.',
-    position: 'bottom',
-  },
-  {
-    target: '#si-controls',
-    title: 'Filter the view',
-    message: 'Narrow by time period (7 / 30 / 90 days) or by AI provider. Each provider has its own citation pattern — Perplexity favors Reddit, Gemini leans on news, etc.',
-    position: 'bottom',
-  },
-  {
-    target: '#si-stats',
-    title: 'Top-line metrics',
-    message: 'Total citations and unique domains tell you the breadth. Your-site share vs competitor share is the headline number to move.',
-    position: 'bottom',
-  },
-  {
-    target: '#si-providers',
-    title: 'Source mix per provider',
-    message: 'Each card shows how a single LLM splits its citations across source classes. Click a card to see top domains for that provider.',
-    position: 'top',
-  },
-  {
-    target: '#si-recs',
-    title: 'Actionable recommendations',
-    message: 'These are auto-generated based on the gaps in your citation pattern — click through to act on them.',
-    position: 'top',
-  },
-]
 
 const route = useRoute()
 const router = useRouter()
@@ -674,3 +655,85 @@ function filterByClass(cls) {
   drawerOpen.value = true
 }
 </script>
+
+<style scoped>
+.si-page { background: #f7f9fc; min-height: 100vh; }
+
+/* Intro: side-by-side explainer card */
+.si-intro {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  gap: 22px;
+  padding: 28px;
+  margin-bottom: 22px;
+  background: linear-gradient(135deg, #ffffff 0%, #f1f5fb 100%);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 20px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03), 0 12px 30px rgba(15, 23, 42, 0.05);
+}
+.si-intro-eyebrow {
+  display: inline-block;
+  font-size: 11px; font-weight: 700; letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #ff6b35;
+  padding: 4px 10px;
+  border-radius: 9999px;
+  background: rgba(255, 107, 53, 0.10);
+  margin-bottom: 14px;
+}
+.si-intro-h {
+  font-size: 28px; font-weight: 700;
+  color: #0f172a;
+  letter-spacing: -0.02em;
+  margin: 0 0 10px;
+}
+.si-intro-sub {
+  font-size: 14.5px; line-height: 1.55;
+  color: #475569;
+  margin: 0;
+  max-width: 640px;
+}
+.si-intro-sub strong { color: #0f172a; font-weight: 600; }
+.si-intro-meta {
+  margin-top: 14px;
+  font-size: 12.5px;
+  color: #64748b;
+}
+.si-intro-meta strong { color: #1f2937; font-weight: 600; }
+
+.si-howto {
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 14px;
+  padding: 18px 20px;
+}
+.si-howto-h {
+  font-size: 12px; font-weight: 700;
+  color: #ff6b35; letter-spacing: 0.06em; text-transform: uppercase;
+  margin-bottom: 10px;
+}
+.si-howto-list {
+  margin: 0; padding-left: 18px;
+  font-size: 13px; line-height: 1.6;
+  color: #334155;
+}
+.si-howto-list li { margin-bottom: 4px; }
+.si-howto-list em { color: #3b82f6; font-style: normal; font-weight: 600; }
+
+/* Filter row sits on its own */
+.si-filter-row {
+  display: flex; justify-content: flex-end;
+  margin-bottom: 22px;
+}
+
+/* Recommendation icon — light-themed, brand-orange */
+.si-rec-icon {
+  background: rgba(255, 107, 53, 0.12);
+  color: #ff6b35;
+}
+
+@media (max-width: 880px) {
+  .si-intro { grid-template-columns: 1fr; padding: 22px; }
+  .si-filter-row { justify-content: flex-start; }
+}
+</style>
