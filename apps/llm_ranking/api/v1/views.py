@@ -1320,20 +1320,28 @@ class LLMRankingScheduleRunNowView(TenantScopedAPIView):
 
 class ModelTestRunView(TenantScopedAPIView):
     """
-    Standalone model-test probe.
+    Start a Model Test probe in the background.
 
-    POST a list of prompts and a list of provider keys; we synchronously
-    fire each (prompt, provider) pair, detect whether the brand surfaced
-    in the response (case-insensitive, business name + aliases), and
-    return the raw text. No LLMRankingAudit row is created — this is
-    the lightweight 'did the model find me' check, not a full audit.
+    POST queues a Celery worker (`run_model_test`) that fires every
+    (prompt, provider) pair and writes per-step progress into Redis.
+    Returns a `run_id` immediately so the UI can poll
+    `ModelTestStatusView` and render results as they land.
+    No LLMRankingAudit row is created — this is the lightweight
+    'did the model find me' probe.
     """
 
     MAX_PROMPTS = 25
     MAX_PROVIDERS = 4
 
     def post(self, request, website_id):
-        from apps.llm_ranking.providers import PROVIDERS, get_provider
+        import uuid
+        from apps.llm_ranking.providers import PROVIDERS
+        from apps.llm_ranking.tasks import (
+            MODEL_TEST_TTL_SECONDS,
+            MODEL_TEST_CACHE_KEY,
+            run_model_test,
+        )
+        from django.core.cache import cache
 
         website = self.get_website(website_id)
 
@@ -1357,8 +1365,6 @@ class ModelTestRunView(TenantScopedAPIView):
             return Response({"error": "Pick at least one supported provider."},
                             status=status.HTTP_400_BAD_REQUEST)
 
-        # Build the brand-mention vocabulary once. We match against the
-        # business name plus any aliases set on the Website row.
         brand_terms: list[str] = []
         for term in [
             getattr(website, "business_name", None) or "",
@@ -1372,71 +1378,51 @@ class ModelTestRunView(TenantScopedAPIView):
             if alias and alias.lower() not in {t.lower() for t in brand_terms}:
                 brand_terms.append(alias)
 
-        def _brand_hit(text: str) -> bool:
-            if not text or not brand_terms:
-                return False
-            low = text.lower()
-            return any(t.lower() in low for t in brand_terms)
-
-        results = []
-        for prompt_text in prompts:
-            row = {"prompt": prompt_text, "responses": []}
-            for key in providers:
-                provider = get_provider(key)
-                if provider is None or not provider.is_configured():
-                    row["responses"].append({
-                        "provider": key,
-                        "succeeded": False,
-                        "error": "Provider not configured (missing API key).",
-                        "response_text": "",
-                        "brand_mentioned": False,
-                        "duration_ms": 0,
-                    })
-                    continue
-                try:
-                    pr = provider.query(
-                        prompt_text,
-                        user=request.user,
-                        website=website,
-                        audit_id="model_test",
-                        role="upstream",
-                    )
-                    row["responses"].append({
-                        "provider": key,
-                        "succeeded": bool(pr.succeeded),
-                        "error": getattr(pr, "error", "") or "",
-                        "response_text": getattr(pr, "text", "") or "",
-                        "brand_mentioned": _brand_hit(getattr(pr, "text", "") or ""),
-                        "duration_ms": getattr(pr, "duration_ms", 0) or 0,
-                    })
-                except Exception as exc:  # pragma: no cover — defensive
-                    logger.warning("model_test: %s failed: %s", key, exc)
-                    row["responses"].append({
-                        "provider": key,
-                        "succeeded": False,
-                        "error": str(exc)[:300],
-                        "response_text": "",
-                        "brand_mentioned": False,
-                        "duration_ms": 0,
-                    })
-            results.append(row)
-
-        # Top-line aggregates so the UI can render the discovery summary
-        # without re-walking the per-prompt list.
-        total_runs = sum(len(r["responses"]) for r in results)
-        hits = sum(1 for r in results for x in r["responses"] if x["brand_mentioned"])
-        prompts_with_hit = sum(
-            1 for r in results if any(x["brand_mentioned"] for x in r["responses"])
-        )
-        return Response({
-            "brand_terms": brand_terms,
-            "summary": {
-                "prompts": len(prompts),
+        run_id = uuid.uuid4().hex
+        # Pre-seed the state row so a fast first poll never 404s before
+        # the worker picks the job up.
+        cache.set(
+            MODEL_TEST_CACHE_KEY.format(run_id=run_id),
+            {
+                "status": "queued",
+                "website_id": str(website.id),
+                "prompts": prompts,
                 "providers": providers,
-                "total_runs": total_runs,
-                "hits": hits,
-                "prompts_with_hit": prompts_with_hit,
-                "discovery_rate": round(prompts_with_hit / max(len(prompts), 1) * 100, 1),
+                "brand_terms": brand_terms,
+                "total": len(prompts) * len(providers),
+                "completed": 0,
+                "current_prompt_index": 0,
+                "current_provider": providers[0],
+                "results": [],
+                "summary": None,
+                "error": None,
             },
-            "results": results,
-        })
+            timeout=MODEL_TEST_TTL_SECONDS,
+        )
+
+        run_model_test.delay(
+            run_id=run_id,
+            website_id=str(website.id),
+            user_id=getattr(request.user, "id", None),
+            prompts=prompts,
+            providers=providers,
+            brand_terms=brand_terms,
+        )
+        return Response({"run_id": run_id, "status": "queued"},
+                        status=status.HTTP_202_ACCEPTED)
+
+
+class ModelTestStatusView(TenantScopedAPIView):
+    """GET — return current state of a Model Test run for polling."""
+
+    def get(self, request, website_id, run_id):
+        from apps.llm_ranking.tasks import _model_test_state_get
+        self.get_website(website_id)
+        state = _model_test_state_get(run_id)
+        if not state:
+            return Response({"error": "Run not found or expired."},
+                            status=status.HTTP_404_NOT_FOUND)
+        if state.get("website_id") and str(state["website_id"]) != str(website_id):
+            return Response({"error": "Not found."},
+                            status=status.HTTP_404_NOT_FOUND)
+        return Response(state)

@@ -162,28 +162,42 @@
         >
           <span v-if="running">
             <span class="mt-spinner"></span>
-            Probing…
+            Probing… ({{ liveCompleted }}/{{ liveTotal }})
           </span>
           <span v-else>Build &amp; run audit</span>
         </button>
       </div>
       <div v-if="errorMsg" class="mt-error">{{ errorMsg }}</div>
+
+      <!-- Live progress strip — visible while the background job runs -->
+      <div v-if="running && liveRun" class="mt-live">
+        <div class="mt-live-bar">
+          <div class="mt-live-fill" :style="{ width: livePct + '%' }"></div>
+        </div>
+        <div class="mt-live-meta">
+          <span class="mt-live-pct">{{ livePct }}%</span>
+          <span class="mt-live-text">{{ liveCurrentLabel || 'Queueing on worker…' }}</span>
+        </div>
+      </div>
     </section>
 
-    <!-- Results -->
-    <section v-if="lastRun" class="mt-results">
+    <!-- Results — show streaming as they arrive, then full set on complete -->
+    <section v-if="lastRun || (liveRun && liveRun.results && liveRun.results.length)" class="mt-results">
       <div class="mt-results-head">
-        <h2 class="mt-results-h">Results</h2>
+        <h2 class="mt-results-h">{{ lastRun ? 'Results' : 'Results — streaming' }}</h2>
         <div class="mt-results-meta">
-          <span class="mt-discovery">
-            <strong>{{ lastRun.summary.discovery_rate }}%</strong>
+          <span v-if="displayRun?.summary" class="mt-discovery">
+            <strong>{{ displayRun.summary.discovery_rate }}%</strong>
             discovery
-            <em>({{ lastRun.summary.prompts_with_hit }} of {{ lastRun.summary.prompts }} prompts found {{ brandLabel }})</em>
+            <em>({{ displayRun.summary.prompts_with_hit }} of {{ displayRun.summary.prompts }} prompts found {{ brandLabel }})</em>
+          </span>
+          <span v-else class="mt-discovery">
+            <em>{{ (displayRun?.results?.length || 0) }} of {{ displayRun?.prompts?.length || 0 }} prompts done</em>
           </span>
         </div>
       </div>
 
-      <div v-for="(row, idx) in lastRun.results" :key="idx" class="mt-result-card">
+      <div v-for="(row, idx) in displayRun.results" :key="idx" class="mt-result-card">
         <div class="mt-result-prompt">
           <span class="mt-result-num">#{{ idx + 1 }}</span>
           <span class="mt-result-text">{{ row.prompt }}</span>
@@ -211,7 +225,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAppStore } from '@/stores/app'
 import { useToast } from '@/composables/useToast'
@@ -351,30 +365,89 @@ function toggleProvider(key) {
 const totalQueries = computed(() => promptCount.value * (selectedProviders.value.length || 0))
 const canRun = computed(() => totalQueries.value > 0)
 
-// ── Step 3: run ──────────────────────────────────────────────────
+// ── Step 3: run (background job + poll) ──────────────────────────
 const running = ref(false)
 const errorMsg = ref('')
-const lastRun = ref(null)
+const lastRun = ref(null)        // final state once complete
+const liveRun = ref(null)        // streaming state from polls
+const runId = ref(null)
+let pollTimer = null
+
 function providerLabel(key) {
   return (providerOptions.value.find((o) => o.key === key)?.label) || key
 }
 
+const liveCompleted = computed(() => liveRun.value?.completed || 0)
+const liveTotal     = computed(() => liveRun.value?.total || 0)
+const livePct = computed(() => {
+  if (!liveTotal.value) return 0
+  return Math.min(100, Math.round((liveCompleted.value / liveTotal.value) * 100))
+})
+const liveCurrentLabel = computed(() => {
+  const s = liveRun.value
+  if (!s || s.status !== 'running') return ''
+  const pIdx = (s.current_prompt_index ?? 0) + 1
+  const pText = (s.prompts?.[s.current_prompt_index] || '').slice(0, 70)
+  return `Running prompt ${pIdx} of ${s.prompts?.length || 0} on ${providerLabel(s.current_provider || '')} — "${pText}${pText.length >= 70 ? '…' : ''}"`
+})
+
+function stopPolling() {
+  if (pollTimer) {
+    clearInterval(pollTimer)
+    pollTimer = null
+  }
+}
+
+async function pollOnce() {
+  if (!runId.value) return
+  try {
+    const { data } = await llmRanking.modelTestStatus(websiteId, runId.value)
+    const state = data?.data || data
+    liveRun.value = state
+    if (state.status === 'complete') {
+      lastRun.value = state
+      running.value = false
+      stopPolling()
+      toast.success('Audit complete')
+    } else if (state.status === 'failed') {
+      errorMsg.value = state.error || 'Probe failed.'
+      running.value = false
+      stopPolling()
+    }
+  } catch (e) {
+    errorMsg.value = e.displayMessage || e?.response?.data?.error || 'Lost connection to probe.'
+    running.value = false
+    stopPolling()
+  }
+}
+
 async function runProbe() {
   errorMsg.value = ''
+  lastRun.value = null
+  liveRun.value = null
   running.value = true
   try {
     const { data } = await llmRanking.modelTest(websiteId, {
       prompts: selectedPrompts.value.map((p) => p.text),
       providers: selectedProviders.value,
     })
-    lastRun.value = data?.data || data
-    toast.success('Audit complete')
+    runId.value = (data?.data || data)?.run_id
+    if (!runId.value) throw new Error('No run id returned.')
+    // Kick off polling — first call immediately, then every 1.5s.
+    await pollOnce()
+    if (running.value) {
+      pollTimer = setInterval(pollOnce, 1500)
+    }
   } catch (e) {
     errorMsg.value = e.displayMessage || e?.response?.data?.error || 'Probe failed.'
-  } finally {
     running.value = false
+    stopPolling()
   }
 }
+
+onBeforeUnmount(stopPolling)
+
+const displayRun = computed(() => lastRun.value || liveRun.value)
 
 function rowHitLabel(row) {
   const hit = row.responses.some((r) => r.brand_mentioned)
@@ -390,7 +463,7 @@ function rowHitClass(row) {
 }
 
 function highlightBrand(text) {
-  const terms = (lastRun.value?.brand_terms || []).filter(Boolean)
+  const terms = (displayRun.value?.brand_terms || []).filter(Boolean)
   let out = (text || '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
   for (const t of terms) {
     if (!t) continue
@@ -637,6 +710,28 @@ onMounted(loadSaved)
   background: #ff6b35; border-color: #ff6b35; color: #fff;
 }
 .mt-btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
+.mt-live {
+  margin-top: 16px;
+  padding: 14px 16px;
+  background: linear-gradient(135deg, rgba(255, 107, 53, 0.06) 0%, rgba(255, 87, 34, 0.04) 100%);
+  border: 1px solid rgba(255, 107, 53, 0.20);
+  border-radius: 12px;
+}
+.mt-live-bar {
+  width: 100%; height: 6px;
+  background: rgba(15, 23, 42, 0.06);
+  border-radius: 9999px; overflow: hidden;
+  margin-bottom: 8px;
+}
+.mt-live-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #ff6b35 0%, #ff5722 100%);
+  border-radius: 9999px;
+  transition: width 0.4s ease;
+}
+.mt-live-meta { display: flex; align-items: baseline; gap: 10px; font-size: 12.5px; }
+.mt-live-pct { font-weight: 700; color: #ff6b35; min-width: 38px; }
+.mt-live-text { color: #475569; flex: 1; }
 .mt-error {
   margin-top: 12px; padding: 10px 14px;
   background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.20);
