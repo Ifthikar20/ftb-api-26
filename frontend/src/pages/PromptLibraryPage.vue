@@ -68,51 +68,27 @@
     <!-- Generated results -->
     <section class="pl-section pl-section-results">
       <!-- Stat strip -->
-      <div v-if="generatedPrompts.length" class="pl-stat-grid">
-        <div class="pl-stat-tile">
-          <div class="pl-stat-icon" style="background: rgba(91, 141, 239, 0.12); color: var(--brand-accent)">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3 8-8" stroke-linecap="round" stroke-linejoin="round"/><path d="M20 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2h11" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          </div>
-          <div>
-            <div class="pl-stat-label">Total prompts</div>
-            <div class="pl-stat-val">{{ generatedPrompts.length }}</div>
-          </div>
+      <div v-if="generatedPrompts.length" class="pl-stat-strip">
+        <div class="pl-stat-cell">
+          <span class="pl-stat-label">Total prompts</span>
+          <span class="pl-stat-val">{{ generatedPrompts.length }}</span>
         </div>
-        <div class="pl-stat-tile">
-          <div class="pl-stat-icon" style="background: rgba(16, 185, 129, 0.12); color: var(--color-success, #059669)">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 17l6-6 4 4 8-8" stroke-linecap="round" stroke-linejoin="round"/><path d="M17 7h4v4" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          </div>
-          <div>
-            <div class="pl-stat-label">Avg trend</div>
-            <div class="pl-stat-val">{{ avgTrend }}</div>
-          </div>
+        <div class="pl-stat-cell">
+          <span class="pl-stat-label">Avg trend</span>
+          <span class="pl-stat-val">{{ avgTrend }}</span>
         </div>
-        <div class="pl-stat-tile">
-          <div class="pl-stat-icon" style="background: rgba(180, 83, 9, 0.10); color: var(--color-warning, #b45309)">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          </div>
-          <div>
-            <div class="pl-stat-label">Trending (≥70)</div>
-            <div class="pl-stat-val">{{ trendingCount }}</div>
-          </div>
+        <div class="pl-stat-cell">
+          <span class="pl-stat-label">Trending</span>
+          <span class="pl-stat-val">{{ trendingCount }}</span>
+          <span class="pl-stat-hint">≥70</span>
         </div>
-        <div class="pl-stat-tile">
-          <div class="pl-stat-icon" style="background: rgba(126, 34, 206, 0.10); color: #7e22ce">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5v14" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          </div>
-          <div>
-            <div class="pl-stat-label">Saved</div>
-            <div class="pl-stat-val">{{ savedCount }}</div>
-          </div>
+        <div class="pl-stat-cell">
+          <span class="pl-stat-label">Saved</span>
+          <span class="pl-stat-val">{{ savedCount }}</span>
         </div>
-        <div class="pl-stat-tile">
-          <div class="pl-stat-icon" style="background: rgba(15, 23, 42, 0.06); color: var(--text-secondary)">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
-          </div>
-          <div>
-            <div class="pl-stat-label">Categories</div>
-            <div class="pl-stat-val">{{ categoryCount }}</div>
-          </div>
+        <div class="pl-stat-cell">
+          <span class="pl-stat-label">Categories</span>
+          <span class="pl-stat-val">{{ categoryCount }}</span>
         </div>
       </div>
 
@@ -1274,50 +1250,47 @@ watch(websiteId, loadVariables)
 .pl-section-sub-inline { color: var(--text-muted); font-weight: 400; }
 
 /* ── Stat tiles ───────────────────────────────────────────── */
-.pl-stat-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 16px;
-  margin-bottom: 24px;
-}
-.pl-stat-tile {
+.pl-stat-strip {
   display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 18px 20px;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 22px;
+  padding: 10px 14px;
+  margin-bottom: 16px;
   background: var(--bg-card);
   border: 1px solid var(--border-color);
-  border-radius: 16px;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
-  transition: transform 0.15s ease-out, box-shadow 0.15s ease-out;
-}
-.pl-stat-tile:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.06);
-}
-.pl-stat-icon {
-  width: 40px;
-  height: 40px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 12px;
-  flex-shrink: 0;
-}
-.pl-stat-tile .pl-stat-label {
+  border-radius: 10px;
   font-size: 12px;
+}
+.pl-stat-cell {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.pl-stat-cell + .pl-stat-cell {
+  padding-left: 22px;
+  border-left: 1px solid var(--border-color);
+}
+.pl-stat-strip .pl-stat-label {
+  font-size: 11.5px;
   font-weight: 500;
   text-transform: none;
   letter-spacing: 0;
   color: var(--text-secondary);
-  margin: 0;
 }
-.pl-stat-tile .pl-stat-val {
-  font-size: 22px;
+.pl-stat-strip .pl-stat-val {
+  font-size: 13px;
   font-weight: 600;
   color: var(--text-primary);
-  margin-top: 2px;
   font-variant-numeric: tabular-nums;
+}
+.pl-stat-strip .pl-stat-hint {
+  font-size: 10.5px;
+  color: var(--text-muted, #94a3b8);
+}
+@media (max-width: 600px) {
+  .pl-stat-cell + .pl-stat-cell { padding-left: 0; border-left: 0; }
+  .pl-stat-strip { gap: 12px 18px; }
 }
 
 .pl-hero-title {
