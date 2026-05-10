@@ -19,7 +19,7 @@ class ContentBriefSerializer(serializers.ModelSerializer):
             "id", "website",
             "gap_type", "impact_score",
             "target_format", "target_prompt",
-            "target_claim_mismatch", "target_source_class",
+            "target_source_class",
             "headline", "description",
             "suggested_structure", "target_keywords",
             "grounded_fact_ids",

@@ -5,12 +5,6 @@ import pytest
 from django.test import override_settings
 
 from apps.brand_vault.models import BrandFact, FactStatus, ToneSample
-from apps.claim_verifier.models import (
-    Claim,
-    ClaimMismatch,
-    MismatchSeverity,
-    MismatchType,
-)
 from apps.content_studio.models import (
     BriefStatus,
     ContentBrief,
@@ -68,43 +62,6 @@ def test_visibility_brief_created_when_mention_rate_low():
     brief = ContentBrief.objects.filter(website=website, gap_type=GapType.VISIBILITY.value).first()
     assert brief is not None
     assert brief.target_format == ContentFormat.BLOG.value
-
-
-def test_accuracy_brief_built_for_high_severity_mismatch():
-    website = WebsiteFactory()
-    audit = LLMRankingAuditFactory(website=website)
-    result = LLMRankingResultFactory(audit=audit)
-    claim = Claim.objects.create(
-        result=result, audit=audit, website=website,
-        text="Acme charges $99/mo", subject="Acme", predicate="charges", object="$99/mo",
-    )
-    ClaimMismatch.objects.create(
-        claim=claim, mismatch_type=MismatchType.CONTRADICTS.value,
-        severity=MismatchSeverity.CRITICAL.value, audience_reach=0.9,
-    )
-    brief_generator.generate_briefs_for_website(str(website.id))
-    brief = ContentBrief.objects.filter(
-        website=website, gap_type=GapType.ACCURACY.value,
-    ).first()
-    assert brief is not None
-    assert brief.target_format == ContentFormat.FAQ.value
-
-
-def test_brief_generation_is_idempotent():
-    website = WebsiteFactory()
-    audit = LLMRankingAuditFactory(website=website)
-    result = LLMRankingResultFactory(audit=audit)
-    claim = Claim.objects.create(
-        result=result, audit=audit, website=website, text="x", subject="Acme",
-    )
-    ClaimMismatch.objects.create(
-        claim=claim, mismatch_type=MismatchType.UNKNOWN.value,
-        severity=MismatchSeverity.HIGH.value,
-    )
-    n1 = brief_generator.generate_briefs_for_website(str(website.id))
-    n2 = brief_generator.generate_briefs_for_website(str(website.id))
-    assert n1 >= 1
-    assert n2 == 0
 
 
 def test_briefs_ordered_by_impact_desc():

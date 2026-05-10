@@ -914,19 +914,6 @@
               </button>
             </div>
             <div class="summary-stat">
-              <span class="summary-num" style="font-size:14px;line-height:1.3">
-                {{ auditClaimSummary.total }} claims · {{ auditClaimSummary.mismatched }} mismatched ({{ auditClaimSummary.mismatchPct }}%)
-              </span>
-              <span class="summary-label">Accuracy</span>
-              <button
-                class="btn-ghost btn-sm"
-                style="margin-top:4px;font-size:11px;color:var(--accent, #ec4899)"
-                @click="gotoAccuracy"
-              >
-                View accuracy →
-              </button>
-            </div>
-            <div class="summary-stat">
               <span class="summary-num">{{ contentBriefsForAudit }}</span>
               <span class="summary-label">Content suggested</span>
               <button
@@ -1942,7 +1929,6 @@ import ProviderAgreement from '@/components/llm_ranking/ProviderAgreement.vue'
 import PromptSourceToggle from '@/components/llm_ranking/PromptSourceToggle.vue'
 import PromptPreviewDrawer from '@/components/llm_ranking/PromptPreviewDrawer.vue'
 import citationsApi from '@/api/citations'
-import claimVerifierApi from '@/api/claimVerifier'
 import CitationsDrawer from '@/components/citations/CitationsDrawer.vue'
 import SourceBreakdownBar from '@/components/citations/SourceBreakdownBar.vue'
 import { Line, Bar } from 'vue-chartjs'
@@ -1983,7 +1969,6 @@ const auditDetail = shallowRef(null)
 // Citations state (Phase 2). Populated by loadCitations() on audit selection.
 const citationsByResult = shallowRef(new Map())
 const auditSourceInfluence = shallowRef(null)
-const auditClaimSummary = ref({ total: 0, mismatched: 0, mismatchPct: 0, bySeverity: {} })
 const citationsDrawerOpen = ref(false)
 const citationsDrawerCitations = ref([])
 const citationsDrawerProvider = ref('')
@@ -4295,35 +4280,10 @@ async function selectAudit(audit) {
 
   // Phase 2: load citations + source influence (non-blocking).
   loadCitations(audit.id)
-  // Phase 3: load claim/accuracy summary (non-blocking).
-  loadAuditClaimSummary(audit.id)
-  // Phase 4: count of content briefs created from this audit (non-blocking).
+  // Phase 3: count of content briefs created from this audit (non-blocking).
   loadContentBriefsForAudit(audit)
 }
 
-async function loadAuditClaimSummary(auditId) {
-  auditClaimSummary.value = { total: 0, mismatched: 0, mismatchPct: 0, bySeverity: {} }
-  try {
-    const { data } = await claimVerifierApi.auditClaims(auditId)
-    const claims = data?.data || data || []
-    const list = Array.isArray(claims) ? claims : (claims.results || [])
-    const total = list.length
-    let mismatched = 0
-    const bySev = {}
-    for (const c of list) {
-      const mm = c.mismatch
-      if (mm && !mm.dismissed) {
-        mismatched += 1
-        const sev = mm.severity || 'info'
-        bySev[sev] = (bySev[sev] || 0) + 1
-      }
-    }
-    const pct = total ? Math.round((mismatched / total) * 100) : 0
-    auditClaimSummary.value = { total, mismatched, mismatchPct: pct, bySeverity: bySev }
-  } catch (e) {
-    console.warn('Failed to load audit claim summary', e)
-  }
-}
 
 // Phase 2 helpers ----------------------------------------------------
 async function loadCitations(auditId) {
@@ -4370,13 +4330,6 @@ const totalAuditCitations = computed(() => {
 
 function gotoSourceInfluence() {
   router.push(`/llm-ranking/${websiteId}/source-influence`)
-}
-
-function gotoAccuracy() {
-  router.push({
-    path: `/llm-ranking/${websiteId}/accuracy`,
-    query: selectedAuditId.value ? { audit: selectedAuditId.value } : {},
-  })
 }
 
 function gotoContentStudio() {

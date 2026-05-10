@@ -60,7 +60,6 @@ LOCAL_APPS = [
     "apps.prompt_library",
     "apps.citations",
     "apps.brand_vault",
-    "apps.claim_verifier",
     "apps.content_studio",
 ]
 

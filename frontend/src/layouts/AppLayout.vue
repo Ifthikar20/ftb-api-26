@@ -55,10 +55,6 @@
           <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 4l5-2 5 2v5c0 3-2.5 5-5 6-2.5-1-5-3-5-6V4z"/><path d="M6 8l1.5 1.5L10 7"/></svg></span>
           <span v-if="!appStore.sidebarCollapsed" class="nav-text">Brand Vault</span>
         </router-link>
-        <router-link :to="accuracyRoute" class="nav-link nav-sub" active-class="active" style="--nav-color: #ec4899">
-          <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M5 8l2 2 4-4"/></svg></span>
-          <span v-if="!appStore.sidebarCollapsed" class="nav-text">Accuracy</span>
-        </router-link>
         <router-link :to="contentStudioRoute" class="nav-link nav-sub" active-class="active" style="--nav-color: #FF385C">
           <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 2h7l3 3v9H3z"/><path d="M10 2v3h3"/><path d="M5 8h6M5 11h4"/></svg></span>
           <span v-if="!appStore.sidebarCollapsed" class="nav-text">Content</span>
@@ -432,7 +428,6 @@ const llmRankingRoute = computed(() => websiteId.value ? `/llm-ranking/${website
 const promptLibraryRoute = computed(() => websiteId.value ? `/llm-ranking/${websiteId.value}/prompts` : '/websites')
 const sourceInfluenceRoute = computed(() => websiteId.value ? `/llm-ranking/${websiteId.value}/source-influence` : '/websites')
 const brandVaultRoute = computed(() => websiteId.value ? `/llm-ranking/${websiteId.value}/brand-vault` : '/websites')
-const accuracyRoute = computed(() => websiteId.value ? `/llm-ranking/${websiteId.value}/accuracy` : '/websites')
 const contentStudioRoute = computed(() => websiteId.value ? `/llm-ranking/${websiteId.value}/content` : '/websites')
 const publishTargetsRoute = computed(() => websiteId.value ? `/llm-ranking/${websiteId.value}/content/publish-targets` : '/websites')
 const roiRoute = computed(() => websiteId.value ? `/llm-ranking/${websiteId.value}/content/roi` : '/websites')

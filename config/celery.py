@@ -26,7 +26,6 @@ app.conf.task_routes = {
     "apps.llm_ranking.tasks.*": {"queue": "ai"},
     "apps.citations.tasks.*": {"queue": "ai"},
     "apps.brand_vault.tasks.*": {"queue": "ai"},
-    "apps.claim_verifier.tasks.*": {"queue": "ai"},
     "apps.content_studio.tasks.*": {"queue": "ai"},
 }
 
