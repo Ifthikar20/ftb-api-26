@@ -251,16 +251,25 @@ class WebsitePromptCreateView(APIView):
         template_text = data["template_text"].strip()
         body_for_text = data.get("text") or template_text
         variables = extract_variables(template_text)
-        prompt = Prompt.objects.create(
-            industry=industry,
-            text=body_for_text,
-            template_text=template_text,
-            template_variables=variables,
-            intent_bucket=data.get("intent_bucket") or "category",
-            style=data.get("style") or "question",
-            source=PromptSource.MANUAL,
-            text_hash=text_hash(template_text or body_for_text),
+        # Reuse a prompt with the same canonical text if it already exists,
+        # otherwise create one. This keeps the Prompt table de-duped while
+        # still letting every website link its own copy via BrandPrompt.
+        canonical_hash = text_hash(template_text or body_for_text)
+        prompt, _ = Prompt.objects.get_or_create(
+            text_hash=canonical_hash,
+            defaults=dict(
+                industry=industry,
+                text=body_for_text,
+                template_text=template_text,
+                template_variables=variables,
+                intent_bucket=data.get("intent_bucket") or "category",
+                style=data.get("style") or "question",
+                source=PromptSource.MANUAL,
+            ),
         )
+        # Link the prompt to the website so it shows in the Saved tab.
+        # The Saved tab reads BrandPrompt rows, not Prompt rows directly.
+        BrandPrompt.objects.get_or_create(website=website, prompt=prompt)
         return Response(PromptSerializer(prompt).data, status=status.HTTP_201_CREATED)
 
 
