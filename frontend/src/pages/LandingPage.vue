@@ -1074,7 +1074,7 @@ em { color: #5B8DEF; font-style: italic; }
 .nav-row { display: flex; align-items: center; justify-content: space-between; }
 .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; }
 .brand-logo { width: 36px; height: 36px; object-fit: contain; }
-.brand-name { font-family: 'DM Serif Display', Georgia, serif; font-size: 20px; color: #131718; letter-spacing: -0.02em; }
+.brand-name { font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 20px; color: #131718; letter-spacing: -0.02em; }
 .brand-beta {
   display: inline-block;
   background: #131718;
@@ -1430,7 +1430,7 @@ em { color: #5B8DEF; font-style: italic; }
 .word-cycle-enter-from { opacity: 0; transform: translateY(8px); }
 .word-cycle-leave-to   { opacity: 0; transform: translateY(-8px); position: absolute; }
 .hero-h {
-  font-family: 'DM Serif Display', Georgia, serif;
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-weight: 400; font-size: clamp(2.8rem, 6vw, 5.5rem);
   line-height: 1.05; letter-spacing: -0.03em;
   text-transform: uppercase;
@@ -1481,7 +1481,7 @@ em { color: #5B8DEF; font-style: italic; }
 
 .feat-header { display: flex; align-items: baseline; gap: 40px; margin-bottom: 36px; flex-wrap: wrap; }
 .feat-headline {
-  font-family: 'DM Serif Display', Georgia, serif;
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-size: clamp(1.8rem, 3.5vw, 3rem);
   font-weight: 400; text-transform: uppercase;
   letter-spacing: -0.02em;
@@ -1548,7 +1548,7 @@ em { color: #5B8DEF; font-style: italic; }
 .feat-tabs { display: flex; gap: 24px; }
 .feat-tab {
   background: none; border: none; cursor: pointer;
-  font-family: 'DM Serif Display', Georgia, serif;
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-size: clamp(1rem, 1.8vw, 1.3rem);
   font-style: italic; color: #94a3b8;
   padding: 0; transition: all 0.3s;
@@ -1626,7 +1626,7 @@ em { color: #5B8DEF; font-style: italic; }
   margin-bottom: 10px;
 }
 .viz-stat-value {
-  font-family: 'DM Serif Display', Georgia, serif;
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-weight: 400;
   font-size: 30px;
   color: #131718;
@@ -1758,7 +1758,7 @@ em { color: #5B8DEF; font-style: italic; }
 .kw-rank {
   width: 24px;
   font-weight: 700;
-  font-family: 'DM Serif Display', Georgia, serif;
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-size: 13px;
   letter-spacing: -0.02em;
 }
@@ -1863,7 +1863,7 @@ em { color: #5B8DEF; font-style: italic; }
 
 /* Card inner elements */
 .card-num {
-  font-family: 'DM Serif Display', Georgia, serif;
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-size: 2.2rem; font-weight: 400;
   color: #131718; line-height: 1;
   margin-bottom: 16px;
@@ -1917,7 +1917,7 @@ em { color: #5B8DEF; font-style: italic; }
 
 /* ── Section Headings ── */
 .sec-h {
-  font-family: 'DM Serif Display', Georgia, serif;
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-weight: 400; font-size: clamp(1.6rem, 3.5vw, 2.6rem);
   line-height: 1.1; margin-bottom: 48px;
 }
@@ -1958,7 +1958,7 @@ em { color: #5B8DEF; font-style: italic; }
   text-transform: uppercase; letter-spacing: 0.04em;
 }
 .price-card h3 { font-size: 17px; font-weight: 800; margin-bottom: 8px; }
-.price-big { font-family: 'DM Serif Display', Georgia, serif; font-size: 2.6rem; line-height: 1; }
+.price-big { font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 2.6rem; line-height: 1; }
 .price-per { font-size: 13px; color: #a09a93; }
 .price-desc { font-size: 12px; color: #6e6a65; margin: 6px 0 20px; }
 .price-card ul { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 6px; margin-bottom: 24px; flex-grow: 1; }
@@ -1981,7 +1981,7 @@ em { color: #5B8DEF; font-style: italic; }
   padding: 72px 40px;
 }
 .cta-inner h2 {
-  font-family: 'DM Serif Display', Georgia, serif;
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-weight: 400; font-size: clamp(1.6rem, 3vw, 2.2rem);
   margin-bottom: 10px;
 }
@@ -2015,7 +2015,7 @@ em { color: #5B8DEF; font-style: italic; }
   display: flex;
   align-items: center;
   gap: 10px;
-  font-family: 'DM Serif Display', Georgia, serif;
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-size: 20px;
   color: #1f2937;
   margin-bottom: 14px;
