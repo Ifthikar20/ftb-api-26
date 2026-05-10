@@ -130,7 +130,8 @@ def max_prompts_for_user(user) -> int:
     except Exception:
         plan = None
     limits = PLAN_LIMITS.get(plan) or PLAN_LIMITS[Plan.INDIVIDUAL]
-    cap = limits.get("max_prompts_per_audit") or 5
+    raw = limits.get("max_prompts_per_audit") or 5
+    cap = int(raw) if isinstance(raw, (int, float)) else 5
     return cap if cap > 0 else 50  # treat -1 as "effectively unlimited"
 
 

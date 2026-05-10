@@ -7,6 +7,7 @@ and measures how prominently the business appears in AI-generated answers.
 import logging
 import math
 import re
+from decimal import Decimal
 
 from django.conf import settings
 from django.utils import timezone
@@ -239,7 +240,11 @@ class LLMRankingService:
             )
             import json
             import re as _re
-            text = resp.content[0].text.strip()
+            # Anthropic responses can contain ToolUseBlock or TextBlock
+            # entries; only TextBlock has `.text`. Pull the first text
+            # block defensively so type-checkers stop complaining.
+            block = resp.content[0]
+            text = (getattr(block, "text", "") or "").strip()
             # Track token usage — tagged as prompt-generation so it's
             # distinguishable from upstream and extraction calls.
             try:
@@ -923,7 +928,7 @@ class LLMRankingService:
         except LLMRankingAudit.DoesNotExist:
             return
 
-        all_results = list(audit.results.all())
+        all_results = list(audit.results.all())  # type: ignore[attr-defined]
         scores = LLMRankingService.compute_overall_score(all_results)
 
         # Roll up per-result citation_countries into the audit-level
@@ -960,7 +965,7 @@ class LLMRankingService:
                 .aggregate(tokens=Sum("total_tokens"), cost=Sum("estimated_cost_usd"))
             )
             audit.total_tokens = int(spend["tokens"] or 0)
-            audit.total_cost_usd = spend["cost"] or 0
+            audit.total_cost_usd = spend["cost"] if spend["cost"] is not None else Decimal("0")
         except Exception as exc:
             logger.warning("Cost roll-up failed for audit %s: %s", audit_id, exc)
 
@@ -1015,7 +1020,7 @@ class LLMRankingService:
             from django.conf import settings as _settings_phase4
             if getattr(_settings_phase4, "CONTENT_STUDIO_BRIEF_GENERATION_ENABLED", True):
                 from apps.content_studio.tasks import generate_briefs_for_website
-                generate_briefs_for_website.delay(str(audit.website_id))
+                generate_briefs_for_website.delay(str(audit.website_id))  # type: ignore[attr-defined]
         except Exception as exc:  # pragma: no cover
             logger.debug("content_studio dispatch failed for %s: %s", audit_id, exc)
 
@@ -1380,7 +1385,7 @@ class LLMRankingService:
                 .aggregate(tokens=Sum("total_tokens"), cost=Sum("estimated_cost_usd"))
             )
             audit.total_tokens = int(spend["tokens"] or 0)
-            audit.total_cost_usd = spend["cost"] or 0
+            audit.total_cost_usd = spend["cost"] if spend["cost"] is not None else Decimal("0")
         except Exception as exc:
             logger.warning("Cost roll-up failed for audit %s: %s", audit_id, exc)
 

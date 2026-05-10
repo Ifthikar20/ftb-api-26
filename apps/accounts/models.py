@@ -56,7 +56,7 @@ class User(AbstractBaseUser, PermissionsMixin, TimestampMixin):
         """Return the plan to use for feature gating (org plan overrides personal plan for enterprise)."""
         if hasattr(self, "_org_cache"):
             return self._org_cache.plan
-        membership = self.org_memberships.select_related("organization").first()
+        membership = self.org_memberships.select_related("organization").first()  # type: ignore[attr-defined]
         if membership:
             self._org_cache = membership.organization
             return membership.organization.plan
