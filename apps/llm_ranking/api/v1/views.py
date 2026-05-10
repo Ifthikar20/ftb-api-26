@@ -1393,7 +1393,7 @@ class ModelTestRunView(TenantScopedAPIView):
                 "completed": 0,
                 "current_prompt_index": 0,
                 "current_provider": providers[0],
-                "results": [],
+                "prompt_rows": [],
                 "summary": None,
                 "error": None,
             },

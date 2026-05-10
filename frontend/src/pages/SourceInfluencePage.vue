@@ -182,7 +182,7 @@
     </section>
 
     <!-- Results — show streaming as they arrive, then full set on complete -->
-    <section v-if="lastRun || (liveRun && liveRun.results && liveRun.results.length)" class="mt-results">
+    <section v-if="lastRun || (liveRun && liveRun.prompt_rows && liveRun.prompt_rows.length)" class="mt-results">
       <div class="mt-results-head">
         <h2 class="mt-results-h">{{ lastRun ? 'Results' : 'Results — streaming' }}</h2>
         <div class="mt-results-meta">
@@ -192,12 +192,12 @@
             <em>({{ displayRun.summary.prompts_with_hit }} of {{ displayRun.summary.prompts }} prompts found {{ brandLabel }})</em>
           </span>
           <span v-else class="mt-discovery">
-            <em>{{ (displayRun?.results?.length || 0) }} of {{ displayRun?.prompts?.length || 0 }} prompts done</em>
+            <em>{{ (displayRun?.prompt_rows?.length || 0) }} of {{ displayRun?.prompts?.length || 0 }} prompts done</em>
           </span>
         </div>
       </div>
 
-      <div v-for="(row, idx) in displayRun.results" :key="idx" class="mt-result-card">
+      <div v-for="(row, idx) in displayRun.prompt_rows" :key="idx" class="mt-result-card">
         <div class="mt-result-prompt">
           <span class="mt-result-num">#{{ idx + 1 }}</span>
           <span class="mt-result-text">{{ row.prompt }}</span>

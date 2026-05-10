@@ -305,7 +305,7 @@ def run_model_test(self, *, run_id: str, website_id: str, user_id: int | None,
         "completed": 0,
         "current_prompt_index": 0,
         "current_provider": providers[0] if providers else "",
-        "results": [],
+        "prompt_rows": [],
         "summary": None,
         "error": None,
     })
@@ -366,11 +366,11 @@ def run_model_test(self, *, run_id: str, website_id: str, user_id: int | None,
                 state["completed"] = state.get("completed", 0) + 1
                 _model_test_state_set(run_id, state)
 
-            state["results"].append(row)
+            state["prompt_rows"].append(row)
             _model_test_state_set(run_id, state)
 
         # Final summary
-        results = state["results"]
+        results = state["prompt_rows"]
         prompts_with_hit = sum(
             1 for r in results if any(x["brand_mentioned"] for x in r["responses"])
         )
