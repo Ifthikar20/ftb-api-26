@@ -159,7 +159,7 @@ const integrations = [
   // CRM & Email
   { slug: 'sendgrid', name: 'SendGrid', category: 'CRM & Email', categoryKey: 'crm', status: 'active', usedIn: 'Campaigns → Email', shortDesc: 'Transactional and campaign email delivery powered by SendGrid\'s API.', logo: '/images/integrations/sendgrid.svg', tagColor: '#F22F46', tagBg: '#F22F4610' },
   { slug: 'mailchimp', name: 'Mailchimp', category: 'CRM & Email', categoryKey: 'crm', status: 'active', usedIn: 'Campaigns → Audience Sync', shortDesc: 'Sync lead segments to Mailchimp audiences for targeted email campaigns.', logo: 'https://cdn.simpleicons.org/mailchimp/FFE01B', tagColor: '#FFE01B', tagBg: '#FFE01B15' },
-  { slug: 'hubspot', name: 'HubSpot', category: 'CRM & Email', categoryKey: 'crm', status: 'needs-key', usedIn: 'Leads → CRM Sync', shortDesc: 'Bidirectional lead, deal, and contact sync with HubSpot CRM.', logo: 'https://cdn.simpleicons.org/hubspot/FF7A59', tagColor: '#FF7A59', tagBg: '#FF7A5910' },
+  // HubSpot intentionally hidden from the listing for now.
 
   // Ads & Social
   { slug: 'facebook', name: 'Facebook / Meta', category: 'Ads & Social', categoryKey: 'ads', status: 'needs-key', usedIn: 'Social Leads → Facebook', shortDesc: 'Capture Facebook Lead Ads and track ad-driven conversions.', logo: 'https://cdn.simpleicons.org/facebook/0866FF', tagColor: '#0866FF', tagBg: '#0866FF10' },
