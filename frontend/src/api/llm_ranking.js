@@ -27,4 +27,6 @@ export default {
     deleteSchedule: (wid) => api.delete(`/llm-ranking/${wid}/schedule/`),
     scheduleETA: (wid) => api.get(`/llm-ranking/${wid}/schedule/eta/`),
     runScheduleNow: (wid) => api.post(`/llm-ranking/${wid}/schedule/run-now/`),
+    // Standalone Model Test probe (does not create an audit row).
+    modelTest: (wid, payload) => api.post(`/llm-ranking/${wid}/model-test/`, payload),
 }

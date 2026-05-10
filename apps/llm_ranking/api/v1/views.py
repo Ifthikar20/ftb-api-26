@@ -1316,3 +1316,127 @@ class LLMRankingScheduleRunNowView(TenantScopedAPIView):
              "queued": True},
             status=status.HTTP_202_ACCEPTED,
         )
+
+
+class ModelTestRunView(TenantScopedAPIView):
+    """
+    Standalone model-test probe.
+
+    POST a list of prompts and a list of provider keys; we synchronously
+    fire each (prompt, provider) pair, detect whether the brand surfaced
+    in the response (case-insensitive, business name + aliases), and
+    return the raw text. No LLMRankingAudit row is created — this is
+    the lightweight 'did the model find me' check, not a full audit.
+    """
+
+    MAX_PROMPTS = 25
+    MAX_PROVIDERS = 4
+
+    def post(self, request, website_id):
+        from apps.llm_ranking.providers import PROVIDERS, get_provider
+
+        website = self.get_website(website_id)
+
+        prompts = request.data.get("prompts", []) or []
+        providers = request.data.get("providers", []) or ["claude"]
+        if not isinstance(prompts, list) or not isinstance(providers, list):
+            return Response({"error": "prompts and providers must be arrays."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        prompts = [str(p).strip() for p in prompts if str(p).strip()]
+        if not prompts:
+            return Response({"error": "At least one prompt is required."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        if len(prompts) > self.MAX_PROMPTS:
+            return Response({"error": f"Max {self.MAX_PROMPTS} prompts per run."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        providers = [str(p).strip().lower() for p in providers if str(p).strip()]
+        providers = [p for p in providers if p in PROVIDERS][: self.MAX_PROVIDERS]
+        if not providers:
+            return Response({"error": "Pick at least one supported provider."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        # Build the brand-mention vocabulary once. We match against the
+        # business name plus any aliases set on the Website row.
+        brand_terms: list[str] = []
+        for term in [
+            getattr(website, "business_name", None) or "",
+            getattr(website, "name", None) or "",
+        ]:
+            term = (term or "").strip()
+            if term and term.lower() not in {t.lower() for t in brand_terms}:
+                brand_terms.append(term)
+        for alias in (getattr(website, "brand_aliases", None) or []):
+            alias = (alias or "").strip()
+            if alias and alias.lower() not in {t.lower() for t in brand_terms}:
+                brand_terms.append(alias)
+
+        def _brand_hit(text: str) -> bool:
+            if not text or not brand_terms:
+                return False
+            low = text.lower()
+            return any(t.lower() in low for t in brand_terms)
+
+        results = []
+        for prompt_text in prompts:
+            row = {"prompt": prompt_text, "responses": []}
+            for key in providers:
+                provider = get_provider(key)
+                if provider is None or not provider.is_configured():
+                    row["responses"].append({
+                        "provider": key,
+                        "succeeded": False,
+                        "error": "Provider not configured (missing API key).",
+                        "response_text": "",
+                        "brand_mentioned": False,
+                        "duration_ms": 0,
+                    })
+                    continue
+                try:
+                    pr = provider.query(
+                        prompt_text,
+                        user=request.user,
+                        website=website,
+                        audit_id="model_test",
+                        role="upstream",
+                    )
+                    row["responses"].append({
+                        "provider": key,
+                        "succeeded": bool(pr.succeeded),
+                        "error": getattr(pr, "error", "") or "",
+                        "response_text": getattr(pr, "text", "") or "",
+                        "brand_mentioned": _brand_hit(getattr(pr, "text", "") or ""),
+                        "duration_ms": getattr(pr, "duration_ms", 0) or 0,
+                    })
+                except Exception as exc:  # pragma: no cover — defensive
+                    logger.warning("model_test: %s failed: %s", key, exc)
+                    row["responses"].append({
+                        "provider": key,
+                        "succeeded": False,
+                        "error": str(exc)[:300],
+                        "response_text": "",
+                        "brand_mentioned": False,
+                        "duration_ms": 0,
+                    })
+            results.append(row)
+
+        # Top-line aggregates so the UI can render the discovery summary
+        # without re-walking the per-prompt list.
+        total_runs = sum(len(r["responses"]) for r in results)
+        hits = sum(1 for r in results for x in r["responses"] if x["brand_mentioned"])
+        prompts_with_hit = sum(
+            1 for r in results if any(x["brand_mentioned"] for x in r["responses"])
+        )
+        return Response({
+            "brand_terms": brand_terms,
+            "summary": {
+                "prompts": len(prompts),
+                "providers": providers,
+                "total_runs": total_runs,
+                "hits": hits,
+                "prompts_with_hit": prompts_with_hit,
+                "discovery_rate": round(prompts_with_hit / max(len(prompts), 1) * 100, 1),
+            },
+            "results": results,
+        })

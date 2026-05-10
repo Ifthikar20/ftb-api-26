@@ -20,4 +20,5 @@ urlpatterns = [
     path("<uuid:website_id>/schedule/", views.LLMRankingScheduleView.as_view(), name="llm-ranking-schedule"),
     path("<uuid:website_id>/schedule/eta/", views.LLMRankingScheduleETAView.as_view(), name="llm-ranking-schedule-eta"),
     path("<uuid:website_id>/schedule/run-now/", views.LLMRankingScheduleRunNowView.as_view(), name="llm-ranking-schedule-run-now"),
+    path("<uuid:website_id>/model-test/", views.ModelTestRunView.as_view(), name="llm-ranking-model-test"),
 ]

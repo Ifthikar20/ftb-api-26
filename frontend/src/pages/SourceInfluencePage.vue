@@ -1,677 +1,431 @@
 <template>
-  <div class="si-page mx-auto max-w-7xl px-6 py-8">
-    <!-- Intro card: explain what this page does so users aren't lost. -->
-    <header id="si-header" class="si-intro">
-      <div class="si-intro-left">
-        <span class="si-intro-eyebrow">Citation intelligence</span>
-        <h1 class="si-intro-h">Source Influence</h1>
-        <p class="si-intro-sub">
-          Every time Claude, GPT-4, Gemini, or Perplexity answers a question in your
-          category, it cites a handful of sources. This page rolls up those citations so you can see
-          <strong>which websites the AIs trust most</strong>, where your brand shows up,
-          and which domains you should be earning links from next.
+  <div class="mt-page">
+    <header class="mt-intro">
+      <div class="mt-intro-left">
+        <span class="mt-eyebrow">Model Test</span>
+        <h1 class="mt-h">Probe LLMs with your own prompts.</h1>
+        <p class="mt-sub">
+          Pick a set of prompts (from your saved library, custom typed, or a markdown
+          file), choose which models to probe, and we will fire them in real time and
+          tell you whether <strong>{{ brandLabel }}</strong> showed up in the answer.
         </p>
-        <p v-if="websiteName" class="si-intro-meta">For <strong>{{ websiteName }}</strong></p>
       </div>
-      <div class="si-intro-right">
-        <div class="si-howto">
-          <div class="si-howto-h">What to do here</div>
-          <ol class="si-howto-list">
-            <li>Pick a window (7 / 30 / 90 days) and a provider.</li>
-            <li>Scan the top-line stats — your share vs competitors.</li>
-            <li>Open <em>Top domains</em> to find pitch / partnership targets.</li>
-            <li>Act on the recommendations at the bottom.</li>
+      <div class="mt-intro-right">
+        <div class="mt-howto">
+          <div class="mt-howto-h">Three steps</div>
+          <ol class="mt-howto-list">
+            <li>Pick prompts</li>
+            <li>Pick models</li>
+            <li>Run &amp; review</li>
           </ol>
         </div>
       </div>
     </header>
 
-    <!-- Filter row -->
-    <div class="si-filter-row">
-      <div id="si-controls" class="flex flex-wrap items-center gap-2">
-        <div class="flex flex-wrap items-center gap-2">
-          <AirChip
-            v-for="opt in periodOptions"
-            :key="opt.value"
-            as="button"
-            size="sm"
-            :variant="periodDays === opt.value ? 'primary' : 'neutral'"
-            @click="periodDays = opt.value"
-          >
-            {{ opt.label }}
-          </AirChip>
-        </div>
-        <span class="hidden h-4 w-px sm:block" style="background: var(--border-color)" aria-hidden="true"></span>
-        <div class="flex flex-wrap items-center gap-2">
-          <AirChip
-            v-for="opt in providerOptions"
-            :key="opt.value || 'all'"
-            as="button"
-            size="sm"
-            :variant="providerFilter === opt.value ? 'primary' : 'neutral'"
-            @click="providerFilter = opt.value"
-          >
-            {{ opt.label }}
-          </AirChip>
+    <!-- Step 1: prompts -->
+    <section class="mt-section">
+      <div class="mt-step-head">
+        <span class="mt-step-num">1</span>
+        <div>
+          <div class="mt-step-h">Pick prompts</div>
+          <div class="mt-step-sub">{{ promptCount }} selected · max 25</div>
         </div>
       </div>
-    </div>
 
-    <div v-if="loading" class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-      <div
-        v-for="i in 4"
-        :key="i"
-        class="h-28 animate-pulse rounded-2xl"
-        style="background: var(--bg-card); border: 1px solid var(--border-color)"
-      ></div>
-    </div>
-
-    <template v-else>
-      <!-- Empty state -->
-      <div
-        v-if="totalCitations === 0"
-        class="flex flex-col items-center justify-center rounded-3xl border border-dashed px-8 py-16 text-center"
-        style="border-color: var(--border-color); background: var(--bg-card)"
-      >
-        <div class="mb-4" style="color: var(--text-muted)">
-          <svg width="64" height="64" viewBox="0 0 80 80" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="40" cy="40" r="30" stroke-dasharray="4 4" />
-            <path d="M28 40h24M40 28v24" stroke-linecap="round" />
-          </svg>
-        </div>
-        <h2 class="text-lg font-semibold" style="color: var(--text-primary)">No citations yet</h2>
-        <p class="mt-2 max-w-md text-sm" style="color: var(--text-secondary)">
-          Run an audit to start tracking which sources LLMs cite for your category.
-        </p>
-        <AirButton
-          as="router-link"
-          :to="`/llm-ranking/${websiteId}`"
-          variant="primary"
-          size="md"
-          class="mt-6"
-        >
-          Run new audit
-        </AirButton>
+      <div class="mt-tabs">
+        <button
+          v-for="t in promptTabs"
+          :key="t.value"
+          type="button"
+          class="mt-tab"
+          :class="{ 'is-active': promptTab === t.value }"
+          @click="promptTab = t.value"
+        >{{ t.label }}</button>
       </div>
 
-      <template v-else>
-        <!-- Top stat row -->
-        <section
-          id="si-stats"
-          class="mb-8 grid grid-cols-2 gap-4 md:grid-cols-4"
-        >
-          <AirCard size="md">
-            <AirCardSubtitle class="text-xs uppercase tracking-wide">Total citations</AirCardSubtitle>
-            <div class="mt-1 text-2xl font-semibold tabular-nums" style="color: var(--text-primary)">
-              {{ totalCitations.toLocaleString() }}
-            </div>
-            <div class="mt-1 text-xs" style="color: var(--text-muted)">
-              over last {{ periodDays }} days
-            </div>
-          </AirCard>
-          <AirCard size="md">
-            <AirCardSubtitle class="text-xs uppercase tracking-wide">Unique domains</AirCardSubtitle>
-            <div class="mt-1 text-2xl font-semibold tabular-nums" style="color: var(--text-primary)">
-              {{ uniqueDomains.toLocaleString() }}
-            </div>
-            <div class="mt-1 text-xs" style="color: var(--text-muted)">distinct apex domains</div>
-          </AirCard>
-          <AirCard size="md">
-            <AirCardSubtitle class="text-xs uppercase tracking-wide">Your-site share</AirCardSubtitle>
-            <div class="mt-1 flex items-baseline gap-1">
-              <span class="text-2xl font-semibold tabular-nums" style="color: var(--text-primary)">
-                {{ pct(yourSiteShare) }}
-              </span>
-              <span class="text-sm" style="color: var(--text-muted)">%</span>
-            </div>
-            <div class="mt-1 text-xs" style="color: var(--text-muted)">
-              {{ yourSiteCount }} citations
-            </div>
-          </AirCard>
-          <AirCard size="md">
-            <AirCardSubtitle class="text-xs uppercase tracking-wide">Competitor share</AirCardSubtitle>
-            <div class="mt-1 flex items-baseline gap-1">
-              <span class="text-2xl font-semibold tabular-nums" style="color: var(--text-primary)">
-                {{ pct(competitorShare) }}
-              </span>
-              <span class="text-sm" style="color: var(--text-muted)">%</span>
-            </div>
-            <div class="mt-1 text-xs" style="color: var(--text-muted)">
-              {{ competitorCount }} citations
-            </div>
-          </AirCard>
-        </section>
-
-        <!-- Per-provider breakdown cards -->
-        <section id="si-providers" class="mb-10">
-          <h2 class="mb-4 text-lg font-semibold" style="color: var(--text-primary)">
-            Source mix by provider
-          </h2>
-          <div
-            v-if="!providerCards.length"
-            class="rounded-2xl border border-dashed px-6 py-10 text-center text-sm"
-            style="border-color: var(--border-color); color: var(--text-muted)"
+      <div v-if="promptTab === 'saved'" class="mt-saved">
+        <div v-if="loadingSaved" class="mt-muted">Loading saved prompts…</div>
+        <div v-else-if="!savedPrompts.length" class="mt-empty">
+          No saved prompts yet. Save some from the Prompt Library, or use Custom / Upload.
+        </div>
+        <ul v-else class="mt-saved-list">
+          <li
+            v-for="p in savedPrompts"
+            :key="p.id"
+            class="mt-saved-item"
+            :class="{ 'is-on': selectedSavedIds.has(p.id) }"
+            @click="toggleSaved(p)"
           >
-            No per-provider rollups for this window yet.
-          </div>
-          <div v-else class="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <AirCard v-for="card in providerCards" :key="card.provider" size="md" interactive>
-              <div class="mb-3 flex items-start justify-between gap-3">
-                <div>
-                  <div class="text-[15px] font-semibold" style="color: var(--text-primary)">
-                    {{ providerLabel(card.provider) }}
-                  </div>
-                  <div class="text-xs" style="color: var(--text-muted)">
-                    {{ card.total.toLocaleString() }} citations
-                  </div>
-                </div>
-                <AirButton
-                  variant="link"
-                  size="sm"
-                  @click.stop="card.expanded = !card.expanded"
-                >
-                  {{ card.expanded ? 'Hide top domains' : 'View top domains' }}
-                </AirButton>
-              </div>
-              <SourceBreakdownBar :breakdown="card.breakdown" :height="14" />
-              <p v-if="card.topClass" class="mt-3 text-xs" style="color: var(--text-secondary)">
-                Top source:
-                <strong style="color: var(--text-primary)">{{ titleCase(card.topClass.source_class) }}</strong>
-                ({{ pct(card.topClass.share) }}%)
-              </p>
-              <div
-                v-if="card.expanded"
-                class="mt-4 rounded-xl"
-                style="background: var(--bg-surface); border: 1px solid var(--border-color)"
-              >
-                <table class="w-full text-left text-sm">
-                  <thead>
-                    <tr>
-                      <th class="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider" style="color: var(--text-muted)">
-                        Domain
-                      </th>
-                      <th class="px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-wider" style="color: var(--text-muted)">
-                        Count
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr
-                      v-for="d in card.top_domains.slice(0, 10)"
-                      :key="d.apex_domain"
-                      style="border-top: 1px solid var(--border-color)"
-                    >
-                      <td class="px-3 py-2" style="color: var(--text-primary)">{{ d.apex_domain }}</td>
-                      <td class="px-3 py-2 text-right tabular-nums" style="color: var(--text-secondary)">
-                        {{ d.count }}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </AirCard>
-          </div>
-        </section>
+            <span class="mt-check">
+              <svg v-if="selectedSavedIds.has(p.id)" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 6l3 3 5-6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </span>
+            <span class="mt-saved-text">{{ p.text }}</span>
+            <span v-if="p.style" class="mt-saved-tag">{{ p.style }}</span>
+          </li>
+        </ul>
+      </div>
 
-        <!-- Top domains card -->
-        <section class="mb-10">
-          <h2 class="mb-4 text-lg font-semibold" style="color: var(--text-primary)">Top domains</h2>
-          <AirCard size="md" :padded="false">
-            <table class="w-full text-left text-sm">
-              <thead>
-                <tr style="border-bottom: 1px solid var(--border-color)">
-                  <th class="cursor-pointer px-4 py-3 text-[11px] font-semibold uppercase tracking-wider" style="color: var(--text-muted)" @click="toggleSort('apex_domain')">
-                    Domain
-                    <span v-if="sortKey === 'apex_domain'">{{ sortDir === 'desc' ? '↓' : '↑' }}</span>
-                  </th>
-                  <th class="cursor-pointer px-4 py-3 text-[11px] font-semibold uppercase tracking-wider" style="color: var(--text-muted)" @click="toggleSort('source_class')">
-                    Source class
-                    <span v-if="sortKey === 'source_class'">{{ sortDir === 'desc' ? '↓' : '↑' }}</span>
-                  </th>
-                  <th class="cursor-pointer px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-wider" style="color: var(--text-muted)" @click="toggleSort('count')">
-                    Count
-                    <span v-if="sortKey === 'count'">{{ sortDir === 'desc' ? '↓' : '↑' }}</span>
-                  </th>
-                  <th class="cursor-pointer px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-wider" style="color: var(--text-muted)" @click="toggleSort('share')">
-                    Share
-                    <span v-if="sortKey === 'share'">{{ sortDir === 'desc' ? '↓' : '↑' }}</span>
-                  </th>
-                  <th class="cursor-pointer px-4 py-3 text-[11px] font-semibold uppercase tracking-wider" style="color: var(--text-muted)" @click="toggleSort('type')">
-                    Type
-                    <span v-if="sortKey === 'type'">{{ sortDir === 'desc' ? '↓' : '↑' }}</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr
-                  v-for="row in visibleDomains"
-                  :key="row.apex_domain"
-                  class="cursor-pointer transition-colors"
-                  style="border-top: 1px solid var(--border-color)"
-                  @click="openDomainDrawer(row)"
-                  @mouseover="(e) => e.currentTarget.style.background='var(--bg-card-hover)'"
-                  @mouseleave="(e) => e.currentTarget.style.background=''"
-                >
-                  <td class="px-4 py-3" style="color: var(--text-primary)">{{ row.apex_domain }}</td>
-                  <td class="px-4 py-3">
-                    <SourceClassBadge :source_class="row.source_class || 'other'" />
-                  </td>
-                  <td class="px-4 py-3 text-right tabular-nums" style="color: var(--text-secondary)">
-                    {{ row.count }}
-                  </td>
-                  <td class="px-4 py-3 text-right tabular-nums" style="color: var(--text-secondary)">
-                    {{ pct(row.share) }}%
-                  </td>
-                  <td class="px-4 py-3">
-                    <AirChip v-if="row.is_target" variant="success" size="xs">Your site</AirChip>
-                    <AirChip v-else-if="row.is_competitor" variant="warning" size="xs">Competitor</AirChip>
-                    <AirChip v-else variant="neutral" size="xs">Other</AirChip>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-            <div
-              class="flex items-center justify-between px-4 py-3"
-              style="border-top: 1px solid var(--border-color)"
-            >
-              <span class="text-xs" style="color: var(--text-muted)">
-                Showing {{ Math.min(visibleDomains.length, sortedDomains.length) }}
-                of {{ sortedDomains.length }}
-              </span>
-              <AirButton
-                v-if="domainLimit < sortedDomains.length"
-                variant="link"
-                size="sm"
-                @click="domainLimit += 30"
-              >
-                Show more
-              </AirButton>
+      <div v-else-if="promptTab === 'custom'" class="mt-custom">
+        <textarea
+          v-model="customDraft"
+          class="mt-textarea"
+          rows="4"
+          placeholder="Type a prompt and press Add. One per add."
+        />
+        <button class="mt-btn-secondary" :disabled="!customDraft.trim()" @click="addCustom">
+          Add prompt
+        </button>
+      </div>
+
+      <div v-else class="mt-upload">
+        <label class="mt-drop">
+          <input
+            ref="mdInput"
+            type="file"
+            accept=".md,.txt,text/markdown,text/plain"
+            multiple
+            @change="onMarkdownUpload"
+          />
+          <div class="mt-drop-inner">
+            <div class="mt-drop-h">Drop .md or .txt files</div>
+            <div class="mt-drop-sub">
+              Each non-empty line (or paragraph) becomes one prompt. Headings and
+              <code>&gt;</code>/<code>-</code>/<code>*</code> bullets are stripped.
             </div>
-          </AirCard>
-        </section>
-
-        <!-- Recommendations -->
-        <section id="si-recs" class="mb-10">
-          <h2 class="mb-4 text-lg font-semibold" style="color: var(--text-primary)">
-            Recommendations
-          </h2>
-          <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-            <AirCard v-for="(rec, i) in recommendations" :key="i" size="md" interactive>
-              <div class="flex items-start gap-3">
-                <div
-                  class="si-rec-icon flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
-                >
-                  <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-                    <circle cx="10" cy="10" r="8" />
-                    <path d="M10 6v5M10 13.5h.01" stroke-linecap="round" />
-                  </svg>
-                </div>
-                <div class="min-w-0 flex-1">
-                  <div class="text-sm font-semibold" style="color: var(--text-primary)">
-                    {{ rec.headline }}
-                  </div>
-                  <p class="mt-1 text-[13px] leading-relaxed" style="color: var(--text-secondary)" v-html="rec.description"></p>
-                  <AirButton
-                    v-if="rec.cta"
-                    variant="outline"
-                    size="sm"
-                    class="mt-3"
-                    @click="rec.action && rec.action()"
-                  >
-                    {{ rec.cta }}
-                  </AirButton>
-                </div>
-              </div>
-            </AirCard>
           </div>
-        </section>
-      </template>
-    </template>
+        </label>
+      </div>
 
-    <CitationsDrawer
-      v-model:open="drawerOpen"
-      :citations="drawerCitations"
-      :provider="drawerProvider"
-      :prompt="drawerPrompt"
-    />
+      <!-- Selected pool (always visible) -->
+      <div v-if="selectedPrompts.length" class="mt-pool">
+        <div class="mt-pool-head">
+          <span>{{ selectedPrompts.length }} prompt{{ selectedPrompts.length === 1 ? '' : 's' }} ready</span>
+          <button class="mt-pool-clear" @click="clearAll">Clear all</button>
+        </div>
+        <ul class="mt-pool-list">
+          <li v-for="(p, i) in selectedPrompts" :key="p.uid" class="mt-pool-item">
+            <span class="mt-pool-num">{{ i + 1 }}</span>
+            <span class="mt-pool-text">{{ p.text }}</span>
+            <button class="mt-pool-remove" @click="removeSelected(p.uid)">×</button>
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- Step 2: models -->
+    <section class="mt-section">
+      <div class="mt-step-head">
+        <span class="mt-step-num">2</span>
+        <div>
+          <div class="mt-step-h">Pick models</div>
+          <div class="mt-step-sub">{{ enabledProviderCount }} of {{ providerOptions.length }} available</div>
+        </div>
+      </div>
+
+      <div class="mt-models">
+        <label
+          v-for="opt in providerOptions"
+          :key="opt.key"
+          class="mt-model"
+          :class="{ 'is-on': selectedProviders.includes(opt.key), 'is-off': !opt.available }"
+        >
+          <input
+            type="checkbox"
+            :value="opt.key"
+            :checked="selectedProviders.includes(opt.key)"
+            :disabled="!opt.available"
+            @change="toggleProvider(opt.key)"
+          />
+          <div class="mt-model-body">
+            <div class="mt-model-head">
+              <span class="mt-model-dot" :class="'is-' + opt.key"></span>
+              <span class="mt-model-name">{{ opt.label }}</span>
+              <span v-if="!opt.available" class="mt-model-soon">needs API key</span>
+            </div>
+            <div class="mt-model-sub">{{ opt.tag }}</div>
+          </div>
+        </label>
+      </div>
+    </section>
+
+    <!-- Step 3: run -->
+    <section class="mt-section mt-run">
+      <div class="mt-run-summary">
+        <div>
+          <div class="mt-run-num">{{ totalQueries }}</div>
+          <div class="mt-run-label">total queries · {{ promptCount }} × {{ selectedProviders.length || 0 }} models</div>
+        </div>
+        <button
+          class="mt-btn-run"
+          :disabled="!canRun || running"
+          @click="runProbe"
+        >
+          <span v-if="running">
+            <span class="mt-spinner"></span>
+            Probing…
+          </span>
+          <span v-else>Build &amp; run audit</span>
+        </button>
+      </div>
+      <div v-if="errorMsg" class="mt-error">{{ errorMsg }}</div>
+    </section>
+
+    <!-- Results -->
+    <section v-if="lastRun" class="mt-results">
+      <div class="mt-results-head">
+        <h2 class="mt-results-h">Results</h2>
+        <div class="mt-results-meta">
+          <span class="mt-discovery">
+            <strong>{{ lastRun.summary.discovery_rate }}%</strong>
+            discovery
+            <em>({{ lastRun.summary.prompts_with_hit }} of {{ lastRun.summary.prompts }} prompts found {{ brandLabel }})</em>
+          </span>
+        </div>
+      </div>
+
+      <div v-for="(row, idx) in lastRun.results" :key="idx" class="mt-result-card">
+        <div class="mt-result-prompt">
+          <span class="mt-result-num">#{{ idx + 1 }}</span>
+          <span class="mt-result-text">{{ row.prompt }}</span>
+          <span class="mt-result-pill" :class="rowHitClass(row)">
+            {{ rowHitLabel(row) }}
+          </span>
+        </div>
+        <div v-for="r in row.responses" :key="r.provider" class="mt-resp">
+          <div class="mt-resp-head">
+            <span class="mt-resp-dot" :class="'is-' + r.provider"></span>
+            <span class="mt-resp-name">{{ providerLabel(r.provider) }}</span>
+            <span v-if="r.brand_mentioned" class="mt-resp-badge is-hit">brand found</span>
+            <span v-else-if="r.succeeded" class="mt-resp-badge is-miss">not found</span>
+            <span v-else class="mt-resp-badge is-fail">{{ r.error || 'failed' }}</span>
+            <span v-if="r.duration_ms" class="mt-resp-time">{{ Math.round(r.duration_ms) }} ms</span>
+          </div>
+          <div v-if="r.response_text" class="mt-resp-body">
+            <span v-html="highlightBrand(r.response_text)"></span>
+          </div>
+          <div v-else-if="!r.succeeded && r.error" class="mt-resp-empty">{{ r.error }}</div>
+        </div>
+      </div>
+    </section>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { ref, computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { useAppStore } from '@/stores/app'
-import citationsApi from '@/api/citations'
-import SourceClassBadge from '@/components/citations/SourceClassBadge.vue'
-import SourceBreakdownBar from '@/components/citations/SourceBreakdownBar.vue'
-import AirButton from '@/components/ui/AirButton.vue'
-import AirCard from '@/components/ui/AirCard.vue'
-import AirCardSubtitle from '@/components/ui/AirCardSubtitle.vue'
-import AirChip from '@/components/ui/AirChip.vue'
-import CitationsDrawer from '@/components/citations/CitationsDrawer.vue'
+import { useToast } from '@/composables/useToast'
+import llmRanking from '@/api/llm_ranking'
+import promptLibrary from '@/api/promptLibrary'
 
 const route = useRoute()
-const router = useRouter()
 const appStore = useAppStore()
+const toast = useToast()
 const websiteId = route.params.websiteId
 
-const loading = ref(true)
-const snapshots = ref([])
-const recentCitations = ref([])
+const brandLabel = computed(() => {
+  const w = appStore.activeWebsite
+  return (w?.business_name || w?.name || 'your brand').trim()
+})
 
-const periodDays = ref(30)
-const providerFilter = ref('')
-
-const periodOptions = [
-  { value: 7, label: '7d' },
-  { value: 30, label: '30d' },
-  { value: 90, label: '90d' },
+// ── Step 1: prompts ──────────────────────────────────────────────
+const promptTabs = [
+  { value: 'saved',  label: 'From saved' },
+  { value: 'custom', label: 'Custom' },
+  { value: 'upload', label: 'Upload .md' },
 ]
-const providerOptions = [
-  { value: '', label: 'All' },
-  { value: 'claude', label: 'Claude' },
-  { value: 'gpt-4', label: 'GPT-4' },
-  { value: 'gemini', label: 'Gemini' },
-  { value: 'perplexity', label: 'Perplexity' },
-]
+const promptTab = ref('saved')
 
-const websiteName = computed(() => appStore.activeWebsite?.name || '')
+const savedPrompts = ref([])
+const loadingSaved = ref(true)
+const selectedSavedIds = ref(new Set())
+const selectedPrompts = ref([])  // {uid, text, source}
+let _uid = 0
+const nextUid = () => ++_uid
 
-const drawerOpen = ref(false)
-const drawerCitations = ref([])
-const drawerProvider = ref('')
-const drawerPrompt = ref('')
-
-const sortKey = ref('count')
-const sortDir = ref('desc')
-const domainLimit = ref(30)
-
-function pct(share) {
-  return Math.round((share || 0) * 1000) / 10
-}
-
-function titleCase(v) {
-  return (v || 'other')
-    .split('_')
-    .map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w))
-    .join(' ')
-}
-
-function providerLabel(p) {
-  if (!p) return 'All providers'
-  const label = providerOptions.find((o) => o.value === p)
-  if (label) return label.label
-  return p
-    .split(/[-_]/)
-    .map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w))
-    .join(' ')
-}
-
-async function load() {
-  loading.value = true
+async function loadSaved() {
+  loadingSaved.value = true
   try {
-    const [siRes, citRes] = await Promise.all([
-      citationsApi.websiteSourceInfluence(websiteId, {
-        period_days: periodDays.value,
-        ...(providerFilter.value ? { provider: providerFilter.value } : {}),
-      }),
-      citationsApi.websiteCitations(websiteId, {
-        ...(providerFilter.value ? { provider: providerFilter.value } : {}),
-      }),
-    ])
-    const siBody = siRes.data?.data || siRes.data || {}
-    snapshots.value = siBody.snapshots || []
-
-    const citBody = citRes.data?.data || citRes.data || {}
-    recentCitations.value = citBody.results || citBody || []
-  } catch (e) {
-    console.error('Failed to load source influence', e)
-    snapshots.value = []
-    recentCitations.value = []
+    const { data } = await promptLibrary.listBrandPrompts(websiteId)
+    const rows = (data?.data || data || []).map((bp) => ({
+      id: bp.id || bp.brand_prompt_id || bp.prompt?.id,
+      text: (bp.prompt?.template_text || bp.prompt?.text || bp.text || '').trim(),
+      style: bp.prompt?.style || '',
+    })).filter((p) => p.text)
+    savedPrompts.value = rows
+  } catch {
+    savedPrompts.value = []
   } finally {
-    loading.value = false
+    loadingSaved.value = false
   }
 }
 
-onMounted(load)
-watch([periodDays, providerFilter], load)
-
-const aggregateBreakdown = computed(() => {
-  const out = {}
-  let total = 0
-  for (const snap of snapshots.value) {
-    for (const [cls, info] of Object.entries(snap.breakdown || {})) {
-      if (!out[cls]) out[cls] = { count: 0, share: 0 }
-      out[cls].count += info.count || 0
-      total += info.count || 0
-    }
-  }
-  if (total > 0) {
-    for (const cls of Object.keys(out)) {
-      out[cls].share = out[cls].count / total
-    }
-  }
-  return { breakdown: out, total }
-})
-
-const totalCitations = computed(() =>
-  snapshots.value.reduce((acc, s) => acc + (s.total_citations || 0), 0),
-)
-
-const aggregatedDomains = computed(() => {
-  const map = new Map()
-  for (const snap of snapshots.value) {
-    for (const d of snap.top_domains || []) {
-      const key = d.apex_domain
-      if (!key) continue
-      const existing = map.get(key) || { apex_domain: key, count: 0 }
-      existing.count += d.count || 0
-      map.set(key, existing)
-    }
-  }
-  const meta = new Map()
-  for (const c of recentCitations.value) {
-    const key = c.apex_domain
-    if (!key) continue
-    if (!meta.has(key)) {
-      meta.set(key, {
-        is_target: !!c.is_target,
-        is_competitor: !!c.is_competitor,
-        source_class: c.source_class,
-      })
-    }
-  }
-  const list = []
-  let grand = 0
-  for (const row of map.values()) {
-    grand += row.count
-    list.push(row)
-  }
-  return list.map((row) => {
-    const m = meta.get(row.apex_domain) || {}
-    return {
-      ...row,
-      share: grand > 0 ? row.count / grand : 0,
-      is_target: m.is_target || false,
-      is_competitor: m.is_competitor || false,
-      source_class: m.source_class || 'other',
-    }
-  })
-})
-
-const uniqueDomains = computed(() => aggregatedDomains.value.length)
-
-const yourSiteCount = computed(() => aggregateBreakdown.value.breakdown.your_site?.count || 0)
-const yourSiteShare = computed(() => aggregateBreakdown.value.breakdown.your_site?.share || 0)
-const competitorCount = computed(() => aggregateBreakdown.value.breakdown.competitor_site?.count || 0)
-const competitorShare = computed(() => aggregateBreakdown.value.breakdown.competitor_site?.share || 0)
-
-const providerCards = computed(() => {
-  const grouped = new Map()
-  for (const snap of snapshots.value) {
-    if (!snap.provider) continue
-    const existing = grouped.get(snap.provider) || {
-      provider: snap.provider,
-      total: 0,
-      breakdown: {},
-      top_domains: [],
-      expanded: false,
-    }
-    existing.total += snap.total_citations || 0
-    for (const [cls, info] of Object.entries(snap.breakdown || {})) {
-      if (!existing.breakdown[cls]) existing.breakdown[cls] = { count: 0, share: 0 }
-      existing.breakdown[cls].count += info.count || 0
-    }
-    for (const d of snap.top_domains || []) {
-      const found = existing.top_domains.find((x) => x.apex_domain === d.apex_domain)
-      if (found) found.count += d.count
-      else existing.top_domains.push({ ...d })
-    }
-    grouped.set(snap.provider, existing)
-  }
-  for (const card of grouped.values()) {
-    const totalForCard = Object.values(card.breakdown).reduce((acc, v) => acc + v.count, 0)
-    if (totalForCard > 0) {
-      for (const cls of Object.keys(card.breakdown)) {
-        card.breakdown[cls].share = card.breakdown[cls].count / totalForCard
-      }
-    }
-    card.top_domains.sort((a, b) => b.count - a.count)
-    let topClass = null
-    for (const [cls, info] of Object.entries(card.breakdown)) {
-      if (!topClass || info.count > topClass.count) {
-        topClass = { source_class: cls, ...info }
-      }
-    }
-    card.topClass = topClass
-  }
-  return Array.from(grouped.values()).sort((a, b) => b.total - a.total)
-})
-
-function _typeRank(row) {
-  if (row.is_target) return 0
-  if (row.is_competitor) return 1
-  return 2
-}
-
-const sortedDomains = computed(() => {
-  const dir = sortDir.value === 'asc' ? 1 : -1
-  const key = sortKey.value
-  const list = [...aggregatedDomains.value]
-  return list.sort((a, b) => {
-    let av
-    let bv
-    if (key === 'type') {
-      av = _typeRank(a)
-      bv = _typeRank(b)
-    } else {
-      av = a[key] ?? ''
-      bv = b[key] ?? ''
-    }
-    if (typeof av === 'number' && typeof bv === 'number') {
-      return (av - bv) * dir
-    }
-    return String(av).localeCompare(String(bv)) * dir
-  })
-})
-
-const visibleDomains = computed(() => sortedDomains.value.slice(0, domainLimit.value))
-
-function toggleSort(key) {
-  if (sortKey.value === key) {
-    sortDir.value = sortDir.value === 'desc' ? 'asc' : 'desc'
+function toggleSaved(p) {
+  const next = new Set(selectedSavedIds.value)
+  if (next.has(p.id)) {
+    next.delete(p.id)
+    selectedPrompts.value = selectedPrompts.value.filter((x) => x.savedId !== p.id)
   } else {
-    sortKey.value = key
-    sortDir.value = 'desc'
+    if (selectedPrompts.value.length >= 25) {
+      toast.error('Max 25 prompts per run.')
+      return
+    }
+    next.add(p.id)
+    selectedPrompts.value.push({ uid: nextUid(), text: p.text, source: 'saved', savedId: p.id })
+  }
+  selectedSavedIds.value = next
+}
+
+const customDraft = ref('')
+function addCustom() {
+  const t = customDraft.value.trim()
+  if (!t) return
+  if (selectedPrompts.value.length >= 25) {
+    toast.error('Max 25 prompts per run.')
+    return
+  }
+  selectedPrompts.value.push({ uid: nextUid(), text: t, source: 'custom' })
+  customDraft.value = ''
+}
+
+const mdInput = ref(null)
+function parseMarkdown(text) {
+  // Strip headings, bullets, blockquotes, blanks; keep one prompt per line.
+  return (text || '')
+    .split(/\r?\n/)
+    .map((line) => line.replace(/^\s*([>*-]|#{1,6})\s*/, '').trim())
+    .filter((line) => line.length >= 5)
+}
+function onMarkdownUpload(e) {
+  const files = Array.from(e.target?.files || [])
+  if (!files.length) return
+  Promise.all(files.map((f) => f.text())).then((texts) => {
+    let added = 0
+    for (const t of texts) {
+      for (const line of parseMarkdown(t)) {
+        if (selectedPrompts.value.length >= 25) break
+        selectedPrompts.value.push({ uid: nextUid(), text: line, source: 'upload' })
+        added++
+      }
+    }
+    if (mdInput.value) mdInput.value.value = ''
+    toast.success(`Imported ${added} prompt${added === 1 ? '' : 's'}`)
+  })
+}
+
+function removeSelected(uid) {
+  const removed = selectedPrompts.value.find((p) => p.uid === uid)
+  selectedPrompts.value = selectedPrompts.value.filter((p) => p.uid !== uid)
+  if (removed?.savedId) {
+    const next = new Set(selectedSavedIds.value)
+    next.delete(removed.savedId)
+    selectedSavedIds.value = next
+  }
+}
+function clearAll() {
+  selectedPrompts.value = []
+  selectedSavedIds.value = new Set()
+}
+
+const promptCount = computed(() => selectedPrompts.value.length)
+
+// ── Step 2: models ───────────────────────────────────────────────
+const providerOptions = ref([
+  { key: 'claude',     label: 'Claude (Anthropic)', tag: '~3s · structured replies', available: true },
+  { key: 'gpt4',       label: 'GPT-4 (OpenAI)',     tag: 'coming soon',              available: false },
+  { key: 'gemini',     label: 'Gemini (Google)',    tag: 'coming soon',              available: false },
+  { key: 'perplexity', label: 'Perplexity',         tag: 'coming soon',              available: false },
+])
+const enabledProviderCount = computed(() => providerOptions.value.filter((o) => o.available).length)
+const selectedProviders = ref(['claude'])
+function toggleProvider(key) {
+  const opt = providerOptions.value.find((o) => o.key === key)
+  if (!opt?.available) return
+  if (selectedProviders.value.includes(key)) {
+    selectedProviders.value = selectedProviders.value.filter((k) => k !== key)
+  } else {
+    selectedProviders.value = [...selectedProviders.value, key]
   }
 }
 
-function openDomainDrawer(row) {
-  const matching = recentCitations.value.filter((c) => c.apex_domain === row.apex_domain)
-  drawerCitations.value = matching
-  drawerProvider.value = providerFilter.value || 'All providers'
-  drawerPrompt.value = `Citations from ${row.apex_domain}`
-  drawerOpen.value = true
+const totalQueries = computed(() => promptCount.value * (selectedProviders.value.length || 0))
+const canRun = computed(() => totalQueries.value > 0)
+
+// ── Step 3: run ──────────────────────────────────────────────────
+const running = ref(false)
+const errorMsg = ref('')
+const lastRun = ref(null)
+function providerLabel(key) {
+  return (providerOptions.value.find((o) => o.key === key)?.label) || key
 }
 
-const recommendations = computed(() => {
-  const recs = []
-  const b = aggregateBreakdown.value.breakdown
-  const yShare = yourSiteShare.value
-  const cShare = competitorShare.value
-  const blogShare = b.blog?.share || 0
-  const redditShare = b.reddit?.share || 0
-  const yourSiteRedditCount = recentCitations.value.filter(
-    (c) => c.is_target && c.source_class === 'reddit',
-  ).length
-
-  if (yShare < 0.05 && blogShare > 0.15) {
-    recs.push({
-      headline: 'You are rarely cited from blog content',
-      description:
-        '<strong>Publish more long-form articles</strong> targeting questions in your category to claim a share of blog citations.',
-      cta: 'Open prompt library',
-      action: () => router.push(`/llm-ranking/${websiteId}/prompts`),
+async function runProbe() {
+  errorMsg.value = ''
+  running.value = true
+  try {
+    const { data } = await llmRanking.modelTest(websiteId, {
+      prompts: selectedPrompts.value.map((p) => p.text),
+      providers: selectedProviders.value,
     })
+    lastRun.value = data?.data || data
+    toast.success('Audit complete')
+  } catch (e) {
+    errorMsg.value = e.displayMessage || e?.response?.data?.error || 'Probe failed.'
+  } finally {
+    running.value = false
   }
-  if (redditShare > 0.2 && yourSiteRedditCount === 0) {
-    recs.push({
-      headline: `Reddit drives ${pct(redditShare)}% of citations in your category`,
-      description:
-        '<strong>Engage with the top threads</strong> where LLMs source community signal.',
-      cta: 'View Reddit citations',
-      action: () => filterByClass('reddit'),
-    })
-  }
-  if (cShare / Math.max(yShare, 0.001) > 3) {
-    recs.push({
-      headline: 'Competitors are cited far more than you',
-      description:
-        '<strong>Run a content gap analysis</strong> against the top competitor domains in the table above.',
-      cta: 'See top domains',
-      action: () => {
-        const el = document.querySelector('.si-table')
-        if (el) el.scrollIntoView({ behavior: 'smooth' })
-      },
-    })
-  }
-  if (!recs.length) {
-    recs.push({
-      headline: 'Keep building your citation footprint',
-      description:
-        'Run more audits to build a richer source-influence picture across providers.',
-      cta: 'Run new audit',
-      action: () => router.push(`/llm-ranking/${websiteId}`),
-    })
-  }
-  return recs.slice(0, 3)
-})
-
-function filterByClass(cls) {
-  const matching = recentCitations.value.filter((c) => c.source_class === cls)
-  drawerCitations.value = matching
-  drawerProvider.value = providerFilter.value || 'All providers'
-  drawerPrompt.value = `${titleCase(cls)} citations`
-  drawerOpen.value = true
 }
+
+function rowHitLabel(row) {
+  const hit = row.responses.some((r) => r.brand_mentioned)
+  if (hit) return 'discovered'
+  if (row.responses.every((r) => !r.succeeded)) return 'all failed'
+  return 'not discovered'
+}
+function rowHitClass(row) {
+  const hit = row.responses.some((r) => r.brand_mentioned)
+  if (hit) return 'is-hit'
+  if (row.responses.every((r) => !r.succeeded)) return 'is-fail'
+  return 'is-miss'
+}
+
+function highlightBrand(text) {
+  const terms = (lastRun.value?.brand_terms || []).filter(Boolean)
+  let out = (text || '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
+  for (const t of terms) {
+    if (!t) continue
+    const safe = t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    out = out.replace(new RegExp(`(${safe})`, 'ig'), '<mark class="mt-mark">$1</mark>')
+  }
+  return out
+}
+
+onMounted(loadSaved)
 </script>
 
 <style scoped>
-.si-page { background: #f7f9fc; min-height: 100vh; }
+.mt-page {
+  background: #f7f9fc;
+  min-height: 100vh;
+  padding: 28px 24px 80px;
+  max-width: 1080px;
+  margin: 0 auto;
+  color: #0f172a;
+}
 
-/* Intro: side-by-side explainer card */
-.si-intro {
+/* Intro */
+.mt-intro {
   display: grid;
-  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr);
   gap: 22px;
   padding: 28px;
-  margin-bottom: 22px;
+  margin-bottom: 24px;
   background: linear-gradient(135deg, #ffffff 0%, #f1f5fb 100%);
   border: 1px solid rgba(15, 23, 42, 0.08);
   border-radius: 20px;
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03), 0 12px 30px rgba(15, 23, 42, 0.05);
 }
-.si-intro-eyebrow {
+.mt-eyebrow {
   display: inline-block;
   font-size: 11px; font-weight: 700; letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -681,59 +435,282 @@ function filterByClass(cls) {
   background: rgba(255, 107, 53, 0.10);
   margin-bottom: 14px;
 }
-.si-intro-h {
-  font-size: 28px; font-weight: 700;
-  color: #0f172a;
-  letter-spacing: -0.02em;
-  margin: 0 0 10px;
-}
-.si-intro-sub {
-  font-size: 14.5px; line-height: 1.55;
-  color: #475569;
-  margin: 0;
-  max-width: 640px;
-}
-.si-intro-sub strong { color: #0f172a; font-weight: 600; }
-.si-intro-meta {
-  margin-top: 14px;
-  font-size: 12.5px;
-  color: #64748b;
-}
-.si-intro-meta strong { color: #1f2937; font-weight: 600; }
-
-.si-howto {
-  background: #ffffff;
+.mt-h { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; margin: 0 0 10px; }
+.mt-sub { font-size: 14.5px; line-height: 1.6; color: #475569; margin: 0; max-width: 640px; }
+.mt-sub strong { color: #0f172a; font-weight: 600; }
+.mt-howto {
+  background: #fff;
   border: 1px solid rgba(15, 23, 42, 0.08);
   border-radius: 14px;
   padding: 18px 20px;
 }
-.si-howto-h {
-  font-size: 12px; font-weight: 700;
-  color: #ff6b35; letter-spacing: 0.06em; text-transform: uppercase;
+.mt-howto-h {
+  font-size: 12px; font-weight: 700; color: #ff6b35;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  margin-bottom: 8px;
+}
+.mt-howto-list { margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.7; color: #334155; }
+
+/* Section */
+.mt-section {
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 16px;
+  padding: 22px;
+  margin-bottom: 18px;
+}
+.mt-step-head {
+  display: flex; align-items: center; gap: 12px;
+  margin-bottom: 16px;
+}
+.mt-step-num {
+  width: 28px; height: 28px; border-radius: 9px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: linear-gradient(135deg, #ff6b35 0%, #ff5722 100%);
+  color: #fff; font-weight: 700; font-size: 14px;
+  box-shadow: 0 4px 12px rgba(255, 107, 53, 0.25);
+}
+.mt-step-h { font-size: 16px; font-weight: 700; color: #0f172a; }
+.mt-step-sub { font-size: 12px; color: #64748b; margin-top: 2px; }
+
+/* Tabs */
+.mt-tabs { display: inline-flex; gap: 4px; padding: 4px; background: #f1f5f9; border-radius: 10px; margin-bottom: 16px; }
+.mt-tab {
+  padding: 7px 14px; border: 0; background: transparent;
+  font-size: 13px; font-weight: 600; color: #64748b;
+  border-radius: 7px; cursor: pointer; transition: all 0.15s;
+}
+.mt-tab.is-active { background: #fff; color: #0f172a; box-shadow: 0 1px 2px rgba(15,23,42,0.06); }
+
+/* Saved list */
+.mt-muted { color: #64748b; font-size: 13px; padding: 10px 0; }
+.mt-empty { color: #64748b; font-size: 13px; padding: 16px; background: #f8fafc; border-radius: 10px; }
+.mt-saved-list { list-style: none; margin: 0; padding: 0; max-height: 360px; overflow: auto; }
+.mt-saved-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; margin-bottom: 6px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 10px;
+  cursor: pointer; transition: all 0.15s;
+  background: #fff;
+}
+.mt-saved-item:hover { border-color: rgba(255, 107, 53, 0.30); }
+.mt-saved-item.is-on { border-color: #ff6b35; background: rgba(255, 107, 53, 0.04); }
+.mt-check {
+  width: 18px; height: 18px; border-radius: 5px;
+  border: 1.5px solid #cbd5e1;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: #fff; color: #fff; flex-shrink: 0;
+}
+.mt-saved-item.is-on .mt-check { background: #ff6b35; border-color: #ff6b35; }
+.mt-saved-text { flex: 1; font-size: 13.5px; color: #0f172a; }
+.mt-saved-tag {
+  font-size: 10.5px; font-weight: 600; padding: 2px 8px;
+  border-radius: 9999px; background: rgba(59, 130, 246, 0.10); color: #1d4ed8;
+}
+
+/* Custom */
+.mt-textarea {
+  width: 100%;
+  border: 1px solid rgba(15, 23, 42, 0.10);
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-size: 14px;
+  font-family: inherit;
+  resize: vertical;
   margin-bottom: 10px;
 }
-.si-howto-list {
-  margin: 0; padding-left: 18px;
-  font-size: 13px; line-height: 1.6;
-  color: #334155;
-}
-.si-howto-list li { margin-bottom: 4px; }
-.si-howto-list em { color: #3b82f6; font-style: normal; font-weight: 600; }
+.mt-textarea:focus { outline: none; border-color: #ff6b35; box-shadow: 0 0 0 3px rgba(255,107,53,0.15); }
 
-/* Filter row sits on its own */
-.si-filter-row {
-  display: flex; justify-content: flex-end;
-  margin-bottom: 22px;
+/* Upload */
+.mt-drop {
+  display: block;
+  border: 2px dashed rgba(255, 107, 53, 0.30);
+  border-radius: 12px;
+  padding: 24px;
+  cursor: pointer;
+  text-align: center;
+  background: rgba(255, 107, 53, 0.03);
+  transition: all 0.15s;
+}
+.mt-drop:hover { background: rgba(255, 107, 53, 0.06); }
+.mt-drop input { display: none; }
+.mt-drop-h { font-size: 14px; font-weight: 600; color: #ff6b35; }
+.mt-drop-sub { font-size: 12px; color: #64748b; margin-top: 4px; }
+.mt-drop-sub code { padding: 1px 4px; background: #f1f5f9; border-radius: 4px; font-size: 11px; }
+
+/* Pool */
+.mt-pool {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px dashed rgba(15, 23, 42, 0.10);
+}
+.mt-pool-head {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 12px; font-weight: 600; color: #64748b;
+  margin-bottom: 10px;
+}
+.mt-pool-clear {
+  border: 0; background: transparent; color: #ef4444;
+  font-size: 11.5px; font-weight: 600; cursor: pointer;
+}
+.mt-pool-list { list-style: none; margin: 0; padding: 0; }
+.mt-pool-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px; margin-bottom: 4px;
+  background: #f8fafc; border-radius: 8px;
+}
+.mt-pool-num { font-size: 11px; font-weight: 700; color: #94a3b8; width: 18px; }
+.mt-pool-text { flex: 1; font-size: 13px; color: #1f2937; }
+.mt-pool-remove {
+  border: 0; background: transparent; color: #94a3b8;
+  font-size: 18px; line-height: 1; cursor: pointer; padding: 0 6px;
+}
+.mt-pool-remove:hover { color: #ef4444; }
+
+/* Models */
+.mt-models { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+.mt-model {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 12px;
+  cursor: pointer;
+  background: #fff;
+  transition: all 0.15s;
+}
+.mt-model:hover:not(.is-off) { border-color: rgba(255, 107, 53, 0.30); }
+.mt-model.is-on { border-color: #ff6b35; background: rgba(255, 107, 53, 0.04); }
+.mt-model.is-off { opacity: 0.55; cursor: not-allowed; background: #f8fafc; }
+.mt-model input { margin-top: 3px; accent-color: #ff6b35; }
+.mt-model-body { flex: 1; min-width: 0; }
+.mt-model-head { display: flex; align-items: center; gap: 8px; }
+.mt-model-dot { width: 8px; height: 8px; border-radius: 9999px; background: #cbd5e1; }
+.mt-model-dot.is-claude     { background: #d97706; }
+.mt-model-dot.is-gpt4       { background: #10b981; }
+.mt-model-dot.is-gemini     { background: #4285f4; }
+.mt-model-dot.is-perplexity { background: #5b6cff; }
+.mt-model-name { font-size: 13.5px; font-weight: 600; color: #0f172a; }
+.mt-model-soon {
+  font-size: 10px; font-weight: 600; padding: 1px 7px;
+  background: rgba(15, 23, 42, 0.06); color: #64748b;
+  border-radius: 9999px; text-transform: uppercase;
+  letter-spacing: 0.04em; margin-left: auto;
+}
+.mt-model-sub { font-size: 11.5px; color: #64748b; margin-top: 2px; }
+
+/* Run */
+.mt-run-summary {
+  display: flex; justify-content: space-between; align-items: center; gap: 16px;
+}
+.mt-run-num { font-size: 28px; font-weight: 700; color: #0f172a; line-height: 1; }
+.mt-run-label { font-size: 12px; color: #64748b; margin-top: 4px; }
+.mt-btn-run {
+  padding: 12px 24px;
+  background: linear-gradient(135deg, #ff6b35 0%, #ff5722 100%);
+  color: #fff; border: 0; border-radius: 10px;
+  font-size: 14px; font-weight: 700;
+  cursor: pointer; transition: all 0.15s;
+  box-shadow: 0 6px 16px rgba(255, 107, 53, 0.25);
+}
+.mt-btn-run:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 10px 22px rgba(255, 107, 53, 0.35); }
+.mt-btn-run:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
+.mt-spinner {
+  display: inline-block; width: 12px; height: 12px;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-top-color: #fff;
+  border-radius: 9999px;
+  margin-right: 6px;
+  animation: mt-spin 0.7s linear infinite;
+  vertical-align: -2px;
+}
+@keyframes mt-spin { to { transform: rotate(360deg); } }
+.mt-btn-secondary {
+  padding: 8px 16px;
+  background: #fff;
+  border: 1px solid rgba(15, 23, 42, 0.10);
+  border-radius: 9px;
+  font-size: 13px; font-weight: 600; color: #1f2937;
+  cursor: pointer;
+}
+.mt-btn-secondary:hover:not(:disabled) {
+  background: #ff6b35; border-color: #ff6b35; color: #fff;
+}
+.mt-btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
+.mt-error {
+  margin-top: 12px; padding: 10px 14px;
+  background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.20);
+  border-radius: 10px; color: #b91c1c; font-size: 13px;
 }
 
-/* Recommendation icon — light-themed, brand-orange */
-.si-rec-icon {
-  background: rgba(255, 107, 53, 0.12);
-  color: #ff6b35;
+/* Results */
+.mt-results { margin-top: 28px; }
+.mt-results-head {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 14px;
+}
+.mt-results-h { font-size: 18px; font-weight: 700; margin: 0; color: #0f172a; }
+.mt-discovery {
+  font-size: 13px; color: #475569;
+}
+.mt-discovery strong { color: #ff6b35; font-size: 18px; font-weight: 700; }
+.mt-discovery em { font-style: normal; color: #64748b; margin-left: 4px; font-size: 12px; }
+
+.mt-result-card {
+  background: #fff;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 14px;
+  padding: 16px 18px;
+  margin-bottom: 12px;
+}
+.mt-result-prompt {
+  display: flex; align-items: center; gap: 10px;
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+}
+.mt-result-num { font-size: 11px; font-weight: 700; color: #94a3b8; }
+.mt-result-text { flex: 1; font-size: 14px; font-weight: 600; color: #0f172a; }
+.mt-result-pill {
+  font-size: 11px; font-weight: 700; padding: 3px 10px;
+  border-radius: 9999px; text-transform: uppercase; letter-spacing: 0.04em;
+}
+.mt-result-pill.is-hit  { background: rgba(16, 185, 129, 0.12); color: #047857; }
+.mt-result-pill.is-miss { background: rgba(15, 23, 42, 0.08);   color: #475569; }
+.mt-result-pill.is-fail { background: rgba(239, 68, 68, 0.12);  color: #b91c1c; }
+
+.mt-resp { margin-top: 10px; padding: 12px; background: #f8fafc; border-radius: 10px; }
+.mt-resp-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; flex-wrap: wrap; }
+.mt-resp-dot { width: 8px; height: 8px; border-radius: 9999px; background: #cbd5e1; }
+.mt-resp-dot.is-claude     { background: #d97706; }
+.mt-resp-dot.is-gpt4       { background: #10b981; }
+.mt-resp-dot.is-gemini     { background: #4285f4; }
+.mt-resp-dot.is-perplexity { background: #5b6cff; }
+.mt-resp-name { font-size: 13px; font-weight: 600; color: #0f172a; }
+.mt-resp-badge {
+  font-size: 10.5px; font-weight: 600; padding: 2px 8px;
+  border-radius: 9999px; text-transform: lowercase; letter-spacing: 0.02em;
+}
+.mt-resp-badge.is-hit  { background: rgba(16, 185, 129, 0.14); color: #047857; }
+.mt-resp-badge.is-miss { background: rgba(15, 23, 42, 0.06);   color: #64748b; }
+.mt-resp-badge.is-fail { background: rgba(239, 68, 68, 0.10);  color: #b91c1c; }
+.mt-resp-time { font-size: 10.5px; color: #94a3b8; margin-left: auto; }
+.mt-resp-body {
+  font-size: 12.5px; line-height: 1.55; color: #334155;
+  white-space: pre-wrap;
+}
+.mt-resp-empty { font-size: 12px; color: #b91c1c; font-style: italic; }
+
+:deep(.mt-mark) {
+  background: rgba(255, 107, 53, 0.22);
+  color: #c2410c;
+  padding: 0 3px;
+  border-radius: 3px;
+  font-weight: 700;
 }
 
 @media (max-width: 880px) {
-  .si-intro { grid-template-columns: 1fr; padding: 22px; }
-  .si-filter-row { justify-content: flex-start; }
+  .mt-intro { grid-template-columns: 1fr; }
+  .mt-run-summary { flex-direction: column; align-items: stretch; }
 }
 </style>
