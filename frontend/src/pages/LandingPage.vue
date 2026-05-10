@@ -140,6 +140,48 @@
       </div>
     </section>
 
+    <!-- ═══ Why you need this — ad-copy section ═══ -->
+    <section class="why anim" data-anim="fade-up">
+      <div class="wrap why-wrap">
+        <span class="why-eyebrow">Why this exists</span>
+        <h2 class="why-h">
+          Your customers stopped Googling.<br/>
+          <em>They started <span class="why-h-pop">asking.</span></em>
+        </h2>
+        <p class="why-sub">
+          Every day, millions of buyers skip the search bar and ask ChatGPT, Claude,
+          Gemini, or Perplexity instead. The AI gives them one answer, two competitors,
+          and a recommendation. If your brand isn't in that answer — you weren't even in the room.
+        </p>
+
+        <div class="why-grid">
+          <div class="why-card anim" data-anim="fade-up" data-delay="60">
+            <div class="why-card-num">1</div>
+            <div class="why-card-h">SEO ranks pages.<br/>AI ranks <em>brands.</em></div>
+            <p>You can be #1 on Google and invisible inside ChatGPT's answer. Different game, different scoreboard.</p>
+          </div>
+          <div class="why-card anim" data-anim="fade-up" data-delay="140">
+            <div class="why-card-num">2</div>
+            <div class="why-card-h">Every missed mention<br/>is a <em>handed-over</em> sale.</div>
+            <p>When the AI names your competitor and not you, the buyer takes the recommendation. No second click. No second chance.</p>
+          </div>
+          <div class="why-card anim" data-anim="fade-up" data-delay="220">
+            <div class="why-card-num">3</div>
+            <div class="why-card-h">You can't fix<br/>what you can't <em>see.</em></div>
+            <p>Most brands have zero visibility into what the four major models say about them. We turn the lights on, week over week.</p>
+          </div>
+        </div>
+
+        <div class="why-cta anim" data-anim="fade-up" data-delay="300">
+          <span class="why-cta-line">The brands winning AI search are the ones <strong>measuring it</strong>.</span>
+          <router-link to="/register" class="why-cta-btn">
+            See where you stand
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+          </router-link>
+        </div>
+      </div>
+    </section>
+
     <!-- ═══ Stats / Why GEO matters ═══ -->
     <section class="stats anim" data-anim="fade-up" ref="statsSection">
       <div class="wrap">
@@ -2575,6 +2617,158 @@ em { color: #5B8DEF; font-style: italic; }
 @keyframes marqueeRoll {
   from { transform: translateX(0%); }
   to   { transform: translateX(-50%); }
+}
+
+/* ── Why you need this ── */
+.why {
+  position: relative;
+  padding: 100px 0 60px;
+  background: linear-gradient(180deg, #ffffff 0%, #f7f9fc 100%);
+}
+.why-wrap { max-width: 1080px; }
+.why-eyebrow {
+  display: inline-block;
+  font-size: 11.5px; font-weight: 700; letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #ff6b35;
+  padding: 5px 12px;
+  border-radius: 9999px;
+  background: rgba(255, 107, 53, 0.10);
+  margin-bottom: 22px;
+}
+.why-h {
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-weight: 700;
+  font-size: clamp(2.2rem, 4.5vw, 3.6rem);
+  line-height: 1.1;
+  letter-spacing: -0.025em;
+  color: #0f172a;
+  margin-bottom: 18px;
+}
+.why-h em {
+  font-style: normal;
+  font-weight: 700;
+  color: #1f2937;
+}
+.why-h-pop {
+  background: linear-gradient(120deg, #ff6b35 0%, #3b82f6 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.why-sub {
+  max-width: 720px;
+  font-size: 17px;
+  line-height: 1.6;
+  color: #475569;
+  margin-bottom: 56px;
+}
+.why-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 22px;
+  margin-bottom: 56px;
+}
+.why-card {
+  position: relative;
+  padding: 28px 24px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 18px;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 16px 40px rgba(15, 23, 42, 0.05);
+  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+}
+.why-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(255, 107, 53, 0.35);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 24px 60px rgba(15, 23, 42, 0.10);
+}
+.why-card-num {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 36px; height: 36px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #ff6b35 0%, #ff5722 100%);
+  color: #fff;
+  font-weight: 800;
+  font-size: 15px;
+  margin-bottom: 18px;
+  box-shadow: 0 6px 16px rgba(255, 107, 53, 0.25);
+}
+.why-card-h {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-weight: 700;
+  font-size: 20px;
+  line-height: 1.25;
+  color: #0f172a;
+  margin-bottom: 10px;
+}
+.why-card-h em {
+  font-style: normal;
+  color: #ff6b35;
+}
+.why-card p {
+  font-size: 14.5px;
+  line-height: 1.55;
+  color: #64748b;
+  margin: 0;
+}
+.why-cta {
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 18px;
+  padding: 28px 32px;
+  border-radius: 18px;
+  background: linear-gradient(120deg, #0f172a 0%, #1e293b 100%);
+  position: relative;
+  overflow: hidden;
+}
+.why-cta::before {
+  content: '';
+  position: absolute; inset: -50% -10% auto auto;
+  width: 60%; height: 200%;
+  background: radial-gradient(circle, rgba(59, 130, 246, 0.35) 0%, transparent 65%);
+  pointer-events: none;
+}
+.why-cta::after {
+  content: '';
+  position: absolute; inset: auto auto -40% -10%;
+  width: 50%; height: 160%;
+  background: radial-gradient(circle, rgba(255, 107, 53, 0.30) 0%, transparent 65%);
+  pointer-events: none;
+}
+.why-cta-line {
+  position: relative; z-index: 1;
+  font-size: 18px;
+  color: #e2e8f0;
+  max-width: 580px;
+  line-height: 1.4;
+}
+.why-cta-line strong {
+  color: #fff;
+  font-weight: 700;
+}
+.why-cta-btn {
+  position: relative; z-index: 1;
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 13px 22px;
+  border-radius: 9999px;
+  background: #ff6b35;
+  color: #ffffff;
+  font-weight: 600;
+  font-size: 14.5px;
+  text-decoration: none;
+  transition: background 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
+  box-shadow: 0 8px 22px rgba(255, 107, 53, 0.35);
+}
+.why-cta-btn:hover {
+  background: #ff5722;
+  transform: translateY(-2px);
+  box-shadow: 0 12px 28px rgba(255, 107, 53, 0.45);
+}
+
+@media (max-width: 880px) {
+  .why-grid { grid-template-columns: 1fr; }
+  .why { padding: 70px 0 40px; }
+  .why-cta { flex-direction: column; align-items: flex-start; padding: 24px; }
 }
 
 /* ── Stats / count-up ── */
