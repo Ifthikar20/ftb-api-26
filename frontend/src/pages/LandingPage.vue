@@ -42,15 +42,6 @@
             mentions your brand. Find the prompts you're missing from. Generate the
             content to close the gap.
           </p>
-          <div class="hero-ctas anim" data-anim="fade-up" data-delay="120">
-            <router-link to="/register" class="btn-primary">Run a free audit</router-link>
-            <router-link to="/login" class="btn-ghost">Sign in</router-link>
-          </div>
-          <ul class="hero-bullets anim" data-anim="fade-up" data-delay="160">
-            <li><span class="hero-bullet-dot"></span> Multi-LLM probing across Claude, GPT-4, Gemini, Perplexity</li>
-            <li><span class="hero-bullet-dot"></span> Source-level citation tracking — see where the AI gets its answers</li>
-            <li><span class="hero-bullet-dot"></span> Brand-fact verification + AI-drafted content to close gaps</li>
-          </ul>
         </div>
 
         <!-- Framer-style animated visualisation -->
