@@ -1,26 +1,14 @@
 <template>
-  <div class="mt-page">
-    <header class="mt-intro">
-      <div class="mt-intro-left">
-        <span class="mt-eyebrow">Model Test</span>
-        <h1 class="mt-h">Probe LLMs with your own prompts.</h1>
-        <p class="mt-sub">
-          Pick a set of prompts (from your saved library, custom typed, or a markdown
-          file), choose which models to probe, and we will fire them in real time and
-          tell you whether <strong>{{ brandLabel }}</strong> showed up in the answer.
+  <div class="mt-page fade-in">
+    <div class="page-header">
+      <div>
+        <h1 class="page-title">Model Test</h1>
+        <p class="page-subtitle">
+          Probe LLMs with your own prompts to see whether
+          <strong>{{ brandLabel }}</strong> surfaces in their answers.
         </p>
       </div>
-      <div class="mt-intro-right">
-        <div class="mt-howto">
-          <div class="mt-howto-h">Three steps</div>
-          <ol class="mt-howto-list">
-            <li>Pick prompts</li>
-            <li>Pick models</li>
-            <li>Run &amp; review</li>
-          </ol>
-        </div>
-      </div>
-    </header>
+    </div>
 
     <!-- Step 1: prompts -->
     <section class="mt-section">
@@ -478,51 +466,9 @@ onMounted(loadSaved)
 
 <style scoped>
 .mt-page {
-  background: #f7f9fc;
-  min-height: 100vh;
-  padding: 28px 24px 80px;
-  max-width: 1080px;
-  margin: 0 auto;
-  color: #0f172a;
+  color: var(--text-primary);
 }
-
-/* Intro */
-.mt-intro {
-  display: grid;
-  grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr);
-  gap: 22px;
-  padding: 28px;
-  margin-bottom: 24px;
-  background: linear-gradient(135deg, #ffffff 0%, #f1f5fb 100%);
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  border-radius: 20px;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03), 0 12px 30px rgba(15, 23, 42, 0.05);
-}
-.mt-eyebrow {
-  display: inline-block;
-  font-size: 11px; font-weight: 700; letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: #ff6b35;
-  padding: 4px 10px;
-  border-radius: 9999px;
-  background: rgba(255, 107, 53, 0.10);
-  margin-bottom: 14px;
-}
-.mt-h { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; margin: 0 0 10px; }
-.mt-sub { font-size: 14.5px; line-height: 1.6; color: #475569; margin: 0; max-width: 640px; }
-.mt-sub strong { color: #0f172a; font-weight: 600; }
-.mt-howto {
-  background: #fff;
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  border-radius: 14px;
-  padding: 18px 20px;
-}
-.mt-howto-h {
-  font-size: 12px; font-weight: 700; color: #ff6b35;
-  letter-spacing: 0.06em; text-transform: uppercase;
-  margin-bottom: 8px;
-}
-.mt-howto-list { margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.7; color: #334155; }
+.mt-page .page-subtitle strong { color: var(--text-primary); font-weight: 600; }
 
 /* Section */
 .mt-section {
@@ -805,7 +751,6 @@ onMounted(loadSaved)
 }
 
 @media (max-width: 880px) {
-  .mt-intro { grid-template-columns: 1fr; }
   .mt-run-summary { flex-direction: column; align-items: stretch; }
 }
 </style>
