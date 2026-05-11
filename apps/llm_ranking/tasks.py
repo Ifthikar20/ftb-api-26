@@ -390,11 +390,245 @@ def run_model_test(self, *, run_id: str, website_id: str, user_id: int | None,
             "prompts_with_hit": prompts_with_hit,
             "discovery_rate": round(prompts_with_hit / max(len(prompts), 1) * 100, 1),
         }
-        state["status"] = "complete"
+
+        # ── Post-processing: verbose synthesis + Gemini web grounding ──
+        # Both steps are best-effort. A failure here is surfaced in the
+        # state but does not mark the whole run as failed, since the raw
+        # per-model responses are already valuable on their own.
+        state["status"] = "analyzing"
         state["current_provider"] = ""
+        state["analysis_status"] = "running"
+        state["grounding_status"] = "running"
+        _model_test_state_set(run_id, state)
+
+        try:
+            state["analysis"] = _model_test_synthesize(
+                brand_terms=brand_terms,
+                prompts=prompts,
+                prompt_rows=results,
+                providers=providers,
+                user=user,
+                website=website,
+            )
+            state["analysis_status"] = "complete"
+        except Exception as exc:
+            logger.warning("model_test %s synthesis failed: %s", run_id, exc)
+            state["analysis"] = None
+            state["analysis_status"] = "failed"
+            state["analysis_error"] = str(exc)[:300]
+        _model_test_state_set(run_id, state)
+
+        try:
+            state["google_grounding"] = _model_test_google_grounding(
+                brand_terms=brand_terms,
+                prompts=prompts,
+                website=website,
+            )
+            state["grounding_status"] = "complete"
+        except Exception as exc:
+            logger.warning("model_test %s grounding failed: %s", run_id, exc)
+            state["google_grounding"] = None
+            state["grounding_status"] = "failed"
+            state["grounding_error"] = str(exc)[:300]
+        _model_test_state_set(run_id, state)
+
+        state["status"] = "complete"
         _model_test_state_set(run_id, state)
     except Exception as exc:
         logger.exception("model_test %s crashed", run_id)
         state["status"] = "failed"
         state["error"] = str(exc)[:500]
         _model_test_state_set(run_id, state)
+
+
+# ── Model Test post-processing helpers ─────────────────────────────
+
+_SYNTHESIS_SYSTEM = (
+    "You are a senior brand-visibility analyst. You read raw responses from "
+    "multiple LLMs to brand-discovery prompts and produce a VERBOSE, "
+    "decision-grade report for the marketing lead. You always cite specific "
+    "prompts and exact phrases from the responses. You never invent data."
+)
+
+
+def _model_test_synthesize(*, brand_terms, prompts, prompt_rows, providers,
+                           user, website) -> dict | None:
+    """
+    Single LLM call that produces a verbose narrative analysis of the run.
+
+    Pulls a configured synthesis provider (Deepseek → Claude → GPT-4
+    fallback chain). Returns ``{ "markdown": "...", "provider": "..." }``
+    or None when no tooling provider is configured.
+    """
+    from apps.llm_ranking.providers import get_synthesis_provider
+
+    provider = get_synthesis_provider()
+    if provider is None:
+        return None
+
+    brand = (brand_terms[0] if brand_terms else "the brand").strip() or "the brand"
+
+    # Compact representation of every response so the synthesis LLM has
+    # the full picture without us paying for 20k+ tokens of raw prose.
+    blocks: list[str] = []
+    for i, row in enumerate(prompt_rows, 1):
+        blocks.append(f"### Prompt {i}: {row['prompt']}")
+        for resp in row.get("responses", []):
+            label = resp.get("provider", "?")
+            hit = "BRAND_MENTIONED" if resp.get("brand_mentioned") else "no_mention"
+            text = (resp.get("response_text") or "").strip()
+            err = (resp.get("error") or "").strip()
+            if text:
+                snippet = text if len(text) <= 1200 else text[:1200] + " […]"
+                blocks.append(f"- **{label}** [{hit}]\n{snippet}")
+            elif err:
+                blocks.append(f"- **{label}** [FAILED: {err}]")
+    data = "\n\n".join(blocks)
+
+    prompt_count = len(prompts)
+    hit_count = sum(1 for r in prompt_rows if any(x.get("brand_mentioned") for x in r.get("responses", [])))
+
+    user_prompt = (
+        f"Brand under test: **{brand}**\n"
+        f"Prompts tested: {prompt_count}\n"
+        f"Prompts where at least one model mentioned the brand: {hit_count}\n"
+        f"Models compared: {', '.join(providers)}\n\n"
+        f"=== RAW RUN DATA ===\n{data}\n=== END RAW RUN DATA ===\n\n"
+        f"Produce a verbose Markdown report with these sections, in order. "
+        f"Do not skip sections. Be specific — quote exact phrases from the "
+        f"raw data above and reference prompts by number.\n\n"
+        f"## Headline finding\n"
+        f"One sentence: did **{brand}** show up, where, and how strongly.\n\n"
+        f"## Per-prompt breakdown\n"
+        f"For each prompt (1..{prompt_count}), 2-4 sentences: what each "
+        f"model said, who (if anyone) mentioned the brand, and what the "
+        f"models suggested *instead* of the brand. Quote the exact "
+        f"competitor names and product names that appeared.\n\n"
+        f"## Per-model takeaway\n"
+        f"One paragraph per model: how well it surfaced the brand, what "
+        f"failure modes it showed (length, hallucination, refusal, generic "
+        f"advice, etc), and how it compares to the other models.\n\n"
+        f"## Themes the models discussed instead\n"
+        f"A bulleted list of the dominant topics, competitors, and "
+        f"categories that came up across responses — sorted by frequency. "
+        f"Group by theme; cite the prompts where each appeared.\n\n"
+        f"## What is missing from the prompts\n"
+        f"Concrete suggestions for 3-5 ADDITIONAL prompts that, based on "
+        f"how the models answered, are likely to surface the brand. "
+        f"Explain each suggestion.\n\n"
+        f"## Recommended next actions\n"
+        f"A numbered list of 3-7 concrete content / SEO / brand-mention "
+        f"interventions, ranked by likely impact. Each item names the "
+        f"specific prompt that motivated it.\n"
+    )
+
+    result = provider.query(
+        user_prompt,
+        system_prompt=_SYNTHESIS_SYSTEM,
+        user=user, website=website,
+        audit_id="model_test_synthesis", role="synthesis",
+    )
+    if not result.succeeded:
+        raise RuntimeError(result.error or "synthesis call failed")
+    return {
+        "markdown": (result.text or "").strip(),
+        "provider": getattr(provider, "name", ""),
+        "model": getattr(provider, "model", ""),
+        "duration_ms": getattr(result, "duration_ms", 0),
+    }
+
+
+def _model_test_google_grounding(*, brand_terms, prompts, website) -> dict | None:
+    """
+    One Gemini call with Google Search grounding to find live web context
+    on the brand and (optionally) the topic of the prompts.
+
+    Returns ``{ "markdown": "...", "citations": [...], "model": "..." }``
+    or None when Gemini isn't configured. SDK quirks vary between
+    versions; we try the modern path first and fall back to a no-tools
+    call so we always return *something* useful when a key is present.
+    """
+    from django.conf import settings
+
+    api_key = getattr(settings, "GEMINI_API_KEY", "")
+    if not api_key:
+        return None
+
+    try:
+        import google.generativeai as genai
+    except ImportError:
+        return None
+
+    brand = (brand_terms[0] if brand_terms else "").strip() or "the brand"
+    industry = ""
+    if website is not None:
+        industry = (getattr(website, "industry", "") or "").strip()
+    topic_hint = f" in the {industry} space" if industry else ""
+
+    grounding_prompt = (
+        f"You are researching the live web presence of **{brand}**{topic_hint}.\n\n"
+        f"Tasks (be verbose, cite sources):\n"
+        f"1. Search the web for {brand}. Summarize the top 3-5 results "
+        f"about the brand: what they say, who is publishing them, recency.\n"
+        f"2. Search for competitors / alternatives in the same space. "
+        f"List the 5 most-cited competitor names you find.\n"
+        f"3. Search for the kinds of questions buyers are asking right "
+        f"now in this space. Quote 3-5 example questions and what the "
+        f"web answers with.\n"
+        f"4. Based on all of the above, give a frank verdict: is {brand} "
+        f"discoverable on the open web, and what's the single biggest "
+        f"reason an LLM might not surface it when asked a buyer-style "
+        f"question?\n\n"
+        f"Use Markdown. Reference URLs you found in your search. Do not "
+        f"answer from memory — base everything on fresh search results."
+    )
+
+    genai.configure(api_key=api_key)
+
+    response = None
+    used_grounding = False
+
+    # Try modern grounding via `tools="google_search_retrieval"`.
+    try:
+        model = genai.GenerativeModel(
+            "gemini-1.5-pro", tools="google_search_retrieval",
+        )
+        response = model.generate_content(grounding_prompt)
+        used_grounding = True
+    except Exception:
+        # Older SDKs / unsupported regions: fall back to ungrounded
+        # synthesis. Better than no answer at all.
+        try:
+            model = genai.GenerativeModel("gemini-1.5-pro")
+            response = model.generate_content(grounding_prompt)
+            used_grounding = False
+        except Exception as exc:
+            raise RuntimeError(f"Gemini grounding failed: {exc}")
+
+    text = (getattr(response, "text", "") or "").strip()
+
+    # Citations are surfaced by the SDK as `grounding_metadata` on each
+    # candidate. Shape varies; collect best-effort URLs without crashing
+    # when the field is missing.
+    citations: list[dict] = []
+    try:
+        cand = (getattr(response, "candidates", None) or [None])[0]
+        gm = getattr(cand, "grounding_metadata", None) if cand else None
+        chunks = getattr(gm, "grounding_chunks", None) if gm else None
+        for ch in (chunks or []):
+            web = getattr(ch, "web", None)
+            if web is None:
+                continue
+            url = getattr(web, "uri", "") or ""
+            title = getattr(web, "title", "") or url
+            if url:
+                citations.append({"url": url, "title": title})
+    except Exception:
+        citations = []
+
+    return {
+        "markdown": text,
+        "citations": citations,
+        "model": "gemini-1.5-pro",
+        "grounded": used_grounding,
+    }
