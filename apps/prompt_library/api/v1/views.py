@@ -271,8 +271,13 @@ class WebsitePromptCreateView(APIView):
         )
         # Link the prompt to the website so it shows in the Saved tab.
         # The Saved tab reads BrandPrompt rows, not Prompt rows directly.
-        BrandPrompt.objects.get_or_create(website=website, prompt=prompt)
-        return Response(PromptSerializer(prompt).data, status=status.HTTP_201_CREATED)
+        brand_prompt, _ = BrandPrompt.objects.get_or_create(
+            website=website, prompt=prompt,
+        )
+        payload = PromptSerializer(prompt).data
+        # FE needs the BrandPrompt id to chain into "add to env" calls.
+        payload["brand_prompt_id"] = str(brand_prompt.id)
+        return Response(payload, status=status.HTTP_201_CREATED)
 
 
 class PromptPreviewView(APIView):
