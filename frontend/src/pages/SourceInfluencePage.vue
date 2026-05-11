@@ -62,6 +62,7 @@
               <span v-if="(displayRun?.analysis_status || '') === 'running'" class="mt-spinner is-dark"></span>
               <svg v-else-if="(displayRun?.analysis_status || '') === 'complete'" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7l3 3 5-6" stroke-linecap="round" stroke-linejoin="round"/></svg>
               <svg v-else-if="(displayRun?.analysis_status || '') === 'failed'" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l8 8M11 3l-8 8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <span v-else-if="(displayRun?.analysis_status || '') === 'skipped'" class="mt-post-dash">—</span>
             </span>
             <span class="mt-post-label">Synthesis analysis</span>
             <span class="mt-post-sub">{{ analysisStatusText }}</span>
@@ -74,6 +75,7 @@
               <span v-if="(displayRun?.grounding_status || '') === 'running'" class="mt-spinner is-dark"></span>
               <svg v-else-if="(displayRun?.grounding_status || '') === 'complete'" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7l3 3 5-6" stroke-linecap="round" stroke-linejoin="round"/></svg>
               <svg v-else-if="(displayRun?.grounding_status || '') === 'failed'" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l8 8M11 3l-8 8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <span v-else-if="(displayRun?.grounding_status || '') === 'skipped'" class="mt-post-dash">—</span>
             </span>
             <span class="mt-post-label">Web grounding via Gemini</span>
             <span class="mt-post-sub">{{ groundingStatusText }}</span>
@@ -1107,6 +1109,7 @@ const analysisStatusText = computed(() => {
     const p = s.analysis?.provider ? ` via ${s.analysis.provider}` : ''
     return `Done${p}.`
   }
+  if (s.analysis_status === 'skipped') return s.analysis_skip_reason || 'Skipped.'
   if (s.analysis_status === 'failed') return s.analysis_error || 'Synthesis failed.'
   return 'Queued.'
 })
@@ -1119,6 +1122,7 @@ const groundingStatusText = computed(() => {
     const cites = (s.google_grounding.citations || []).length
     return cites ? `Done — ${cites} source${cites === 1 ? '' : 's'} cited.` : 'Done.'
   }
+  if (s.grounding_status === 'skipped') return s.grounding_skip_reason || 'Skipped.'
   if (s.grounding_status === 'failed') return s.grounding_error || 'Grounding failed.'
   return 'Queued.'
 })
@@ -1812,6 +1816,7 @@ onBeforeUnmount(() => document.removeEventListener('click', _closeDropdownOnDocC
 .mt-post-step.is-running { background: #eef2ff; border-color: #c7d2fe; }
 .mt-post-step.is-complete { background: #f0fdf4; border-color: #bbf7d0; }
 .mt-post-step.is-failed { background: #fef2f2; border-color: #fecaca; }
+.mt-post-step.is-skipped { background: #f7f7f8; border-color: rgba(15, 23, 42, 0.10); opacity: 0.85; }
 .mt-post-icon {
   width: 18px; height: 18px;
   display: inline-flex; align-items: center; justify-content: center;

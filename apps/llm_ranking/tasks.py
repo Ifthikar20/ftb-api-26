@@ -401,35 +401,67 @@ def run_model_test(self, *, run_id: str, website_id: str, user_id: int | None,
         state["grounding_status"] = "running"
         _model_test_state_set(run_id, state)
 
-        try:
-            state["analysis"] = _model_test_synthesize(
-                brand_terms=brand_terms,
-                prompts=prompts,
-                prompt_rows=results,
-                providers=providers,
-                user=user,
-                website=website,
-            )
-            state["analysis_status"] = "complete"
-        except Exception as exc:
-            logger.warning("model_test %s synthesis failed: %s", run_id, exc)
+        # Skip synthesis when there's nothing useful to analyze. A run
+        # where every cell failed produces only an error catalogue, not
+        # a brand-visibility narrative — so we surface a one-line note
+        # and move on rather than burning a synthesis token budget on
+        # restating the failures.
+        successful_calls = sum(
+            1 for r in results for x in r.get("responses", []) if x.get("succeeded")
+        )
+        any_response_text = any(
+            (x.get("response_text") or "").strip()
+            for r in results for x in r.get("responses", [])
+        )
+        if successful_calls == 0 or not any_response_text:
             state["analysis"] = None
-            state["analysis_status"] = "failed"
-            state["analysis_error"] = str(exc)[:300]
+            state["analysis_status"] = "skipped"
+            state["analysis_skip_reason"] = (
+                "No model produced a response — nothing to analyze. "
+                "Check provider API keys and SDK installation, then re-run."
+            )
+        else:
+            try:
+                state["analysis"] = _model_test_synthesize(
+                    brand_terms=brand_terms,
+                    prompts=prompts,
+                    prompt_rows=results,
+                    providers=providers,
+                    user=user,
+                    website=website,
+                )
+                state["analysis_status"] = "complete"
+            except Exception as exc:
+                logger.warning("model_test %s synthesis failed: %s", run_id, exc)
+                state["analysis"] = None
+                state["analysis_status"] = "failed"
+                state["analysis_error"] = str(exc)[:300]
         _model_test_state_set(run_id, state)
 
-        try:
-            state["google_grounding"] = _model_test_google_grounding(
-                brand_terms=brand_terms,
-                prompts=prompts,
-                website=website,
-            )
-            state["grounding_status"] = "complete"
-        except Exception as exc:
-            logger.warning("model_test %s grounding failed: %s", run_id, exc)
+        # Grounding is independent of model success — it researches the
+        # brand on the open web — but it's wasteful to run on a clearly
+        # broken environment. Skip when no model produced anything: the
+        # user almost certainly has a config issue to fix first.
+        if successful_calls == 0:
             state["google_grounding"] = None
-            state["grounding_status"] = "failed"
-            state["grounding_error"] = str(exc)[:300]
+            state["grounding_status"] = "skipped"
+            state["grounding_skip_reason"] = (
+                "Skipped because no model produced a response. "
+                "Fix provider configuration and re-run to see web grounding."
+            )
+        else:
+            try:
+                state["google_grounding"] = _model_test_google_grounding(
+                    brand_terms=brand_terms,
+                    prompts=prompts,
+                    website=website,
+                )
+                state["grounding_status"] = "complete"
+            except Exception as exc:
+                logger.warning("model_test %s grounding failed: %s", run_id, exc)
+                state["google_grounding"] = None
+                state["grounding_status"] = "failed"
+                state["grounding_error"] = str(exc)[:300]
         _model_test_state_set(run_id, state)
 
         state["status"] = "complete"
