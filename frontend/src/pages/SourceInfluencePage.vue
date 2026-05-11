@@ -1,168 +1,163 @@
 <template>
   <div class="mt-page fade-in">
+    <!-- ── Hero ──────────────────────────────────────────────────── -->
     <div class="page-header">
       <div>
         <h1 class="page-title">Model Test</h1>
         <p class="page-subtitle">
-          Bundle a set of prompts into a <strong>test environment</strong>, then run
-          a timed audit to see whether <strong>{{ brandLabel }}</strong> surfaces in
-          each model's answer.
+          Pick an environment, edit the prompts, choose the models, and run.
+          See whether <strong>{{ brandLabel }}</strong> surfaces — and compare
+          how each model performs side by side.
         </p>
       </div>
     </div>
 
-    <!-- ── Env header (top-level campaign bar) ─────────────────────── -->
-    <section class="mt-env-bar" :class="{ 'is-empty': !activeEnv }">
-      <div class="mt-env-bar-left">
-        <span class="mt-env-eyebrow">Test environment</span>
-        <div class="mt-env-bar-row">
-          <div class="mt-env-picker" @click.stop="envMenuOpen = !envMenuOpen">
-            <span class="mt-env-pick-name">
-              {{ activeEnv ? activeEnv.name : 'No environment selected' }}
-            </span>
-            <span v-if="activeEnv" class="mt-env-pick-count">
-              {{ activeEnvPromptCount }} prompts
-            </span>
-            <svg class="mt-env-caret" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 4l3 4 3-4" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            <div v-if="envMenuOpen" class="mt-env-menu" @click.stop>
-              <div class="mt-env-menu-h">Switch environment</div>
-              <button v-if="activeEnv" class="mt-env-menu-item is-clear" @click="clearActiveEnv">
-                <span>Run without an environment</span>
-              </button>
-              <button
-                v-for="env in envs"
-                :key="env.id"
-                class="mt-env-menu-item"
-                :class="{ 'is-current': selectedEnvId === env.id }"
-                @click="applyEnvSelection(env)"
-              >
-                <span>{{ env.name }}</span>
-                <span class="mt-env-menu-count">{{ env.prompt_count || (env.prompt_ids || []).length }}</span>
-              </button>
-              <div v-if="!envs.length" class="mt-env-menu-empty">No envs yet</div>
-              <div class="mt-env-menu-divider"></div>
-              <button class="mt-env-menu-item is-primary" @click="promptCreateEnv">+ New environment</button>
+    <!-- ── 1. Environment picker ─────────────────────────────────── -->
+    <section class="mt-card">
+      <div class="mt-card-head">
+        <div>
+          <div class="mt-card-eyebrow">Step 1</div>
+          <h2 class="mt-card-h">Choose an environment</h2>
+          <p class="mt-card-sub">
+            An environment is a saved bundle of prompts you can re-run on a
+            schedule. Edits below are saved back to the environment.
+          </p>
+        </div>
+        <button class="mt-btn-soft" @click="promptCreateEnv">+ New environment</button>
+      </div>
+
+      <div class="mt-env-grid">
+        <label class="mt-env-tile" :class="{ 'is-on': !selectedEnvId }">
+          <input type="radio" :checked="!selectedEnvId" @change="clearActiveEnv" />
+          <div class="mt-env-tile-body">
+            <div class="mt-env-tile-name">Ad-hoc run</div>
+            <div class="mt-env-tile-sub">No environment — prompts won't be saved.</div>
+          </div>
+        </label>
+        <label
+          v-for="env in envs"
+          :key="env.id"
+          class="mt-env-tile"
+          :class="{ 'is-on': selectedEnvId === env.id }"
+        >
+          <input
+            type="radio"
+            :checked="selectedEnvId === env.id"
+            @change="applyEnvSelection(env)"
+          />
+          <div class="mt-env-tile-body">
+            <div class="mt-env-tile-name">
+              {{ env.name }}
+              <span class="mt-env-tile-count">{{ env.prompt_count ?? (env.prompt_ids || []).length }}</span>
+            </div>
+            <div class="mt-env-tile-sub">
+              {{ (env.prompt_count ?? (env.prompt_ids || []).length) }} prompts ·
+              tap to load
             </div>
           </div>
-          <div v-if="activeEnv" class="mt-env-bar-actions">
-            <button class="mt-env-bar-tool" @click="renameActiveEnv">Rename</button>
-            <button class="mt-env-bar-tool is-danger" @click="deleteActiveEnv">Delete</button>
-          </div>
-        </div>
-        <p v-if="!activeEnv" class="mt-env-hint">
-          Pick an environment to load its bundled prompts, or
-          <button class="mt-env-link" @click="promptCreateEnv">create a new one</button>
-          to start a fresh campaign. You can also run ad-hoc without saving.
-        </p>
-        <p v-else class="mt-env-hint">
-          This is your campaign bundle. Add prompts from your library, type new ones,
-          or upload a markdown file — every addition is saved to <strong>{{ activeEnv.name }}</strong>.
-        </p>
+        </label>
+        <div v-if="loadingEnvs" class="mt-muted mt-env-loading">Loading environments…</div>
+      </div>
+
+      <div v-if="activeEnv" class="mt-env-toolbar">
+        <button class="mt-link" @click="renameActiveEnv">Rename</button>
+        <span class="mt-dot-sep"></span>
+        <button class="mt-link is-danger" @click="deleteActiveEnv">Delete environment</button>
       </div>
     </section>
 
-    <!-- Step 1: prompts -->
-    <section class="mt-section">
-      <div class="mt-step-head">
-        <span class="mt-step-num">1</span>
+    <!-- ── 2. Prompts — auto-loaded, editable ───────────────────── -->
+    <section class="mt-card">
+      <div class="mt-card-head">
         <div>
-          <div class="mt-step-h">Pick prompts</div>
-          <div class="mt-step-sub">{{ promptCount }} selected · max 25</div>
-        </div>
-      </div>
-
-      <div class="mt-tabs">
-        <button
-          v-for="t in promptTabs"
-          :key="t.value"
-          type="button"
-          class="mt-tab"
-          :class="{ 'is-active': promptTab === t.value }"
-          @click="promptTab = t.value"
-        >{{ t.label }}</button>
-      </div>
-
-      <div v-if="promptTab === 'saved'" class="mt-saved">
-        <div v-if="loadingSaved" class="mt-muted">Loading saved prompts…</div>
-        <div v-else-if="!savedPrompts.length" class="mt-empty">
-          No saved prompts yet. Save some from the Prompt Library, or use Custom / Upload.
-        </div>
-        <ul v-else class="mt-saved-list">
-          <li
-            v-for="p in savedPrompts"
-            :key="p.id"
-            class="mt-saved-item"
-            :class="{ 'is-on': selectedSavedIds.has(p.id) }"
-            @click="toggleSaved(p)"
-          >
-            <span class="mt-check">
-              <svg v-if="selectedSavedIds.has(p.id)" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 6l3 3 5-6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <div class="mt-card-eyebrow">Step 2</div>
+          <h2 class="mt-card-h">Prompts</h2>
+          <p class="mt-card-sub">
+            <span v-if="activeEnv">
+              Loaded from <strong>{{ activeEnv.name }}</strong>. Click any prompt
+              to edit — changes save to the environment.
             </span>
-            <span class="mt-saved-text">{{ p.text }}</span>
-            <span v-if="p.style" class="mt-saved-tag">{{ p.style }}</span>
-          </li>
-        </ul>
-      </div>
-
-      <div v-else-if="promptTab === 'custom'" class="mt-custom">
-        <textarea
-          v-model="customDraft"
-          class="mt-textarea"
-          rows="4"
-          placeholder="Type a prompt and press Add. One per add."
-        />
-        <button class="mt-btn-secondary" :disabled="!customDraft.trim()" @click="addCustom">
-          Add prompt
-        </button>
-      </div>
-
-      <div v-else class="mt-upload">
-        <label class="mt-drop">
+            <span v-else>
+              Add prompts to run an ad-hoc test, or pick an environment above.
+            </span>
+            <span class="mt-counter">{{ selectedPrompts.length }} / 25</span>
+          </p>
+        </div>
+        <div class="mt-card-head-actions">
+          <button class="mt-btn-soft" @click="$refs.mdInput.click()">Import .md</button>
           <input
             ref="mdInput"
             type="file"
             accept=".md,.txt,text/markdown,text/plain"
             multiple
+            class="mt-hidden"
             @change="onMarkdownUpload"
           />
-          <div class="mt-drop-inner">
-            <div class="mt-drop-h">Drop .md or .txt files</div>
-            <div class="mt-drop-sub">
-              Each non-empty line (or paragraph) becomes one prompt. Headings and
-              <code>&gt;</code>/<code>-</code>/<code>*</code> bullets are stripped.
-            </div>
-          </div>
-        </label>
+        </div>
       </div>
 
-      <!-- Selected pool (always visible) -->
-      <div v-if="selectedPrompts.length" class="mt-pool">
-        <div class="mt-pool-head">
-          <span>{{ selectedPrompts.length }} prompt{{ selectedPrompts.length === 1 ? '' : 's' }} ready</span>
-          <div class="mt-pool-actions">
-            <button v-if="canSaveAsEnv" class="mt-pool-save" @click="saveSelectionAsEnv">
-              Save as environment
+      <ul v-if="selectedPrompts.length" class="mt-prompts">
+        <li
+          v-for="(p, i) in selectedPrompts"
+          :key="p.uid"
+          class="mt-prompt-row"
+          :class="{ 'is-editing': editingUid === p.uid }"
+        >
+          <span class="mt-prompt-num">{{ i + 1 }}</span>
+          <template v-if="editingUid === p.uid">
+            <textarea
+              v-model="editingDraft"
+              class="mt-prompt-edit"
+              rows="2"
+              @keydown.enter.prevent="commitEdit(p)"
+              @keydown.esc="cancelEdit"
+              ref="editFieldRef"
+            />
+            <div class="mt-prompt-edit-actions">
+              <button class="mt-btn-soft" @click="cancelEdit">Cancel</button>
+              <button class="mt-btn-primary" @click="commitEdit(p)">Save</button>
+            </div>
+          </template>
+          <template v-else>
+            <span class="mt-prompt-text" @click="startEdit(p)">{{ p.text }}</span>
+            <span v-if="p.savedId" class="mt-prompt-badge">saved</span>
+            <span v-else class="mt-prompt-badge is-ghost">ad-hoc</span>
+            <button class="mt-prompt-icon" title="Edit" @click="startEdit(p)">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 2.5l2.5 2.5L4 12.5H1.5V10L9 2.5z" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </button>
-            <button class="mt-pool-clear" @click="clearAll">Clear all</button>
-          </div>
-        </div>
-        <ul class="mt-pool-list">
-          <li v-for="(p, i) in selectedPrompts" :key="p.uid" class="mt-pool-item">
-            <span class="mt-pool-num">{{ i + 1 }}</span>
-            <span class="mt-pool-text">{{ p.text }}</span>
-            <button class="mt-pool-remove" @click="removeSelected(p.uid)">×</button>
-          </li>
-        </ul>
+            <button class="mt-prompt-icon" title="Remove" @click="removeSelected(p.uid)">×</button>
+          </template>
+        </li>
+      </ul>
+      <div v-else class="mt-empty">
+        No prompts yet. Add one below, import a markdown file, or pick an
+        environment above.
+      </div>
+
+      <!-- inline add -->
+      <div class="mt-prompt-add">
+        <input
+          v-model="customDraft"
+          class="mt-input"
+          placeholder="Add a new prompt and press Enter"
+          @keydown.enter="addCustom"
+        />
+        <button class="mt-btn-primary" :disabled="!customDraft.trim()" @click="addCustom">
+          Add
+        </button>
       </div>
     </section>
 
-    <!-- Step 2: models -->
-    <section class="mt-section">
-      <div class="mt-step-head">
-        <span class="mt-step-num">2</span>
+    <!-- ── 3. Models ────────────────────────────────────────────── -->
+    <section class="mt-card">
+      <div class="mt-card-head">
         <div>
-          <div class="mt-step-h">Pick models</div>
-          <div class="mt-step-sub">{{ enabledProviderCount }} of {{ providerOptions.length }} available</div>
+          <div class="mt-card-eyebrow">Step 3</div>
+          <h2 class="mt-card-h">Choose models to compare</h2>
+          <p class="mt-card-sub">
+            Each model will answer every prompt above. Disabled models need an
+            API key configured by your admin.
+          </p>
         </div>
       </div>
 
@@ -170,8 +165,11 @@
         <label
           v-for="opt in providerOptions"
           :key="opt.key"
-          class="mt-model"
-          :class="{ 'is-on': selectedProviders.includes(opt.key), 'is-off': !opt.available }"
+          class="mt-model-chip"
+          :class="{
+            'is-on': selectedProviders.includes(opt.key) && opt.available,
+            'is-off': !opt.available,
+          }"
         >
           <input
             type="checkbox"
@@ -180,96 +178,246 @@
             :disabled="!opt.available"
             @change="toggleProvider(opt.key)"
           />
-          <div class="mt-model-body">
-            <div class="mt-model-head">
-              <span class="mt-model-dot" :class="'is-' + opt.key"></span>
-              <span class="mt-model-name">{{ opt.label }}</span>
-              <span v-if="!opt.available" class="mt-model-soon">needs API key</span>
-            </div>
-            <div class="mt-model-sub">{{ opt.tag }}</div>
-          </div>
+          <span class="mt-model-dot" :class="'is-' + opt.key"></span>
+          <span class="mt-model-name">{{ opt.label }}</span>
+          <span v-if="!opt.available" class="mt-model-soon">needs API key</span>
         </label>
       </div>
     </section>
 
-    <!-- Step 3: run -->
-    <section class="mt-section mt-run">
-      <div class="mt-run-summary">
+    <!-- ── 4. Run ───────────────────────────────────────────────── -->
+    <section class="mt-card mt-run-card">
+      <div class="mt-run-info">
+        <div class="mt-run-num">{{ totalQueries }}</div>
         <div>
-          <div class="mt-run-num">{{ totalQueries }}</div>
-          <div class="mt-run-label">total queries · {{ promptCount }} × {{ selectedProviders.length || 0 }} models</div>
+          <div class="mt-run-label">total queries</div>
+          <div class="mt-run-sub">
+            {{ promptCount }} prompt{{ promptCount === 1 ? '' : 's' }}
+            × {{ selectedProviders.length }} model{{ selectedProviders.length === 1 ? '' : 's' }}
+          </div>
         </div>
-        <button
-          class="mt-btn-run"
-          :disabled="!canRun || running"
-          @click="runProbe"
-        >
-          <span v-if="running">
-            <span class="mt-spinner"></span>
-            Probing… ({{ liveCompleted }}/{{ liveTotal }})
-          </span>
-          <span v-else>Build &amp; run audit</span>
-        </button>
       </div>
-      <div v-if="errorMsg" class="mt-error">{{ errorMsg }}</div>
+      <button
+        class="mt-btn-run"
+        :disabled="!canRun || running"
+        @click="runProbe"
+      >
+        <span v-if="running">
+          <span class="mt-spinner"></span>
+          Running… {{ liveCompleted }}/{{ liveTotal }}
+        </span>
+        <span v-else>Run audit</span>
+      </button>
+    </section>
 
-      <!-- Live progress strip — visible while the background job runs -->
-      <div v-if="running && liveRun" class="mt-live">
-        <div class="mt-live-bar">
-          <div class="mt-live-fill" :style="{ width: livePct + '%' }"></div>
-        </div>
-        <div class="mt-live-meta">
-          <span class="mt-live-pct">{{ livePct }}%</span>
-          <span class="mt-live-text">{{ liveCurrentLabel || 'Queueing on worker…' }}</span>
-        </div>
+    <div v-if="errorMsg" class="mt-error">{{ errorMsg }}</div>
+
+    <!-- live progress -->
+    <section v-if="running && liveRun" class="mt-card mt-live">
+      <div class="mt-live-bar">
+        <div class="mt-live-fill" :style="{ width: livePct + '%' }"></div>
+      </div>
+      <div class="mt-live-meta">
+        <span class="mt-live-pct">{{ livePct }}%</span>
+        <span class="mt-live-text">{{ liveCurrentLabel || 'Queueing on worker…' }}</span>
       </div>
     </section>
 
-    <!-- Results — show streaming as they arrive, then full set on complete -->
-    <section v-if="lastRun || (liveRun && liveRun.prompt_rows && liveRun.prompt_rows.length)" class="mt-results">
-      <div class="mt-results-head">
-        <h2 class="mt-results-h">{{ lastRun ? 'Results' : 'Results — streaming' }}</h2>
-        <div class="mt-results-meta">
-          <span v-if="displayRun?.summary" class="mt-discovery">
-            <strong>{{ displayRun.summary.discovery_rate }}%</strong>
-            discovery
-            <em>({{ displayRun.summary.prompts_with_hit }} of {{ displayRun.summary.prompts }} prompts found {{ brandLabel }})</em>
-          </span>
-          <span v-else class="mt-discovery">
-            <em>{{ (displayRun?.prompt_rows?.length || 0) }} of {{ displayRun?.prompts?.length || 0 }} prompts done</em>
-          </span>
+    <!-- ── 5. Results ───────────────────────────────────────────── -->
+    <template v-if="displayRun && (displayRun.prompt_rows?.length || displayRun.summary)">
+      <!-- 5a. Per-model scorecards -->
+      <section class="mt-card">
+        <div class="mt-card-head">
+          <div>
+            <div class="mt-card-eyebrow">Results</div>
+            <h2 class="mt-card-h">How each model performed</h2>
+            <p class="mt-card-sub">
+              Discovery rate is the % of prompts where the brand appeared in
+              that model's answer. Latency is the median over completed calls.
+            </p>
+          </div>
         </div>
-      </div>
 
-      <div v-for="(row, idx) in displayRun.prompt_rows" :key="idx" class="mt-result-card">
-        <div class="mt-result-prompt">
-          <span class="mt-result-num">#{{ idx + 1 }}</span>
-          <span class="mt-result-text">{{ row.prompt }}</span>
-          <span class="mt-result-pill" :class="rowHitClass(row)">
-            {{ rowHitLabel(row) }}
-          </span>
-        </div>
-        <div v-for="r in row.responses" :key="r.provider" class="mt-resp">
-          <div class="mt-resp-head">
-            <span class="mt-resp-dot" :class="'is-' + r.provider"></span>
-            <span class="mt-resp-name">{{ providerLabel(r.provider) }}</span>
-            <span v-if="r.brand_mentioned" class="mt-resp-badge is-hit">brand found</span>
-            <span v-else-if="r.succeeded" class="mt-resp-badge is-miss">not found</span>
-            <span v-else class="mt-resp-badge is-fail">{{ r.error || 'failed' }}</span>
-            <span v-if="r.duration_ms" class="mt-resp-time">{{ Math.round(r.duration_ms) }} ms</span>
+        <div class="mt-scorecards">
+          <div
+            v-for="m in perModelStats"
+            :key="m.provider"
+            class="mt-scorecard"
+            :class="'is-' + m.provider"
+          >
+            <div class="mt-scorecard-head">
+              <span class="mt-model-dot" :class="'is-' + m.provider"></span>
+              <span class="mt-scorecard-name">{{ providerLabel(m.provider) }}</span>
+            </div>
+            <div class="mt-scorecard-big">{{ m.discovery_rate }}%</div>
+            <div class="mt-scorecard-cap">discovery</div>
+            <div class="mt-scorecard-grid">
+              <div>
+                <div class="mt-mini-num">{{ m.hits }}/{{ m.attempts }}</div>
+                <div class="mt-mini-cap">hits</div>
+              </div>
+              <div>
+                <div class="mt-mini-num">{{ m.median_ms }} ms</div>
+                <div class="mt-mini-cap">median latency</div>
+              </div>
+              <div>
+                <div class="mt-mini-num">{{ m.failures }}</div>
+                <div class="mt-mini-cap">failures</div>
+              </div>
+              <div>
+                <div class="mt-mini-num">{{ m.unique_finds }}</div>
+                <div class="mt-mini-cap">solo finds</div>
+              </div>
+            </div>
           </div>
-          <div v-if="r.response_text" class="mt-resp-body">
-            <span v-html="highlightBrand(r.response_text)"></span>
-          </div>
-          <div v-else-if="!r.succeeded && r.error" class="mt-resp-empty">{{ r.error }}</div>
         </div>
-      </div>
-    </section>
+      </section>
+
+      <!-- 5b. Pivot comparison table -->
+      <section class="mt-card mt-pivot-wrap">
+        <div class="mt-card-head">
+          <div>
+            <h2 class="mt-card-h">Prompt-by-prompt comparison</h2>
+            <p class="mt-card-sub">
+              Each row is a prompt; each column is a model. Click a cell to
+              read the full response. The agreement column shows how many
+              models mentioned the brand for that prompt.
+            </p>
+          </div>
+        </div>
+
+        <div class="mt-pivot-scroll">
+          <table class="mt-pivot">
+            <thead>
+              <tr>
+                <th class="mt-pivot-num-h">#</th>
+                <th class="mt-pivot-prompt-h">Prompt</th>
+                <th
+                  v-for="prov in resultsProviders"
+                  :key="prov"
+                  class="mt-pivot-prov-h"
+                >
+                  <span class="mt-model-dot" :class="'is-' + prov"></span>
+                  {{ providerLabel(prov) }}
+                </th>
+                <th class="mt-pivot-agg-h">Agreement</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(row, idx) in displayRun.prompt_rows" :key="idx">
+                <td class="mt-pivot-num">{{ idx + 1 }}</td>
+                <td class="mt-pivot-prompt">{{ row.prompt }}</td>
+                <td
+                  v-for="prov in resultsProviders"
+                  :key="prov"
+                  class="mt-pivot-cell"
+                  :class="cellClass(row, prov)"
+                  @click="toggleResponse(idx, prov)"
+                >
+                  <div class="mt-pivot-cell-top">
+                    <span class="mt-pivot-pill" :class="cellClass(row, prov)">
+                      {{ cellLabel(row, prov) }}
+                    </span>
+                    <span v-if="cellLatency(row, prov)" class="mt-pivot-ms">
+                      {{ cellLatency(row, prov) }} ms
+                    </span>
+                  </div>
+                  <div
+                    v-if="isResponseOpen(idx, prov)"
+                    class="mt-pivot-body"
+                    @click.stop
+                  >
+                    <span v-html="highlightBrand(cellText(row, prov))"></span>
+                  </div>
+                </td>
+                <td class="mt-pivot-agg">
+                  <span class="mt-agg-pill" :class="aggClass(row)">
+                    {{ aggHitCount(row) }}/{{ resultsProviders.length }}
+                  </span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- 5c. Difference matrices -->
+      <section v-if="resultsProviders.length >= 2" class="mt-card">
+        <div class="mt-card-head">
+          <div>
+            <h2 class="mt-card-h">Model-vs-model differences</h2>
+            <p class="mt-card-sub">
+              <strong>Disagreement</strong>: percentage of prompts where the
+              row model and column model gave opposite verdicts on whether
+              your brand was mentioned.
+              <strong>Discovery delta</strong>: row model's discovery rate
+              minus column model's, in percentage points.
+            </p>
+          </div>
+        </div>
+
+        <div class="mt-matrix-pair">
+          <div class="mt-matrix-block">
+            <div class="mt-matrix-h">Disagreement rate</div>
+            <table class="mt-matrix">
+              <thead>
+                <tr>
+                  <th></th>
+                  <th v-for="prov in resultsProviders" :key="prov">
+                    {{ providerLabel(prov) }}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="rowProv in resultsProviders" :key="rowProv">
+                  <th>{{ providerLabel(rowProv) }}</th>
+                  <td
+                    v-for="colProv in resultsProviders"
+                    :key="colProv"
+                    :class="['mt-matrix-cell', rowProv === colProv ? 'is-self' : disagreeClass(rowProv, colProv)]"
+                  >
+                    <span v-if="rowProv === colProv">—</span>
+                    <span v-else>{{ disagreePct(rowProv, colProv) }}%</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="mt-matrix-block">
+            <div class="mt-matrix-h">Discovery delta (pp)</div>
+            <table class="mt-matrix">
+              <thead>
+                <tr>
+                  <th></th>
+                  <th v-for="prov in resultsProviders" :key="prov">
+                    {{ providerLabel(prov) }}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="rowProv in resultsProviders" :key="rowProv">
+                  <th>{{ providerLabel(rowProv) }}</th>
+                  <td
+                    v-for="colProv in resultsProviders"
+                    :key="colProv"
+                    :class="['mt-matrix-cell', rowProv === colProv ? 'is-self' : deltaClass(rowProv, colProv)]"
+                  >
+                    <span v-if="rowProv === colProv">—</span>
+                    <span v-else>{{ deltaSigned(rowProv, colProv) }}</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </template>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAppStore } from '@/stores/app'
 import { useToast } from '@/composables/useToast'
@@ -286,53 +434,40 @@ const brandLabel = computed(() => {
   return (w?.business_name || w?.name || 'your brand').trim()
 })
 
-// ── Step 1: prompts ──────────────────────────────────────────────
-const promptTabs = [
-  { value: 'saved',  label: 'From saved' },
-  { value: 'custom', label: 'Custom' },
-  { value: 'upload', label: 'Upload .md' },
-]
-const promptTab = ref('saved')
-
-const savedPrompts = ref([])     // [{ id (brand_prompt_id), text, style }]
-const loadingSaved = ref(true)
-const selectedSavedIds = ref(new Set())
-const selectedPrompts = ref([])  // {uid, text, source, savedId?}
+// ── State: prompts ────────────────────────────────────────────────
+const savedPrompts = ref([])     // [{ id, text, style }]
+const selectedPrompts = ref([])  // { uid, text, savedId? }
 let _uid = 0
 const nextUid = () => ++_uid
 
-// Test environments
+const promptCount = computed(() => selectedPrompts.value.length)
+
+// ── State: environments ──────────────────────────────────────────
 const envs = ref([])
 const loadingEnvs = ref(false)
 const selectedEnvId = ref(null)
-const envMenuOpen = ref(false)
 
 const activeEnv = computed(() =>
   envs.value.find((e) => e.id === selectedEnvId.value) || null,
 )
-const activeEnvPromptCount = computed(() => {
-  const e = activeEnv.value
-  if (!e) return 0
-  return e.prompt_count ?? (e.prompt_ids || []).length
-})
 
-// Patch a single env row in-place after the backend returns the
-// updated payload from add/remove/rename. Keeps every consumer (the
-// menu, the pool count, the bar) in sync from one source of truth.
 function _patchEnv(updated) {
   if (!updated || !updated.id) return
   envs.value = envs.value.map((e) => e.id === updated.id ? { ...e, ...updated } : e)
 }
 
+function _setEnvPromptIds(envId, ids) {
+  envs.value = envs.value.map((e) =>
+    e.id === envId ? { ...e, prompt_ids: ids, prompt_count: ids.length } : e,
+  )
+}
+
 function clearActiveEnv() {
-  envMenuOpen.value = false
   selectedEnvId.value = null
-  selectedSavedIds.value = new Set()
   selectedPrompts.value = []
 }
 
 async function promptCreateEnv() {
-  envMenuOpen.value = false
   const name = window.prompt('Name this environment:', `Env ${envs.value.length + 1}`)
   if (!name || !name.trim()) return
   try {
@@ -340,7 +475,6 @@ async function promptCreateEnv() {
     const env = data?.data || data
     envs.value = [env, ...envs.value]
     selectedEnvId.value = env.id
-    selectedSavedIds.value = new Set()
     selectedPrompts.value = []
     toast.success(`Created "${env.name}".`)
   } catch (e) {
@@ -380,7 +514,6 @@ async function deleteActiveEnv() {
 }
 
 async function loadSaved() {
-  loadingSaved.value = true
   try {
     const { data } = await promptLibrary.listBrandPrompts(websiteId)
     const rows = (data?.data || data || []).map((bp) => ({
@@ -391,8 +524,6 @@ async function loadSaved() {
     savedPrompts.value = rows
   } catch {
     savedPrompts.value = []
-  } finally {
-    loadingSaved.value = false
   }
 }
 
@@ -409,100 +540,79 @@ async function loadEnvs() {
   }
 }
 
-// Replace the current selection with whatever is in `env`. Treats the
-// env's prompt_ids as authoritative; anything not loaded into
-// savedPrompts is silently skipped (e.g. if the user deleted the
-// underlying BrandPrompt after creating the env).
 function applyEnvSelection(env) {
   if (!env) return
   selectedEnvId.value = env.id
   const ids = new Set(env.prompt_ids || [])
   const matched = savedPrompts.value.filter((p) => ids.has(p.id))
-  selectedSavedIds.value = new Set(matched.map((p) => p.id))
   selectedPrompts.value = matched.map((p) => ({
-    uid: nextUid(), text: p.text, source: 'env', savedId: p.id,
+    uid: nextUid(), text: p.text, savedId: p.id,
   }))
-  if (matched.length === 0) {
-    toast.info('This environment has no saved prompts.')
+  if (matched.length === 0 && (env.prompt_ids || []).length === 0) {
+    toast.info('This environment is empty — add prompts to get started.')
   }
 }
 
-// Preselect prompts from a `?prompts=<csv>` query — set by the Saved
-// page's 'Run as Model Test' bulk action.
-function applyQueryPreselect() {
-  const raw = (route.query.prompts || '').toString().trim()
-  if (!raw) return
-  const ids = new Set(raw.split(',').filter(Boolean))
-  if (!ids.size) return
-  const matched = savedPrompts.value.filter((p) => ids.has(p.id))
-  if (!matched.length) return
-  selectedSavedIds.value = new Set(matched.map((p) => p.id))
-  selectedPrompts.value = matched.map((p) => ({
-    uid: nextUid(), text: p.text, source: 'env', savedId: p.id,
-  }))
-  if (route.query.env) selectedEnvId.value = route.query.env.toString()
+// ── State: prompt editing ────────────────────────────────────────
+const editingUid = ref(null)
+const editingDraft = ref('')
+const editFieldRef = ref(null)
+
+function startEdit(p) {
+  editingUid.value = p.uid
+  editingDraft.value = p.text
+  nextTick(() => {
+    const el = Array.isArray(editFieldRef.value) ? editFieldRef.value[0] : editFieldRef.value
+    el?.focus?.()
+  })
 }
 
-async function saveSelectionAsEnv() {
-  const savedIds = selectedPrompts.value
-    .map((p) => p.savedId).filter(Boolean)
-  if (!savedIds.length) {
-    toast.error('Select at least one saved prompt before saving as env.')
+function cancelEdit() {
+  editingUid.value = null
+  editingDraft.value = ''
+}
+
+async function commitEdit(p) {
+  const next = editingDraft.value.trim()
+  if (!next) { cancelEdit(); return }
+  if (next === p.text) { cancelEdit(); return }
+
+  // Ad-hoc prompts (no savedId, no env): just update in place locally.
+  if (!p.savedId || !activeEnv.value) {
+    selectedPrompts.value = selectedPrompts.value.map((x) =>
+      x.uid === p.uid ? { ...x, text: next } : x,
+    )
+    cancelEdit()
     return
   }
-  const name = window.prompt('Name this environment:', `Env ${envs.value.length + 1}`)
-  if (!name || !name.trim()) return
+
+  // Saved-and-in-env: backend prompts are dedupe-by-hash. To "edit" we
+  // create a new BrandPrompt for the new text, swap it into the env,
+  // and drop the old one from the env.
   try {
-    const { data } = await promptLibrary.createTestEnvironment(
-      websiteId, name.trim(), savedIds,
+    const newBpId = await _persistTextAsBrandPrompt(next)
+    if (!newBpId) throw new Error('Could not save edit.')
+    const envId = activeEnv.value.id
+    const oldBpId = p.savedId
+    if (newBpId !== oldBpId) {
+      await promptLibrary.addPromptsToEnv(websiteId, envId, [newBpId])
+      await promptLibrary.removePromptsFromEnv(websiteId, envId, [oldBpId])
+      const ids = new Set(activeEnv.value.prompt_ids || [])
+      ids.delete(oldBpId)
+      ids.add(newBpId)
+      _setEnvPromptIds(envId, Array.from(ids))
+    }
+    selectedPrompts.value = selectedPrompts.value.map((x) =>
+      x.uid === p.uid ? { ...x, text: next, savedId: newBpId } : x,
     )
-    const env = data?.data || data
-    envs.value = [env, ...envs.value]
-    selectedEnvId.value = env.id
-    toast.success(`Saved "${env.name}".`)
+    await loadSaved()
+    cancelEdit()
   } catch (e) {
-    const msg = e.response?.status === 409
-      ? 'An environment with that name already exists.'
-      : (e.displayMessage || 'Could not save env.')
-    toast.error(msg)
+    toast.error(e.displayMessage || 'Could not save edit.')
   }
 }
 
-async function toggleSaved(p) {
-  const next = new Set(selectedSavedIds.value)
-  const wasOn = next.has(p.id)
-  if (wasOn) {
-    next.delete(p.id)
-    selectedPrompts.value = selectedPrompts.value.filter((x) => x.savedId !== p.id)
-  } else {
-    if (selectedPrompts.value.length >= 25) {
-      toast.error('Max 25 prompts per run.')
-      return
-    }
-    next.add(p.id)
-    selectedPrompts.value.push({ uid: nextUid(), text: p.text, source: 'saved', savedId: p.id })
-  }
-  selectedSavedIds.value = next
-  // When an env is active, keep its membership in sync with the pool.
-  if (activeEnv.value) {
-    try {
-      if (wasOn) {
-        await promptLibrary.removePromptsFromEnv(websiteId, activeEnv.value.id, [p.id])
-      } else {
-        await promptLibrary.addPromptsToEnv(websiteId, activeEnv.value.id, [p.id])
-      }
-      envs.value = envs.value.map((e) => {
-        if (e.id !== activeEnv.value.id) return e
-        const ids = new Set(e.prompt_ids || [])
-        wasOn ? ids.delete(p.id) : ids.add(p.id)
-        return { ...e, prompt_ids: Array.from(ids), prompt_count: ids.size }
-      })
-    } catch (e) {
-      toast.error('Could not sync environment.')
-    }
-  }
-}
-
+// ── Add / remove / import ────────────────────────────────────────
 const customDraft = ref('')
 async function addCustom() {
   const t = customDraft.value.trim()
@@ -511,18 +621,14 @@ async function addCustom() {
     toast.error('Max 25 prompts per run.')
     return
   }
-  // If an env is active, persist the prompt to the website's library
-  // (auto-creates a BrandPrompt) and stitch it into the env. Without an
-  // env we keep ad-hoc behavior: the prompt only lives in this run.
   if (activeEnv.value) {
     try {
       const bpId = await _persistTextAsBrandPrompt(t)
       if (bpId) {
         await promptLibrary.addPromptsToEnv(websiteId, activeEnv.value.id, [bpId])
-        selectedSavedIds.value = new Set([...selectedSavedIds.value, bpId])
-        selectedPrompts.value.push({ uid: nextUid(), text: t, source: 'custom', savedId: bpId })
-        // Refresh env count + saved list so the picker stays accurate.
-        _bumpEnvPromptCount(activeEnv.value.id, [bpId])
+        selectedPrompts.value.push({ uid: nextUid(), text: t, savedId: bpId })
+        const ids = new Set([...(activeEnv.value.prompt_ids || []), bpId])
+        _setEnvPromptIds(activeEnv.value.id, Array.from(ids))
         await loadSaved()
         customDraft.value = ''
         return
@@ -532,14 +638,11 @@ async function addCustom() {
       return
     }
   }
-  selectedPrompts.value.push({ uid: nextUid(), text: t, source: 'custom' })
+  selectedPrompts.value.push({ uid: nextUid(), text: t })
   customDraft.value = ''
 }
 
-// Helpers for env-mode persistence -------------------------------
 async function _persistTextAsBrandPrompt(text) {
-  // The Prompt+BrandPrompt get_or_create on the backend keeps this
-  // idempotent — duplicate text returns the same BrandPrompt id.
   const { data } = await promptLibrary.createWebsitePrompt(websiteId, {
     template_text: text,
     text,
@@ -550,17 +653,8 @@ async function _persistTextAsBrandPrompt(text) {
   return payload.brand_prompt_id || null
 }
 
-function _bumpEnvPromptCount(envId, newIds) {
-  envs.value = envs.value.map((e) => {
-    if (e.id !== envId) return e
-    const ids = new Set([...(e.prompt_ids || []), ...newIds])
-    return { ...e, prompt_ids: Array.from(ids), prompt_count: ids.size }
-  })
-}
-
 const mdInput = ref(null)
 function parseMarkdown(text) {
-  // Strip headings, bullets, blockquotes, blanks; keep one prompt per line.
   return (text || '')
     .split(/\r?\n/)
     .map((line) => line.replace(/^\s*([>*-]|#{1,6})\s*/, '').trim())
@@ -586,13 +680,13 @@ async function onMarkdownUpload(e) {
         const bpId = await _persistTextAsBrandPrompt(line)
         if (bpId) {
           newIds.push(bpId)
-          selectedPrompts.value.push({ uid: nextUid(), text: line, source: 'upload', savedId: bpId })
+          selectedPrompts.value.push({ uid: nextUid(), text: line, savedId: bpId })
         }
       }
       if (newIds.length) {
         await promptLibrary.addPromptsToEnv(websiteId, activeEnv.value.id, newIds)
-        selectedSavedIds.value = new Set([...selectedSavedIds.value, ...newIds])
-        _bumpEnvPromptCount(activeEnv.value.id, newIds)
+        const ids = new Set([...(activeEnv.value.prompt_ids || []), ...newIds])
+        _setEnvPromptIds(activeEnv.value.id, Array.from(ids))
         await loadSaved()
       }
       toast.success(`Imported ${newIds.length} into ${activeEnv.value.name}.`)
@@ -603,7 +697,7 @@ async function onMarkdownUpload(e) {
     }
   }
   for (const line of lines) {
-    selectedPrompts.value.push({ uid: nextUid(), text: line, source: 'upload' })
+    selectedPrompts.value.push({ uid: nextUid(), text: line })
   }
   toast.success(`Imported ${lines.length} prompt${lines.length === 1 ? '' : 's'}`)
 }
@@ -611,47 +705,26 @@ async function onMarkdownUpload(e) {
 async function removeSelected(uid) {
   const removed = selectedPrompts.value.find((p) => p.uid === uid)
   selectedPrompts.value = selectedPrompts.value.filter((p) => p.uid !== uid)
-  if (removed?.savedId) {
-    const next = new Set(selectedSavedIds.value)
-    next.delete(removed.savedId)
-    selectedSavedIds.value = next
-    if (activeEnv.value) {
-      try {
-        await promptLibrary.removePromptsFromEnv(websiteId, activeEnv.value.id, [removed.savedId])
-        envs.value = envs.value.map((e) => {
-          if (e.id !== activeEnv.value.id) return e
-          const ids = (e.prompt_ids || []).filter((id) => id !== removed.savedId)
-          return { ...e, prompt_ids: ids, prompt_count: ids.length }
-        })
-      } catch (e) {
-        toast.error('Could not sync environment.')
-      }
+  if (removed?.savedId && activeEnv.value) {
+    try {
+      await promptLibrary.removePromptsFromEnv(websiteId, activeEnv.value.id, [removed.savedId])
+      const ids = (activeEnv.value.prompt_ids || []).filter((id) => id !== removed.savedId)
+      _setEnvPromptIds(activeEnv.value.id, ids)
+    } catch {
+      toast.error('Could not sync environment.')
     }
   }
 }
-function clearAll() {
-  selectedPrompts.value = []
-  selectedSavedIds.value = new Set()
-}
 
-const promptCount = computed(() => selectedPrompts.value.length)
-
-// Only meaningful when every selected prompt has a BrandPrompt id —
-// custom-typed and md-uploaded prompts can't be stored in an env yet.
-const canSaveAsEnv = computed(
-  () => selectedPrompts.value.length > 0
-    && selectedPrompts.value.every((p) => !!p.savedId),
-)
-
-// ── Step 2: models ───────────────────────────────────────────────
+// ── Models ───────────────────────────────────────────────────────
 const providerOptions = ref([
-  { key: 'claude',     label: 'Claude (Anthropic)', tag: '~3s · structured replies', available: true },
-  { key: 'gpt4',       label: 'GPT-4 (OpenAI)',     tag: 'coming soon',              available: false },
-  { key: 'gemini',     label: 'Gemini (Google)',    tag: 'coming soon',              available: false },
-  { key: 'perplexity', label: 'Perplexity',         tag: 'coming soon',              available: false },
+  { key: 'claude',     label: 'Claude',     available: true },
+  { key: 'gpt4',       label: 'GPT-4',      available: true },
+  { key: 'gemini',     label: 'Gemini',     available: true },
+  { key: 'perplexity', label: 'Perplexity', available: true },
 ])
-const enabledProviderCount = computed(() => providerOptions.value.filter((o) => o.available).length)
 const selectedProviders = ref(['claude'])
+
 function toggleProvider(key) {
   const opt = providerOptions.value.find((o) => o.key === key)
   if (!opt?.available) return
@@ -662,20 +735,39 @@ function toggleProvider(key) {
   }
 }
 
-const totalQueries = computed(() => promptCount.value * (selectedProviders.value.length || 0))
-const canRun = computed(() => totalQueries.value > 0)
-
-// ── Step 3: run (background job + poll) ──────────────────────────
-const running = ref(false)
-const errorMsg = ref('')
-const lastRun = ref(null)        // final state once complete
-const liveRun = ref(null)        // streaming state from polls
-const runId = ref(null)
-let pollTimer = null
-
 function providerLabel(key) {
   return (providerOptions.value.find((o) => o.key === key)?.label) || key
 }
+
+async function loadProviderHealth() {
+  try {
+    const { data } = await llmRanking.providerHealth(websiteId)
+    const items = (data?.data || data || {}).providers || []
+    if (!items.length) return
+    providerOptions.value = items.map((p) => ({
+      key: p.key,
+      label: p.name || p.key,
+      available: !!p.configured,
+    }))
+    selectedProviders.value = providerOptions.value
+      .filter((o) => o.available)
+      .map((o) => o.key)
+      .slice(0, 4) || ['claude']
+  } catch {
+    // fall back to defaults; backend will still gate on is_configured
+  }
+}
+
+const totalQueries = computed(() => promptCount.value * (selectedProviders.value.length || 0))
+const canRun = computed(() => totalQueries.value > 0)
+
+// ── Run + poll ───────────────────────────────────────────────────
+const running = ref(false)
+const errorMsg = ref('')
+const lastRun = ref(null)
+const liveRun = ref(null)
+const runId = ref(null)
+let pollTimer = null
 
 const liveCompleted = computed(() => liveRun.value?.completed || 0)
 const liveTotal     = computed(() => liveRun.value?.total || 0)
@@ -688,7 +780,7 @@ const liveCurrentLabel = computed(() => {
   if (!s || s.status !== 'running') return ''
   const pIdx = (s.current_prompt_index ?? 0) + 1
   const pText = (s.prompts?.[s.current_prompt_index] || '').slice(0, 70)
-  return `Running prompt ${pIdx} of ${s.prompts?.length || 0} on ${providerLabel(s.current_provider || '')} — "${pText}${pText.length >= 70 ? '…' : ''}"`
+  return `Prompt ${pIdx} of ${s.prompts?.length || 0} · ${providerLabel(s.current_provider || '')} — "${pText}${pText.length >= 70 ? '…' : ''}"`
 })
 
 function stopPolling() {
@@ -725,6 +817,7 @@ async function runProbe() {
   errorMsg.value = ''
   lastRun.value = null
   liveRun.value = null
+  openResponses.value = {}
   running.value = true
   try {
     const { data } = await llmRanking.modelTest(websiteId, {
@@ -733,7 +826,6 @@ async function runProbe() {
     })
     runId.value = (data?.data || data)?.run_id
     if (!runId.value) throw new Error('No run id returned.')
-    // Kick off polling — first call immediately, then every 1.5s.
     await pollOnce()
     if (running.value) {
       pollTimer = setInterval(pollOnce, 1500)
@@ -747,19 +839,136 @@ async function runProbe() {
 
 onBeforeUnmount(stopPolling)
 
+// ── Results helpers ──────────────────────────────────────────────
 const displayRun = computed(() => lastRun.value || liveRun.value)
 
-function rowHitLabel(row) {
-  const hit = row.responses.some((r) => r.brand_mentioned)
-  if (hit) return 'discovered'
-  if (row.responses.every((r) => !r.succeeded)) return 'all failed'
-  return 'not discovered'
+const resultsProviders = computed(() => {
+  const fromState = displayRun.value?.providers
+  if (Array.isArray(fromState) && fromState.length) return fromState
+  return selectedProviders.value
+})
+
+const openResponses = ref({}) // `${rowIdx}:${prov}` -> bool
+function toggleResponse(rowIdx, prov) {
+  const k = `${rowIdx}:${prov}`
+  openResponses.value = { ...openResponses.value, [k]: !openResponses.value[k] }
 }
-function rowHitClass(row) {
-  const hit = row.responses.some((r) => r.brand_mentioned)
-  if (hit) return 'is-hit'
-  if (row.responses.every((r) => !r.succeeded)) return 'is-fail'
-  return 'is-miss'
+function isResponseOpen(rowIdx, prov) {
+  return !!openResponses.value[`${rowIdx}:${prov}`]
+}
+
+function cellResponse(row, prov) {
+  return (row?.responses || []).find((r) => r.provider === prov) || null
+}
+function cellClass(row, prov) {
+  const r = cellResponse(row, prov)
+  if (!r) return 'is-pending'
+  if (!r.succeeded) return 'is-fail'
+  return r.brand_mentioned ? 'is-hit' : 'is-miss'
+}
+function cellLabel(row, prov) {
+  const r = cellResponse(row, prov)
+  if (!r) return 'pending'
+  if (!r.succeeded) return 'failed'
+  return r.brand_mentioned ? 'mentioned' : 'no mention'
+}
+function cellLatency(row, prov) {
+  const r = cellResponse(row, prov)
+  return r?.duration_ms ? Math.round(r.duration_ms) : null
+}
+function cellText(row, prov) {
+  const r = cellResponse(row, prov)
+  return r?.response_text || r?.error || ''
+}
+
+function aggHitCount(row) {
+  return (row?.responses || []).filter((r) => r.brand_mentioned).length
+}
+function aggClass(row) {
+  const hits = aggHitCount(row)
+  const total = resultsProviders.value.length
+  if (!total) return ''
+  if (hits === 0) return 'is-none'
+  if (hits === total) return 'is-all'
+  return 'is-some'
+}
+
+// Per-model aggregate stats for the scorecards.
+const perModelStats = computed(() => {
+  const rows = displayRun.value?.prompt_rows || []
+  const provs = resultsProviders.value
+  return provs.map((prov) => {
+    const cells = rows.map((row) => cellResponse(row, prov)).filter(Boolean)
+    const attempts = cells.length
+    const hits = cells.filter((c) => c.brand_mentioned).length
+    const failures = cells.filter((c) => !c.succeeded).length
+    const successes = cells.filter((c) => c.succeeded)
+    const lat = successes
+      .map((c) => Math.round(c.duration_ms || 0))
+      .filter((x) => x > 0)
+      .sort((a, b) => a - b)
+    const median_ms = lat.length
+      ? lat[Math.floor(lat.length / 2)]
+      : 0
+    // "Solo finds" = prompts where ONLY this model found the brand
+    let unique_finds = 0
+    for (const row of rows) {
+      const hitsHere = (row.responses || []).filter((r) => r.brand_mentioned)
+      if (hitsHere.length === 1 && hitsHere[0].provider === prov) {
+        unique_finds += 1
+      }
+    }
+    const discovery_rate = attempts
+      ? Math.round((hits / attempts) * 1000) / 10
+      : 0
+    return { provider: prov, attempts, hits, failures, median_ms, unique_finds, discovery_rate }
+  })
+})
+
+// Disagreement matrix: % of prompts where A's hit-verdict ≠ B's hit-verdict.
+// Pending / failed cells are treated as "no mention" so the metric remains
+// well-defined when streaming.
+function _verdict(row, prov) {
+  const r = cellResponse(row, prov)
+  return !!(r && r.brand_mentioned)
+}
+function disagreePct(a, b) {
+  const rows = displayRun.value?.prompt_rows || []
+  if (!rows.length) return 0
+  let diff = 0
+  for (const row of rows) {
+    if (_verdict(row, a) !== _verdict(row, b)) diff += 1
+  }
+  return Math.round((diff / rows.length) * 1000) / 10
+}
+function disagreeClass(a, b) {
+  const v = disagreePct(a, b)
+  if (v >= 40) return 'is-hot'
+  if (v >= 20) return 'is-warm'
+  if (v > 0)   return 'is-cool'
+  return 'is-zero'
+}
+
+function _statsFor(prov) {
+  return perModelStats.value.find((m) => m.provider === prov)
+}
+function deltaSigned(a, b) {
+  const av = _statsFor(a)?.discovery_rate ?? 0
+  const bv = _statsFor(b)?.discovery_rate ?? 0
+  const d = Math.round((av - bv) * 10) / 10
+  if (d > 0) return `+${d}`
+  if (d < 0) return `${d}`
+  return '0'
+}
+function deltaClass(a, b) {
+  const av = _statsFor(a)?.discovery_rate ?? 0
+  const bv = _statsFor(b)?.discovery_rate ?? 0
+  const d = av - bv
+  if (d > 10) return 'is-pos-hot'
+  if (d > 0)  return 'is-pos'
+  if (d < -10) return 'is-neg-hot'
+  if (d < 0)  return 'is-neg'
+  return 'is-zero'
 }
 
 function highlightBrand(text) {
@@ -773,405 +982,451 @@ function highlightBrand(text) {
   return out
 }
 
-function _closeEnvMenuOnDocClick() { envMenuOpen.value = false }
+// ── Lifecycle ────────────────────────────────────────────────────
+function applyQueryPreselect() {
+  const rawEnv = (route.query.env || '').toString().trim()
+  if (rawEnv) {
+    const env = envs.value.find((e) => e.id === rawEnv)
+    if (env) { applyEnvSelection(env); return }
+  }
+  const rawPrompts = (route.query.prompts || '').toString().trim()
+  if (!rawPrompts) return
+  const ids = new Set(rawPrompts.split(',').filter(Boolean))
+  if (!ids.size) return
+  const matched = savedPrompts.value.filter((p) => ids.has(p.id))
+  if (!matched.length) return
+  selectedPrompts.value = matched.map((p) => ({
+    uid: nextUid(), text: p.text, savedId: p.id,
+  }))
+}
+
 onMounted(async () => {
-  await Promise.all([loadSaved(), loadEnvs()])
+  await Promise.all([loadSaved(), loadEnvs(), loadProviderHealth()])
   applyQueryPreselect()
-  document.addEventListener('click', _closeEnvMenuOnDocClick)
 })
-onBeforeUnmount(() => document.removeEventListener('click', _closeEnvMenuOnDocClick))
 </script>
 
 <style scoped>
-.mt-page {
-  color: var(--text-primary);
-}
-.mt-page .page-subtitle strong { color: var(--text-primary); font-weight: 600; }
+.mt-page { color: var(--text-primary, #0f172a); }
+.mt-page .page-subtitle strong { color: var(--text-primary, #0f172a); font-weight: 600; }
 
-/* ── Top-level env header (campaign bundle) ───────────────────── */
-.mt-env-bar {
-  display: flex;
-  gap: 24px;
-  padding: 22px 24px;
-  margin-bottom: 22px;
-  background: linear-gradient(135deg, rgba(255, 107, 53, 0.06) 0%, rgba(255, 87, 34, 0.04) 100%);
-  border: 1px solid rgba(255, 107, 53, 0.25);
+/* ── Card surface (Airbnb-style: white, soft shadow, generous radius) */
+.mt-card {
+  background: #fff;
+  border: 1px solid rgba(15, 23, 42, 0.06);
   border-radius: 16px;
+  padding: 24px 28px;
+  margin-bottom: 20px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
-.mt-env-bar.is-empty {
-  background: var(--bg-card, #fff);
-  border: 1px dashed rgba(15, 23, 42, 0.20);
+.mt-card-head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 16px; margin-bottom: 18px;
 }
-.mt-env-bar-left { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
-.mt-env-eyebrow {
-  font-size: 10.5px; font-weight: 700; letter-spacing: 0.12em;
-  text-transform: uppercase; color: #ff6b35;
+.mt-card-head-actions { display: flex; gap: 8px; align-items: center; }
+.mt-card-eyebrow {
+  font-size: 11px; font-weight: 700; letter-spacing: 0.10em;
+  text-transform: uppercase; color: #ff385c;
+  margin-bottom: 4px;
 }
-.mt-env-bar-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.mt-env-picker {
-  position: relative;
-  display: inline-flex; align-items: center; gap: 10px;
-  padding: 10px 14px;
-  background: #fff;
-  border: 1px solid rgba(15, 23, 42, 0.10);
-  border-radius: 10px;
-  cursor: pointer;
-  min-width: 280px;
+.mt-card-h {
+  font-size: 22px; font-weight: 600; color: #0f172a; margin: 0 0 4px;
+  letter-spacing: -0.01em;
 }
-.mt-env-picker:hover { border-color: #ff6b35; }
-.mt-env-pick-name { font-size: 16px; font-weight: 600; color: #0f172a; flex: 1; }
-.mt-env-pick-count {
-  font-size: 11.5px; font-weight: 600;
-  padding: 2px 10px;
-  background: rgba(255, 107, 53, 0.12); color: #c2410c;
-  border-radius: 9999px;
+.mt-card-sub {
+  font-size: 14px; color: #64748b; margin: 0; line-height: 1.55;
 }
-.mt-env-caret { color: #94a3b8; }
-.mt-env-menu {
-  position: absolute; top: calc(100% + 6px); left: 0;
-  min-width: 320px;
-  max-height: 360px;
-  overflow-y: auto;
-  padding: 8px;
-  background: #fff;
-  border: 1px solid rgba(15, 23, 42, 0.10);
-  border-radius: 12px;
-  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.14);
-  z-index: 30;
-  cursor: default;
-}
-.mt-env-menu-h {
-  font-size: 10.5px; font-weight: 700; letter-spacing: 0.10em;
-  text-transform: uppercase; color: #94a3b8;
-  padding: 6px 10px;
-}
-.mt-env-menu-item {
-  display: flex; align-items: center; justify-content: space-between; gap: 10px;
-  width: 100%;
-  padding: 9px 10px;
-  border: 0; background: transparent;
-  font-size: 13.5px; text-align: left; cursor: pointer;
-  border-radius: 8px; color: #0f172a;
-}
-.mt-env-menu-item:hover { background: rgba(15, 23, 42, 0.04); }
-.mt-env-menu-item.is-current { background: rgba(255, 107, 53, 0.08); color: #c2410c; font-weight: 600; }
-.mt-env-menu-item.is-primary { color: #ff6b35; font-weight: 600; }
-.mt-env-menu-item.is-clear { color: #475569; font-style: italic; }
-.mt-env-menu-count {
-  font-size: 11px; font-weight: 600; padding: 1px 8px;
-  background: rgba(15, 23, 42, 0.06); color: #475569;
-  border-radius: 9999px;
-}
-.mt-env-menu-divider { height: 1px; background: rgba(15, 23, 42, 0.08); margin: 6px 0; }
-.mt-env-menu-empty { padding: 8px 10px; font-size: 12px; color: #94a3b8; }
-.mt-env-bar-actions { display: inline-flex; gap: 6px; }
-.mt-env-bar-tool {
-  padding: 6px 12px;
-  border: 1px solid rgba(15, 23, 42, 0.10);
-  background: #fff; color: #475569;
-  border-radius: 9999px;
-  font-size: 12px; font-weight: 500; cursor: pointer;
-}
-.mt-env-bar-tool:hover { border-color: #ff6b35; color: #ff6b35; }
-.mt-env-bar-tool.is-danger:hover { border-color: #ef4444; color: #ef4444; }
-.mt-env-hint { font-size: 13px; color: #475569; margin: 0; }
-.mt-env-hint strong { color: #0f172a; font-weight: 600; }
-.mt-env-link {
-  background: none; border: 0; padding: 0;
-  color: #ff6b35; font-weight: 600; cursor: pointer;
-  text-decoration: underline; text-underline-offset: 2px;
+.mt-counter {
+  display: inline-block; margin-left: 10px;
+  font-size: 12px; font-weight: 600; color: #94a3b8;
 }
 
-/* Section */
-.mt-section {
-  background: #ffffff;
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  border-radius: 16px;
-  padding: 22px;
-  margin-bottom: 18px;
+/* ── Buttons / links */
+.mt-btn-primary, .mt-btn-soft, .mt-btn-run {
+  font: inherit; cursor: pointer; border-radius: 10px;
+  padding: 10px 16px; font-weight: 600; font-size: 14px;
+  border: 1px solid transparent;
+  transition: transform .05s ease, background .15s ease, border-color .15s ease;
 }
-.mt-step-head {
-  display: flex; align-items: center; gap: 12px;
-  margin-bottom: 16px;
-}
-.mt-step-num {
-  width: 28px; height: 28px; border-radius: 9px;
-  display: inline-flex; align-items: center; justify-content: center;
-  background: linear-gradient(135deg, #ff6b35 0%, #ff5722 100%);
-  color: #fff; font-weight: 700; font-size: 14px;
-  box-shadow: 0 4px 12px rgba(255, 107, 53, 0.25);
-}
-.mt-step-h { font-size: 16px; font-weight: 700; color: #0f172a; }
-.mt-step-sub { font-size: 12px; color: #64748b; margin-top: 2px; }
-
-/* Tabs */
-.mt-tabs { display: inline-flex; gap: 4px; padding: 4px; background: #f1f5f9; border-radius: 10px; margin-bottom: 16px; }
-.mt-tab {
-  padding: 7px 14px; border: 0; background: transparent;
-  font-size: 13px; font-weight: 600; color: #64748b;
-  border-radius: 7px; cursor: pointer; transition: all 0.15s;
-}
-.mt-tab.is-active { background: #fff; color: #0f172a; box-shadow: 0 1px 2px rgba(15,23,42,0.06); }
-
-/* Saved list */
-.mt-muted { color: #64748b; font-size: 13px; padding: 10px 0; }
-.mt-empty { color: #64748b; font-size: 13px; padding: 16px; background: #f8fafc; border-radius: 10px; }
-.mt-saved-list { list-style: none; margin: 0; padding: 0; max-height: 360px; overflow: auto; }
-.mt-saved-item {
-  display: flex; align-items: center; gap: 10px;
-  padding: 10px 12px; margin-bottom: 6px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  border-radius: 10px;
-  cursor: pointer; transition: all 0.15s;
-  background: #fff;
-}
-.mt-saved-item:hover { border-color: rgba(255, 107, 53, 0.30); }
-.mt-saved-item.is-on { border-color: #ff6b35; background: rgba(255, 107, 53, 0.04); }
-.mt-check {
-  width: 18px; height: 18px; border-radius: 5px;
-  border: 1.5px solid #cbd5e1;
-  display: inline-flex; align-items: center; justify-content: center;
-  background: #fff; color: #fff; flex-shrink: 0;
-}
-.mt-saved-item.is-on .mt-check { background: #ff6b35; border-color: #ff6b35; }
-.mt-saved-text { flex: 1; font-size: 13.5px; color: #0f172a; }
-.mt-saved-tag {
-  font-size: 10.5px; font-weight: 600; padding: 2px 8px;
-  border-radius: 9999px; background: rgba(59, 130, 246, 0.10); color: #1d4ed8;
-}
-
-/* Custom */
-.mt-textarea {
-  width: 100%;
-  border: 1px solid rgba(15, 23, 42, 0.10);
-  border-radius: 10px;
-  padding: 12px 14px;
-  font-size: 14px;
-  font-family: inherit;
-  resize: vertical;
-  margin-bottom: 10px;
-}
-.mt-textarea:focus { outline: none; border-color: #ff6b35; box-shadow: 0 0 0 3px rgba(255,107,53,0.15); }
-
-/* Upload */
-.mt-drop {
-  display: block;
-  border: 2px dashed rgba(255, 107, 53, 0.30);
-  border-radius: 12px;
-  padding: 24px;
-  cursor: pointer;
-  text-align: center;
-  background: rgba(255, 107, 53, 0.03);
-  transition: all 0.15s;
-}
-.mt-drop:hover { background: rgba(255, 107, 53, 0.06); }
-.mt-drop input { display: none; }
-.mt-drop-h { font-size: 14px; font-weight: 600; color: #ff6b35; }
-.mt-drop-sub { font-size: 12px; color: #64748b; margin-top: 4px; }
-.mt-drop-sub code { padding: 1px 4px; background: #f1f5f9; border-radius: 4px; font-size: 11px; }
-
-/* Pool */
-.mt-pool {
-  margin-top: 16px;
-  padding-top: 16px;
-  border-top: 1px dashed rgba(15, 23, 42, 0.10);
-}
-.mt-pool-head {
-  display: flex; justify-content: space-between; align-items: center;
-  font-size: 12px; font-weight: 600; color: #64748b;
-  margin-bottom: 10px;
-}
-.mt-pool-clear {
-  border: 0; background: transparent; color: #ef4444;
-  font-size: 11.5px; font-weight: 600; cursor: pointer;
-}
-.mt-pool-actions { display: inline-flex; align-items: center; gap: 14px; }
-.mt-pool-save {
-  border: 1px solid #ff6b35; background: transparent; color: #ff6b35;
-  padding: 4px 12px; border-radius: 9999px;
-  font-size: 11.5px; font-weight: 600; cursor: pointer;
-}
-.mt-pool-save:hover { background: rgba(255, 107, 53, 0.08); }
-
-/* Env tab list */
-.mt-pool-list { list-style: none; margin: 0; padding: 0; }
-.mt-pool-item {
-  display: flex; align-items: center; gap: 10px;
-  padding: 8px 10px; margin-bottom: 4px;
-  background: #f8fafc; border-radius: 8px;
-}
-.mt-pool-num { font-size: 11px; font-weight: 700; color: #94a3b8; width: 18px; }
-.mt-pool-text { flex: 1; font-size: 13px; color: #1f2937; }
-.mt-pool-remove {
-  border: 0; background: transparent; color: #94a3b8;
-  font-size: 18px; line-height: 1; cursor: pointer; padding: 0 6px;
-}
-.mt-pool-remove:hover { color: #ef4444; }
-
-/* Models */
-.mt-models { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
-.mt-model {
-  display: flex; align-items: flex-start; gap: 10px;
-  padding: 12px 14px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  border-radius: 12px;
-  cursor: pointer;
-  background: #fff;
-  transition: all 0.15s;
-}
-.mt-model:hover:not(.is-off) { border-color: rgba(255, 107, 53, 0.30); }
-.mt-model.is-on { border-color: #ff6b35; background: rgba(255, 107, 53, 0.04); }
-.mt-model.is-off { opacity: 0.55; cursor: not-allowed; background: #f8fafc; }
-.mt-model input { margin-top: 3px; accent-color: #ff6b35; }
-.mt-model-body { flex: 1; min-width: 0; }
-.mt-model-head { display: flex; align-items: center; gap: 8px; }
-.mt-model-dot { width: 8px; height: 8px; border-radius: 9999px; background: #cbd5e1; }
-.mt-model-dot.is-claude     { background: #d97706; }
-.mt-model-dot.is-gpt4       { background: #10b981; }
-.mt-model-dot.is-gemini     { background: #4285f4; }
-.mt-model-dot.is-perplexity { background: #5b6cff; }
-.mt-model-name { font-size: 13.5px; font-weight: 600; color: #0f172a; }
-.mt-model-soon {
-  font-size: 10px; font-weight: 600; padding: 1px 7px;
-  background: rgba(15, 23, 42, 0.06); color: #64748b;
-  border-radius: 9999px; text-transform: uppercase;
-  letter-spacing: 0.04em; margin-left: auto;
-}
-.mt-model-sub { font-size: 11.5px; color: #64748b; margin-top: 2px; }
-
-/* Run */
-.mt-run-summary {
-  display: flex; justify-content: space-between; align-items: center; gap: 16px;
-}
-.mt-run-num { font-size: 28px; font-weight: 700; color: #0f172a; line-height: 1; }
-.mt-run-label { font-size: 12px; color: #64748b; margin-top: 4px; }
+.mt-btn-primary { background: #ff385c; color: #fff; }
+.mt-btn-primary:hover:not(:disabled) { background: #e31c5f; }
+.mt-btn-primary:disabled { background: #f1f5f9; color: #94a3b8; cursor: not-allowed; }
+.mt-btn-soft { background: #f7f7f8; color: #0f172a; border-color: rgba(15, 23, 42, 0.08); }
+.mt-btn-soft:hover { background: #efeff1; }
 .mt-btn-run {
-  padding: 12px 24px;
-  background: linear-gradient(135deg, #ff6b35 0%, #ff5722 100%);
-  color: #fff; border: 0; border-radius: 10px;
-  font-size: 14px; font-weight: 700;
-  cursor: pointer; transition: all 0.15s;
-  box-shadow: 0 6px 16px rgba(255, 107, 53, 0.25);
+  background: #0f172a; color: #fff; padding: 14px 28px; font-size: 15px;
+  border-radius: 12px; min-width: 180px;
 }
-.mt-btn-run:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 10px 22px rgba(255, 107, 53, 0.35); }
-.mt-btn-run:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
+.mt-btn-run:hover:not(:disabled) { background: #1e293b; }
+.mt-btn-run:disabled { background: #e2e8f0; color: #94a3b8; cursor: not-allowed; }
+
+.mt-link {
+  background: none; border: 0; padding: 0; cursor: pointer;
+  color: #0f172a; font: inherit; font-size: 13px; font-weight: 500;
+  text-decoration: underline; text-underline-offset: 3px;
+}
+.mt-link:hover { color: #ff385c; }
+.mt-link.is-danger { color: #b91c1c; }
+.mt-dot-sep {
+  display: inline-block; width: 3px; height: 3px;
+  background: #cbd5e1; border-radius: 50%; margin: 0 10px;
+}
+
+.mt-hidden { display: none; }
+.mt-muted { color: #94a3b8; font-size: 13px; }
+.mt-empty {
+  padding: 28px; text-align: center;
+  color: #94a3b8; font-size: 14px;
+  border: 1px dashed rgba(15, 23, 42, 0.10);
+  border-radius: 12px;
+}
+
+/* ── Env tiles */
+.mt-env-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+}
+.mt-env-tile {
+  position: relative;
+  display: flex; gap: 12px;
+  padding: 16px 18px;
+  background: #fff;
+  border: 1px solid rgba(15, 23, 42, 0.10);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.mt-env-tile input { position: absolute; opacity: 0; pointer-events: none; }
+.mt-env-tile:hover { border-color: #0f172a; }
+.mt-env-tile.is-on {
+  border-color: #0f172a; border-width: 2px; padding: 15px 17px;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.06);
+}
+.mt-env-tile-body { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1; }
+.mt-env-tile-name {
+  font-size: 15px; font-weight: 600; color: #0f172a;
+  display: flex; align-items: center; gap: 8px;
+}
+.mt-env-tile-count {
+  font-size: 11px; font-weight: 600;
+  padding: 2px 8px;
+  background: #f1f5f9; color: #475569;
+  border-radius: 9999px;
+}
+.mt-env-tile-sub { font-size: 12.5px; color: #64748b; }
+.mt-env-loading { grid-column: 1 / -1; }
+
+.mt-env-toolbar {
+  display: flex; align-items: center;
+  margin-top: 16px; padding-top: 16px;
+  border-top: 1px solid rgba(15, 23, 42, 0.06);
+}
+
+/* ── Prompts list */
+.mt-prompts {
+  list-style: none; margin: 0; padding: 0;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.mt-prompt-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 16px;
+  background: #fff;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+  transition: background .12s ease;
+}
+.mt-prompt-row:last-child { border-bottom: 0; }
+.mt-prompt-row:hover { background: #fafafb; }
+.mt-prompt-row.is-editing { background: #fff8f9; align-items: flex-start; }
+.mt-prompt-num {
+  flex: none; width: 24px; height: 24px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: #f1f5f9; color: #64748b;
+  border-radius: 9999px;
+  font-size: 11.5px; font-weight: 600;
+}
+.mt-prompt-text {
+  flex: 1; min-width: 0;
+  font-size: 14.5px; color: #0f172a; line-height: 1.5;
+  cursor: text;
+}
+.mt-prompt-text:hover { color: #ff385c; }
+.mt-prompt-badge {
+  flex: none;
+  font-size: 10.5px; font-weight: 600; letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 3px 8px; border-radius: 9999px;
+  background: #ecfdf5; color: #047857;
+}
+.mt-prompt-badge.is-ghost { background: #f1f5f9; color: #64748b; }
+.mt-prompt-icon {
+  flex: none;
+  width: 28px; height: 28px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: transparent; border: 0; border-radius: 8px;
+  color: #94a3b8; font-size: 18px; cursor: pointer;
+}
+.mt-prompt-icon:hover { background: #f1f5f9; color: #0f172a; }
+
+.mt-prompt-edit {
+  flex: 1;
+  font: inherit;
+  padding: 10px 12px;
+  background: #fff;
+  border: 1px solid rgba(15, 23, 42, 0.18);
+  border-radius: 10px;
+  resize: vertical;
+  min-height: 60px;
+}
+.mt-prompt-edit:focus { outline: none; border-color: #ff385c; box-shadow: 0 0 0 3px rgba(255, 56, 92, 0.12); }
+.mt-prompt-edit-actions { display: flex; gap: 8px; align-items: flex-start; }
+
+.mt-prompt-add {
+  display: flex; gap: 10px;
+  margin-top: 12px;
+}
+.mt-input {
+  flex: 1;
+  font: inherit;
+  padding: 12px 14px;
+  background: #fff;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 10px;
+}
+.mt-input:focus { outline: none; border-color: #0f172a; }
+
+/* ── Models */
+.mt-models { display: flex; flex-wrap: wrap; gap: 10px; }
+.mt-model-chip {
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 10px 16px;
+  background: #fff;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 9999px;
+  cursor: pointer;
+  font-size: 14px; font-weight: 500;
+  transition: border-color .15s ease, background .15s ease;
+}
+.mt-model-chip input { position: absolute; opacity: 0; pointer-events: none; }
+.mt-model-chip:hover { border-color: #0f172a; }
+.mt-model-chip.is-on {
+  background: #0f172a; color: #fff; border-color: #0f172a;
+}
+.mt-model-chip.is-off { opacity: 0.55; cursor: not-allowed; background: #f7f7f8; }
+.mt-model-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: #cbd5e1;
+}
+.mt-model-dot.is-claude { background: #d97706; }
+.mt-model-dot.is-gpt4 { background: #10a37f; }
+.mt-model-dot.is-gemini { background: #4285f4; }
+.mt-model-dot.is-perplexity { background: #6366f1; }
+.mt-model-name { font-weight: 600; }
+.mt-model-soon { font-size: 11px; color: #94a3b8; font-weight: 500; }
+
+/* ── Run bar */
+.mt-run-card {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 24px;
+}
+.mt-run-info { display: flex; align-items: center; gap: 16px; }
+.mt-run-num {
+  font-size: 36px; font-weight: 700; color: #0f172a;
+  letter-spacing: -0.02em; line-height: 1;
+}
+.mt-run-label { font-size: 13px; font-weight: 600; color: #0f172a; }
+.mt-run-sub { font-size: 12.5px; color: #64748b; }
+
 .mt-spinner {
   display: inline-block; width: 12px; height: 12px;
   border: 2px solid rgba(255, 255, 255, 0.4);
   border-top-color: #fff;
-  border-radius: 9999px;
-  margin-right: 6px;
+  border-radius: 50%;
   animation: mt-spin 0.7s linear infinite;
-  vertical-align: -2px;
+  margin-right: 8px; vertical-align: -1px;
 }
 @keyframes mt-spin { to { transform: rotate(360deg); } }
-.mt-btn-secondary {
-  padding: 8px 16px;
-  background: #fff;
-  border: 1px solid rgba(15, 23, 42, 0.10);
-  border-radius: 9px;
-  font-size: 13px; font-weight: 600; color: #1f2937;
-  cursor: pointer;
+
+.mt-error {
+  margin: 0 0 20px;
+  padding: 12px 16px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #b91c1c;
+  border-radius: 10px;
+  font-size: 13px;
 }
-.mt-btn-secondary:hover:not(:disabled) {
-  background: #ff6b35; border-color: #ff6b35; color: #fff;
-}
-.mt-btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
-.mt-live {
-  margin-top: 16px;
-  padding: 14px 16px;
-  background: linear-gradient(135deg, rgba(255, 107, 53, 0.06) 0%, rgba(255, 87, 34, 0.04) 100%);
-  border: 1px solid rgba(255, 107, 53, 0.20);
-  border-radius: 12px;
-}
+
+/* ── Live progress */
+.mt-live { padding: 18px 24px; }
 .mt-live-bar {
-  width: 100%; height: 6px;
-  background: rgba(15, 23, 42, 0.06);
-  border-radius: 9999px; overflow: hidden;
-  margin-bottom: 8px;
+  height: 6px;
+  background: #f1f5f9;
+  border-radius: 9999px;
+  overflow: hidden;
 }
 .mt-live-fill {
   height: 100%;
-  background: linear-gradient(90deg, #ff6b35 0%, #ff5722 100%);
-  border-radius: 9999px;
-  transition: width 0.4s ease;
+  background: linear-gradient(90deg, #ff385c, #ff6b35);
+  transition: width .35s ease;
 }
-.mt-live-meta { display: flex; align-items: baseline; gap: 10px; font-size: 12.5px; }
-.mt-live-pct { font-weight: 700; color: #ff6b35; min-width: 38px; }
-.mt-live-text { color: #475569; flex: 1; }
-.mt-error {
-  margin-top: 12px; padding: 10px 14px;
-  background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.20);
-  border-radius: 10px; color: #b91c1c; font-size: 13px;
+.mt-live-meta {
+  display: flex; gap: 14px; align-items: center;
+  margin-top: 10px;
 }
+.mt-live-pct { font-size: 13px; font-weight: 700; color: #0f172a; }
+.mt-live-text { font-size: 12.5px; color: #64748b; }
 
-/* Results */
-.mt-results { margin-top: 28px; }
-.mt-results-head {
-  display: flex; justify-content: space-between; align-items: center;
+/* ── Scorecards */
+.mt-scorecards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+}
+.mt-scorecard {
+  padding: 18px 20px;
+  background: #fafafb;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  border-radius: 14px;
+}
+.mt-scorecard-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.mt-scorecard-name { font-size: 13.5px; font-weight: 600; color: #0f172a; }
+.mt-scorecard-big {
+  font-size: 32px; font-weight: 700; color: #0f172a;
+  letter-spacing: -0.02em; line-height: 1.05;
+}
+.mt-scorecard-cap {
+  font-size: 11.5px; font-weight: 600; color: #94a3b8;
+  text-transform: uppercase; letter-spacing: 0.06em;
   margin-bottom: 14px;
 }
-.mt-results-h { font-size: 18px; font-weight: 700; margin: 0; color: #0f172a; }
-.mt-discovery {
-  font-size: 13px; color: #475569;
+.mt-scorecard-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(15, 23, 42, 0.06);
 }
-.mt-discovery strong { color: #ff6b35; font-size: 18px; font-weight: 700; }
-.mt-discovery em { font-style: normal; color: #64748b; margin-left: 4px; font-size: 12px; }
+.mt-mini-num { font-size: 14px; font-weight: 600; color: #0f172a; }
+.mt-mini-cap { font-size: 10.5px; color: #94a3b8; }
 
-.mt-result-card {
-  background: #fff;
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  border-radius: 14px;
-  padding: 16px 18px;
-  margin-bottom: 12px;
+/* ── Pivot table */
+.mt-pivot-wrap { padding: 24px 0 12px; }
+.mt-pivot-wrap .mt-card-head { padding: 0 28px; }
+.mt-pivot-scroll { overflow-x: auto; padding: 0 28px; }
+.mt-pivot {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  min-width: 720px;
 }
-.mt-result-prompt {
-  display: flex; align-items: center; gap: 10px;
-  padding-bottom: 12px;
-  margin-bottom: 12px;
-  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+.mt-pivot thead th {
+  text-align: left;
+  font-size: 11px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: #94a3b8;
+  padding: 12px 12px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.10);
+  background: #fff; position: sticky; top: 0;
 }
-.mt-result-num { font-size: 11px; font-weight: 700; color: #94a3b8; }
-.mt-result-text { flex: 1; font-size: 14px; font-weight: 600; color: #0f172a; }
-.mt-result-pill {
-  font-size: 11px; font-weight: 700; padding: 3px 10px;
-  border-radius: 9999px; text-transform: uppercase; letter-spacing: 0.04em;
+.mt-pivot-num-h { width: 36px; }
+.mt-pivot-prompt-h { min-width: 240px; }
+.mt-pivot-prov-h { min-width: 160px; }
+.mt-pivot-agg-h { width: 110px; }
+.mt-pivot tbody td {
+  padding: 12px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.04);
+  vertical-align: top;
 }
-.mt-result-pill.is-hit  { background: rgba(16, 185, 129, 0.12); color: #047857; }
-.mt-result-pill.is-miss { background: rgba(15, 23, 42, 0.08);   color: #475569; }
-.mt-result-pill.is-fail { background: rgba(239, 68, 68, 0.12);  color: #b91c1c; }
-
-.mt-resp { margin-top: 10px; padding: 12px; background: #f8fafc; border-radius: 10px; }
-.mt-resp-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; flex-wrap: wrap; }
-.mt-resp-dot { width: 8px; height: 8px; border-radius: 9999px; background: #cbd5e1; }
-.mt-resp-dot.is-claude     { background: #d97706; }
-.mt-resp-dot.is-gpt4       { background: #10b981; }
-.mt-resp-dot.is-gemini     { background: #4285f4; }
-.mt-resp-dot.is-perplexity { background: #5b6cff; }
-.mt-resp-name { font-size: 13px; font-weight: 600; color: #0f172a; }
-.mt-resp-badge {
-  font-size: 10.5px; font-weight: 600; padding: 2px 8px;
-  border-radius: 9999px; text-transform: lowercase; letter-spacing: 0.02em;
+.mt-pivot-num { color: #94a3b8; font-weight: 600; }
+.mt-pivot-prompt { color: #0f172a; line-height: 1.5; }
+.mt-pivot-cell {
+  cursor: pointer;
+  border-radius: 8px;
+  transition: background .12s ease;
 }
-.mt-resp-badge.is-hit  { background: rgba(16, 185, 129, 0.14); color: #047857; }
-.mt-resp-badge.is-miss { background: rgba(15, 23, 42, 0.06);   color: #64748b; }
-.mt-resp-badge.is-fail { background: rgba(239, 68, 68, 0.10);  color: #b91c1c; }
-.mt-resp-time { font-size: 10.5px; color: #94a3b8; margin-left: auto; }
-.mt-resp-body {
-  font-size: 12.5px; line-height: 1.55; color: #334155;
+.mt-pivot-cell:hover { background: #fafafb; }
+.mt-pivot-cell-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.mt-pivot-ms { font-size: 11.5px; color: #94a3b8; font-variant-numeric: tabular-nums; }
+.mt-pivot-pill {
+  display: inline-block;
+  font-size: 11px; font-weight: 700; letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 3px 9px; border-radius: 9999px;
+}
+.mt-pivot-pill.is-hit, .mt-pivot-cell.is-hit .mt-pivot-pill { background: #ecfdf5; color: #047857; }
+.mt-pivot-pill.is-miss, .mt-pivot-cell.is-miss .mt-pivot-pill { background: #f1f5f9; color: #64748b; }
+.mt-pivot-pill.is-fail, .mt-pivot-cell.is-fail .mt-pivot-pill { background: #fef2f2; color: #b91c1c; }
+.mt-pivot-pill.is-pending, .mt-pivot-cell.is-pending .mt-pivot-pill {
+  background: #fef3c7; color: #92400e;
+}
+.mt-pivot-body {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: #fafafb;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  border-radius: 8px;
+  font-size: 12.5px; color: #334155; line-height: 1.5;
   white-space: pre-wrap;
+  cursor: text;
 }
-.mt-resp-empty { font-size: 12px; color: #b91c1c; font-style: italic; }
+.mt-mark { background: #fef08a; padding: 0 2px; border-radius: 3px; color: #0f172a; }
 
-:deep(.mt-mark) {
-  background: rgba(255, 107, 53, 0.22);
-  color: #c2410c;
-  padding: 0 3px;
-  border-radius: 3px;
+.mt-pivot-agg { text-align: center; }
+.mt-agg-pill {
+  display: inline-block;
+  font-size: 12px; font-weight: 700;
+  padding: 4px 10px; border-radius: 9999px;
+  background: #f1f5f9; color: #475569;
+  font-variant-numeric: tabular-nums;
+}
+.mt-agg-pill.is-all { background: #ecfdf5; color: #047857; }
+.mt-agg-pill.is-some { background: #fef3c7; color: #92400e; }
+.mt-agg-pill.is-none { background: #fef2f2; color: #b91c1c; }
+
+/* ── Difference matrices */
+.mt-matrix-pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 24px;
+}
+.mt-matrix-block { min-width: 0; }
+.mt-matrix-h {
+  font-size: 12px; font-weight: 700; letter-spacing: 0.08em;
+  text-transform: uppercase; color: #64748b;
+  margin-bottom: 10px;
+}
+.mt-matrix {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 4px;
+  font-size: 12.5px;
+}
+.mt-matrix thead th, .mt-matrix tbody th {
+  font-weight: 600; color: #0f172a;
+  padding: 8px;
+  text-align: center;
+  background: transparent;
+}
+.mt-matrix tbody th { text-align: right; padding-right: 12px; }
+.mt-matrix-cell {
+  padding: 14px 12px;
+  text-align: center;
   font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  border-radius: 8px;
+  background: #f7f7f8;
+  color: #0f172a;
 }
-
-@media (max-width: 880px) {
-  .mt-run-summary { flex-direction: column; align-items: stretch; }
-}
+.mt-matrix-cell.is-self { background: transparent; color: #cbd5e1; font-weight: 400; }
+/* Disagreement heatmap (red scale) */
+.mt-matrix-cell.is-zero { background: #f0fdf4; color: #047857; }
+.mt-matrix-cell.is-cool { background: #fef9c3; color: #854d0e; }
+.mt-matrix-cell.is-warm { background: #fed7aa; color: #9a3412; }
+.mt-matrix-cell.is-hot  { background: #fecaca; color: #991b1b; }
+/* Delta heatmap (diverging) */
+.mt-matrix-cell.is-pos     { background: #d1fae5; color: #047857; }
+.mt-matrix-cell.is-pos-hot { background: #6ee7b7; color: #064e3b; }
+.mt-matrix-cell.is-neg     { background: #fed7d7; color: #9b2c2c; }
+.mt-matrix-cell.is-neg-hot { background: #fc8181; color: #7c2d12; }
 </style>
