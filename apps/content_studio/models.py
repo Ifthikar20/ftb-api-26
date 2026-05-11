@@ -72,10 +72,6 @@ class ContentBrief(TimestampMixin):
         "prompt_library.Prompt", null=True, blank=True,
         on_delete=models.SET_NULL, related_name="briefs",
     )
-    target_claim_mismatch = models.ForeignKey(
-        "claim_verifier.ClaimMismatch", null=True, blank=True,
-        on_delete=models.SET_NULL, related_name="briefs",
-    )
     target_source_class = models.CharField(max_length=24, blank=True)
 
     headline = models.CharField(max_length=300)

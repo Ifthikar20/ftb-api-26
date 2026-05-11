@@ -259,3 +259,135 @@ def _record_failure(schedule, now) -> None:
             schedule.id, schedule.consecutive_failures,
         )
     schedule.save(update_fields=update_fields)
+
+
+# ── Model Test (standalone probe) ─────────────────────────────────
+# Stored in Redis under MODEL_TEST_CACHE_KEY.format(run_id=...). The
+# value is a dict the polling endpoint serves verbatim:
+#   { status, prompts, providers, brand_terms, completed, total,
+#     current_prompt, current_provider, results, summary, error }
+MODEL_TEST_CACHE_KEY = "model_test:run:{run_id}"
+MODEL_TEST_TTL_SECONDS = 60 * 60  # 1h — plenty for poll-and-leave UX
+
+def _model_test_state_get(run_id: str) -> dict | None:
+    from django.core.cache import cache
+    return cache.get(MODEL_TEST_CACHE_KEY.format(run_id=run_id))
+
+def _model_test_state_set(run_id: str, state: dict) -> None:
+    from django.core.cache import cache
+    cache.set(
+        MODEL_TEST_CACHE_KEY.format(run_id=run_id),
+        state,
+        timeout=MODEL_TEST_TTL_SECONDS,
+    )
+
+
+@shared_task(name="apps.llm_ranking.tasks.run_model_test", bind=True, max_retries=0)
+def run_model_test(self, *, run_id: str, website_id: str, user_id: int | None,
+                   prompts: list[str], providers: list[str],
+                   brand_terms: list[str]) -> None:
+    """
+    Background worker for the Model Test probe. Updates Redis state
+    after each (prompt, provider) call so the FE can poll and render
+    results as they arrive.
+    """
+    from django.contrib.auth import get_user_model
+    from apps.llm_ranking.providers import get_provider
+    from apps.websites.models import Website
+
+    state = _model_test_state_get(run_id) or {}
+    state.update({
+        "status": "running",
+        "prompts": prompts,
+        "providers": providers,
+        "brand_terms": brand_terms,
+        "total": len(prompts) * len(providers),
+        "completed": 0,
+        "current_prompt_index": 0,
+        "current_provider": providers[0] if providers else "",
+        "prompt_rows": [],
+        "summary": None,
+        "error": None,
+    })
+    _model_test_state_set(run_id, state)
+
+    try:
+        website = Website.objects.filter(id=website_id).first()
+        user = None
+        if user_id is not None:
+            user = get_user_model().objects.filter(id=user_id).first()
+
+        terms_lower = [t.lower() for t in brand_terms if t]
+
+        def _hit(text: str) -> bool:
+            if not text or not terms_lower:
+                return False
+            low = text.lower()
+            return any(t in low for t in terms_lower)
+
+        for p_idx, prompt_text in enumerate(prompts):
+            row = {"prompt": prompt_text, "responses": []}
+            state["current_prompt_index"] = p_idx
+            for key in providers:
+                state["current_provider"] = key
+                _model_test_state_set(run_id, state)
+
+                provider = get_provider(key)
+                if provider is None or not provider.is_configured():
+                    row["responses"].append({
+                        "provider": key, "succeeded": False,
+                        "error": "Provider not configured (missing API key).",
+                        "response_text": "", "brand_mentioned": False,
+                        "duration_ms": 0,
+                    })
+                else:
+                    try:
+                        pr = provider.query(
+                            prompt_text, user=user, website=website,
+                            audit_id="model_test", role="upstream",
+                        )
+                        row["responses"].append({
+                            "provider": key,
+                            "succeeded": bool(pr.succeeded),
+                            "error": getattr(pr, "error", "") or "",
+                            "response_text": getattr(pr, "text", "") or "",
+                            "brand_mentioned": _hit(getattr(pr, "text", "") or ""),
+                            "duration_ms": getattr(pr, "duration_ms", 0) or 0,
+                        })
+                    except Exception as exc:
+                        logger.warning("model_test %s/%s failed: %s", run_id, key, exc)
+                        row["responses"].append({
+                            "provider": key, "succeeded": False,
+                            "error": str(exc)[:300],
+                            "response_text": "", "brand_mentioned": False,
+                            "duration_ms": 0,
+                        })
+
+                state["completed"] = state.get("completed", 0) + 1
+                _model_test_state_set(run_id, state)
+
+            state["prompt_rows"].append(row)
+            _model_test_state_set(run_id, state)
+
+        # Final summary
+        results = state["prompt_rows"]
+        prompts_with_hit = sum(
+            1 for r in results if any(x["brand_mentioned"] for x in r["responses"])
+        )
+        hits = sum(1 for r in results for x in r["responses"] if x["brand_mentioned"])
+        state["summary"] = {
+            "prompts": len(prompts),
+            "providers": providers,
+            "total_runs": state["total"],
+            "hits": hits,
+            "prompts_with_hit": prompts_with_hit,
+            "discovery_rate": round(prompts_with_hit / max(len(prompts), 1) * 100, 1),
+        }
+        state["status"] = "complete"
+        state["current_provider"] = ""
+        _model_test_state_set(run_id, state)
+    except Exception as exc:
+        logger.exception("model_test %s crashed", run_id)
+        state["status"] = "failed"
+        state["error"] = str(exc)[:500]
+        _model_test_state_set(run_id, state)

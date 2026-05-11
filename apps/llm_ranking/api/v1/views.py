@@ -1316,3 +1316,113 @@ class LLMRankingScheduleRunNowView(TenantScopedAPIView):
              "queued": True},
             status=status.HTTP_202_ACCEPTED,
         )
+
+
+class ModelTestRunView(TenantScopedAPIView):
+    """
+    Start a Model Test probe in the background.
+
+    POST queues a Celery worker (`run_model_test`) that fires every
+    (prompt, provider) pair and writes per-step progress into Redis.
+    Returns a `run_id` immediately so the UI can poll
+    `ModelTestStatusView` and render results as they land.
+    No LLMRankingAudit row is created — this is the lightweight
+    'did the model find me' probe.
+    """
+
+    MAX_PROMPTS = 25
+    MAX_PROVIDERS = 4
+
+    def post(self, request, website_id):
+        import uuid
+        from apps.llm_ranking.providers import PROVIDERS
+        from apps.llm_ranking.tasks import (
+            MODEL_TEST_TTL_SECONDS,
+            MODEL_TEST_CACHE_KEY,
+            run_model_test,
+        )
+        from django.core.cache import cache
+
+        website = self.get_website(website_id)
+
+        prompts = request.data.get("prompts", []) or []
+        providers = request.data.get("providers", []) or ["claude"]
+        if not isinstance(prompts, list) or not isinstance(providers, list):
+            return Response({"error": "prompts and providers must be arrays."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        prompts = [str(p).strip() for p in prompts if str(p).strip()]
+        if not prompts:
+            return Response({"error": "At least one prompt is required."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        if len(prompts) > self.MAX_PROMPTS:
+            return Response({"error": f"Max {self.MAX_PROMPTS} prompts per run."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        providers = [str(p).strip().lower() for p in providers if str(p).strip()]
+        providers = [p for p in providers if p in PROVIDERS][: self.MAX_PROVIDERS]
+        if not providers:
+            return Response({"error": "Pick at least one supported provider."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        brand_terms: list[str] = []
+        for term in [
+            getattr(website, "business_name", None) or "",
+            getattr(website, "name", None) or "",
+        ]:
+            term = (term or "").strip()
+            if term and term.lower() not in {t.lower() for t in brand_terms}:
+                brand_terms.append(term)
+        for alias in (getattr(website, "brand_aliases", None) or []):
+            alias = (alias or "").strip()
+            if alias and alias.lower() not in {t.lower() for t in brand_terms}:
+                brand_terms.append(alias)
+
+        run_id = uuid.uuid4().hex
+        # Pre-seed the state row so a fast first poll never 404s before
+        # the worker picks the job up.
+        cache.set(
+            MODEL_TEST_CACHE_KEY.format(run_id=run_id),
+            {
+                "status": "queued",
+                "website_id": str(website.id),
+                "prompts": prompts,
+                "providers": providers,
+                "brand_terms": brand_terms,
+                "total": len(prompts) * len(providers),
+                "completed": 0,
+                "current_prompt_index": 0,
+                "current_provider": providers[0],
+                "prompt_rows": [],
+                "summary": None,
+                "error": None,
+            },
+            timeout=MODEL_TEST_TTL_SECONDS,
+        )
+
+        run_model_test.delay(
+            run_id=run_id,
+            website_id=str(website.id),
+            user_id=getattr(request.user, "id", None),
+            prompts=prompts,
+            providers=providers,
+            brand_terms=brand_terms,
+        )
+        return Response({"run_id": run_id, "status": "queued"},
+                        status=status.HTTP_202_ACCEPTED)
+
+
+class ModelTestStatusView(TenantScopedAPIView):
+    """GET — return current state of a Model Test run for polling."""
+
+    def get(self, request, website_id, run_id):
+        from apps.llm_ranking.tasks import _model_test_state_get
+        self.get_website(website_id)
+        state = _model_test_state_get(run_id)
+        if not state:
+            return Response({"error": "Run not found or expired."},
+                            status=status.HTTP_404_NOT_FOUND)
+        if state.get("website_id") and str(state["website_id"]) != str(website_id):
+            return Response({"error": "Not found."},
+                            status=status.HTTP_404_NOT_FOUND)
+        return Response(state)

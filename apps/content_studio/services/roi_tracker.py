@@ -84,14 +84,10 @@ def measure_roi(draft_id: str) -> ROIAttribution | None:
     )
     visibility_lift = (after_rate - before_rate) if (after_rate or before_rate) else None
 
+    # Accuracy lift is always None now that the claim_verifier app has
+    # been retired — the column stays on ROIAttribution so existing rows
+    # don't need a migration, but new rows leave it null.
     accuracy_lift = None
-    if brief and brief.target_claim_mismatch is not None:
-        try:
-            mm = brief.target_claim_mismatch
-            mm.refresh_from_db()
-            accuracy_lift = 1.0 if mm.dismissed else 0.0
-        except Exception:
-            accuracy_lift = None
 
     return ROIAttribution.objects.create(
         draft=draft,

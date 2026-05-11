@@ -1,16 +1,23 @@
 <template>
   <div class="pl-page">
     <!-- Header -->
-    <header id="pl-header" class="pl-page-header">
-      <h1 class="pl-hero-title">Prompt Library</h1>
-      <p class="pl-hero-sub">
-        Describe a scenario. We'll find the prompts AI assistants are likely
-        being asked about you.
-      </p>
+    <header id="pl-header" class="page-header">
+      <div>
+        <h1 class="page-title">Prompt Library</h1>
+        <p class="page-subtitle">
+          Describe a scenario. We'll find the prompts AI assistants are likely
+          being asked about you.
+        </p>
+      </div>
     </header>
 
     <!-- Tab toggle: Search vs Saved -->
     <div class="pl-tabs" role="tablist">
+      <span
+        class="pl-tab-indicator"
+        :style="{ transform: `translateX(${activeTab === 'saved' ? '100%' : '0%'})` }"
+        aria-hidden="true"
+      ></span>
       <button
         class="pl-tab"
         :class="{ 'is-active': activeTab === 'search' }"
@@ -18,7 +25,11 @@
         :aria-selected="activeTab === 'search'"
         @click="activeTab = 'search'"
       >
-        Search
+        <svg class="pl-tab-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="7" stroke-linecap="round"/>
+          <path d="M21 21l-4.35-4.35" stroke-linecap="round"/>
+        </svg>
+        <span>Search</span>
       </button>
       <button
         class="pl-tab"
@@ -27,7 +38,10 @@
         :aria-selected="activeTab === 'saved'"
         @click="activeTab = 'saved'"
       >
-        Saved
+        <svg class="pl-tab-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span>Saved</span>
         <span v-if="savedTableRef && savedTableRef.count" class="pl-tab-count">
           {{ savedTableRef.count }}
         </span>
@@ -56,51 +70,27 @@
     <!-- Generated results -->
     <section class="pl-section pl-section-results">
       <!-- Stat strip -->
-      <div v-if="generatedPrompts.length" class="pl-stat-grid">
-        <div class="pl-stat-tile">
-          <div class="pl-stat-icon" style="background: rgba(91, 141, 239, 0.12); color: var(--brand-accent)">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3 8-8" stroke-linecap="round" stroke-linejoin="round"/><path d="M20 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2h11" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          </div>
-          <div>
-            <div class="pl-stat-label">Total prompts</div>
-            <div class="pl-stat-val">{{ generatedPrompts.length }}</div>
-          </div>
+      <div v-if="generatedPrompts.length" class="pl-stat-strip">
+        <div class="pl-stat-cell">
+          <span class="pl-stat-label">Total prompts</span>
+          <span class="pl-stat-val">{{ generatedPrompts.length }}</span>
         </div>
-        <div class="pl-stat-tile">
-          <div class="pl-stat-icon" style="background: rgba(16, 185, 129, 0.12); color: var(--color-success, #059669)">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 17l6-6 4 4 8-8" stroke-linecap="round" stroke-linejoin="round"/><path d="M17 7h4v4" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          </div>
-          <div>
-            <div class="pl-stat-label">Avg trend</div>
-            <div class="pl-stat-val">{{ avgTrend }}</div>
-          </div>
+        <div class="pl-stat-cell">
+          <span class="pl-stat-label">Avg trend</span>
+          <span class="pl-stat-val">{{ avgTrend }}</span>
         </div>
-        <div class="pl-stat-tile">
-          <div class="pl-stat-icon" style="background: rgba(180, 83, 9, 0.10); color: var(--color-warning, #b45309)">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          </div>
-          <div>
-            <div class="pl-stat-label">Trending (≥70)</div>
-            <div class="pl-stat-val">{{ trendingCount }}</div>
-          </div>
+        <div class="pl-stat-cell">
+          <span class="pl-stat-label">Trending</span>
+          <span class="pl-stat-val">{{ trendingCount }}</span>
+          <span class="pl-stat-hint">≥70</span>
         </div>
-        <div class="pl-stat-tile">
-          <div class="pl-stat-icon" style="background: rgba(126, 34, 206, 0.10); color: #7e22ce">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5v14" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          </div>
-          <div>
-            <div class="pl-stat-label">Saved</div>
-            <div class="pl-stat-val">{{ savedCount }}</div>
-          </div>
+        <div class="pl-stat-cell">
+          <span class="pl-stat-label">Saved</span>
+          <span class="pl-stat-val">{{ savedCount }}</span>
         </div>
-        <div class="pl-stat-tile">
-          <div class="pl-stat-icon" style="background: rgba(15, 23, 42, 0.06); color: var(--text-secondary)">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
-          </div>
-          <div>
-            <div class="pl-stat-label">Categories</div>
-            <div class="pl-stat-val">{{ categoryCount }}</div>
-          </div>
+        <div class="pl-stat-cell">
+          <span class="pl-stat-label">Categories</span>
+          <span class="pl-stat-val">{{ categoryCount }}</span>
         </div>
       </div>
 
@@ -144,21 +134,36 @@
 
 
       <AirCard size="md" :padded="false">
-        <!-- Empty / loading / error state — rendered outside the table so
-             there's no horizontal scrollbar when there's nothing to show -->
-        <div v-if="!generatedPrompts.length" class="pl-empty-state">
+        <!-- Skeleton rows while we wait for the synthesis call to come back.
+             More tactile than a spinning bar — feels like the table is
+             populating itself. -->
+        <div v-if="generating && !generatedPrompts.length" class="pl-skeleton-wrap">
+          <div class="pl-skeleton-status">
+            <span class="pl-skeleton-pulse"></span>
+            <span>Loading your prompt library…</span>
+          </div>
+          <div v-for="n in 4" :key="'sk-' + n" class="pl-skeleton-row" :style="{ animationDelay: (n * 0.12) + 's' }">
+            <div class="pl-skel-prompt-col">
+              <div class="pl-skel pl-skel-line w-85"></div>
+              <div class="pl-skel pl-skel-line w-55"></div>
+            </div>
+            <div class="pl-skel pl-skel-action"></div>
+          </div>
+        </div>
+
+        <!-- Empty / error state — rendered outside the table so there's no
+             horizontal scrollbar when there's nothing to show -->
+        <div v-else-if="!generatedPrompts.length" class="pl-empty-state">
           <div class="pl-empty-icon" aria-hidden="true">
             <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
               <circle cx="11" cy="11" r="7" stroke-linecap="round"/>
               <path d="M21 21l-4.35-4.35" stroke-linecap="round"/>
             </svg>
           </div>
-          <div v-if="generating" class="pl-empty-title">Searching…</div>
-          <div v-else-if="generationError" class="pl-empty-title">No prompts for that scenario</div>
+          <div v-if="generationError" class="pl-empty-title">No prompts for that scenario</div>
           <div v-else class="pl-empty-title">No prompts yet</div>
           <div class="pl-empty-sub">
-            <template v-if="generating">Generating natural-feeling prompts based on your scenario.</template>
-            <template v-else-if="generationError">Try adding a few more words or a specific place.</template>
+            <template v-if="generationError">Try adding a few more words or a specific place.</template>
             <template v-else>Type a scenario above and hit Search to populate this table.</template>
           </div>
         </div>
@@ -273,8 +278,14 @@
                     <div class="pl-detail-inner">
                       <div class="pl-detail-grid">
                         <div class="pl-detail-block">
-                          <div class="pl-detail-label">Source</div>
-                          <div class="pl-detail-value">{{ generationProvider || 'deepseek' }}</div>
+                          <div class="pl-detail-label">Last seen on</div>
+                          <div class="pl-detail-value">
+                            <span class="pl-source-chip" :class="'is-' + (p.seen_in || 'ai_chat')">
+                              <span class="pl-source-dot"></span>
+                              {{ seenInLabel(p.seen_in) }}
+                              <template v-if="p.community"> · {{ p.community }}</template>
+                            </span>
+                          </div>
                         </div>
                         <div class="pl-detail-block">
                           <div class="pl-detail-label">Intent</div>
@@ -632,6 +643,23 @@ function formatRowId(p) {
 function wordCountOf(p) {
   const t = (p?.prompt_text || p?.template_text || '').trim()
   return t ? t.split(/\s+/).filter(Boolean).length : 0
+}
+
+function seenInLabel(key) {
+  const map = {
+    reddit: 'Reddit',
+    quora: 'Quora',
+    google_search: 'Google search',
+    hacker_news: 'Hacker News',
+    yelp: 'Yelp',
+    tiktok: 'TikTok',
+    youtube_comments: 'YouTube comments',
+    twitter: 'X / Twitter',
+    forum: 'Forum',
+    news_comments: 'News comments',
+    ai_chat: 'AI chat',
+  }
+  return map[key] || 'AI chat'
 }
 
 function trendBarClass(score) {
@@ -1136,19 +1164,36 @@ watch(websiteId, loadVariables)
 
 /* ── Tabs (Search / Saved) ──────────────────────────────────── */
 .pl-tabs {
+  position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px;
-  background: var(--bg-surface, rgba(0, 0, 0, 0.04));
+  padding: 5px;
+  background: var(--bg-surface, rgba(15, 23, 42, 0.06));
   border-radius: 9999px;
   margin-bottom: 28px;
+  isolation: isolate;
+}
+.pl-tab-indicator {
+  position: absolute;
+  top: 5px;
+  bottom: 5px;
+  left: 5px;
+  width: calc(50% - 5px);
+  background: var(--bg-card, #ffffff);
+  border-radius: 9999px;
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.06),
+    0 4px 12px rgba(15, 23, 42, 0.06);
+  transition: transform 0.32s cubic-bezier(0.32, 0.72, 0, 1);
+  z-index: 0;
 }
 .pl-tab {
+  position: relative;
+  z-index: 1;
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 18px;
+  padding: 9px 22px;
   border: 0;
   background: transparent;
   color: var(--text-secondary);
@@ -1157,14 +1202,24 @@ watch(websiteId, loadVariables)
   font-family: inherit;
   border-radius: 9999px;
   cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+  transition: color 0.2s ease;
+  letter-spacing: 0.005em;
+  flex: 1;
+  justify-content: center;
+  min-width: 130px;
+}
+.pl-tab-icon {
+  flex-shrink: 0;
+  opacity: 0.6;
+  transition: opacity 0.2s ease, transform 0.2s ease;
 }
 .pl-tab:hover { color: var(--text-primary); }
+.pl-tab:hover .pl-tab-icon { opacity: 0.85; }
 .pl-tab.is-active {
-  background: var(--bg-card);
   color: var(--text-primary);
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+  font-weight: 600;
 }
+.pl-tab.is-active .pl-tab-icon { opacity: 1; transform: scale(1.05); }
 .pl-tab-count {
   display: inline-flex;
   align-items: center;
@@ -1197,50 +1252,47 @@ watch(websiteId, loadVariables)
 .pl-section-sub-inline { color: var(--text-muted); font-weight: 400; }
 
 /* ── Stat tiles ───────────────────────────────────────────── */
-.pl-stat-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 16px;
-  margin-bottom: 24px;
-}
-.pl-stat-tile {
+.pl-stat-strip {
   display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 18px 20px;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 22px;
+  padding: 10px 14px;
+  margin-bottom: 16px;
   background: var(--bg-card);
   border: 1px solid var(--border-color);
-  border-radius: 16px;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
-  transition: transform 0.15s ease-out, box-shadow 0.15s ease-out;
-}
-.pl-stat-tile:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.06);
-}
-.pl-stat-icon {
-  width: 40px;
-  height: 40px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 12px;
-  flex-shrink: 0;
-}
-.pl-stat-tile .pl-stat-label {
+  border-radius: 10px;
   font-size: 12px;
+}
+.pl-stat-cell {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.pl-stat-cell + .pl-stat-cell {
+  padding-left: 22px;
+  border-left: 1px solid var(--border-color);
+}
+.pl-stat-strip .pl-stat-label {
+  font-size: 11.5px;
   font-weight: 500;
   text-transform: none;
   letter-spacing: 0;
   color: var(--text-secondary);
-  margin: 0;
 }
-.pl-stat-tile .pl-stat-val {
-  font-size: 22px;
+.pl-stat-strip .pl-stat-val {
+  font-size: 13px;
   font-weight: 600;
   color: var(--text-primary);
-  margin-top: 2px;
   font-variant-numeric: tabular-nums;
+}
+.pl-stat-strip .pl-stat-hint {
+  font-size: 10.5px;
+  color: var(--text-muted, #94a3b8);
+}
+@media (max-width: 600px) {
+  .pl-stat-cell + .pl-stat-cell { padding-left: 0; border-left: 0; }
+  .pl-stat-strip { gap: 12px 18px; }
 }
 
 .pl-hero-title {
@@ -1786,6 +1838,112 @@ watch(websiteId, loadVariables)
 .pl-tooltip-foot { margin: 6px 0 0; padding-top: 8px; border-top: 1px solid var(--border-color); color: var(--text-muted); font-size: 11px; }
 
 /* ── Empty state inside the results table ───────────────────── */
+/* ── Skeleton loading rows ──────────────────────────────────── */
+.pl-skeleton-wrap {
+  padding: 28px 24px 36px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.pl-skeleton-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 14px;
+  padding: 8px 14px;
+  background: var(--bg-surface, rgba(15, 23, 42, 0.04));
+  border-radius: 9999px;
+  align-self: flex-start;
+}
+.pl-skeleton-pulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background: var(--brand-accent);
+  box-shadow: 0 0 0 0 var(--brand-accent-glow, rgba(91, 141, 239, 0.5));
+  animation: pl-skel-pulse 1.4s ease-out infinite;
+}
+@keyframes pl-skel-pulse {
+  70%  { box-shadow: 0 0 0 8px rgba(91, 141, 239, 0); }
+  100% { box-shadow: 0 0 0 0  rgba(91, 141, 239, 0); }
+}
+.pl-skeleton-row {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 22px 20px;
+  background: var(--bg-elevated, rgba(15, 23, 42, 0.02));
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  opacity: 0;
+  animation: pl-skel-fade 0.4s ease-out forwards;
+}
+@keyframes pl-skel-fade { to { opacity: 1; } }
+.pl-skel {
+  background: linear-gradient(
+    90deg,
+    rgba(15, 23, 42, 0.04) 0%,
+    rgba(15, 23, 42, 0.10) 50%,
+    rgba(15, 23, 42, 0.04) 100%
+  );
+  background-size: 200% 100%;
+  animation: pl-skel-shimmer 1.4s ease-in-out infinite;
+  border-radius: 6px;
+  height: 14px;
+}
+@keyframes pl-skel-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+.pl-skel-prompt-col { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+.pl-skel-line    { height: 14px; }
+.pl-skel-line.w-85 { width: 85%; }
+.pl-skel-line.w-55 { width: 55%; }
+.pl-skel-action  { width: 88px; height: 32px; border-radius: 9999px; flex-shrink: 0; }
+
+/* ── Source / 'Last seen on' chip in the expanded detail ────── */
+.pl-source-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  border-radius: 9999px;
+  font-size: 13px;
+  font-weight: 500;
+  background: var(--bg-surface, rgba(15, 23, 42, 0.04));
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+}
+.pl-source-dot {
+  width: 7px; height: 7px; border-radius: 9999px;
+  background: var(--text-muted);
+  flex-shrink: 0;
+}
+.pl-source-chip.is-reddit           { background: rgba(255, 69, 0, 0.10);  color: #c4400a; }
+.pl-source-chip.is-reddit .pl-source-dot { background: #ff4500; }
+.pl-source-chip.is-quora            { background: rgba(185, 43, 39, 0.10); color: #9b2420; }
+.pl-source-chip.is-quora .pl-source-dot { background: #b92b27; }
+.pl-source-chip.is-google_search    { background: rgba(66, 133, 244, 0.10); color: #1f57c1; }
+.pl-source-chip.is-google_search .pl-source-dot { background: #4285f4; }
+.pl-source-chip.is-hacker_news      { background: rgba(255, 102, 0, 0.10); color: #c44d00; }
+.pl-source-chip.is-hacker_news .pl-source-dot { background: #ff6600; }
+.pl-source-chip.is-yelp             { background: rgba(217, 38, 41, 0.10); color: #ad1f22; }
+.pl-source-chip.is-yelp .pl-source-dot { background: #d92629; }
+.pl-source-chip.is-tiktok           { background: rgba(0, 0, 0, 0.06); color: #1a1a1a; }
+.pl-source-chip.is-tiktok .pl-source-dot { background: linear-gradient(135deg, #25f4ee, #fe2c55); }
+.pl-source-chip.is-youtube_comments { background: rgba(255, 0, 0, 0.10); color: #b80000; }
+.pl-source-chip.is-youtube_comments .pl-source-dot { background: #ff0000; }
+.pl-source-chip.is-twitter          { background: rgba(15, 20, 25, 0.06); color: #1a1f24; }
+.pl-source-chip.is-twitter .pl-source-dot { background: #0f1419; }
+.pl-source-chip.is-forum            { background: rgba(20, 116, 110, 0.10); color: #0e6660; }
+.pl-source-chip.is-forum .pl-source-dot { background: #14746e; }
+.pl-source-chip.is-news_comments    { background: rgba(37, 99, 235, 0.10); color: #1d4ed8; }
+.pl-source-chip.is-news_comments .pl-source-dot { background: #2563eb; }
+.pl-source-chip.is-ai_chat          { background: rgba(126, 34, 206, 0.10); color: #6e21b8; }
+.pl-source-chip.is-ai_chat .pl-source-dot { background: #7e22ce; }
+
 .pl-empty-state {
   display: flex;
   flex-direction: column;

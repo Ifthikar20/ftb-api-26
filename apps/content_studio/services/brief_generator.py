@@ -1,12 +1,14 @@
 """Brief generator — turns recommendation gaps into ContentBrief rows.
 
-Three families of gaps are mined per website:
+Two families of gaps are mined per website:
 
 * Visibility — prompts where the target brand is mentioned in fewer than
   20% of recent provider results.
-* Accuracy — open ClaimMismatch rows with severity in (critical, high).
 * Citation — source-class shares where the competitor share dwarfs the
   brand's share by more than 3x.
+
+(The previous 'Accuracy' family — driven by claim_verifier mismatches —
+was removed when the Accuracy product was retired.)
 
 The generator is idempotent: each gap is hashed into a ``dedupe_key`` so
 re-running for the same website does not create duplicate open / drafted
@@ -22,7 +24,6 @@ from django.db import transaction
 
 from apps.brand_vault.models import BrandFact, FactStatus
 from apps.brand_vault.services.embeddings import cosine_similarity, embed_text
-from apps.claim_verifier.models import ClaimMismatch, MismatchSeverity
 from apps.content_studio.models import (
     BriefStatus,
     ContentBrief,
@@ -34,10 +35,6 @@ logger = logging.getLogger("apps")
 
 VISIBILITY_THRESHOLD = 0.2
 CITATION_RATIO_THRESHOLD = 3.0
-ACCURACY_SEVERITIES = (
-    MismatchSeverity.CRITICAL.value,
-    MismatchSeverity.HIGH.value,
-)
 ACTIVE_BRIEF_STATUSES = (BriefStatus.OPEN.value, BriefStatus.DRAFTED.value)
 
 
@@ -47,8 +44,6 @@ def _dedupe_key(gap_type: str, *parts: str) -> str:
 
 
 def _format_for_gap(gap_type: str, hint: str = "") -> str:
-    if gap_type == GapType.ACCURACY.value:
-        return ContentFormat.FAQ.value
     if gap_type == GapType.CITATION.value:
         if hint and "reddit" in hint.lower():
             return ContentFormat.REDDIT_ANSWER.value
@@ -57,8 +52,6 @@ def _format_for_gap(gap_type: str, hint: str = "") -> str:
 
 
 def _format_match_bonus(gap_type: str, fmt: str) -> float:
-    if gap_type == GapType.ACCURACY.value and fmt == ContentFormat.FAQ.value:
-        return 1.2
     if gap_type == GapType.CITATION.value and fmt in (
         ContentFormat.REDDIT_ANSWER.value, ContentFormat.BLOG.value,
     ):
@@ -149,14 +142,6 @@ def _visibility_gaps(website) -> Iterable[dict]:
         }
 
 
-def _accuracy_gaps(website):
-    return ClaimMismatch.objects.filter(
-        claim__website=website,
-        severity__in=ACCURACY_SEVERITIES,
-        dismissed=False,
-    ).select_related("claim", "matched_fact")
-
-
 def _citation_gaps(website) -> list[dict]:
     """Source-class gaps where a competitor outperforms the brand by 3x.
 
@@ -240,49 +225,6 @@ def _build_visibility_brief(website, gap, existing_keys) -> ContentBrief | None:
     return brief
 
 
-def _build_accuracy_brief(website, mismatch, existing_keys) -> ContentBrief | None:
-    fmt = _format_for_gap(GapType.ACCURACY.value)
-    dedupe_key = _dedupe_key(GapType.ACCURACY.value, str(mismatch.id))
-    if dedupe_key in existing_keys:
-        return None
-    claim_text = (mismatch.claim.text or "")[:200]
-    headline = f"Correct the record: {claim_text}"
-    description = (
-        f"Severity {mismatch.severity}. Mismatch type: {mismatch.mismatch_type}. "
-        f"Publish a clear, fact-backed FAQ entry to disambiguate."
-    )
-    structure = {"sections": [
-        {"heading": "The question", "summary": "phrased like users ask it"},
-        {"heading": "The accurate answer", "summary": "grounded in vault facts"},
-        {"heading": "Common misconceptions", "summary": "address the mismatch"},
-        {"heading": "Sources", "summary": "links to authoritative pages"},
-    ]}
-    keywords = [w for w in claim_text.lower().split() if len(w) > 3][:8]
-    impact = (
-        _severity_score(mismatch.severity)
-        * float(getattr(mismatch, "audience_reach", 0.5) or 0.5)
-        * _format_match_bonus(GapType.ACCURACY.value, fmt)
-    )
-
-    facts = _grounded_facts(website, claim_text)
-    brief = ContentBrief.objects.create(
-        website=website,
-        gap_type=GapType.ACCURACY.value,
-        impact_score=impact,
-        target_format=fmt,
-        target_claim_mismatch=mismatch,
-        headline=headline[:300],
-        description=description,
-        suggested_structure=structure,
-        target_keywords=keywords,
-        dedupe_key=dedupe_key,
-    )
-    if facts:
-        brief.grounded_facts.set(facts)
-    existing_keys.add(dedupe_key)
-    return brief
-
-
 def _build_citation_brief(website, gap, existing_keys) -> ContentBrief | None:
     source_class = gap["source_class"] or "general"
     fmt = _format_for_gap(GapType.CITATION.value, hint=source_class)
@@ -344,13 +286,6 @@ def generate_briefs_for_website(website_id: str, limit: int = 20) -> int:
         if len(created) >= limit:
             break
         brief = _build_visibility_brief(website, gap, existing_keys)
-        if brief is not None:
-            created.append(brief)
-
-    for mismatch in _accuracy_gaps(website):
-        if len(created) >= limit:
-            break
-        brief = _build_accuracy_brief(website, mismatch, existing_keys)
         if brief is not None:
             created.append(brief)
 

@@ -9,7 +9,7 @@ class LLMRankingResultSerializer(serializers.ModelSerializer):
     prompt_type = serializers.SerializerMethodField()
     prompt_type_display = serializers.SerializerMethodField()
 
-    class Meta:
+    class Meta:  # type: ignore[override]
         model = LLMRankingResult
         fields = [
             "id", "provider", "provider_display", "prompt", "prompt_type", "prompt_type_display",
@@ -43,7 +43,7 @@ class LLMRankingAuditSerializer(serializers.ModelSerializer):
     )
     results = LLMRankingResultSerializer(many=True, read_only=True)
 
-    class Meta:
+    class Meta:  # type: ignore[override]
         model = LLMRankingAudit
         fields = [
             "id", "status", "status_display",
@@ -74,7 +74,7 @@ class LLMRankingAuditListSerializer(serializers.ModelSerializer):
     """Lightweight serializer for list view — includes prompts for expandable rows."""
     status_display = serializers.CharField(source="get_status_display", read_only=True)
 
-    class Meta:
+    class Meta:  # type: ignore[override]
         model = LLMRankingAudit
         fields = [
             "id", "status", "status_display",
@@ -176,7 +176,7 @@ class RunAuditSerializer(serializers.Serializer):
 class LLMRankingScheduleSerializer(serializers.ModelSerializer):
     frequency_display = serializers.CharField(source="get_frequency_display", read_only=True)
 
-    class Meta:
+    class Meta:  # type: ignore[override]
         model = LLMRankingSchedule
         fields = [
             "id", "is_enabled", "frequency", "frequency_display",

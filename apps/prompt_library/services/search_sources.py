@@ -254,14 +254,27 @@ def search_sources(query: str, *, limit: int = 8) -> dict[str, Any]:
         }
 
     organic = data.get("organic_results") or []
-    rows: list[dict] = []
-    for i, item in enumerate(organic[:limit], start=1):
+    # Pull a wider candidate set than the caller asked for, since the
+    # verifier will reject most pages that didn't actually discuss the
+    # prompt. We trim back to `limit` after verification.
+    candidate_cap = max(limit * 3, 12)
+    candidates: list[dict] = []
+    for i, item in enumerate(organic[:candidate_cap], start=1):
         row = _row(item, i)
         if row is not None:
-            rows.append(row)
+            candidates.append(row)
+
+    from apps.prompt_library.services.source_verifier import filter_verified
+    verified = filter_verified(query, candidates)[:limit]
+
     return {
         "provider": "serpapi",
-        "results": rows,
-        "groups": _build_groups(rows),
+        "results": verified,
+        "groups": _build_groups(verified),
         "query": query,
+        "verification": {
+            "candidates": len(candidates),
+            "verified": len(verified),
+            "policy": "strict_all_keywords",
+        },
     }
