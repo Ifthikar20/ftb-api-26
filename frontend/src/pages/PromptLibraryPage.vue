@@ -1,12 +1,14 @@
 <template>
   <div class="pl-page">
     <!-- Header -->
-    <header id="pl-header" class="pl-page-header">
-      <h1 class="pl-hero-title">Prompt Library</h1>
-      <p class="pl-hero-sub">
-        Describe a scenario. We'll find the prompts AI assistants are likely
-        being asked about you.
-      </p>
+    <header id="pl-header" class="page-header">
+      <div>
+        <h1 class="page-title">Prompt Library</h1>
+        <p class="page-subtitle">
+          Describe a scenario. We'll find the prompts AI assistants are likely
+          being asked about you.
+        </p>
+      </div>
     </header>
 
     <!-- Tab toggle: Search vs Saved -->
