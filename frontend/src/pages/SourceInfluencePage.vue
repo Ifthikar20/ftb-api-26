@@ -438,22 +438,10 @@
     </section>
 
     <!-- ── 3. Models ────────────────────────────────────────────── -->
-    <section class="mt-card">
-      <div class="mt-card-head">
-        <div>
-          <div class="mt-card-eyebrow">Step 3</div>
-          <h2 class="mt-card-h">Choose models to compare</h2>
-          <p class="mt-card-sub">
-            Pick one or more variants from each provider — e.g. Sonnet 4
-            vs Sonnet 4.5. Each variant becomes its own column in the
-            results. Providers without an API key are greyed out.
-          </p>
-        </div>
-        <div class="mt-card-head-actions">
-          <span class="mt-pickcount">
-            {{ selectedVariantIds.length }} selected
-          </span>
-        </div>
+    <section class="mt-card mt-models-card">
+      <div class="mt-models-line">
+        <span class="mt-env-step">Step 3 · Models</span>
+        <span class="mt-pickcount">{{ selectedVariantIds.length }} selected</span>
       </div>
 
       <div class="mt-providers">
@@ -1583,37 +1571,46 @@ onBeforeUnmount(() => document.removeEventListener('click', _closeDropdownOnDocC
 .mt-input:focus { outline: none; border-color: #0f172a; }
 
 /* ── Models: provider rows with variant dropdowns */
+.mt-models-card { padding: 14px 20px; }
+.mt-models-line {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 10px;
+}
 .mt-pickcount {
-  font-size: 12px; font-weight: 600; color: #94a3b8;
-  padding: 4px 10px;
+  font-size: 11.5px; font-weight: 600; color: #94a3b8;
+  padding: 3px 10px;
   background: #f1f5f9; border-radius: 9999px;
 }
-.mt-providers { display: flex; flex-direction: column; gap: 10px; }
+.mt-providers { display: flex; flex-direction: column; gap: 6px; }
 .mt-provider-row {
   display: grid;
-  grid-template-columns: 200px 1fr;
-  align-items: center; gap: 16px;
-  padding: 12px 16px;
-  background: #fff;
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  border-radius: 12px;
+  grid-template-columns: 170px 1fr;
+  align-items: center; gap: 12px;
+  padding: 6px 10px;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
 }
-.mt-provider-row.is-off { background: #f7f7f8; }
-.mt-provider-side { display: flex; align-items: center; gap: 10px; }
-.mt-provider-name { font-size: 14.5px; font-weight: 600; color: #0f172a; }
+.mt-provider-row.is-off { opacity: 0.65; }
+.mt-provider-side { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.mt-provider-name {
+  font-size: 13px; font-weight: 600; color: #0f172a;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 
 .mt-variant-dd { position: relative; min-width: 0; }
 .mt-variant-btn {
   width: 100%;
-  display: flex; align-items: center; gap: 10px;
-  padding: 10px 14px;
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 12px;
   background: #fff;
-  border: 1px solid rgba(15, 23, 42, 0.12);
-  border-radius: 10px;
-  font: inherit; font-size: 13px; color: #0f172a;
+  border: 1px solid rgba(15, 23, 42, 0.10);
+  border-radius: 8px;
+  font: inherit; font-size: 12.5px; color: #0f172a;
   cursor: pointer;
   text-align: left;
   transition: border-color .15s ease;
+  min-height: 32px;
 }
 .mt-variant-btn:hover:not(:disabled) { border-color: #0f172a; }
 .mt-variant-btn:disabled { background: #f1f5f9; color: #94a3b8; cursor: not-allowed; }
@@ -1622,9 +1619,9 @@ onBeforeUnmount(() => document.removeEventListener('click', _closeDropdownOnDocC
 .mt-variant-caret { color: #94a3b8; flex: none; }
 
 .mt-variant-pill {
-  display: inline-flex; align-items: center; gap: 6px;
-  font-size: 12px; font-weight: 600;
-  padding: 3px 10px;
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11.5px; font-weight: 600;
+  padding: 2px 8px;
   background: #0f172a; color: #fff;
   border-radius: 9999px;
 }
