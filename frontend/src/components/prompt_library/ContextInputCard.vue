@@ -35,55 +35,54 @@ function clear() {
 
 <template>
   <div class="cic-shell mx-auto">
-    <div class="cic-bar" :class="{ 'is-focused': false, 'is-loading': loading }">
-      <span class="cic-leading-icon" aria-hidden="true">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="11" cy="11" r="7" stroke-linecap="round"/>
-          <path d="M21 21l-4.35-4.35" stroke-linecap="round"/>
-        </svg>
-      </span>
-
+    <div class="cic-box" :class="{ 'is-loading': loading }">
       <textarea
         ref="textareaEl"
         class="cic-textarea"
         :value="internal"
-        rows="1"
-        placeholder="Try: fresh bagels in Dallas, indie coffee on the Lower East Side, family dentist in Austin…"
+        rows="4"
+        placeholder="Describe a scenario in your own words. Try: fresh bagels in Dallas, indie coffee on the Lower East Side, family dentist in Austin…"
         @input="sync($event.target.value)"
-        @keydown.enter.prevent="onSubmit"
+        @keydown.meta.enter.prevent="onSubmit"
+        @keydown.ctrl.enter.prevent="onSubmit"
       />
 
-      <button
-        v-if="internal"
-        type="button"
-        class="cic-clear"
-        aria-label="Clear search"
-        @click="clear"
-      >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4">
-          <path d="M18 6L6 18M6 6l12 12" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-      </button>
-
-      <button
-        type="button"
-        class="cic-submit"
-        :disabled="!valid || loading"
-        :aria-busy="loading || undefined"
-        @click="onSubmit"
-      >
-        <span v-if="loading" class="cic-spinner" aria-hidden="true"></span>
-        <span v-else class="cic-submit-icon" aria-hidden="true">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-            <path d="M5 12h14M13 5l7 7-7 7" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-        </span>
-        <span class="cic-submit-text">{{ loading ? 'Searching' : 'Search' }}</span>
-      </button>
-    </div>
-
-    <div v-if="!valid && internal" class="cic-hint">
-      Add a few more words for better prompts.
+      <div class="cic-footer">
+        <div class="cic-meta">
+          <span class="cic-count" :class="{ 'is-ok': valid }">
+            {{ wordCount }} word{{ wordCount === 1 ? '' : 's' }}
+          </span>
+          <span class="cic-sep" aria-hidden="true">·</span>
+          <span class="cic-hint-inline">{{ valid ? 'Ready to search' : `Need ${Math.max(0, minWords - wordCount)} more` }}</span>
+          <span class="cic-sep cic-sep-light" aria-hidden="true">·</span>
+          <kbd class="cic-kbd">⌘</kbd><kbd class="cic-kbd">↵</kbd>
+          <span class="cic-kbd-hint">to search</span>
+        </div>
+        <div class="cic-footer-actions">
+          <button
+            v-if="internal"
+            type="button"
+            class="cic-clear"
+            aria-label="Clear"
+            @click="clear"
+          >Clear</button>
+          <button
+            type="button"
+            class="cic-submit"
+            :disabled="!valid || loading"
+            :aria-busy="loading || undefined"
+            @click="onSubmit"
+          >
+            <span v-if="loading" class="cic-spinner" aria-hidden="true"></span>
+            <span v-else class="cic-submit-icon" aria-hidden="true">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <path d="M5 12h14M13 5l7 7-7 7" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </span>
+            <span class="cic-submit-text">{{ loading ? 'Searching' : 'Search' }}</span>
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -91,54 +90,42 @@ function clear() {
 <style scoped>
 .cic-shell {
   width: 100%;
-  max-width: 44rem;
+  max-width: 56rem;
 }
 
-.cic-bar {
+.cic-box {
   position: relative;
   display: flex;
-  align-items: center;
-  width: 100%;
+  flex-direction: column;
   background: var(--bg-card);
   border: 1px solid var(--border-color);
-  border-radius: 9999px;
-  padding: 6px 6px 6px 18px;
-  gap: 10px;
+  border-radius: 16px;
+  padding: 16px 18px 12px;
   box-shadow:
     0 1px 2px rgba(15, 23, 42, 0.04),
-    0 8px 24px rgba(15, 23, 42, 0.05);
-  transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+    0 10px 28px rgba(15, 23, 42, 0.06);
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
 }
-.cic-bar:hover {
-  border-color: var(--text-muted);
-}
-.cic-bar:focus-within {
+.cic-box:focus-within {
   border-color: var(--brand-accent);
   box-shadow:
     0 1px 2px rgba(15, 23, 42, 0.04),
-    0 12px 32px rgba(15, 23, 42, 0.10),
+    0 14px 36px rgba(15, 23, 42, 0.10),
     0 0 0 4px var(--brand-accent-glow, rgba(91, 141, 239, 0.18));
 }
 
-.cic-leading-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-muted);
-  flex-shrink: 0;
-}
-
 .cic-textarea {
-  flex: 1;
-  min-width: 0;
+  width: 100%;
   border: 0;
   background: transparent;
   color: var(--text-primary);
-  padding: 12px 4px;
-  font-size: 15px;
-  line-height: 1.5;
+  padding: 4px 2px;
+  font-size: 16px;
+  line-height: 1.55;
   outline: none;
-  resize: none;
+  resize: vertical;
+  min-height: 100px;
+  max-height: 360px;
   font-family: inherit;
   letter-spacing: 0;
 }
@@ -147,22 +134,58 @@ function clear() {
   font-weight: 400;
 }
 
-.cic-clear {
+.cic-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 10px;
+  margin-top: 8px;
+  border-top: 1px solid var(--border-color);
+}
+.cic-meta {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 9999px;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.cic-count { font-variant-numeric: tabular-nums; }
+.cic-count.is-ok { color: var(--brand-accent); font-weight: 600; }
+.cic-sep { color: var(--text-muted); opacity: 0.6; }
+.cic-sep-light { opacity: 0.35; }
+.cic-hint-inline { font-style: italic; }
+.cic-kbd {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 18px; height: 18px;
+  padding: 0 4px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--bg-surface, rgba(15, 23, 42, 0.03));
+  font-size: 10.5px;
+  color: var(--text-secondary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.cic-kbd + .cic-kbd { margin-left: 2px; }
+.cic-kbd-hint { margin-left: 2px; }
+
+.cic-footer-actions { display: inline-flex; align-items: center; gap: 8px; }
+
+.cic-clear {
   border: 0;
   background: transparent;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   cursor: pointer;
-  flex-shrink: 0;
-  transition: background 0.15s, color 0.15s;
+  padding: 6px 12px;
+  border-radius: 9999px;
+  font-size: 12.5px;
+  font-weight: 500;
+  font-family: inherit;
 }
 .cic-clear:hover {
-  background: var(--bg-surface, rgba(0, 0, 0, 0.04));
+  background: var(--bg-surface, rgba(15, 23, 42, 0.04));
   color: var(--text-primary);
 }
 
@@ -170,13 +193,13 @@ function clear() {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 18px 10px 16px;
+  padding: 9px 18px 9px 16px;
   border: 0;
   border-radius: 9999px;
   background: var(--brand-accent);
   color: #ffffff;
-  font-size: 14px;
-  font-weight: 500;
+  font-size: 13.5px;
+  font-weight: 600;
   font-family: inherit;
   cursor: pointer;
   flex-shrink: 0;
@@ -187,17 +210,13 @@ function clear() {
   filter: brightness(0.96);
   transform: translateY(-0.5px);
 }
-.cic-submit:active:not(:disabled) {
-  transform: translateY(0);
-}
+.cic-submit:active:not(:disabled) { transform: translateY(0); }
 .cic-submit:disabled {
   opacity: 0.45;
   cursor: not-allowed;
   box-shadow: none;
 }
-
 .cic-submit-icon { display: inline-flex; align-items: center; }
-.cic-submit-text { letter-spacing: 0.01em; }
 
 .cic-spinner {
   width: 14px;
@@ -208,11 +227,4 @@ function clear() {
   animation: cic-spin 0.7s linear infinite;
 }
 @keyframes cic-spin { to { transform: rotate(360deg); } }
-
-.cic-hint {
-  margin-top: 8px;
-  text-align: center;
-  font-size: 12px;
-  color: var(--text-muted);
-}
 </style>

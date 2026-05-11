@@ -81,7 +81,17 @@ _USER_TEMPLATE = (
     "  keywords       (array of 3-6 short EXACT substrings from prompt_text "
     "that are the MOST demand-driving phrases — neighbourhood, brand, "
     "category-specific terminology, distinctive adjectives in quotes. "
-    "Each substring MUST appear verbatim in prompt_text.)\n\n"
+    "Each substring MUST appear verbatim in prompt_text.)\n"
+    "  seen_in        (one of: reddit, quora, google_search, hacker_news, "
+    "yelp, tiktok, youtube_comments, twitter, forum, news_comments, "
+    "ai_chat — the SINGLE most-likely real-world surface where a person "
+    "would actually post or type this exact question)\n"
+    "  community      (optional short string — when seen_in is reddit, the "
+    "subreddit name like 'r/saas'; when quora a topic; when youtube a "
+    "channel handle. Empty string if no obvious match.)\n\n"
+    "Vary seen_in deliberately across the batch — some prompts are Reddit-"
+    "shaped, others Quora, others typed straight into ChatGPT. Don't put "
+    "everything in one bucket.\n\n"
     "Return ONLY the JSON array, no commentary."
 )
 
@@ -154,6 +164,8 @@ def _fallback_single(context_text: str) -> list[dict]:
             "keywords": [],
             "word_count": word_count,
             "length_band": length_band,
+            "seen_in": "ai_chat",
+            "community": "",
         }
     ]
 
@@ -212,6 +224,20 @@ def _normalise_item(raw: Any) -> dict | None:
         length_band = "medium"
     else:
         length_band = "long"
+    # 'seen_in' — the real-world surface where this prompt is most likely
+    # to be asked. Validated against an allow-list; fall back to 'ai_chat'
+    # which is the safest assumption ("typed into ChatGPT directly").
+    ALLOWED_SEEN_IN = {
+        "reddit", "quora", "google_search", "hacker_news", "yelp",
+        "tiktok", "youtube_comments", "twitter", "forum",
+        "news_comments", "ai_chat",
+    }
+    seen_in = str(raw.get("seen_in") or "ai_chat").strip().lower().replace("-", "_").replace(" ", "_")
+    if seen_in not in ALLOWED_SEEN_IN:
+        seen_in = "ai_chat"
+    community = str(raw.get("community") or "").strip()
+    if len(community) > 80:
+        community = community[:80]
     return {
         # Legacy fields kept for storage/compat with the existing Prompt model.
         "template_text": prompt_text,
@@ -225,6 +251,8 @@ def _normalise_item(raw: Any) -> dict | None:
         "keywords": keywords,
         "word_count": word_count,
         "length_band": length_band,
+        "seen_in": seen_in,
+        "community": community,
     }
 
 

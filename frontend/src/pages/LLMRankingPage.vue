@@ -663,12 +663,47 @@
 
                   <div class="pt-detail-section">
                     <div class="pt-detail-label">Per-provider results</div>
-                    <div v-for="r in p.responses" :key="r.provider" class="pt-detail-row">
-                      <span class="pt-detail-prov">{{ providerLabel(r.provider) }}</span>
-                      <span v-if="r.is_mentioned" class="pt-detail-rank">{{ r.mention_rank ? '#' + r.mention_rank : 'mentioned' }}</span>
-                      <span v-else-if="r.query_succeeded" class="pt-detail-rank pt-detail-miss">not mentioned</span>
-                      <span v-else class="pt-detail-rank pt-detail-fail">API failed</span>
-                      <span class="pt-detail-context">{{ (r.mention_context || '').slice(0, 220) || (r.response_text || '').slice(0, 220) }}</span>
+                    <div v-for="r in p.responses" :key="r.provider" class="pt-resp-card">
+                      <div class="pt-resp-head">
+                        <span class="pt-resp-prov-dot" :class="'is-' + (r.provider || '').toLowerCase().replace(/[^a-z0-9]/g, '')"></span>
+                        <span class="pt-resp-prov">{{ providerLabel(r.provider) }}</span>
+                        <span v-if="r.is_mentioned" class="pt-resp-badge is-hit">
+                          {{ r.mention_rank ? 'rank #' + r.mention_rank : 'mentioned' }}
+                        </span>
+                        <span v-else-if="r.query_succeeded" class="pt-resp-badge is-miss">not mentioned</span>
+                        <span v-else class="pt-resp-badge is-fail">API failed</span>
+                        <span v-if="r.sentiment" class="pt-resp-badge pt-sentiment" :class="'pt-sentiment-' + r.sentiment">{{ r.sentiment }}</span>
+                        <div class="pt-resp-actions">
+                          <button
+                            v-if="(r.response_text || r.mention_context || '').length > 220"
+                            type="button"
+                            class="pt-resp-btn"
+                            @click.stop="toggleResponseExpand(p.text + '|' + r.provider)"
+                          >
+                            {{ isResponseExpanded(p.text + '|' + r.provider) ? 'Collapse' : 'Show full response' }}
+                          </button>
+                          <button
+                            v-if="r.response_text || r.mention_context"
+                            type="button"
+                            class="pt-resp-btn"
+                            @click.stop="copyResponse(r.response_text || r.mention_context)"
+                          >Copy</button>
+                        </div>
+                      </div>
+                      <div
+                        v-if="r.response_text || r.mention_context"
+                        class="pt-resp-body"
+                        :class="{ 'is-expanded': isResponseExpanded(p.text + '|' + r.provider) }"
+                      >
+                        <span class="pt-resp-text">
+                          {{
+                            isResponseExpanded(p.text + '|' + r.provider)
+                              ? (r.response_text || r.mention_context)
+                              : (r.mention_context || r.response_text || '').slice(0, 220) + ((r.response_text || r.mention_context || '').length > 220 ? '…' : '')
+                          }}
+                        </span>
+                      </div>
+                      <div v-else class="pt-resp-empty">No response captured.</div>
                     </div>
                   </div>
 
@@ -876,19 +911,6 @@
                 @click="gotoSourceInfluence"
               >
                 View source influence →
-              </button>
-            </div>
-            <div class="summary-stat">
-              <span class="summary-num" style="font-size:14px;line-height:1.3">
-                {{ auditClaimSummary.total }} claims · {{ auditClaimSummary.mismatched }} mismatched ({{ auditClaimSummary.mismatchPct }}%)
-              </span>
-              <span class="summary-label">Accuracy</span>
-              <button
-                class="btn-ghost btn-sm"
-                style="margin-top:4px;font-size:11px;color:var(--accent, #ec4899)"
-                @click="gotoAccuracy"
-              >
-                View accuracy →
               </button>
             </div>
             <div class="summary-stat">
@@ -1907,7 +1929,6 @@ import ProviderAgreement from '@/components/llm_ranking/ProviderAgreement.vue'
 import PromptSourceToggle from '@/components/llm_ranking/PromptSourceToggle.vue'
 import PromptPreviewDrawer from '@/components/llm_ranking/PromptPreviewDrawer.vue'
 import citationsApi from '@/api/citations'
-import claimVerifierApi from '@/api/claimVerifier'
 import CitationsDrawer from '@/components/citations/CitationsDrawer.vue'
 import SourceBreakdownBar from '@/components/citations/SourceBreakdownBar.vue'
 import { Line, Bar } from 'vue-chartjs'
@@ -1948,7 +1969,6 @@ const auditDetail = shallowRef(null)
 // Citations state (Phase 2). Populated by loadCitations() on audit selection.
 const citationsByResult = shallowRef(new Map())
 const auditSourceInfluence = shallowRef(null)
-const auditClaimSummary = ref({ total: 0, mismatched: 0, mismatchPct: 0, bySeverity: {} })
 const citationsDrawerOpen = ref(false)
 const citationsDrawerCitations = ref([])
 const citationsDrawerProvider = ref('')
@@ -2876,6 +2896,27 @@ function togglePrompt(text) {
   if (s.has(text)) s.delete(text)
   else s.add(text)
   expandedPrompts.value = s
+}
+
+// Per-(prompt, provider) "show full response" toggle. Key shape: 'prompt|provider'.
+const expandedResponses = ref(new Set())
+function toggleResponseExpand(key) {
+  const s = new Set(expandedResponses.value)
+  if (s.has(key)) s.delete(key)
+  else s.add(key)
+  expandedResponses.value = s
+}
+function isResponseExpanded(key) {
+  return expandedResponses.value.has(key)
+}
+async function copyResponse(text) {
+  if (!text) return
+  try {
+    await navigator.clipboard.writeText(text)
+    toast.success('Response copied')
+  } catch {
+    toast.error('Could not copy to clipboard')
+  }
 }
 
 // Per-prompt 0-100 score. Mirrors compute_overall_score on the server so
@@ -4239,35 +4280,10 @@ async function selectAudit(audit) {
 
   // Phase 2: load citations + source influence (non-blocking).
   loadCitations(audit.id)
-  // Phase 3: load claim/accuracy summary (non-blocking).
-  loadAuditClaimSummary(audit.id)
-  // Phase 4: count of content briefs created from this audit (non-blocking).
+  // Phase 3: count of content briefs created from this audit (non-blocking).
   loadContentBriefsForAudit(audit)
 }
 
-async function loadAuditClaimSummary(auditId) {
-  auditClaimSummary.value = { total: 0, mismatched: 0, mismatchPct: 0, bySeverity: {} }
-  try {
-    const { data } = await claimVerifierApi.auditClaims(auditId)
-    const claims = data?.data || data || []
-    const list = Array.isArray(claims) ? claims : (claims.results || [])
-    const total = list.length
-    let mismatched = 0
-    const bySev = {}
-    for (const c of list) {
-      const mm = c.mismatch
-      if (mm && !mm.dismissed) {
-        mismatched += 1
-        const sev = mm.severity || 'info'
-        bySev[sev] = (bySev[sev] || 0) + 1
-      }
-    }
-    const pct = total ? Math.round((mismatched / total) * 100) : 0
-    auditClaimSummary.value = { total, mismatched, mismatchPct: pct, bySeverity: bySev }
-  } catch (e) {
-    console.warn('Failed to load audit claim summary', e)
-  }
-}
 
 // Phase 2 helpers ----------------------------------------------------
 async function loadCitations(auditId) {
@@ -4314,13 +4330,6 @@ const totalAuditCitations = computed(() => {
 
 function gotoSourceInfluence() {
   router.push(`/llm-ranking/${websiteId}/source-influence`)
-}
-
-function gotoAccuracy() {
-  router.push({
-    path: `/llm-ranking/${websiteId}/accuracy`,
-    query: selectedAuditId.value ? { audit: selectedAuditId.value } : {},
-  })
 }
 
 function gotoContentStudio() {
@@ -6977,6 +6986,99 @@ onBeforeUnmount(() => {
   color: var(--text-secondary);
   font-style: italic;
   line-height: 1.45;
+}
+
+/* Per-provider response card (expandable + copyable) */
+.pt-resp-card {
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-bottom: 8px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.pt-resp-card:hover { border-color: rgba(255, 107, 53, 0.35); box-shadow: 0 4px 12px rgba(15, 23, 42, 0.04); }
+.pt-resp-head {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.pt-resp-prov-dot {
+  width: 8px; height: 8px; border-radius: 9999px;
+  background: #cbd5e1;
+  flex-shrink: 0;
+}
+.pt-resp-prov-dot.isclaude   { background: #d97706; }
+.pt-resp-prov-dot.isgpt4     { background: #10b981; }
+.pt-resp-prov-dot.isgemini   { background: #4285f4; }
+.pt-resp-prov-dot.isperplexity { background: #5b6cff; }
+.pt-resp-prov {
+  font-weight: 600;
+  font-size: 13px;
+  color: #0f172a;
+}
+.pt-resp-badge {
+  display: inline-flex; align-items: center;
+  padding: 2px 9px;
+  font-size: 11px; font-weight: 600;
+  border-radius: 9999px;
+  text-transform: lowercase;
+  letter-spacing: 0.01em;
+}
+.pt-resp-badge.is-hit { background: rgba(16, 185, 129, 0.12); color: #047857; }
+.pt-resp-badge.is-miss { background: rgba(15, 23, 42, 0.06); color: #64748b; }
+.pt-resp-badge.is-fail { background: rgba(220, 38, 38, 0.10); color: #b91c1c; }
+.pt-resp-badge.pt-sentiment-positive { background: rgba(16, 185, 129, 0.12); color: #047857; }
+.pt-resp-badge.pt-sentiment-neutral  { background: rgba(15, 23, 42, 0.06);  color: #475569; }
+.pt-resp-badge.pt-sentiment-negative { background: rgba(220, 38, 38, 0.10); color: #b91c1c; }
+.pt-resp-actions {
+  margin-left: auto;
+  display: inline-flex; gap: 6px;
+}
+.pt-resp-btn {
+  border: 1px solid rgba(15, 23, 42, 0.10);
+  background: #ffffff;
+  color: #1f2937;
+  font-size: 11.5px;
+  font-weight: 600;
+  border-radius: 7px;
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.pt-resp-btn:hover {
+  background: #ff6b35;
+  border-color: #ff6b35;
+  color: #ffffff;
+}
+.pt-resp-body {
+  background: #f8fafc;
+  border-radius: 8px;
+  padding: 10px 12px;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  max-height: 96px;
+  overflow: hidden;
+  position: relative;
+  transition: max-height 0.25s ease;
+}
+.pt-resp-body.is-expanded {
+  max-height: none;
+}
+.pt-resp-body:not(.is-expanded)::after {
+  content: '';
+  position: absolute; left: 0; right: 0; bottom: 0; height: 32px;
+  background: linear-gradient(180deg, rgba(248, 250, 252, 0) 0%, rgba(248, 250, 252, 1) 100%);
+  pointer-events: none;
+}
+.pt-resp-text {
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: #334155;
+  white-space: pre-wrap;
+}
+.pt-resp-empty {
+  font-size: 12px;
+  color: #94a3b8;
+  font-style: italic;
 }
 
 .pt-comp-chip {

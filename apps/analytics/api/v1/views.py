@@ -27,7 +27,7 @@ class EventIngestView(APIView):
     """Public pixel ingestion endpoint."""
     permission_classes = [AllowAny]
     throttle_classes = [PixelIngestThrottle]
-    parser_classes = [JSONParser, PlainTextJSONParser, FormParser]
+    parser_classes = [JSONParser, PlainTextJSONParser, FormParser]  # type: ignore[assignment]
 
     def post(self, request):
         pixel_key = request.data.get("pixel_key")
@@ -47,7 +47,7 @@ class EventIngestView(APIView):
 class BatchEventIngestView(APIView):
     permission_classes = [AllowAny]
     throttle_classes = [PixelIngestThrottle]
-    parser_classes = [JSONParser, PlainTextJSONParser, FormParser]
+    parser_classes = [JSONParser, PlainTextJSONParser, FormParser]  # type: ignore[assignment]
 
     def post(self, request):
         pixel_key = request.data.get("pixel_key")

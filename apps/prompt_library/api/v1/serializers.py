@@ -9,6 +9,7 @@ from apps.prompt_library.models import (
     Prompt,
     PromptSampleEntry,
     PromptSampleRun,
+    TestEnvironment,
     PromptVariableSet,
 )
 
@@ -175,3 +176,36 @@ class GenerateFromContextRequestSerializer(serializers.Serializer):
                 "Context must contain at least 5 words.",
             )
         return cleaned
+
+
+class TestEnvironmentSerializer(serializers.ModelSerializer):
+    prompt_ids = serializers.SerializerMethodField()
+    prompt_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TestEnvironment
+        fields = (
+            "id", "website", "name", "created_by",
+            "prompt_ids", "prompt_count",
+            "created_at", "updated_at",
+        )
+        read_only_fields = (
+            "id", "website", "created_by", "created_at", "updated_at",
+            "prompt_ids", "prompt_count",
+        )
+
+    def get_prompt_ids(self, obj) -> list[str]:
+        # IDs only on list/detail. Full BrandPrompt rows are fetched
+        # separately when the UI opens the env so the list payload stays small.
+        return [str(p.id) for p in obj.prompts.all()]
+
+    def get_prompt_count(self, obj) -> int:
+        return obj.prompts.count()
+
+    def validate_name(self, value: str) -> str:
+        value = (value or "").strip()
+        if not value:
+            raise serializers.ValidationError("Name is required.")
+        if len(value) > 120:
+            raise serializers.ValidationError("Name must be 120 characters or fewer.")
+        return value

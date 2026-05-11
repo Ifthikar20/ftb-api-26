@@ -12,7 +12,6 @@
           <a href="#features">Features</a>
           <a href="#how">How It Works</a>
           <a href="#pricing">Pricing</a>
-          <router-link to="/integrations">Integrations</router-link>
         </div>
         <div class="nav-right">
           <router-link to="/login" class="nav-link-text">Log In</router-link>
@@ -23,311 +22,304 @@
 
     <!-- ═══ Hero ═══ -->
     <section class="hero">
-      <div class="wrap">
-        <h1 class="hero-h anim" data-anim="fade-up">
-          <span class="tw-line" ref="twLine1"></span><br/>
-          <span class="tw-line" ref="twLine2"></span><br/>
-          <em><span class="tw-line" ref="twLine3"></span></em>
-          <span class="tw-cursor" :class="{ 'tw-cursor--done': twDone }">|</span>
-        </h1>
-        <p class="hero-p anim" data-anim="fade-up" data-delay="60">
-          Track visitors, score leads, audit your site, and grow<br class="hide-m"/>
-          with AI — all in one platform.
-        </p>
-        <div class="hero-ctas anim" data-anim="fade-up" data-delay="120">
-          <router-link to="/register" class="btn-primary">Get Started</router-link>
-          <router-link to="/login" class="btn-ghost">Sign In</router-link>
-        </div>
-      </div>
-    </section>
-
-    <!-- ═══ Features — Travel Lab Carousel ═══ -->
-    <section class="features-section" id="features">
-      <div class="feat-full anim" data-anim="fade-up">
-        <!-- Header row — Framer-style animated text -->
-        <div class="feat-header wrap">
-          <h2 class="feat-headline">
-            OUR TOOLS FOR
-            <span class="feat-word-cycler">
+      <div class="wrap hero-grid">
+        <div class="hero-left">
+          <span class="hero-eyebrow anim" data-anim="fade-up">Generative Engine Optimization</span>
+          <h1 class="hero-h anim" data-anim="fade-up">
+            <span class="tw-line" ref="twLine1"></span><br/>
+            <span class="tw-line" ref="twLine2"></span><br/>
+            <em><span class="tw-line" ref="twLine3"></span></em>
+            <span class="tw-cursor" :class="{ 'tw-cursor--done': twDone }">|</span>
+          </h1>
+          <p class="hero-p anim" data-anim="fade-up" data-delay="60">
+            See how often
+            <span class="hero-word-cycler">
               <TransitionGroup name="word-cycle">
-                <span class="feat-word" :key="categories[activeCat]">
-                  {{ categories[activeCat] }}
-                  <span class="feat-word-glow"></span>
-                </span>
+                <span class="hero-word" :key="categories[activeCat]">{{ categories[activeCat] }}</span>
               </TransitionGroup>
             </span>
-          </h2>
-          <div class="feat-tabs">
-            <button v-for="(cat, ci) in categories" :key="cat"
-                    class="feat-tab" :class="{ active: ci === activeCat }"
-                    @click="activeCat = ci; resetCycle()">{{ cat }}</button>
-          </div>
+            mentions your brand. Find the prompts you're missing from. Generate the
+            content to close the gap.
+          </p>
         </div>
 
-        <!-- Carousel -->
-        <div class="carousel-wrap">
-          <div class="carousel-track" ref="trackRef"
-               :style="{ transform: `translateX(${trackOffset}px)` }">
-            <div v-for="(f, i) in features" :key="f.title"
-                 class="carousel-card" :class="[f.tint, { expanded: activeCard === i, 'is-playing': activeCard === i }]"
-                 :style="{ animationDelay: `${i * 100}ms` }"
-                 @click="activeCard = activeCard === i ? -1 : i"
-                 @mouseenter="pauseAutoAdvance"
-                 @mouseleave="resumeAutoAdvance">
-              <span class="card-num">{{ String(i + 1).padStart(2, '0') }}</span>
+        <!-- Framer-style animated visualisation -->
+        <div class="hero-right anim" data-anim="fade-up" data-delay="220">
+          <div class="probe">
+            <!-- Prompt bar -->
+            <div class="probe-prompt">
+              <span class="probe-prompt-label">Prompt</span>
+              <span class="probe-prompt-text">
+                <span class="probe-typer">Best CRM for small teams?</span>
+                <span class="probe-caret"></span>
+              </span>
+            </div>
 
-              <!-- Per-tool animated visual -->
-              <div class="card-visual">
-                <!-- Analytics: line chart with drawing animation -->
-                <div v-if="f.visual === 'chart'" class="viz viz-chart">
-                  <div class="viz-stat">
-                    <div class="viz-stat-value">{{ f.metric.value }}</div>
-                    <div class="viz-stat-meta">
-                      <span class="viz-stat-label">{{ f.metric.label }}</span>
-                      <span class="viz-stat-delta up">{{ f.metric.delta }}</span>
-                    </div>
-                  </div>
-                  <svg class="chart-svg" viewBox="0 0 220 70" preserveAspectRatio="none">
-                    <defs>
-                      <linearGradient :id="'g-' + i" x1="0" x2="0" y1="0" y2="1">
-                        <stop offset="0%" stop-color="#131718" stop-opacity="0.35"/>
-                        <stop offset="100%" stop-color="#131718" stop-opacity="0"/>
-                      </linearGradient>
-                    </defs>
-                    <path class="chart-area" :d="buildAreaPath(f.chart)" :fill="'url(#g-' + i + ')'" />
-                    <path class="chart-line" :d="buildLinePath(f.chart)" fill="none" stroke="#131718" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
-                    <circle class="chart-pulse" :cx="220" :cy="lastY(f.chart)" r="3" fill="#131718"/>
-                  </svg>
+            <!-- Four streaming AI replies -->
+            <div class="probe-grid">
+              <div
+                v-for="(p, idx) in probeReplies"
+                :key="p.key"
+                class="probe-card"
+                :class="'is-' + p.key"
+                :style="{ '--d': (idx * 0.45) + 's' }"
+              >
+                <div class="probe-card-head">
+                  <span class="probe-logo" :class="'is-' + p.key">{{ p.glyph }}</span>
+                  <span class="probe-name">{{ p.name }}</span>
+                  <span class="probe-status">
+                    <span class="probe-status-dot"></span>
+                    <span class="probe-status-txt">answered</span>
+                  </span>
                 </div>
-
-                <!-- Heatmaps: pulsing radial hotspots -->
-                <div v-else-if="f.visual === 'heatmap'" class="viz viz-heatmap">
-                  <div class="viz-stat">
-                    <div class="viz-stat-value">{{ f.metric.value }}</div>
-                    <div class="viz-stat-meta">
-                      <span class="viz-stat-label">{{ f.metric.label }}</span>
-                      <span class="viz-stat-delta">{{ f.metric.delta }}</span>
-                    </div>
-                  </div>
-                  <div class="heatmap-canvas">
-                    <div class="heatmap-cursor"></div>
-                    <div
-                      v-for="(h, hi) in f.hotspots"
-                      :key="hi"
-                      class="heat-blob"
-                      :style="{
-                        left: h.x + '%',
-                        top: h.y + '%',
-                        width: h.size + 'px',
-                        height: h.size + 'px',
-                        animationDelay: h.delay + 's',
-                        opacity: h.intensity,
-                      }"
-                    ></div>
-                  </div>
+                <div class="probe-stream">
+                  <span class="probe-stream-text">{{ p.before }}</span>
+                  <mark class="probe-mark">{{ p.brand }}</mark>
+                  <span class="probe-stream-text">{{ p.after }}</span>
                 </div>
-
-                <!-- Keywords: animated rank bars -->
-                <div v-else-if="f.visual === 'keywords'" class="viz viz-keywords">
-                  <div class="viz-stat">
-                    <div class="viz-stat-value">{{ f.metric.value }}</div>
-                    <div class="viz-stat-meta">
-                      <span class="viz-stat-label">{{ f.metric.label }}</span>
-                      <span class="viz-stat-delta up">{{ f.metric.delta }}</span>
-                    </div>
-                  </div>
-                  <div class="kw-list">
-                    <div
-                      v-for="(k, ki) in f.keywords"
-                      :key="k.term"
-                      class="kw-row"
-                      :style="{ animationDelay: (0.15 + ki * 0.12) + 's' }"
-                    >
-                      <span class="kw-rank">#{{ k.rank }}</span>
-                      <span class="kw-term">{{ k.term }}</span>
-                      <span class="kw-bar">
-                        <span class="kw-bar-fill" :style="{ width: k.score + '%', animationDelay: (0.25 + ki * 0.12) + 's' }"></span>
-                      </span>
-                      <span class="kw-delta">
-                        <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5">
-                          <path d="M5 8V2M2 5l3-3 3 3"/>
-                        </svg>
-                        {{ k.prev - k.rank }}
-                      </span>
-                    </div>
-                  </div>
+                <div class="probe-tags">
+                  <span v-for="src in p.sources" :key="src" class="probe-tag">{{ src }}</span>
                 </div>
-
-                <!-- Lead ID: stacked company chips sliding in -->
-                <div v-else-if="f.visual === 'leads'" class="viz viz-leads">
-                  <div class="viz-stat">
-                    <div class="viz-stat-value">{{ f.metric.value }}</div>
-                    <div class="viz-stat-meta">
-                      <span class="viz-stat-label">{{ f.metric.label }}</span>
-                      <span class="viz-stat-delta up">{{ f.metric.delta }}</span>
-                    </div>
-                  </div>
-                  <div class="lead-list">
-                    <div
-                      v-for="(l, li) in f.leads"
-                      :key="l.domain"
-                      class="lead-row"
-                      :style="{ animationDelay: (0.2 + li * 0.14) + 's' }"
-                    >
-                      <div class="lead-avatar" :style="{ background: leadColors[li % leadColors.length] }">
-                        {{ l.name[0] }}
-                      </div>
-                      <div class="lead-meta">
-                        <div class="lead-name">{{ l.name }}</div>
-                        <div class="lead-domain">{{ l.domain }}</div>
-                      </div>
-                      <span class="lead-score" :class="{ hot: l.hot }">{{ l.score }}</span>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- LLM Ranking: provider visibility bars -->
-                <div v-else-if="f.visual === 'llm'" class="viz viz-llm">
-                  <div class="viz-stat">
-                    <div class="viz-stat-value">{{ metricFor(f, i) }}</div>
-                    <div class="viz-stat-meta">
-                      <span class="viz-stat-label">{{ f.metric.label }}</span>
-                      <span class="viz-stat-delta up">{{ f.metric.delta }}</span>
-                    </div>
-                  </div>
-                  <div class="llm-list">
-                    <div
-                      v-for="(p, pi) in f.providers"
-                      :key="p.name"
-                      class="llm-row"
-                      :style="{ animationDelay: (0.15 + pi * 0.12) + 's' }"
-                    >
-                      <span class="llm-icon">{{ p.icon }}</span>
-                      <span class="llm-name">{{ p.name }}</span>
-                      <span class="llm-bar">
-                        <span class="llm-bar-fill" :class="p.tier" :style="{ width: p.score + '%', animationDelay: (0.25 + pi * 0.12) + 's' }"></span>
-                      </span>
-                      <span class="llm-score">{{ p.score }}%</span>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Fallback: icon -->
-                <div v-else class="card-icon" v-html="f.icon"></div>
               </div>
+            </div>
 
-              <h3 class="card-title">{{ f.title }}</h3>
-              <div class="card-expand" :class="{ 'card-expand--open': activeCard === i }">
-                <span class="card-arrow">
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 12L12 4M12 4H5M12 4v7"/></svg>
-                </span>
-                <p class="card-desc">{{ f.desc }}</p>
-                <span class="card-replaces">{{ f.replaces }}</span>
+            <!-- Summary footer -->
+            <div class="probe-foot">
+              <div class="probe-ring" aria-hidden="true">
+                <svg viewBox="0 0 36 36">
+                  <circle class="probe-ring-bg" cx="18" cy="18" r="15.9"/>
+                  <circle class="probe-ring-fg" cx="18" cy="18" r="15.9"/>
+                </svg>
+                <span class="probe-ring-num">38<i>%</i></span>
+              </div>
+              <div class="probe-foot-copy">
+                <div class="probe-foot-h">Visibility score</div>
+                <div class="probe-foot-sub">Your brand surfaced in 38% of category prompts <span class="probe-delta">+12 this week</span></div>
               </div>
             </div>
           </div>
-        </div>
-
-        <!-- Nav arrows -->
-        <div class="carousel-nav wrap">
-          <button class="cn-btn" @click="scrollCarousel(-1)" :disabled="trackOffset >= 0">
-            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M11 14L6 9l5-5"/></svg>
-          </button>
-          <span class="cn-counter">{{ Math.floor(-trackOffset / cardStep) + 1 }} / {{ features.length }}</span>
-          <button class="cn-btn" @click="scrollCarousel(1)" :disabled="trackOffset <= -(features.length - visibleCards) * cardStep">
-            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M7 4l5 5-5 5"/></svg>
-          </button>
         </div>
       </div>
     </section>
 
-    <!-- ═══ Our Tools For — Framer-style tool carousel ═══ -->
-    <section class="tools-for" id="tools">
+    <!-- ═══ Background blur orbs ═══ -->
+    <div class="orb orb-1" aria-hidden="true"></div>
+    <div class="orb orb-2" aria-hidden="true"></div>
+    <div class="orb orb-3" aria-hidden="true"></div>
+
+    <!-- ═══ Trust strip ═══ -->
+    <section class="trust anim" data-anim="fade-up">
+      <div class="marquee">
+        <div class="marquee-track">
+          <span class="marquee-item is-label">Trusted Probes</span>
+          <span class="marquee-sep">·</span>
+          <span class="marquee-item">Anthropic Claude</span>
+          <span class="marquee-sep">·</span>
+          <span class="marquee-item">OpenAI GPT-4</span>
+          <span class="marquee-sep">·</span>
+          <span class="marquee-item">Google Gemini</span>
+          <span class="marquee-sep">·</span>
+          <span class="marquee-item">Perplexity</span>
+          <span class="marquee-sep">·</span>
+          <span class="marquee-item">DeepSeek (synthesis)</span>
+          <span class="marquee-sep">·</span>
+          <!-- duplicate for seamless loop -->
+          <span class="marquee-item is-label">Trusted Probes</span>
+          <span class="marquee-sep">·</span>
+          <span class="marquee-item">Anthropic Claude</span>
+          <span class="marquee-sep">·</span>
+          <span class="marquee-item">OpenAI GPT-4</span>
+          <span class="marquee-sep">·</span>
+          <span class="marquee-item">Google Gemini</span>
+          <span class="marquee-sep">·</span>
+          <span class="marquee-item">Perplexity</span>
+          <span class="marquee-sep">·</span>
+          <span class="marquee-item">DeepSeek (synthesis)</span>
+          <span class="marquee-sep">·</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ Why you need this — ad-copy section ═══ -->
+    <section class="why anim" data-anim="fade-up">
+      <div class="wrap why-wrap">
+        <span class="why-eyebrow">Why this exists</span>
+        <h2 class="why-h">
+          Your customers stopped Googling.<br/>
+          <em>They started <span class="why-h-pop">asking.</span></em>
+        </h2>
+        <p class="why-sub">
+          Every day, millions of buyers skip the search bar and ask ChatGPT, Claude,
+          Gemini, or Perplexity instead. The AI gives them one answer, two competitors,
+          and a recommendation. If your brand isn't in that answer — you weren't even in the room.
+        </p>
+
+        <div class="why-grid">
+          <div class="why-card anim" data-anim="fade-up" data-delay="60">
+            <div class="why-card-num">1</div>
+            <div class="why-card-h">SEO ranks pages.<br/>AI ranks <em>brands.</em></div>
+            <p>You can be #1 on Google and invisible inside ChatGPT's answer. Different game, different scoreboard.</p>
+          </div>
+          <div class="why-card anim" data-anim="fade-up" data-delay="140">
+            <div class="why-card-num">2</div>
+            <div class="why-card-h">Every missed mention<br/>is a <em>handed-over</em> sale.</div>
+            <p>When the AI names your competitor and not you, the buyer takes the recommendation. No second click. No second chance.</p>
+          </div>
+          <div class="why-card anim" data-anim="fade-up" data-delay="220">
+            <div class="why-card-num">3</div>
+            <div class="why-card-h">You can't fix<br/>what you can't <em>see.</em></div>
+            <p>Most brands have zero visibility into what the four major models say about them. We turn the lights on, week over week.</p>
+          </div>
+        </div>
+
+        <div class="why-cta anim" data-anim="fade-up" data-delay="300">
+          <span class="why-cta-line">The brands winning AI search are the ones <strong>measuring it</strong>.</span>
+          <router-link to="/register" class="why-cta-btn">
+            See where you stand
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+          </router-link>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ Stats / Why GEO matters ═══ -->
+    <section class="stats anim" data-anim="fade-up" ref="statsSection">
       <div class="wrap">
-        <div class="tools-head">
-          <span class="tools-eyebrow">OUR TOOLS FOR</span>
-          <div class="tools-tabs" role="tablist">
-            <button
-              v-for="(tab, i) in toolTabs"
-              :key="tab.id"
-              :class="['tools-tab', { 'tools-tab-active': toolTab === i }]"
-              type="button"
-              @click="toolTab = i"
-            >{{ tab.label }}</button>
+        <h2 class="sec-h sec-h-grad anim" data-anim="fade-up">AI search is the new search.<br/><em>Your brand isn't ready for it.</em></h2>
+        <p class="sec-sub anim" data-anim="fade-up" data-delay="60">
+          ChatGPT and Perplexity already shape millions of buying decisions every day.
+          The brands that show up in those answers are the ones writing the right things in the right places.
+        </p>
+        <div class="count-up-grid">
+          <div class="count-up-card anim" data-anim="fade-up" data-delay="80">
+            <div class="count-up-num">{{ stat0Display }}<span class="count-up-suffix">%</span></div>
+            <div class="count-up-label">Buyers using LLMs to research</div>
+            <div class="count-up-note">of B2B buyers say AI assistants influence their purchase research</div>
+          </div>
+          <div class="count-up-card anim" data-anim="fade-up" data-delay="160">
+            <div class="count-up-num">{{ stat1Display }}<span class="count-up-suffix">x</span></div>
+            <div class="count-up-label">Visibility gap</div>
+            <div class="count-up-note">average gap between dominant brand and tail brand in LLM citations</div>
+          </div>
+          <div class="count-up-card anim" data-anim="fade-up" data-delay="240">
+            <div class="count-up-num"><span class="count-up-prefix">&lt;</span>{{ stat2Display }}<span class="count-up-suffix">%</span></div>
+            <div class="count-up-label">Tracking GEO</div>
+            <div class="count-up-note">of brands actively measure their LLM presence today</div>
           </div>
         </div>
+      </div>
+    </section>
 
-        <div class="tools-grid">
-          <article
-            v-for="(card, i) in toolCards"
-            :key="card.id"
-            :class="['tool-card', `tool-card-${card.accent}`, { 'tool-card-active': toolIndex === i }]"
-            @click="toolIndex = i"
-          >
-            <header class="tool-card-head">
-              <span class="tool-num">{{ String(i + 1).padStart(2, '0') }}</span>
-              <span class="tool-label">{{ card.label }}</span>
-            </header>
-
-            <div class="tool-metric">
-              <div class="tool-metric-num">{{ card.mainValue }}</div>
-              <div class="tool-metric-sub">{{ card.mainLabel }}</div>
-              <span v-if="card.badge" :class="['tool-badge', card.badgeTone]">{{ card.badge }}</span>
-            </div>
-
-            <!-- Custom visual per card -->
-            <div v-if="card.kind === 'keywords'" class="tool-viz tool-viz-list">
-              <div v-for="k in card.items" :key="k.term" class="kw-row">
-                <span :class="['kw-pos', posClass(k.pos)]">#{{ k.pos }}</span>
-                <span class="kw-term">{{ k.term }}</span>
-                <span class="kw-delta">{{ k.delta }}</span>
+    <!-- ═══ Feature showcase — alternating rows ═══ -->
+    <section class="feature-showcase" id="features">
+      <div class="wrap">
+        <div
+          v-for="(f, i) in showcaseFeatures"
+          :key="f.key"
+          class="feature-row anim"
+          :class="{ 'is-reverse': i % 2 === 1 }"
+          data-anim="fade-up"
+        >
+          <div class="feature-copy">
+            <span class="feature-eyebrow">{{ f.eyebrow }}</span>
+            <h2 class="feature-h">{{ f.headline }}</h2>
+            <p class="feature-desc">{{ f.desc }}</p>
+            <ul class="feature-bullets">
+              <li v-for="b in f.bullets" :key="b"><span class="feature-bullet-dot"></span>{{ b }}</li>
+            </ul>
+          </div>
+          <div class="feature-visual" :class="'is-' + f.key">
+            <!-- PROMPT LIBRARY — typewriter cycling through demand-side prompts -->
+            <div v-if="f.key === 'prompt'" class="mock-card">
+              <div class="mock-search">
+                <span class="mock-search-icon"></span>
+                <span class="mock-search-text">{{ typedPrompt }}</span>
+                <span class="mock-search-caret">|</span>
+              </div>
+              <div class="mock-rows">
+                <transition-group name="mock-row-stagger" tag="div">
+                  <div
+                    v-for="(p, idx) in visiblePromptRows"
+                    :key="p.id"
+                    class="mock-prompt-row"
+                    :style="{ animationDelay: (0.05 + idx * 0.10) + 's' }"
+                  >
+                    <span class="mock-q">{{ p.q }}</span>
+                    <span class="mock-chip" :class="'is-' + p.style">{{ p.style }}</span>
+                    <div class="mock-trend">
+                      <div class="mock-trend-bar" :style="{ '--target-w': p.trend + '%', animationDelay: (0.25 + idx * 0.10) + 's' }"></div>
+                    </div>
+                  </div>
+                </transition-group>
               </div>
             </div>
 
-            <div v-else-if="card.kind === 'leads'" class="tool-viz tool-viz-list">
-              <div v-for="c in card.items" :key="c.name" class="lead-row">
-                <span class="lead-avatar">{{ c.name[0] }}</span>
-                <span class="lead-meta">
-                  <span class="lead-name">{{ c.name }}</span>
-                  <span class="lead-domain">{{ c.domain }}</span>
-                </span>
-                <span :class="['lead-score', scoreTone(c.score)]">{{ c.score }}</span>
+            <!-- MULTI-LLM PROBING -->
+            <div v-else-if="f.key === 'probe'" class="mock-card mock-grid">
+              <div v-for="(p, idx) in heroProviders" :key="p.key" class="mock-mini" :style="{ animationDelay: (0.15 + idx * 0.15) + 's' }">
+                <div class="mock-mini-head">
+                  <span class="hero-viz-dot" :class="'is-' + p.key"></span>
+                  <span class="mock-mini-name">{{ p.name }}</span>
+                  <span class="mock-mini-pct">{{ p.pct }}%</span>
+                </div>
+                <div class="hero-viz-bar">
+                  <div class="hero-viz-bar-fill" :class="'is-' + p.key" :style="{ '--target-w': p.pct + '%', animationDelay: (0.3 + idx * 0.15) + 's' }"></div>
+                </div>
+                <div class="mock-mini-meta">{{ p.cited }} citations</div>
               </div>
             </div>
 
-            <div v-else-if="card.kind === 'spark'" class="tool-viz tool-viz-spark">
-              <svg viewBox="0 0 220 52" preserveAspectRatio="none" class="spark-svg">
-                <path :d="card.path" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
-                <path :d="card.area" :fill="card.fill" opacity="0.1" />
-              </svg>
+            <!-- SOURCE INFLUENCE -->
+            <div v-else-if="f.key === 'source'" class="mock-card">
+              <div class="mock-source-title">Source mix per provider</div>
+              <div v-for="(s, idx) in sourceShares" :key="s.provider" class="mock-source-row" :style="{ animationDelay: (0.15 + idx * 0.12) + 's' }">
+                <span class="mock-source-label">{{ s.provider }}</span>
+                <div class="mock-stack">
+                  <span v-for="seg in s.segments" :key="seg.cls" class="mock-seg" :class="'seg-' + seg.cls" :style="{ '--target-w': seg.pct + '%', animationDelay: (0.3 + idx * 0.12) + 's' }"></span>
+                </div>
+              </div>
+              <div class="mock-source-legend">
+                <span><i class="seg-reddit"></i>Reddit</span>
+                <span><i class="seg-news"></i>News</span>
+                <span><i class="seg-wiki"></i>Wikipedia</span>
+                <span><i class="seg-blog"></i>Blogs</span>
+                <span><i class="seg-own"></i>Your site</span>
+              </div>
             </div>
 
-            <div v-else-if="card.kind === 'dots'" class="tool-viz tool-viz-dots">
-              <span
-                v-for="(d, di) in card.dots"
-                :key="di"
-                class="viz-dot"
-                :style="{ top: d.y + '%', left: d.x + '%', transform: `scale(${d.size})` }"
-              />
+            <!-- CONTENT STUDIO -->
+            <div v-else-if="f.key === 'studio'" class="mock-card">
+              <div class="mock-draft-head">
+                <span class="mock-chip is-draft">Draft</span>
+                <span class="mock-chip-prov">Claude</span>
+              </div>
+              <div class="mock-draft-title">How AI analytics tools rank for SMB SaaS in 2026</div>
+              <div class="mock-draft-line w-95"></div>
+              <div class="mock-draft-line w-88"></div>
+              <div class="mock-draft-line w-92"></div>
+              <div class="mock-draft-line w-70"></div>
+              <div class="mock-draft-line w-85"></div>
+              <div class="mock-draft-actions">
+                <button class="mock-btn">Save</button>
+                <button class="mock-btn">Approve</button>
+                <button class="mock-btn is-primary">Publish</button>
+              </div>
             </div>
-          </article>
+          </div>
         </div>
+      </div>
+    </section>
 
-        <div class="tools-bottom">
-          <div class="tool-caption">
-            <p class="tool-desc">{{ toolCards[toolIndex].desc }}</p>
-            <span class="tool-replace">Replaces <strong>{{ toolCards[toolIndex].replaces }}</strong></span>
-          </div>
-          <div class="tool-pager">
-            <button class="tool-arrow" type="button" @click="toolIndex = (toolIndex - 1 + toolCards.length) % toolCards.length" aria-label="Previous">
-              <svg width="14" height="14" viewBox="0 0 16 16"><path d="M10 3L5 8l5 5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            </button>
-            <span class="tool-count">{{ toolIndex + 1 }} / {{ toolCards.length }}</span>
-            <button class="tool-arrow" type="button" @click="toolIndex = (toolIndex + 1) % toolCards.length" aria-label="Next">
-              <svg width="14" height="14" viewBox="0 0 16 16"><path d="M6 3l5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            </button>
-          </div>
-        </div>
+    <!-- ═══ Quote / pilot ═══ -->
+    <section class="pull-quote anim" data-anim="fade-up">
+      <div class="wrap">
+        <blockquote class="pq-text">
+          <span class="pq-mark">&ldquo;</span>
+          We were measuring SEO every week and missing the entire AI side of search.
+          Within two weeks of running this we found three Reddit threads where
+          competitors had locked us out &mdash; and shipped fixes.
+        </blockquote>
+        <div class="pq-attr">Internal pilot &middot; Q1 2026</div>
       </div>
     </section>
 
@@ -369,8 +361,29 @@
       </div>
     </section>
 
+    <!-- ═══ FAQ ═══ -->
+    <section class="faq anim" data-anim="fade-up">
+      <div class="wrap faq-wrap">
+        <h2 class="sec-h sec-h-grad anim" data-anim="fade-up">Questions,<br/><em>answered plainly.</em></h2>
+        <div class="faq-list">
+          <details v-for="(item, i) in faqItems" :key="i" class="faq-item anim" data-anim="fade-up" :data-delay="i * 60">
+            <summary>
+              <span>{{ item.q }}</span>
+              <span class="faq-plus" aria-hidden="true"></span>
+            </summary>
+            <div class="faq-a">{{ item.a }}</div>
+          </details>
+        </div>
+      </div>
+    </section>
+
     <!-- ═══ Final CTA ═══ -->
-    <section class="final-cta anim" data-anim="fade-up">
+    <section class="final-cta anim" data-anim="fade-up" ref="finalCtaSection">
+      <video class="final-cta-video" autoplay muted loop playsinline aria-hidden="true">
+        <source src="/videos/watercolor-main.mp4" type="video/mp4" />
+      </video>
+      <div class="final-cta-overlay" aria-hidden="true"></div>
+      <div class="final-cta-glow" aria-hidden="true"></div>
       <div class="wrap cta-inner">
         <h2>Ready to grow <em>smarter?</em></h2>
         <p>Start your AI visibility audit in minutes.</p>
@@ -378,14 +391,93 @@
       </div>
     </section>
 
+    <!-- ═══ Sticky CTA pill ═══ -->
+    <transition name="sticky-cta">
+      <router-link
+        v-if="showStickyCta"
+        to="/register"
+        class="sticky-cta"
+      >
+        Run a free audit
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+      </router-link>
+    </transition>
+
     <!-- ═══ Footer ═══ -->
     <footer class="footer">
-      <div class="wrap footer-row">
-        <div class="footer-brand">
-          <img src="/images/fb-logo.png" alt="FetchBot" class="footer-logo" />
-          <span>FetchBot</span>
+      <div class="wrap">
+        <!-- Top row: brand + 4 link columns -->
+        <div class="footer-grid">
+          <div class="footer-brand-col">
+            <div class="footer-brand">
+              <img src="/images/fb-logo.png" alt="FetchBot" class="footer-logo" />
+              <span>FetchBot</span>
+            </div>
+            <p class="footer-tagline">
+              Generative Engine Optimization for brands that want to be found
+              by AI assistants. Measure, verify, and close the gap.
+            </p>
+            <div class="footer-socials">
+              <a href="https://twitter.com/fetchbot" target="_blank" rel="noopener" aria-label="Twitter / X" class="footer-social">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+              </a>
+              <a href="https://linkedin.com/company/fetchbot" target="_blank" rel="noopener" aria-label="LinkedIn" class="footer-social">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M20.45 20.45h-3.55v-5.57c0-1.33-.02-3.04-1.85-3.04-1.85 0-2.13 1.45-2.13 2.94v5.67H9.37V9h3.41v1.56h.05c.47-.9 1.63-1.85 3.36-1.85 3.6 0 4.26 2.37 4.26 5.45zM5.34 7.43a2.06 2.06 0 1 1 0-4.12 2.06 2.06 0 0 1 0 4.12zM7.12 20.45H3.56V9h3.56zM22.22 0H1.77C.79 0 0 .77 0 1.72v20.56C0 23.23.79 24 1.77 24h20.45C23.21 24 24 23.23 24 22.28V1.72C24 .77 23.21 0 22.22 0z"/></svg>
+              </a>
+              <a href="https://github.com/fetchbot" target="_blank" rel="noopener" aria-label="GitHub" class="footer-social">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.3 3.44 9.8 8.21 11.39.6.11.82-.26.82-.58v-2.04c-3.34.73-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.09-.74.08-.73.08-.73 1.21.09 1.85 1.24 1.85 1.24 1.07 1.84 2.81 1.31 3.5 1 .11-.78.42-1.31.76-1.61-2.66-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.13-.3-.54-1.52.12-3.18 0 0 1.01-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.29-1.55 3.3-1.23 3.3-1.23.66 1.66.25 2.88.12 3.18.77.84 1.24 1.91 1.24 3.22 0 4.61-2.81 5.62-5.49 5.92.43.37.81 1.1.81 2.22v3.29c0 .32.22.7.83.58A12.01 12.01 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+              </a>
+            </div>
+          </div>
+
+          <div class="footer-col">
+            <div class="footer-col-title">Product</div>
+            <a href="#features">Features</a>
+            <a href="#how">How it works</a>
+            <a href="#pricing">Pricing</a>
+            <a href="#faq">FAQ</a>
+          </div>
+
+          <div class="footer-col">
+            <div class="footer-col-title">Resources</div>
+            <a href="https://docs.fetchbot.ai" target="_blank" rel="noopener">Documentation</a>
+            <a href="https://docs.fetchbot.ai/api" target="_blank" rel="noopener">API reference</a>
+            <a href="/blog">Blog</a>
+            <a href="/changelog">Changelog</a>
+            <a href="/status" target="_blank" rel="noopener">Status</a>
+          </div>
+
+          <div class="footer-col">
+            <div class="footer-col-title">Company</div>
+            <a href="/about">About</a>
+            <a href="/contact">Contact us</a>
+            <a href="mailto:hello@fetchbot.ai">hello@fetchbot.ai</a>
+            <a href="/careers">Careers</a>
+            <a href="/security">Security</a>
+          </div>
+
+          <div class="footer-col">
+            <div class="footer-col-title">Legal</div>
+            <router-link to="/terms">Terms of Service</router-link>
+            <router-link to="/privacy">Privacy Policy</router-link>
+            <a href="/dpa">Data Processing Agreement</a>
+            <a href="/cookies">Cookie Policy</a>
+            <a href="/ai-policy">Responsible AI Use</a>
+          </div>
         </div>
-        <span class="footer-copy">2026 FetchBot. Privacy. Terms.</span>
+
+        <!-- Bottom row: copy + meta links -->
+        <div class="footer-bottom">
+          <span class="footer-copy">© 2026 FetchBot, Inc. All rights reserved.</span>
+          <div class="footer-meta">
+            <span class="footer-meta-item">
+              <span class="footer-status-dot"></span>
+              All systems operational
+            </span>
+            <span class="footer-meta-divider">·</span>
+            <span class="footer-meta-item">Made with care for the AI-search era</span>
+          </div>
+        </div>
       </div>
     </footer>
   </div>
@@ -581,11 +673,11 @@ function typeWriter(el, text, speed = 65) {
 
 async function runTypewriter() {
   await new Promise(r => setTimeout(r, 400)) // initial pause
-  await typeWriter(twLine1.value, 'MARKETING', 80)
+  await typeWriter(twLine1.value, 'AI VISIBILITY,', 80)
   await new Promise(r => setTimeout(r, 200))
-  await typeWriter(twLine2.value, 'INTELLIGENCE,', 70)
+  await typeWriter(twLine2.value, 'MEASURED.', 70)
   await new Promise(r => setTimeout(r, 200))
-  await typeWriter(twLine3.value, 'SIMPLIFIED.', 70)
+  await typeWriter(twLine3.value, 'OPTIMIZED.', 70)
   await new Promise(r => setTimeout(r, 400))
   twDone.value = true
 }
@@ -609,15 +701,88 @@ onMounted(() => {
   runTypewriter()
   startFeatureAutoAdvance()
 
+  // Count-up stats observer
+  let statsObs = null
+  if (statsSection.value) {
+    statsObs = new IntersectionObserver((entries) => {
+      entries.forEach(e => { if (e.isIntersecting) { animateStats(); statsObs && statsObs.disconnect() } })
+    }, { threshold: 0.3 })
+    statsObs.observe(statsSection.value)
+  }
+
+  // Sticky CTA: show after hero, hide on final CTA
+  const heroEl = document.querySelector('.hero')
+  let heroObs = null
+  if (heroEl) {
+    heroObs = new IntersectionObserver((entries) => {
+      entries.forEach(e => { pastHero = !e.isIntersecting || e.intersectionRatio < 0.2; updateStickyCta() })
+    }, { threshold: [0, 0.2, 0.5] })
+    heroObs.observe(heroEl)
+  }
+  let finalObs = null
+  if (finalCtaSection.value) {
+    finalObs = new IntersectionObserver((entries) => {
+      entries.forEach(e => { onFinalCta = e.isIntersecting; updateStickyCta() })
+    }, { threshold: 0.2 })
+    finalObs.observe(finalCtaSection.value)
+  }
+
   onUnmounted(() => {
     window.removeEventListener('scroll', onScroll)
     obs.disconnect()
+    statsObs && statsObs.disconnect()
+    heroObs && heroObs.disconnect()
+    finalObs && finalObs.disconnect()
     clearInterval(cycleTimer)
     stopFeatureAutoAdvance()
+    if (_promptCycleStop) _promptCycleStop()
   })
+
+  // Demand-prompt cycler — kicks in after the page hydrates so the search
+  // bar starts typing the first example almost immediately.
+  setTimeout(startPromptCycle, 400)
 })
 
-const categories = ['Growth', 'Analytics', 'SEO', 'Intelligence']
+const categories = ['ChatGPT', 'Claude', 'Gemini', 'Perplexity']
+const heroProviders = [
+  { key: 'anthropic',  name: 'Claude',     pct: 47, cited: 12, sources: 'Reddit · TechCrunch · Wikipedia' },
+  { key: 'openai',     name: 'GPT-4',      pct: 38, cited:  8, sources: 'Wikipedia · Medium · NYT' },
+  { key: 'google',     name: 'Gemini',     pct: 52, cited: 15, sources: 'BBC · Bloomberg · gov sites' },
+  { key: 'perplexity', name: 'Perplexity', pct: 64, cited: 21, sources: 'Reddit · Quora · Stack Overflow' },
+]
+
+// Hero "probe" animation — shows the FetchBot loop: ask a prompt,
+// four AIs answer, your brand surfaces in each reply.
+const probeReplies = [
+  {
+    key: 'anthropic', name: 'Claude', glyph: 'C',
+    before: 'For 5–20 person teams I usually point people to ',
+    brand: 'Acme CRM',
+    after: '. The pipeline view is clean and onboarding takes minutes.',
+    sources: ['Reddit', 'TechCrunch'],
+  },
+  {
+    key: 'openai', name: 'GPT-4', glyph: 'G',
+    before: 'A solid pick at this size is ',
+    brand: 'Acme CRM',
+    after: ' — strong automation, fair pricing, native email sync.',
+    sources: ['Wikipedia', 'NYT'],
+  },
+  {
+    key: 'google', name: 'Gemini', glyph: 'G',
+    before: 'Most reviewers in 2026 recommend ',
+    brand: 'Acme CRM',
+    after: ' for small teams who need quick setup and shared inboxes.',
+    sources: ['Bloomberg', 'gov'],
+  },
+  {
+    key: 'perplexity', name: 'Perplexity', glyph: 'P',
+    before: 'Top community pick is ',
+    brand: 'Acme CRM',
+    after: '. Frequently cited for its lightweight UI and Slack hooks.',
+    sources: ['Quora', 'Stack Overflow'],
+  },
+]
 
 const features = [
   {
@@ -735,6 +900,178 @@ const plans = [
     featured: false,
   },
 ]
+
+/* ── Showcase features (alternating rows) ── */
+const showcaseFeatures = [
+  {
+    key: 'prompt',
+    eyebrow: 'PROMPT LIBRARY',
+    headline: 'Test what your customers actually ask AI.',
+    desc: "We mine real demand from Reddit, Quora, and search trends, then let DeepSeek paraphrase variations. Your audit set looks like real user questions, not SEO listicles.",
+    bullets: [
+      'Real demand mined from Reddit, Quora, and Google Trends',
+      'DeepSeek-generated paraphrase variants for coverage',
+      'Style + length chips to match how buyers actually search',
+    ],
+  },
+  {
+    key: 'probe',
+    eyebrow: 'MULTI-LLM PROBING',
+    headline: 'Run the same prompts across Claude, GPT-4, Gemini, and Perplexity in one audit.',
+    desc: "We fan out asynchronously, capture the raw responses, and extract every brand mention, citation, and claim. One score, four perspectives.",
+    bullets: [
+      'Async fan-out across all four target LLMs',
+      'Extract brand mentions, citations, and claims',
+      'One unified visibility score, four perspectives',
+    ],
+  },
+  {
+    key: 'source',
+    eyebrow: 'SOURCE INFLUENCE',
+    headline: 'See exactly where each LLM gets its answers in your category.',
+    desc: "Perplexity reads from Reddit. Gemini leans on news. Claude favours Wikipedia. Knowing which source a model trusts is half the battle.",
+    bullets: [
+      'Per-provider source mix breakdown',
+      'Citation confidence scoring',
+      'Spot which Reddit threads or articles dominate',
+    ],
+  },
+  {
+    key: 'studio',
+    eyebrow: 'CONTENT STUDIO',
+    headline: 'Auto-draft the content that closes your gaps. Publish in one click.',
+    desc: "We turn each visibility gap into a brief, draft it grounded in your verified Brand Vault facts, and publish to WordPress / Webflow / Shopify / HubSpot. Re-probe in 14 days, attribute the lift.",
+    bullets: [
+      'Brand Vault-grounded drafts (no hallucinations)',
+      'One-click publish to WordPress, Webflow, Shopify, HubSpot',
+      'Re-probe in 14 days to attribute the lift',
+    ],
+  },
+]
+
+// Demand-side prompt examples — the typed search bar cycles through
+// these one at a time; each becomes a row beneath with a category chip
+// + animated trend bar.
+const PROMPT_EXAMPLES = [
+  { q: 'best ai analytics tool for small saas',     style: 'comparison', trend: 82 },
+  { q: 'how to track llm visibility in 2026',       style: 'how-to',     trend: 64 },
+  { q: 'fetchbot vs bluefish alternatives',         style: 'vs',         trend: 47 },
+  { q: 'why does perplexity keep mentioning notion',style: 'question',   trend: 71 },
+  { q: 'cheapest geo platform for an indie founder',style: 'local',      trend: 58 },
+  { q: 'is there a free chatgpt visibility tracker',style: 'question',   trend: 76 },
+]
+
+const typedPrompt = ref('')
+const visiblePromptRows = ref([])
+
+let _promptCycleStop = null
+function startPromptCycle() {
+  if (_promptCycleStop) return
+  let idx = 0
+  let cancelled = false
+  let timer = null
+  const tickIn = (text, target, speed) => new Promise(resolve => {
+    let i = target.length
+    typedPrompt.value = text
+    const t = setInterval(() => {
+      if (cancelled) { clearInterval(t); resolve(); return }
+      i--
+      typedPrompt.value = target.slice(0, i)
+      if (i <= 0) { clearInterval(t); resolve() }
+    }, speed)
+  })
+  const typeIn = (target, speed) => new Promise(resolve => {
+    let i = 0
+    typedPrompt.value = ''
+    const t = setInterval(() => {
+      if (cancelled) { clearInterval(t); resolve(); return }
+      i++
+      typedPrompt.value = target.slice(0, i)
+      if (i >= target.length) { clearInterval(t); resolve() }
+    }, speed)
+  })
+  const wait = (ms) => new Promise(r => { timer = setTimeout(r, ms) })
+
+  const loop = async () => {
+    while (!cancelled) {
+      const ex = PROMPT_EXAMPLES[idx]
+      // Type into the search bar
+      await typeIn(ex.q, 45)
+      if (cancelled) break
+      await wait(420)
+      // Push a new row at the top, keep last 3
+      const row = { ...ex, id: 'r-' + Date.now() + '-' + idx }
+      visiblePromptRows.value = [row, ...visiblePromptRows.value].slice(0, 3)
+      await wait(1500)
+      if (cancelled) break
+      // Backspace before the next prompt
+      await tickIn(ex.q, ex.q, 18)
+      if (cancelled) break
+      await wait(120)
+      idx = (idx + 1) % PROMPT_EXAMPLES.length
+    }
+  }
+  loop()
+  _promptCycleStop = () => { cancelled = true; if (timer) clearTimeout(timer) }
+}
+
+const sourceShares = [
+  { provider: 'Claude',     segments: [{cls:'reddit',pct:18},{cls:'news',pct:14},{cls:'wiki',pct:38},{cls:'blog',pct:20},{cls:'own',pct:10}] },
+  { provider: 'GPT-4',      segments: [{cls:'reddit',pct:12},{cls:'news',pct:24},{cls:'wiki',pct:30},{cls:'blog',pct:24},{cls:'own',pct:10}] },
+  { provider: 'Gemini',     segments: [{cls:'reddit',pct:10},{cls:'news',pct:42},{cls:'wiki',pct:18},{cls:'blog',pct:22},{cls:'own',pct:8}] },
+  { provider: 'Perplexity', segments: [{cls:'reddit',pct:38},{cls:'news',pct:16},{cls:'wiki',pct:12},{cls:'blog',pct:22},{cls:'own',pct:12}] },
+]
+
+/* ── FAQ items ── */
+const faqItems = [
+  { q: 'Is this just SEO with extra steps?',
+    a: 'No. SEO measures Google rankings; we measure how often AI assistants like ChatGPT mention you in their answers. Separate signal, separate playbook.' },
+  { q: 'How is this different from Bluefish or Evertune?',
+    a: 'We measure AND generate the content to close gaps. They diagnose, you hire writers. We give you SMB-friendly pricing and the full loop.' },
+  { q: 'Will using DeepSeek for synthesis affect the audit results?',
+    a: 'No. Audits run only against the four target LLMs (Claude, GPT-4, Gemini, Perplexity). DeepSeek is used purely for cheap offline tooling.' },
+  { q: 'Do I need to install a tracking pixel?',
+    a: 'No. We probe LLMs directly via API. Connect your website URL and we crawl it for Brand Vault facts, but no script lives on your site.' },
+  { q: 'How accurate are the citations?',
+    a: 'Perplexity and Gemini grounded mode return native citations, so 100% accurate there. Claude and GPT-4 are extracted via regex + LLM-assisted parsing; we mark each citation with a confidence score.' },
+]
+
+/* ── Animated count-up stats ── */
+const STAT_TARGETS = [74, 3.2, 10]
+const stat0 = ref(0)
+const stat1 = ref(0)
+const stat2 = ref(0)
+const stat0Display = computed(() => Math.round(stat0.value).toString())
+const stat1Display = computed(() => stat1.value.toFixed(1))
+const stat2Display = computed(() => Math.round(stat2.value).toString())
+const statsSection = ref(null)
+let statsAnimated = false
+
+function animateStats() {
+  if (statsAnimated) return
+  statsAnimated = true
+  const start = performance.now()
+  const dur = 1600
+  function frame(t) {
+    const p = Math.min(1, (t - start) / dur)
+    const eased = 1 - Math.pow(1 - p, 3)
+    stat0.value = STAT_TARGETS[0] * eased
+    stat1.value = STAT_TARGETS[1] * eased
+    stat2.value = STAT_TARGETS[2] * eased
+    if (p < 1) requestAnimationFrame(frame)
+  }
+  requestAnimationFrame(frame)
+}
+
+/* ── Sticky CTA visibility ── */
+const showStickyCta = ref(false)
+const finalCtaSection = ref(null)
+let pastHero = false
+let onFinalCta = false
+
+function updateStickyCta() {
+  showStickyCta.value = pastHero && !onFinalCta
+}
 </script>
 
 <style scoped>
@@ -779,7 +1116,7 @@ em { color: #5B8DEF; font-style: italic; }
 .nav-row { display: flex; align-items: center; justify-content: space-between; }
 .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; }
 .brand-logo { width: 36px; height: 36px; object-fit: contain; }
-.brand-name { font-family: 'DM Serif Display', Georgia, serif; font-size: 20px; color: #131718; letter-spacing: -0.02em; }
+.brand-name { font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 20px; color: #131718; letter-spacing: -0.02em; }
 .brand-beta {
   display: inline-block;
   background: #131718;
@@ -819,9 +1156,323 @@ em { color: #5B8DEF; font-style: italic; }
 .nav-cta:hover { background: #2a2d2e; transform: translateY(-1px); }
 
 /* ── Hero ── */
-.hero { padding: 160px 0 80px; }
+.hero { padding: 140px 0 80px; }
+.hero-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+  gap: 64px;
+  align-items: center;
+}
+@media (max-width: 980px) {
+  .hero-grid { grid-template-columns: 1fr; gap: 40px; }
+}
+.hero-eyebrow {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--brand-accent, #ff6b35);
+  background: rgba(255, 107, 53, 0.12);
+  padding: 6px 12px;
+  border-radius: 9999px;
+  margin-bottom: 18px;
+}
+.hero-word-cycler {
+  display: inline-block;
+  position: relative;
+  min-width: 7.5em;
+  vertical-align: baseline;
+}
+.hero-word {
+  display: inline-block;
+  color: var(--brand-accent, #ff6b35);
+  font-weight: 600;
+}
+.hero-bullets {
+  list-style: none;
+  margin: 28px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: 14px;
+  color: #6e6a65;
+}
+.hero-bullets li { display: flex; align-items: center; gap: 10px; }
+.hero-bullet-dot {
+  width: 6px; height: 6px; border-radius: 9999px;
+  background: var(--brand-accent, #ff6b35);
+  flex-shrink: 0;
+}
+
+/* Framer-style hero visualisation */
+/* Shared dot + bar utilities (reused in feature mockups) */
+.hero-viz-dot {
+  width: 8px; height: 8px; border-radius: 9999px;
+  flex-shrink: 0;
+  background: #cbd5e1;
+  display: inline-block;
+}
+.hero-viz-dot.is-anthropic  { background: #d97706; }
+.hero-viz-dot.is-openai     { background: #10b981; }
+.hero-viz-dot.is-google     { background: #4285f4; }
+.hero-viz-dot.is-perplexity { background: #5b6cff; }
+.hero-viz-bar {
+  position: relative;
+  height: 8px;
+  background: rgba(15, 23, 42, 0.06);
+  border-radius: 9999px;
+  overflow: hidden;
+}
+.hero-viz-bar-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0;
+  border-radius: 9999px;
+  animation: hero-bar-fill 1.1s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.hero-viz-bar-fill.is-anthropic  { background: linear-gradient(90deg, #fbbf24, #d97706); }
+.hero-viz-bar-fill.is-openai     { background: linear-gradient(90deg, #34d399, #059669); }
+.hero-viz-bar-fill.is-google     { background: linear-gradient(90deg, #60a5fa, #2563eb); }
+.hero-viz-bar-fill.is-perplexity { background: linear-gradient(90deg, #818cf8, #4338ca); }
+@keyframes hero-bar-fill {
+  to { width: var(--target-w); }
+}
+
+/* ─── Hero "probe" animation — Framer-style narrative ─── */
+.probe {
+  position: relative;
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 24px;
+  padding: 20px;
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    0 30px 70px rgba(15, 23, 42, 0.12);
+  overflow: hidden;
+}
+.probe::before {
+  content: '';
+  position: absolute; inset: -40%;
+  background: radial-gradient(ellipse at top right, rgba(255, 107, 53, 0.10), transparent 60%);
+  pointer-events: none;
+}
+
+/* Prompt typing bar */
+.probe-prompt {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 14px;
+  background: linear-gradient(180deg, #fbfaf7 0%, #ffffff 100%);
+  margin-bottom: 14px;
+}
+.probe-prompt-label {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.08em;
+  text-transform: uppercase; color: #ff6b35;
+  padding: 4px 8px; border-radius: 6px;
+  background: rgba(255, 107, 53, 0.10);
+  flex-shrink: 0;
+}
+.probe-prompt-text {
+  font-size: 14px; color: #1f2937; font-weight: 500;
+  display: inline-flex; align-items: center; min-width: 0;
+}
+.probe-typer {
+  display: inline-block;
+  white-space: nowrap; overflow: hidden;
+  border-right: none;
+  width: 0;
+  animation: probe-type 7s steps(26) infinite;
+}
+.probe-caret {
+  display: inline-block;
+  width: 2px; height: 16px;
+  background: #ff6b35;
+  margin-left: 2px;
+  animation: probe-blink 1s step-end infinite;
+}
+@keyframes probe-type {
+  0%        { width: 0; }
+  35%, 80%  { width: 26ch; }
+  90%, 100% { width: 0; }
+}
+@keyframes probe-blink {
+  50% { opacity: 0; }
+}
+
+/* 2x2 reply grid */
+.probe-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.probe-card {
+  position: relative;
+  padding: 12px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 12px;
+  background: #fff;
+  opacity: 0;
+  transform: translateY(8px);
+  animation: probe-card-in 0.55s cubic-bezier(0.16, 1, 0.3, 1) var(--d, 0s) forwards;
+  overflow: hidden;
+}
+@keyframes probe-card-in {
+  to { opacity: 1; transform: translateY(0); }
+}
+.probe-card::after {
+  /* sweeping highlight that runs once when the card lands */
+  content: '';
+  position: absolute; inset: 0;
+  background: linear-gradient(105deg, transparent 30%, rgba(255, 107, 53, 0.18) 50%, transparent 70%);
+  transform: translateX(-100%);
+  animation: probe-sweep 1.2s ease-out var(--d, 0s) forwards;
+  pointer-events: none;
+}
+@keyframes probe-sweep {
+  to { transform: translateX(100%); }
+}
+
+.probe-card-head {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 8px;
+}
+.probe-logo {
+  width: 22px; height: 22px; border-radius: 6px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700; color: #fff;
+  flex-shrink: 0;
+}
+.probe-logo.is-anthropic  { background: #d97706; }
+.probe-logo.is-openai     { background: #10b981; }
+.probe-logo.is-google     { background: #4285f4; }
+.probe-logo.is-perplexity { background: #5b6cff; }
+.probe-name {
+  font-size: 13px; font-weight: 600; color: #1f2937;
+  flex: 1;
+}
+.probe-status {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 10.5px; font-weight: 600; color: #059669;
+  text-transform: uppercase; letter-spacing: 0.04em;
+}
+.probe-status-dot {
+  width: 6px; height: 6px; border-radius: 9999px;
+  background: #10b981;
+  box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.5);
+  animation: probe-pulse 1.8s ease-out infinite;
+}
+@keyframes probe-pulse {
+  70%  { box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+}
+
+.probe-stream {
+  font-size: 12.5px; line-height: 1.5; color: #4b5563;
+  margin-bottom: 8px;
+}
+.probe-mark {
+  background: linear-gradient(120deg, rgba(255, 107, 53, 0.0) 0%, rgba(255, 107, 53, 0.30) 50%, rgba(255, 107, 53, 0.0) 100%);
+  background-size: 220% 100%;
+  background-position: 100% 0;
+  color: #1f2937;
+  font-weight: 700;
+  padding: 1px 4px;
+  border-radius: 4px;
+  animation: probe-highlight 4s ease-in-out infinite;
+}
+@keyframes probe-highlight {
+  0%, 30%   { background-position: 100% 0; box-shadow: 0 0 0 rgba(255, 107, 53, 0); }
+  55%, 85%  { background-position: 0% 0;   box-shadow: 0 0 18px rgba(255, 107, 53, 0.35); }
+  100%      { background-position: -100% 0; box-shadow: 0 0 0 rgba(255, 107, 53, 0); }
+}
+
+.probe-tags {
+  display: flex; flex-wrap: wrap; gap: 4px;
+}
+.probe-tag {
+  font-size: 10.5px; font-weight: 500;
+  padding: 2px 7px;
+  border-radius: 9999px;
+  background: rgba(15, 23, 42, 0.05);
+  color: #6e6a65;
+}
+
+/* Footer score ring */
+.probe-foot {
+  display: flex; align-items: center; gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  border-radius: 14px;
+  background: linear-gradient(180deg, #fbfaf7 0%, #ffffff 100%);
+}
+.probe-ring {
+  position: relative;
+  width: 56px; height: 56px;
+  flex-shrink: 0;
+}
+.probe-ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.probe-ring-bg {
+  fill: none; stroke: rgba(15, 23, 42, 0.08); stroke-width: 3;
+}
+.probe-ring-fg {
+  fill: none;
+  stroke: url(#probe-grad-fallback);
+  stroke: #ff6b35;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-dasharray: 100;
+  stroke-dashoffset: 100;
+  animation: probe-ring-fill 2s cubic-bezier(0.16, 1, 0.3, 1) 1.4s forwards;
+}
+@keyframes probe-ring-fill {
+  to { stroke-dashoffset: 62; }  /* 38% of 100 */
+}
+.probe-ring-num {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px; font-weight: 700; color: #1f2937;
+  font-variant-numeric: tabular-nums;
+}
+.probe-ring-num i { font-style: normal; font-size: 10px; color: #6e6a65; margin-left: 1px; }
+.probe-foot-copy { min-width: 0; }
+.probe-foot-h { font-size: 13px; font-weight: 700; color: #1f2937; }
+.probe-foot-sub { font-size: 11.5px; color: #6e6a65; margin-top: 2px; line-height: 1.4; }
+.probe-delta {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 1px 7px;
+  border-radius: 9999px;
+  background: rgba(16, 185, 129, 0.12);
+  color: #059669;
+  font-weight: 600; font-size: 10.5px;
+}
+
+@media (max-width: 720px) {
+  .probe-grid { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .probe-typer { animation: none; width: auto; }
+  .probe-caret { animation: none; opacity: 0.6; }
+  .probe-card { opacity: 1; transform: none; animation: none; }
+  .probe-card::after { display: none; }
+  .probe-mark { animation: none; background-position: 0 0; }
+  .probe-ring-fg { animation: none; stroke-dashoffset: 62; }
+  .probe-status-dot { animation: none; }
+}
+
+/* word-cycle transition (reused from the deleted features section) */
+.word-cycle-enter-active, .word-cycle-leave-active {
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  display: inline-block;
+}
+.word-cycle-enter-from { opacity: 0; transform: translateY(8px); }
+.word-cycle-leave-to   { opacity: 0; transform: translateY(-8px); position: absolute; }
 .hero-h {
-  font-family: 'DM Serif Display', Georgia, serif;
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-weight: 400; font-size: clamp(2.8rem, 6vw, 5.5rem);
   line-height: 1.05; letter-spacing: -0.03em;
   text-transform: uppercase;
@@ -872,7 +1523,7 @@ em { color: #5B8DEF; font-style: italic; }
 
 .feat-header { display: flex; align-items: baseline; gap: 40px; margin-bottom: 36px; flex-wrap: wrap; }
 .feat-headline {
-  font-family: 'DM Serif Display', Georgia, serif;
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-size: clamp(1.8rem, 3.5vw, 3rem);
   font-weight: 400; text-transform: uppercase;
   letter-spacing: -0.02em;
@@ -939,7 +1590,7 @@ em { color: #5B8DEF; font-style: italic; }
 .feat-tabs { display: flex; gap: 24px; }
 .feat-tab {
   background: none; border: none; cursor: pointer;
-  font-family: 'DM Serif Display', Georgia, serif;
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-size: clamp(1rem, 1.8vw, 1.3rem);
   font-style: italic; color: #94a3b8;
   padding: 0; transition: all 0.3s;
@@ -1017,7 +1668,7 @@ em { color: #5B8DEF; font-style: italic; }
   margin-bottom: 10px;
 }
 .viz-stat-value {
-  font-family: 'DM Serif Display', Georgia, serif;
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-weight: 400;
   font-size: 30px;
   color: #131718;
@@ -1149,7 +1800,7 @@ em { color: #5B8DEF; font-style: italic; }
 .kw-rank {
   width: 24px;
   font-weight: 700;
-  font-family: 'DM Serif Display', Georgia, serif;
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-size: 13px;
   letter-spacing: -0.02em;
 }
@@ -1254,7 +1905,7 @@ em { color: #5B8DEF; font-style: italic; }
 
 /* Card inner elements */
 .card-num {
-  font-family: 'DM Serif Display', Georgia, serif;
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-size: 2.2rem; font-weight: 400;
   color: #131718; line-height: 1;
   margin-bottom: 16px;
@@ -1308,7 +1959,7 @@ em { color: #5B8DEF; font-style: italic; }
 
 /* ── Section Headings ── */
 .sec-h {
-  font-family: 'DM Serif Display', Georgia, serif;
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-weight: 400; font-size: clamp(1.6rem, 3.5vw, 2.6rem);
   line-height: 1.1; margin-bottom: 48px;
 }
@@ -1349,7 +2000,7 @@ em { color: #5B8DEF; font-style: italic; }
   text-transform: uppercase; letter-spacing: 0.04em;
 }
 .price-card h3 { font-size: 17px; font-weight: 800; margin-bottom: 8px; }
-.price-big { font-family: 'DM Serif Display', Georgia, serif; font-size: 2.6rem; line-height: 1; }
+.price-big { font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 2.6rem; line-height: 1; }
 .price-per { font-size: 13px; color: #a09a93; }
 .price-desc { font-size: 12px; color: #6e6a65; margin: 6px 0 20px; }
 .price-card ul { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 6px; margin-bottom: 24px; flex-grow: 1; }
@@ -1372,18 +2023,132 @@ em { color: #5B8DEF; font-style: italic; }
   padding: 72px 40px;
 }
 .cta-inner h2 {
-  font-family: 'DM Serif Display', Georgia, serif;
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-weight: 400; font-size: clamp(1.6rem, 3vw, 2.2rem);
   margin-bottom: 10px;
 }
 .cta-inner p { font-size: 15px; color: #6e6a65; margin-bottom: 28px; }
 
 /* ── Footer ── */
-.footer { padding: 24px 0; border-top: 1px solid rgba(0,0,0,0.06); }
-.footer-row { display: flex; align-items: center; justify-content: space-between; }
-.footer-brand { display: flex; align-items: center; gap: 8px; font-family: 'DM Serif Display', Georgia, serif; font-size: 16px; }
-.footer-logo { width: 28px; height: 28px; object-fit: contain; }
-.footer-copy { font-size: 11px; color: #a09a93; }
+/* ── Footer ─────────────────────────────────────────────── */
+.footer {
+  padding: 80px 0 32px;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  background: #faf6ef;
+  color: #4a4540;
+}
+.footer-grid {
+  display: grid;
+  grid-template-columns: 1.4fr repeat(4, 1fr);
+  gap: 48px 32px;
+  padding-bottom: 56px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+@media (max-width: 980px) {
+  .footer-grid { grid-template-columns: 1fr 1fr; gap: 40px 24px; }
+  .footer-brand-col { grid-column: 1 / -1; }
+}
+@media (max-width: 600px) {
+  .footer-grid { grid-template-columns: 1fr; }
+}
+
+.footer-brand-col { max-width: 320px; }
+.footer-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 20px;
+  color: #1f2937;
+  margin-bottom: 14px;
+}
+.footer-logo { width: 32px; height: 32px; object-fit: contain; }
+.footer-tagline {
+  font-size: 13.5px;
+  line-height: 1.65;
+  color: #6e6a65;
+  margin: 0 0 18px;
+}
+
+.footer-socials {
+  display: flex;
+  gap: 8px;
+}
+.footer-social {
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  background: #ffffff;
+  color: #4a4540;
+  transition: transform 0.15s ease-out, color 0.15s ease-out, border-color 0.15s ease-out, box-shadow 0.15s ease-out;
+}
+.footer-social:hover {
+  color: var(--brand-accent, #ff6b35);
+  border-color: var(--brand-accent, #ff6b35);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(255, 107, 53, 0.18);
+}
+
+.footer-col { display: flex; flex-direction: column; gap: 10px; }
+.footer-col-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #1f2937;
+  margin-bottom: 8px;
+}
+.footer-col a {
+  font-size: 13.5px;
+  color: #6e6a65;
+  text-decoration: none;
+  transition: color 0.12s ease;
+}
+.footer-col a:hover {
+  color: var(--brand-accent, #ff6b35);
+}
+
+.footer-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding-top: 28px;
+}
+.footer-copy {
+  font-size: 12.5px;
+  color: #a09a93;
+}
+.footer-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: #a09a93;
+}
+.footer-meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.footer-meta-divider { color: #cbc5bd; }
+.footer-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background: #10b981;
+  box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.55);
+  animation: footer-status-pulse 1.8s ease-out infinite;
+}
+@keyframes footer-status-pulse {
+  70% { box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+}
 
 /* ── Responsive ── */
 @media (max-width: 900px) {
@@ -1761,5 +2526,749 @@ em { color: #5B8DEF; font-style: italic; }
   .tool-card { min-height: auto; }
   .tools-head { flex-direction: column; align-items: flex-start; gap: 20px; }
   .tools-bottom { flex-direction: column; align-items: flex-start; gap: 18px; }
+}
+
+/* ═════════════════════════════════════════
+   Framer-style enhancements
+   Trust strip · Stats · Feature showcase
+   Loop diagram · Quote · FAQ · Sticky CTA
+   ═════════════════════════════════════════ */
+
+/* ── Smooth scroll (global, unscoped) ── */
+</style>
+<style>
+:root { scroll-behavior: smooth; }
+</style>
+<style scoped>
+
+/* ── Section heading shared ── */
+.sec-sub {
+  max-width: 640px;
+  margin: 14px auto 48px;
+  text-align: center;
+  font-size: 17px;
+  line-height: 1.55;
+  color: #5e6b73;
+}
+.sec-h-grad {
+  background: linear-gradient(110deg, #131718 0%, #131718 55%, var(--brand-accent, #ff6b35) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  letter-spacing: -0.02em;
+  font-weight: 600;
+}
+
+/* ── Background blur orbs ── */
+.orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(90px);
+  opacity: 0.32;
+  pointer-events: none;
+  z-index: 0;
+  background: radial-gradient(circle, var(--brand-accent, #ff6b35) 0%, rgba(255,107,53,0) 70%);
+}
+.orb-1 { width: 520px; height: 520px; top: 600px; left: -180px; animation: orbDrift 22s ease-in-out infinite; }
+.orb-2 { width: 420px; height: 420px; top: 1900px; right: -160px; opacity: 0.24; animation: orbDrift 28s ease-in-out -8s infinite reverse; }
+.orb-3 { width: 460px; height: 460px; top: 3400px; left: 40%; opacity: 0.18; animation: orbDrift 32s ease-in-out -14s infinite; }
+@keyframes orbDrift {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50%      { transform: translate(40px, -30px) scale(1.08); }
+}
+
+/* ── Trust strip / marquee ── */
+.trust {
+  position: relative;
+  padding: 32px 0 12px;
+  overflow: hidden;
+  z-index: 1;
+}
+.marquee {
+  position: relative;
+  overflow: hidden;
+  mask-image: linear-gradient(90deg, transparent 0, #000 12%, #000 88%, transparent 100%);
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 12%, #000 88%, transparent 100%);
+}
+.marquee-track {
+  display: inline-flex;
+  align-items: center;
+  gap: 24px;
+  white-space: nowrap;
+  animation: marqueeRoll 30s linear infinite;
+  will-change: transform;
+}
+.marquee:hover .marquee-track { animation-play-state: paused; }
+.marquee-item {
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: #5e6b73;
+  font-family: 'Geist', 'Plus Jakarta Sans', sans-serif;
+}
+.marquee-item.is-label {
+  color: var(--brand-accent, #ff6b35);
+  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  font-size: 12px;
+}
+.marquee-sep { color: #c9c2b6; font-size: 14px; }
+@keyframes marqueeRoll {
+  from { transform: translateX(0%); }
+  to   { transform: translateX(-50%); }
+}
+
+/* ── Why you need this ── */
+.why {
+  position: relative;
+  padding: 100px 0 60px;
+  background: linear-gradient(180deg, #ffffff 0%, #f7f9fc 100%);
+}
+.why-wrap { max-width: 1080px; }
+.why-eyebrow {
+  display: inline-block;
+  font-size: 11.5px; font-weight: 700; letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #ff6b35;
+  padding: 5px 12px;
+  border-radius: 9999px;
+  background: rgba(255, 107, 53, 0.10);
+  margin-bottom: 22px;
+}
+.why-h {
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-weight: 700;
+  font-size: clamp(2.2rem, 4.5vw, 3.6rem);
+  line-height: 1.1;
+  letter-spacing: -0.025em;
+  color: #0f172a;
+  margin-bottom: 18px;
+}
+.why-h em {
+  font-style: normal;
+  font-weight: 700;
+  color: #1f2937;
+}
+.why-h-pop {
+  background: linear-gradient(120deg, #ff6b35 0%, #3b82f6 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.why-sub {
+  max-width: 720px;
+  font-size: 17px;
+  line-height: 1.6;
+  color: #475569;
+  margin-bottom: 56px;
+}
+.why-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 22px;
+  margin-bottom: 56px;
+}
+.why-card {
+  position: relative;
+  padding: 28px 24px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 18px;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 16px 40px rgba(15, 23, 42, 0.05);
+  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+}
+.why-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(255, 107, 53, 0.35);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 24px 60px rgba(15, 23, 42, 0.10);
+}
+.why-card-num {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 36px; height: 36px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #ff6b35 0%, #ff5722 100%);
+  color: #fff;
+  font-weight: 800;
+  font-size: 15px;
+  margin-bottom: 18px;
+  box-shadow: 0 6px 16px rgba(255, 107, 53, 0.25);
+}
+.why-card-h {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-weight: 700;
+  font-size: 20px;
+  line-height: 1.25;
+  color: #0f172a;
+  margin-bottom: 10px;
+}
+.why-card-h em {
+  font-style: normal;
+  color: #ff6b35;
+}
+.why-card p {
+  font-size: 14.5px;
+  line-height: 1.55;
+  color: #64748b;
+  margin: 0;
+}
+.why-cta {
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 18px;
+  padding: 28px 32px;
+  border-radius: 18px;
+  background: linear-gradient(120deg, #0f172a 0%, #1e293b 100%);
+  position: relative;
+  overflow: hidden;
+}
+.why-cta::before {
+  content: '';
+  position: absolute; inset: -50% -10% auto auto;
+  width: 60%; height: 200%;
+  background: radial-gradient(circle, rgba(59, 130, 246, 0.35) 0%, transparent 65%);
+  pointer-events: none;
+}
+.why-cta::after {
+  content: '';
+  position: absolute; inset: auto auto -40% -10%;
+  width: 50%; height: 160%;
+  background: radial-gradient(circle, rgba(255, 107, 53, 0.30) 0%, transparent 65%);
+  pointer-events: none;
+}
+.why-cta-line {
+  position: relative; z-index: 1;
+  font-size: 18px;
+  color: #e2e8f0;
+  max-width: 580px;
+  line-height: 1.4;
+}
+.why-cta-line strong {
+  color: #fff;
+  font-weight: 700;
+}
+.why-cta-btn {
+  position: relative; z-index: 1;
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 13px 22px;
+  border-radius: 9999px;
+  background: #ff6b35;
+  color: #ffffff;
+  font-weight: 600;
+  font-size: 14.5px;
+  text-decoration: none;
+  transition: background 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
+  box-shadow: 0 8px 22px rgba(255, 107, 53, 0.35);
+}
+.why-cta-btn:hover {
+  background: #ff5722;
+  transform: translateY(-2px);
+  box-shadow: 0 12px 28px rgba(255, 107, 53, 0.45);
+}
+
+@media (max-width: 880px) {
+  .why-grid { grid-template-columns: 1fr; }
+  .why { padding: 70px 0 40px; }
+  .why-cta { flex-direction: column; align-items: flex-start; padding: 24px; }
+}
+
+/* ── Stats / count-up ── */
+.stats {
+  position: relative;
+  padding: 96px 0 80px;
+  z-index: 1;
+}
+.count-up-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+  margin-top: 12px;
+}
+.count-up-card {
+  background: #ffffff;
+  border: 1px solid #ece6da;
+  border-radius: 18px;
+  padding: 36px 28px;
+  text-align: left;
+  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+}
+.count-up-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 18px 40px -24px rgba(20, 23, 24, 0.18);
+  border-color: #d9cfbb;
+}
+.count-up-num {
+  font-family: 'DM Serif Display', 'Plus Jakarta Sans', serif;
+  font-size: 64px;
+  line-height: 1;
+  color: #131718;
+  letter-spacing: -0.03em;
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+}
+.count-up-prefix, .count-up-suffix {
+  font-size: 36px;
+  color: var(--brand-accent, #ff6b35);
+}
+.count-up-label {
+  margin-top: 18px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #131718;
+  letter-spacing: -0.01em;
+}
+.count-up-note {
+  margin-top: 6px;
+  font-size: 13.5px;
+  color: #6b7680;
+  line-height: 1.5;
+}
+
+/* ── Feature showcase ── */
+.feature-showcase {
+  position: relative;
+  padding: 80px 0 40px;
+  z-index: 1;
+}
+.feature-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 80px;
+  align-items: center;
+  padding: 70px 0;
+  min-height: 60vh;
+}
+.feature-row.is-reverse .feature-copy { order: 2; }
+.feature-row.is-reverse .feature-visual { order: 1; }
+.feature-eyebrow {
+  font-family: 'Geist', sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  color: var(--brand-accent, #ff6b35);
+  text-transform: uppercase;
+}
+.feature-h {
+  margin: 16px 0 18px;
+  font-size: 38px;
+  line-height: 1.12;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  color: #131718;
+}
+.feature-desc {
+  max-width: 36rem;
+  font-size: 16.5px;
+  line-height: 1.6;
+  color: #4a5560;
+}
+.feature-bullets {
+  list-style: none;
+  padding: 0;
+  margin: 22px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.feature-bullets li {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  font-size: 14.5px;
+  color: #2d3640;
+}
+.feature-bullet-dot {
+  width: 8px; height: 8px;
+  margin-top: 7px;
+  border-radius: 50%;
+  background: var(--brand-accent, #ff6b35);
+  flex-shrink: 0;
+  box-shadow: 0 0 0 4px rgba(255, 107, 53, 0.12);
+}
+
+/* Mock visuals shared */
+.feature-visual {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+.mock-card {
+  width: 100%;
+  max-width: 460px;
+  background: #ffffff;
+  border: 1px solid #ece6da;
+  border-radius: 18px;
+  padding: 22px;
+  box-shadow: 0 30px 60px -32px rgba(20, 23, 24, 0.22);
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+.mock-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 36px 70px -32px rgba(20, 23, 24, 0.28);
+}
+.mock-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #f8f4ec;
+  border: 1px solid #ece6da;
+  font-size: 13.5px;
+  color: #2d3640;
+}
+.mock-search-icon {
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  border: 1.6px solid #8a8275;
+  position: relative;
+}
+.mock-search-icon::after {
+  content: ''; position: absolute;
+  width: 6px; height: 1.6px;
+  background: #8a8275;
+  bottom: -3px; right: -3px;
+  transform: rotate(45deg);
+}
+.mock-search-text { flex: 1; }
+.mock-search-caret {
+  color: var(--brand-accent, #ff6b35);
+  animation: caretBlink 1s steps(1) infinite;
+}
+@keyframes caretBlink { 50% { opacity: 0; } }
+
+.mock-rows { margin-top: 14px; display: flex; flex-direction: column; gap: 10px; }
+.mock-prompt-row {
+  display: grid;
+  grid-template-columns: 1fr auto 80px;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #fbf8f1;
+  border: 1px solid #f0e9d9;
+  opacity: 0;
+  animation: fadeSlide 0.55s ease forwards;
+}
+@keyframes fadeSlide { from { opacity:0; transform: translateY(6px);} to {opacity:1; transform:none;} }
+.mock-q { font-size: 13px; color: #2d3640; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.mock-chip {
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(255,107,53,0.14);
+  color: #8a6d2a;
+}
+.mock-chip.is-comparison { background: rgba(74,127,176,0.14);  color: #345f86; }
+.mock-chip.is-how-to     { background: rgba(110,165,110,0.16); color: #3f6b3f; }
+.mock-chip.is-vs         { background: rgba(198,90,47,0.14);   color: #8a3d18; }
+.mock-chip.is-question   { background: rgba(126,34,206,0.12);  color: #5b21b6; }
+.mock-chip.is-local      { background: rgba(217,119,6,0.14);   color: #92400e; }
+.mock-chip.is-story      { background: rgba(15,118,110,0.14);  color: #115e59; }
+
+/* Cycler: rows fade in from the top, push older rows down. The
+   transition-group + per-row absolute positioning would be over-
+   engineered for 3 rows, so we use a simple opacity+translate. */
+.mock-row-stagger-enter-active { transition: opacity .35s ease, transform .35s cubic-bezier(.16,1,.3,1); }
+.mock-row-stagger-enter-from   { opacity: 0; transform: translateY(-6px); }
+.mock-row-stagger-leave-active { transition: opacity .25s ease; }
+.mock-row-stagger-leave-to     { opacity: 0; }
+.mock-trend {
+  height: 6px; border-radius: 4px;
+  background: #ece6da;
+  overflow: hidden;
+}
+.mock-trend-bar {
+  width: 0; height: 100%;
+  background: linear-gradient(90deg, var(--brand-accent, #ff6b35), #3b82f6);
+  border-radius: 4px;
+  animation: barFill 1.1s cubic-bezier(0.22,1,0.36,1) forwards;
+}
+@keyframes barFill { to { width: var(--target-w, 50%); } }
+
+/* Probe mini grid */
+.mock-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.mock-mini {
+  background: #fbf8f1;
+  border: 1px solid #f0e9d9;
+  border-radius: 12px;
+  padding: 12px;
+  opacity: 0;
+  animation: fadeSlide 0.55s ease forwards;
+}
+.mock-mini-head { display:flex; align-items:center; gap:8px; font-size: 12.5px; }
+.mock-mini-name { flex: 1; font-weight: 600; color: #2d3640; }
+.mock-mini-pct { color: var(--brand-accent, #ff6b35); font-weight: 600; }
+.mock-mini-meta { margin-top: 8px; font-size: 11.5px; color: #6b7680; }
+
+/* Source bars */
+.mock-source-title {
+  font-size: 12px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #8a8275;
+  margin-bottom: 12px;
+  font-weight: 600;
+}
+.mock-source-row {
+  display: grid;
+  grid-template-columns: 86px 1fr;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+  opacity: 0;
+  animation: fadeSlide 0.55s ease forwards;
+}
+.mock-source-label { font-size: 13px; color: #2d3640; font-weight: 500; }
+.mock-stack {
+  display: flex;
+  height: 14px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #f0e9d9;
+}
+.mock-seg {
+  width: 0;
+  height: 100%;
+  display: block;
+  animation: barFill 1.1s cubic-bezier(0.22,1,0.36,1) forwards;
+}
+.seg-reddit { background: #c65a2f; }
+.seg-news   { background: #4a7fb0; }
+.seg-wiki   { background: #6b7680; }
+.seg-blog   { background: #d9b770; }
+.seg-own    { background: var(--brand-accent, #ff6b35); }
+.mock-source-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 14px;
+  font-size: 11.5px;
+  color: #6b7680;
+}
+.mock-source-legend i {
+  display: inline-block;
+  width: 10px; height: 10px;
+  border-radius: 3px;
+  margin-right: 6px;
+  vertical-align: -1px;
+}
+
+/* Studio draft mock */
+.mock-draft-head { display:flex; gap: 8px; align-items:center; margin-bottom: 10px; }
+.mock-chip.is-draft { background: rgba(20,23,24,0.08); color: #2d3640; }
+.mock-chip-prov {
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(59, 130, 246, 0.14);
+  color: #1d4ed8;
+  font-weight: 600;
+}
+.mock-draft-title {
+  font-family: 'DM Serif Display', serif;
+  font-size: 19px;
+  line-height: 1.25;
+  color: #131718;
+  margin: 4px 0 16px;
+}
+.mock-draft-line {
+  height: 8px;
+  border-radius: 4px;
+  background: #e2e8f0;
+  margin-bottom: 8px;
+}
+.mock-draft-line.w-95 { width: 95%; }
+.mock-draft-line.w-88 { width: 88%; }
+.mock-draft-line.w-92 { width: 92%; }
+.mock-draft-line.w-70 { width: 70%; }
+.mock-draft-line.w-85 { width: 85%; }
+.mock-draft-actions {
+  display: flex; gap: 8px; margin-top: 16px;
+}
+.mock-btn {
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  color: #1f2937;
+  font-size: 12.5px;
+  font-weight: 600;
+  border-radius: 8px;
+  padding: 7px 14px;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+.mock-btn:hover { background: #f1f5f9; }
+.mock-btn.is-primary {
+  background: #ff6b35;
+  color: #fff;
+  border-color: #ff6b35;
+}
+.mock-btn.is-primary:hover { background: #ff5722; }
+
+/* ── Pull quote ── */
+.pull-quote {
+  position: relative;
+  padding: 80px 0;
+  z-index: 1;
+}
+.pq-text {
+  max-width: 880px;
+  margin: 0 auto;
+  font-family: 'DM Serif Display', serif;
+  font-size: 32px;
+  line-height: 1.35;
+  color: #131718;
+  letter-spacing: -0.015em;
+  text-align: center;
+  position: relative;
+}
+.pq-mark {
+  display: block;
+  font-size: 80px;
+  line-height: 0.4;
+  color: var(--brand-accent, #ff6b35);
+  margin-bottom: 18px;
+}
+.pq-attr {
+  margin-top: 24px;
+  text-align: center;
+  font-size: 13px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #8a8275;
+  font-weight: 600;
+}
+
+/* ── FAQ ── */
+.faq {
+  position: relative;
+  padding: 80px 0;
+  z-index: 1;
+}
+.faq-wrap { max-width: 880px; }
+.faq-list { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; }
+.faq-item {
+  background: #ffffff;
+  border: 1px solid #ece6da;
+  border-radius: 14px;
+  padding: 4px 4px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.faq-item[open] { border-color: #d9cfbb; box-shadow: 0 18px 40px -28px rgba(20,23,24,0.18); }
+.faq-item summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 18px 22px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #131718;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  letter-spacing: -0.01em;
+}
+.faq-item summary::-webkit-details-marker { display: none; }
+.faq-plus {
+  position: relative;
+  width: 16px; height: 16px;
+  flex-shrink: 0;
+}
+.faq-plus::before, .faq-plus::after {
+  content: '';
+  position: absolute;
+  background: var(--brand-accent, #ff6b35);
+  border-radius: 1px;
+  transition: transform 0.25s ease;
+}
+.faq-plus::before { left: 0; right: 0; top: 7px; height: 2px; }
+.faq-plus::after  { top: 0; bottom: 0; left: 7px; width: 2px; }
+.faq-item[open] .faq-plus::after { transform: scaleY(0); }
+.faq-a {
+  padding: 0 22px 20px;
+  font-size: 15px;
+  line-height: 1.6;
+  color: #4a5560;
+}
+
+/* ── Final CTA with video background ── */
+.final-cta { position: relative; overflow: hidden; isolation: isolate; }
+.final-cta-video {
+  position: absolute;
+  inset: 0;
+  width: 100%; height: 100%;
+  object-fit: cover;
+  z-index: 0;
+  pointer-events: none;
+}
+.final-cta-overlay {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(15, 23, 42, 0.55) 0%, rgba(15, 23, 42, 0.72) 100%),
+    radial-gradient(ellipse at 50% 50%, rgba(255, 107, 53, 0.25) 0%, transparent 60%);
+  z-index: 1;
+  pointer-events: none;
+}
+.final-cta-glow {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at 50% 50%, rgba(59, 130, 246, 0.18) 0%, transparent 60%);
+  pointer-events: none;
+  z-index: 2;
+}
+.final-cta .cta-inner { position: relative; z-index: 3; }
+.final-cta h2 { font-size: 56px; color: #fff; }
+.final-cta p { color: rgba(255, 255, 255, 0.85); }
+
+/* ── Sticky CTA pill ── */
+.sticky-cta {
+  position: fixed;
+  bottom: 22px;
+  right: 22px;
+  z-index: 60;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 18px;
+  border-radius: 999px;
+  background: #131718;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  text-decoration: none;
+  box-shadow: 0 16px 40px -12px rgba(20,23,24,0.42), 0 0 0 1px rgba(255,255,255,0.04) inset;
+  transition: transform 0.22s ease, box-shadow 0.22s ease;
+}
+.sticky-cta:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 24px 50px -14px rgba(20,23,24,0.5);
+}
+.sticky-cta-enter-from, .sticky-cta-leave-to {
+  opacity: 0;
+  transform: translateY(20px);
+}
+.sticky-cta-enter-active, .sticky-cta-leave-active {
+  transition: opacity 0.35s ease, transform 0.35s ease;
+}
+
+/* ── Responsive ── */
+@media (max-width: 900px) {
+  .count-up-grid { grid-template-columns: 1fr; }
+  .feature-row { grid-template-columns: 1fr; gap: 40px; padding: 50px 0; min-height: 0; }
+  .feature-row.is-reverse .feature-copy { order: 1; }
+  .feature-row.is-reverse .feature-visual { order: 2; }
+  .feature-h { font-size: 30px; }
+  .pq-text { font-size: 24px; }
+  .loop-arrow { display: none; }
+  .final-cta h2 { font-size: 40px; }
 }
 </style>

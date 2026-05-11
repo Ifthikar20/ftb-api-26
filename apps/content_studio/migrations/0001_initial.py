@@ -13,7 +13,6 @@ class Migration(migrations.Migration):
         ("websites", "0001_initial"),
         ("prompt_library", "0001_initial"),
         ("brand_vault", "0001_initial"),
-        ("claim_verifier", "0001_initial"),
     ]
 
     operations = [
@@ -60,11 +59,6 @@ class Migration(migrations.Migration):
                 )),
                 ("grounded_facts", models.ManyToManyField(
                     blank=True, related_name="briefs", to="brand_vault.brandfact",
-                )),
-                ("target_claim_mismatch", models.ForeignKey(
-                    blank=True, null=True,
-                    on_delete=django.db.models.deletion.SET_NULL,
-                    related_name="briefs", to="claim_verifier.claimmismatch",
                 )),
                 ("target_prompt", models.ForeignKey(
                     blank=True, null=True,
