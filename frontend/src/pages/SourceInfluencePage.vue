@@ -12,57 +12,40 @@
       </div>
     </div>
 
-    <!-- ── 1. Environment picker ─────────────────────────────────── -->
-    <section class="mt-card">
-      <div class="mt-card-head">
-        <div>
-          <div class="mt-card-eyebrow">Step 1</div>
-          <h2 class="mt-card-h">Choose an environment</h2>
-          <p class="mt-card-sub">
-            An environment is a saved bundle of prompts you can re-run on a
-            schedule. Edits below are saved back to the environment.
-          </p>
+    <!-- ── 1. Environment picker (compact strip) ────────────────── -->
+    <section class="mt-card mt-env-card">
+      <div class="mt-env-line">
+        <span class="mt-env-step">Step 1 · Environment</span>
+
+        <div class="mt-env-strip">
+          <button
+            type="button"
+            class="mt-env-chip"
+            :class="{ 'is-on': !selectedEnvId }"
+            @click="clearActiveEnv"
+          >Ad-hoc</button>
+          <button
+            v-for="env in envs"
+            :key="env.id"
+            type="button"
+            class="mt-env-chip"
+            :class="{ 'is-on': selectedEnvId === env.id }"
+            @click="applyEnvSelection(env)"
+            :title="`${env.prompt_count ?? (env.prompt_ids || []).length} prompts`"
+          >
+            {{ env.name }}
+            <span class="mt-env-chip-count">
+              {{ env.prompt_count ?? (env.prompt_ids || []).length }}
+            </span>
+          </button>
+          <span v-if="loadingEnvs" class="mt-muted">Loading…</span>
         </div>
-        <button class="mt-btn-soft" @click="promptCreateEnv">+ New environment</button>
-      </div>
 
-      <div class="mt-env-grid">
-        <label class="mt-env-tile" :class="{ 'is-on': !selectedEnvId }">
-          <input type="radio" :checked="!selectedEnvId" @change="clearActiveEnv" />
-          <div class="mt-env-tile-body">
-            <div class="mt-env-tile-name">Ad-hoc run</div>
-            <div class="mt-env-tile-sub">No environment — prompts won't be saved.</div>
-          </div>
-        </label>
-        <label
-          v-for="env in envs"
-          :key="env.id"
-          class="mt-env-tile"
-          :class="{ 'is-on': selectedEnvId === env.id }"
-        >
-          <input
-            type="radio"
-            :checked="selectedEnvId === env.id"
-            @change="applyEnvSelection(env)"
-          />
-          <div class="mt-env-tile-body">
-            <div class="mt-env-tile-name">
-              {{ env.name }}
-              <span class="mt-env-tile-count">{{ env.prompt_count ?? (env.prompt_ids || []).length }}</span>
-            </div>
-            <div class="mt-env-tile-sub">
-              {{ (env.prompt_count ?? (env.prompt_ids || []).length) }} prompts ·
-              tap to load
-            </div>
-          </div>
-        </label>
-        <div v-if="loadingEnvs" class="mt-muted mt-env-loading">Loading environments…</div>
-      </div>
-
-      <div v-if="activeEnv" class="mt-env-toolbar">
-        <button class="mt-link" @click="renameActiveEnv">Rename</button>
-        <span class="mt-dot-sep"></span>
-        <button class="mt-link is-danger" @click="deleteActiveEnv">Delete environment</button>
+        <div class="mt-env-actions">
+          <button v-if="activeEnv" class="mt-link" @click="renameActiveEnv">Rename</button>
+          <button v-if="activeEnv" class="mt-link is-danger" @click="deleteActiveEnv">Delete</button>
+          <button class="mt-btn-soft mt-btn-sm" @click="promptCreateEnv">+ New</button>
+        </div>
       </div>
     </section>
 
@@ -239,6 +222,7 @@
           <div class="mt-run-sub">
             {{ promptCount }} prompt{{ promptCount === 1 ? '' : 's' }}
             × {{ selectedVariantIds.length }} model{{ selectedVariantIds.length === 1 ? '' : 's' }}
+            · ~{{ etaSeconds }}s
           </div>
         </div>
       </div>
@@ -254,6 +238,20 @@
         <span v-else>Run audit</span>
       </button>
     </section>
+
+    <div class="mt-runmode">
+      <span class="mt-runmode-tag">Run mode</span>
+      <span class="mt-runmode-text">
+        <strong>Sequential discovery probe.</strong>
+        Each prompt is sent to each selected model one at a time —
+        prompt&nbsp;1 → model&nbsp;A → model&nbsp;B → …, then prompt&nbsp;2, and
+        so on. Results stream in live so you can read them as the run
+        progresses. No retries; failed calls show up as
+        <em>failed</em> cells. The brand-mention check is a
+        case-insensitive substring scan against your business name and
+        aliases on each model's response.
+      </span>
+    </div>
 
     <div v-if="errorMsg" class="mt-error">{{ errorMsg }}</div>
 
@@ -861,6 +859,9 @@ async function loadModelVariants() {
 
 const totalQueries = computed(() => promptCount.value * (selectedVariantIds.value.length || 0))
 const canRun = computed(() => totalQueries.value > 0)
+// Rough sequential ETA: ~3s per upstream call (Claude/GPT typical p50).
+// Surfaced near the Run button so users can sanity-check long runs.
+const etaSeconds = computed(() => Math.max(1, totalQueries.value * 3))
 
 // ── Run + poll ───────────────────────────────────────────────────
 const running = ref(false)
@@ -1185,47 +1186,53 @@ onBeforeUnmount(() => document.removeEventListener('click', _closeDropdownOnDocC
   border-radius: 12px;
 }
 
-/* ── Env tiles */
-.mt-env-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 12px;
+/* ── Env: compact chip strip */
+.mt-env-card { padding: 14px 20px; }
+.mt-env-line {
+  display: flex; align-items: center; gap: 14px;
+  flex-wrap: wrap;
 }
-.mt-env-tile {
-  position: relative;
-  display: flex; gap: 12px;
-  padding: 16px 18px;
+.mt-env-step {
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.10em;
+  text-transform: uppercase; color: #94a3b8;
+  flex: none;
+}
+.mt-env-strip {
+  display: flex; align-items: center; gap: 6px;
+  flex: 1; min-width: 0;
+  overflow-x: auto;
+  padding: 2px 0;
+}
+.mt-env-strip::-webkit-scrollbar { height: 4px; }
+.mt-env-strip::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 4px; }
+.mt-env-chip {
+  flex: none;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 12px;
   background: #fff;
-  border: 1px solid rgba(15, 23, 42, 0.10);
-  border-radius: 12px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 9999px;
+  font: inherit; font-size: 13px; font-weight: 500; color: #0f172a;
   cursor: pointer;
-  transition: border-color .15s ease, box-shadow .15s ease;
+  white-space: nowrap;
+  transition: border-color .12s ease, background .12s ease;
 }
-.mt-env-tile input { position: absolute; opacity: 0; pointer-events: none; }
-.mt-env-tile:hover { border-color: #0f172a; }
-.mt-env-tile.is-on {
-  border-color: #0f172a; border-width: 2px; padding: 15px 17px;
-  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.06);
+.mt-env-chip:hover { border-color: #0f172a; }
+.mt-env-chip.is-on {
+  background: #0f172a; color: #fff; border-color: #0f172a;
 }
-.mt-env-tile-body { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1; }
-.mt-env-tile-name {
-  font-size: 15px; font-weight: 600; color: #0f172a;
-  display: flex; align-items: center; gap: 8px;
-}
-.mt-env-tile-count {
-  font-size: 11px; font-weight: 600;
-  padding: 2px 8px;
-  background: #f1f5f9; color: #475569;
+.mt-env-chip-count {
+  font-size: 11px; font-weight: 700;
+  padding: 1px 7px;
+  background: rgba(15, 23, 42, 0.08); color: #475569;
   border-radius: 9999px;
 }
-.mt-env-tile-sub { font-size: 12.5px; color: #64748b; }
-.mt-env-loading { grid-column: 1 / -1; }
-
-.mt-env-toolbar {
-  display: flex; align-items: center;
-  margin-top: 16px; padding-top: 16px;
-  border-top: 1px solid rgba(15, 23, 42, 0.06);
+.mt-env-chip.is-on .mt-env-chip-count { background: rgba(255, 255, 255, 0.18); color: #fff; }
+.mt-env-actions {
+  display: flex; align-items: center; gap: 10px;
+  flex: none;
 }
+.mt-btn-sm { padding: 6px 12px; font-size: 12.5px; }
 
 /* ── Prompts list */
 .mt-prompts {
@@ -1449,6 +1456,27 @@ onBeforeUnmount(() => document.removeEventListener('click', _closeDropdownOnDocC
   margin-right: 8px; vertical-align: -1px;
 }
 @keyframes mt-spin { to { transform: rotate(360deg); } }
+
+.mt-runmode {
+  display: flex; gap: 12px; align-items: flex-start;
+  margin: -8px 0 20px;
+  padding: 12px 16px;
+  background: #fafafb;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  border-radius: 12px;
+  font-size: 13px; color: #475569; line-height: 1.55;
+}
+.mt-runmode-tag {
+  flex: none;
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.10em;
+  text-transform: uppercase; color: #94a3b8;
+  padding: 4px 10px;
+  background: #fff;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 9999px;
+}
+.mt-runmode-text strong { color: #0f172a; font-weight: 600; }
+.mt-runmode-text em { color: #b91c1c; font-style: normal; font-weight: 600; }
 
 .mt-error {
   margin: 0 0 20px;
