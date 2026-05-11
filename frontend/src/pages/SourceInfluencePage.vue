@@ -3,7 +3,13 @@
     <!-- ── Hero ──────────────────────────────────────────────────── -->
     <div class="page-header">
       <div>
-        <h1 class="page-title">Model Test</h1>
+        <div class="mt-title-line">
+          <h1 class="page-title">Model Test</h1>
+          <span class="mt-audit-type" :title="auditTypeBlurb">
+            <span class="mt-audit-type-dot"></span>
+            {{ auditTypeLabel }}
+          </span>
+        </div>
         <p class="page-subtitle">
           Pick an environment, edit the prompts, choose the models, and run.
           See whether <strong>{{ brandLabel }}</strong> surfaces — and compare
@@ -21,7 +27,13 @@
             {{ statusLabel }}
           </span>
           <div class="mt-status-headline">
-            <div class="mt-status-headline-main">{{ statusHeadline }}</div>
+            <div class="mt-status-headline-main">
+              {{ statusHeadline }}
+              <span class="mt-audit-type is-inline" :title="auditTypeBlurb">
+                <span class="mt-audit-type-dot"></span>
+                {{ auditTypeLabel }}
+              </span>
+            </div>
             <div class="mt-status-headline-sub">{{ statusSub }}</div>
           </div>
           <div class="mt-status-meta">
@@ -568,6 +580,18 @@ const brandLabel = computed(() => {
   const w = appStore.activeWebsite
   return (w?.business_name || w?.name || 'your brand').trim()
 })
+
+// Audit type — surfaced as a chip in the page header + the status
+// panel so users always see what kind of probe this is. "Discovery"
+// is the only mode today; keeping it computed leaves room for future
+// modes (e.g. "Ranking", "Competitor mapping") without template edits.
+const auditTypeLabel = 'Discovery probe'
+const auditTypeBlurb = (
+  'Sequential discovery probe — every prompt is sent to every selected '
+  + 'model one at a time. A case-insensitive substring match against your '
+  + 'brand name and aliases determines whether each response counts as a '
+  + '"mention". No retries; failed calls are recorded but not re-tried.'
+)
 
 // ── State: prompts ────────────────────────────────────────────────
 const savedPrompts = ref([])     // [{ id, text, style }]
@@ -1376,6 +1400,26 @@ onBeforeUnmount(() => document.removeEventListener('click', _closeDropdownOnDocC
 <style scoped>
 .mt-page { color: var(--text-primary, #0f172a); }
 .mt-page .page-subtitle strong { color: var(--text-primary, #0f172a); font-weight: 600; }
+
+/* Audit-type chip — page title + status headline. */
+.mt-title-line { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.mt-audit-type {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 11px; font-weight: 700; letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  background: #f5f3ff;
+  color: #5b21b6;
+  border: 1px solid #ddd6fe;
+  border-radius: 9999px;
+  white-space: nowrap;
+  cursor: help;
+}
+.mt-audit-type.is-inline { margin-left: 8px; vertical-align: 2px; }
+.mt-audit-type-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: #7c3aed;
+}
 
 /* ── Card surface (Airbnb-style: white, soft shadow, generous radius) */
 .mt-card {
