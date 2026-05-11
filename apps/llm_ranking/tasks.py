@@ -297,9 +297,13 @@ def run_model_test(self, *, run_id: str, website_id: str, user_id: int | None,
     )
     from apps.websites.models import Website
 
+    import time as _time
+    started_monotonic = _time.monotonic()
+
     state = _model_test_state_get(run_id) or {}
     state.update({
         "status": "running",
+        "website_id": str(website_id),
         "prompts": prompts,
         "providers": providers,
         "brand_terms": brand_terms,
@@ -310,6 +314,7 @@ def run_model_test(self, *, run_id: str, website_id: str, user_id: int | None,
         "prompt_rows": [],
         "summary": None,
         "error": None,
+        "user_id": user_id,
     })
     _model_test_state_set(run_id, state)
 
@@ -471,6 +476,50 @@ def run_model_test(self, *, run_id: str, website_id: str, user_id: int | None,
         state["status"] = "failed"
         state["error"] = str(exc)[:500]
         _model_test_state_set(run_id, state)
+    finally:
+        # Persist the final state to the database. This is what lets a
+        # user reopen a run after the 1h Redis TTL has expired. Wrapped
+        # in a broad try so a DB hiccup never tanks the in-memory state
+        # the FE is still polling.
+        try:
+            _persist_model_test_run(
+                run_id=run_id,
+                website_id=website_id,
+                user_id=user_id,
+                state=state,
+                duration_seconds=_time.monotonic() - started_monotonic,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("model_test %s persist failed: %s", run_id, exc)
+
+
+def _persist_model_test_run(*, run_id, website_id, user_id, state, duration_seconds):
+    """Write/update the durable ModelTestRun row mirroring `state`."""
+    from django.utils import timezone
+    from apps.llm_ranking.models import ModelTestRun
+
+    defaults = dict(
+        website_id=website_id,
+        created_by_id=user_id,
+        status=state.get("status") or "complete",
+        prompts=state.get("prompts") or [],
+        providers=state.get("providers") or [],
+        brand_terms=state.get("brand_terms") or [],
+        prompt_rows=state.get("prompt_rows") or [],
+        summary=state.get("summary") or {},
+        analysis=state.get("analysis"),
+        analysis_status=state.get("analysis_status") or "",
+        analysis_error=state.get("analysis_error") or "",
+        google_grounding=state.get("google_grounding"),
+        grounding_status=state.get("grounding_status") or "",
+        grounding_error=state.get("grounding_error") or "",
+        total_calls=int(state.get("total") or 0),
+        completed_calls=int(state.get("completed") or 0),
+        error_message=state.get("error") or "",
+        completed_at=timezone.now(),
+        duration_seconds=round(duration_seconds, 3),
+    )
+    ModelTestRun.objects.update_or_create(id=run_id, defaults=defaults)
 
 
 # ── Model Test post-processing helpers ─────────────────────────────

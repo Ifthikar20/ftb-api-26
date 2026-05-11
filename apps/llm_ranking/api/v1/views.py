@@ -1358,11 +1358,12 @@ class ModelTestRunView(TenantScopedAPIView):
 
     MAX_PROMPTS = 25
     MAX_VARIANTS = 8
+    MAX_PROMPT_CHARS = 2000
 
     def post(self, request, website_id):
         import uuid
         from apps.llm_ranking.providers import (
-            PROVIDERS, default_variant_for, parse_variant,
+            PROVIDERS, default_variant_for, list_model_variants, parse_variant,
         )
         from apps.llm_ranking.tasks import (
             MODEL_TEST_TTL_SECONDS,
@@ -1378,36 +1379,92 @@ class ModelTestRunView(TenantScopedAPIView):
         providers_in = request.data.get("providers", []) or []
 
         if not isinstance(prompts, list) or not isinstance(models_in, list) or not isinstance(providers_in, list):
-            return Response({"error": "prompts, models, and providers must be arrays."},
-                            status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"error": "prompts, models, and providers must be arrays.",
+                 "code": "invalid_payload"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
-        prompts = [str(p).strip() for p in prompts if str(p).strip()]
+        # Normalise prompts. Reject empties, oversize, and runs that
+        # exceed the per-call cap. The cap exists because models reject
+        # very long inputs and our per-prompt cell rendering breaks
+        # under multi-page responses.
+        normalised: list[str] = []
+        for raw in prompts:
+            s = str(raw).strip()
+            if not s:
+                continue
+            if len(s) > self.MAX_PROMPT_CHARS:
+                return Response(
+                    {"error": f"Each prompt must be {self.MAX_PROMPT_CHARS} characters or fewer.",
+                     "code": "prompt_too_long",
+                     "max_chars": self.MAX_PROMPT_CHARS},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            normalised.append(s)
+        prompts = normalised
         if not prompts:
-            return Response({"error": "At least one prompt is required."},
-                            status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"error": "At least one prompt is required.",
+                 "code": "no_prompts"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         if len(prompts) > self.MAX_PROMPTS:
-            return Response({"error": f"Max {self.MAX_PROMPTS} prompts per run."},
-                            status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"error": f"Max {self.MAX_PROMPTS} prompts per run.",
+                 "code": "too_many_prompts",
+                 "max_prompts": self.MAX_PROMPTS,
+                 "received": len(prompts)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Pre-flight: at least one provider must have an API key. Without
+        # this guard a user with zero keys would queue a run, see every
+        # cell fail, and have no idea why. Surface the gap clearly.
+        catalogue = list_model_variants()
+        configured_keys = {v["provider"] for v in catalogue if v["configured"]}
+        if not configured_keys:
+            return Response(
+                {"error": "No LLM providers are configured. Add at least one "
+                          "provider API key (Anthropic, OpenAI, Gemini, or "
+                          "Perplexity) in Settings before running a Model Test.",
+                 "code": "no_providers_configured"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         # Build the variant list. If the FE supplied `models`, validate
         # each as `"<provider>:<model_id>"`. Otherwise expand legacy
         # provider keys to their default variants so old clients keep
         # working without code changes.
+        valid_variant_ids = {v["id"] for v in catalogue}
         variants: list[str] = []
+        unknown: list[str] = []
+        unconfigured: list[str] = []
         if models_in:
             seen: set[str] = set()
             for raw in models_in:
                 vid = str(raw).strip()
                 if not vid or parse_variant(vid) is None:
+                    unknown.append(vid)
                     continue
                 if vid in seen:
                     continue
                 seen.add(vid)
+                if vid not in valid_variant_ids:
+                    unknown.append(vid)
+                    continue
+                pkey, _ = parse_variant(vid)
+                if pkey not in configured_keys:
+                    unconfigured.append(vid)
+                    continue
                 variants.append(vid)
         else:
             for raw in (providers_in or ["claude"]):
                 pkey = str(raw).strip().lower()
                 if pkey not in PROVIDERS:
+                    continue
+                if pkey not in configured_keys:
+                    unconfigured.append(pkey)
                     continue
                 vid = default_variant_for(pkey)
                 if vid and vid not in variants:
@@ -1415,8 +1472,19 @@ class ModelTestRunView(TenantScopedAPIView):
 
         variants = variants[: self.MAX_VARIANTS]
         if not variants:
-            return Response({"error": "Pick at least one supported model."},
-                            status=status.HTTP_400_BAD_REQUEST)
+            details = {}
+            if unknown:
+                details["unknown_models"] = unknown
+            if unconfigured:
+                details["unconfigured_models"] = unconfigured
+            return Response(
+                {"error": "Pick at least one configured model. The selection "
+                          "either references unknown variant ids or providers "
+                          "without an API key.",
+                 "code": "no_runnable_models",
+                 **details},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         # `providers` in the run state is the variant list — the FE keys
         # results by these strings. Keep the name for backward compat
@@ -1471,16 +1539,34 @@ class ModelTestRunView(TenantScopedAPIView):
 
 
 class ModelTestStatusView(TenantScopedAPIView):
-    """GET — return current state of a Model Test run for polling."""
+    """GET — return current state of a Model Test run for polling.
+
+    Reads from Redis first (the streaming source of truth while the run
+    is in flight). Falls back to the persisted ModelTestRun row when
+    Redis has expired so users can reopen historical runs.
+    """
 
     def get(self, request, website_id, run_id):
+        from apps.llm_ranking.models import ModelTestRun
         from apps.llm_ranking.tasks import _model_test_state_get
         self.get_website(website_id)
+
         state = _model_test_state_get(run_id)
-        if not state:
-            return Response({"error": "Run not found or expired."},
-                            status=status.HTTP_404_NOT_FOUND)
-        if state.get("website_id") and str(state["website_id"]) != str(website_id):
-            return Response({"error": "Not found."},
-                            status=status.HTTP_404_NOT_FOUND)
-        return Response(state)
+        if state:
+            if state.get("website_id") and str(state["website_id"]) != str(website_id):
+                return Response({"error": "Not found."},
+                                status=status.HTTP_404_NOT_FOUND)
+            return Response(state)
+
+        # Redis miss — try the durable archive.
+        run = (
+            ModelTestRun.objects
+            .filter(id=run_id, website_id=website_id)
+            .first()
+        )
+        if run is None:
+            return Response(
+                {"error": "Run not found or expired.", "code": "run_not_found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        return Response(run.to_state_dict())
