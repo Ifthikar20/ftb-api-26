@@ -1318,24 +1318,52 @@ class LLMRankingScheduleRunNowView(TenantScopedAPIView):
         )
 
 
+class ModelVariantsView(TenantScopedAPIView):
+    """GET — list every selectable model variant grouped by provider.
+
+    Each variant is a `"<provider>:<model_id>"` choice the Model Test
+    picker can send back as a member of `models`. The response also
+    flags whether the underlying provider's API key is configured, so
+    the UI can grey-out unavailable variants without a second call.
+    """
+
+    def get(self, request, website_id):
+        self.get_website(website_id)
+        from apps.llm_ranking.providers import list_model_variants
+        variants = list_model_variants()
+        return Response({
+            "variants": variants,
+            "configured_count": sum(1 for v in variants if v["configured"]),
+            "total": len(variants),
+        })
+
+
 class ModelTestRunView(TenantScopedAPIView):
     """
     Start a Model Test probe in the background.
 
     POST queues a Celery worker (`run_model_test`) that fires every
-    (prompt, provider) pair and writes per-step progress into Redis.
-    Returns a `run_id` immediately so the UI can poll
+    (prompt, model variant) pair and writes per-step progress into
+    Redis. Returns a `run_id` immediately so the UI can poll
     `ModelTestStatusView` and render results as they land.
     No LLMRankingAudit row is created — this is the lightweight
     'did the model find me' probe.
+
+    Accepts either:
+      - `models`: list of `"<provider>:<model_id>"` variant strings
+        (preferred — lets the picker compare e.g. Sonnet 4 vs 4.5), or
+      - `providers`: legacy list of provider keys; each is expanded to
+        its default variant for backward compatibility.
     """
 
     MAX_PROMPTS = 25
-    MAX_PROVIDERS = 4
+    MAX_VARIANTS = 8
 
     def post(self, request, website_id):
         import uuid
-        from apps.llm_ranking.providers import PROVIDERS
+        from apps.llm_ranking.providers import (
+            PROVIDERS, default_variant_for, parse_variant,
+        )
         from apps.llm_ranking.tasks import (
             MODEL_TEST_TTL_SECONDS,
             MODEL_TEST_CACHE_KEY,
@@ -1346,9 +1374,11 @@ class ModelTestRunView(TenantScopedAPIView):
         website = self.get_website(website_id)
 
         prompts = request.data.get("prompts", []) or []
-        providers = request.data.get("providers", []) or ["claude"]
-        if not isinstance(prompts, list) or not isinstance(providers, list):
-            return Response({"error": "prompts and providers must be arrays."},
+        models_in = request.data.get("models", []) or []
+        providers_in = request.data.get("providers", []) or []
+
+        if not isinstance(prompts, list) or not isinstance(models_in, list) or not isinstance(providers_in, list):
+            return Response({"error": "prompts, models, and providers must be arrays."},
                             status=status.HTTP_400_BAD_REQUEST)
 
         prompts = [str(p).strip() for p in prompts if str(p).strip()]
@@ -1359,11 +1389,39 @@ class ModelTestRunView(TenantScopedAPIView):
             return Response({"error": f"Max {self.MAX_PROMPTS} prompts per run."},
                             status=status.HTTP_400_BAD_REQUEST)
 
-        providers = [str(p).strip().lower() for p in providers if str(p).strip()]
-        providers = [p for p in providers if p in PROVIDERS][: self.MAX_PROVIDERS]
-        if not providers:
-            return Response({"error": "Pick at least one supported provider."},
+        # Build the variant list. If the FE supplied `models`, validate
+        # each as `"<provider>:<model_id>"`. Otherwise expand legacy
+        # provider keys to their default variants so old clients keep
+        # working without code changes.
+        variants: list[str] = []
+        if models_in:
+            seen: set[str] = set()
+            for raw in models_in:
+                vid = str(raw).strip()
+                if not vid or parse_variant(vid) is None:
+                    continue
+                if vid in seen:
+                    continue
+                seen.add(vid)
+                variants.append(vid)
+        else:
+            for raw in (providers_in or ["claude"]):
+                pkey = str(raw).strip().lower()
+                if pkey not in PROVIDERS:
+                    continue
+                vid = default_variant_for(pkey)
+                if vid and vid not in variants:
+                    variants.append(vid)
+
+        variants = variants[: self.MAX_VARIANTS]
+        if not variants:
+            return Response({"error": "Pick at least one supported model."},
                             status=status.HTTP_400_BAD_REQUEST)
+
+        # `providers` in the run state is the variant list — the FE keys
+        # results by these strings. Keep the name for backward compat
+        # with the existing status payload shape.
+        providers = variants
 
         brand_terms: list[str] = []
         for term in [

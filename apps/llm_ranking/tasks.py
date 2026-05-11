@@ -292,7 +292,9 @@ def run_model_test(self, *, run_id: str, website_id: str, user_id: int | None,
     results as they arrive.
     """
     from django.contrib.auth import get_user_model
-    from apps.llm_ranking.providers import get_provider
+    from apps.llm_ranking.providers import (
+        get_provider, get_provider_for_variant, parse_variant,
+    )
     from apps.websites.models import Website
 
     state = _model_test_state_get(run_id) or {}
@@ -332,7 +334,12 @@ def run_model_test(self, *, run_id: str, website_id: str, user_id: int | None,
                 state["current_provider"] = key
                 _model_test_state_set(run_id, state)
 
-                provider = get_provider(key)
+                # `key` is a variant id ("<provider>:<model_id>") for new
+                # clients, or a plain provider key for legacy callers.
+                if parse_variant(key) is not None:
+                    provider = get_provider_for_variant(key)
+                else:
+                    provider = get_provider(key)
                 if provider is None or not provider.is_configured():
                     row["responses"].append({
                         "provider": key, "succeeded": False,

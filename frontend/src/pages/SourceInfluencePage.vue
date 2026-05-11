@@ -155,33 +155,78 @@
           <div class="mt-card-eyebrow">Step 3</div>
           <h2 class="mt-card-h">Choose models to compare</h2>
           <p class="mt-card-sub">
-            Each model will answer every prompt above. Disabled models need an
-            API key configured by your admin.
+            Pick one or more variants from each provider — e.g. Sonnet 4
+            vs Sonnet 4.5. Each variant becomes its own column in the
+            results. Providers without an API key are greyed out.
           </p>
+        </div>
+        <div class="mt-card-head-actions">
+          <span class="mt-pickcount">
+            {{ selectedVariantIds.length }} selected
+          </span>
         </div>
       </div>
 
-      <div class="mt-models">
-        <label
-          v-for="opt in providerOptions"
-          :key="opt.key"
-          class="mt-model-chip"
-          :class="{
-            'is-on': selectedProviders.includes(opt.key) && opt.available,
-            'is-off': !opt.available,
-          }"
+      <div class="mt-providers">
+        <div
+          v-for="prov in providerRows"
+          :key="prov.key"
+          class="mt-provider-row"
+          :class="{ 'is-off': !prov.configured }"
         >
-          <input
-            type="checkbox"
-            :value="opt.key"
-            :checked="selectedProviders.includes(opt.key)"
-            :disabled="!opt.available"
-            @change="toggleProvider(opt.key)"
-          />
-          <span class="mt-model-dot" :class="'is-' + opt.key"></span>
-          <span class="mt-model-name">{{ opt.label }}</span>
-          <span v-if="!opt.available" class="mt-model-soon">needs API key</span>
-        </label>
+          <div class="mt-provider-side">
+            <span class="mt-model-dot" :class="'is-' + prov.key"></span>
+            <span class="mt-provider-name">{{ prov.label }}</span>
+            <span v-if="!prov.configured" class="mt-model-soon">needs API key</span>
+          </div>
+
+          <div class="mt-variant-dd" @click.stop>
+            <button
+              type="button"
+              class="mt-variant-btn"
+              :disabled="!prov.configured"
+              @click="toggleDropdown(prov.key)"
+            >
+              <span v-if="!selectedForProvider(prov.key).length" class="mt-variant-btn-empty">
+                Select models…
+              </span>
+              <span v-else class="mt-variant-btn-list">
+                <span
+                  v-for="v in selectedForProvider(prov.key)"
+                  :key="v.id"
+                  class="mt-variant-pill"
+                >
+                  {{ v.label }}
+                  <span class="mt-variant-pill-x" @click.stop="toggleVariant(v.id)">×</span>
+                </span>
+              </span>
+              <svg class="mt-variant-caret" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M3 4l3 4 3-4" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+
+            <div v-if="dropdownOpen === prov.key" class="mt-variant-menu">
+              <div class="mt-variant-menu-h">{{ prov.label }} models</div>
+              <button
+                v-for="v in prov.variants"
+                :key="v.id"
+                type="button"
+                class="mt-variant-menu-item"
+                :class="{ 'is-on': selectedVariantIds.includes(v.id) }"
+                @click="toggleVariant(v.id)"
+              >
+                <span class="mt-variant-check">
+                  <svg v-if="selectedVariantIds.includes(v.id)" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M2 6l3 3 5-6" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </span>
+                <span class="mt-variant-menu-label">{{ v.label }}</span>
+                <span v-if="v.is_default" class="mt-variant-default">default</span>
+                <span class="mt-variant-menu-id">{{ v.model_id }}</span>
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -193,7 +238,7 @@
           <div class="mt-run-label">total queries</div>
           <div class="mt-run-sub">
             {{ promptCount }} prompt{{ promptCount === 1 ? '' : 's' }}
-            × {{ selectedProviders.length }} model{{ selectedProviders.length === 1 ? '' : 's' }}
+            × {{ selectedVariantIds.length }} model{{ selectedVariantIds.length === 1 ? '' : 's' }}
           </div>
         </div>
       </div>
@@ -243,11 +288,11 @@
             v-for="m in perModelStats"
             :key="m.provider"
             class="mt-scorecard"
-            :class="'is-' + m.provider"
+            :class="'is-' + providerKeyOf(m.provider)"
           >
             <div class="mt-scorecard-head">
-              <span class="mt-model-dot" :class="'is-' + m.provider"></span>
-              <span class="mt-scorecard-name">{{ providerLabel(m.provider) }}</span>
+              <span class="mt-model-dot" :class="'is-' + providerKeyOf(m.provider)"></span>
+              <span class="mt-scorecard-name">{{ variantLabel(m.provider) }}</span>
             </div>
             <div class="mt-scorecard-big">{{ m.discovery_rate }}%</div>
             <div class="mt-scorecard-cap">discovery</div>
@@ -297,8 +342,8 @@
                   :key="prov"
                   class="mt-pivot-prov-h"
                 >
-                  <span class="mt-model-dot" :class="'is-' + prov"></span>
-                  {{ providerLabel(prov) }}
+                  <span class="mt-model-dot" :class="'is-' + providerKeyOf(prov)"></span>
+                  {{ variantLabel(prov) }}
                 </th>
                 <th class="mt-pivot-agg-h">Agreement</th>
               </tr>
@@ -716,49 +761,105 @@ async function removeSelected(uid) {
   }
 }
 
-// ── Models ───────────────────────────────────────────────────────
-const providerOptions = ref([
-  { key: 'claude',     label: 'Claude',     available: true },
-  { key: 'gpt4',       label: 'GPT-4',      available: true },
-  { key: 'gemini',     label: 'Gemini',     available: true },
-  { key: 'perplexity', label: 'Perplexity', available: true },
-])
-const selectedProviders = ref(['claude'])
+// ── Models (variants per provider) ───────────────────────────────
+// Each entry: { id, provider, model_id, label, is_default, configured }
+const modelVariants = ref([])
+const selectedVariantIds = ref([])
+const dropdownOpen = ref(null)
 
-function toggleProvider(key) {
-  const opt = providerOptions.value.find((o) => o.key === key)
-  if (!opt?.available) return
-  if (selectedProviders.value.includes(key)) {
-    selectedProviders.value = selectedProviders.value.filter((k) => k !== key)
+const PROVIDER_LABELS = {
+  claude: 'Claude (Anthropic)',
+  gpt4: 'GPT-4 (OpenAI)',
+  gemini: 'Gemini (Google)',
+  perplexity: 'Perplexity',
+}
+
+// Grouped rows for the picker. Each provider gets one row with its
+// available variants and a `configured` flag.
+const providerRows = computed(() => {
+  const groups = new Map()
+  for (const v of modelVariants.value) {
+    if (!groups.has(v.provider)) {
+      groups.set(v.provider, {
+        key: v.provider,
+        label: PROVIDER_LABELS[v.provider] || v.provider,
+        configured: !!v.configured,
+        variants: [],
+      })
+    }
+    groups.get(v.provider).variants.push(v)
+  }
+  return Array.from(groups.values())
+})
+
+const variantsById = computed(() => {
+  const m = new Map()
+  for (const v of modelVariants.value) m.set(v.id, v)
+  return m
+})
+
+function selectedForProvider(providerKey) {
+  return selectedVariantIds.value
+    .map((id) => variantsById.value.get(id))
+    .filter((v) => v && v.provider === providerKey)
+}
+
+function toggleVariant(id) {
+  const v = variantsById.value.get(id)
+  if (!v || !v.configured) return
+  if (selectedVariantIds.value.includes(id)) {
+    selectedVariantIds.value = selectedVariantIds.value.filter((x) => x !== id)
   } else {
-    selectedProviders.value = [...selectedProviders.value, key]
+    selectedVariantIds.value = [...selectedVariantIds.value, id]
   }
 }
 
-function providerLabel(key) {
-  return (providerOptions.value.find((o) => o.key === key)?.label) || key
+function toggleDropdown(providerKey) {
+  dropdownOpen.value = dropdownOpen.value === providerKey ? null : providerKey
 }
 
-async function loadProviderHealth() {
+// Lookup helpers used by results. Variant id is the column key.
+function variantLabel(id) {
+  const v = variantsById.value.get(id)
+  if (v) {
+    const provLabel = (PROVIDER_LABELS[v.provider] || v.provider).split(' ')[0]
+    return `${provLabel} ${v.label}`
+  }
+  // Legacy fallback: bare provider key (pre-variant runs).
+  return PROVIDER_LABELS[id] ? PROVIDER_LABELS[id].split(' ')[0] : id
+}
+// Back-compat alias so existing template helpers keep working.
+function providerLabel(id) { return variantLabel(id) }
+
+function providerKeyOf(variantId) {
+  const v = variantsById.value.get(variantId)
+  if (v) return v.provider
+  // Legacy run state used bare provider keys.
+  return variantId
+}
+
+async function loadModelVariants() {
   try {
-    const { data } = await llmRanking.providerHealth(websiteId)
-    const items = (data?.data || data || {}).providers || []
+    const { data } = await llmRanking.modelVariants(websiteId)
+    const items = (data?.data || data || {}).variants || []
     if (!items.length) return
-    providerOptions.value = items.map((p) => ({
-      key: p.key,
-      label: p.name || p.key,
-      available: !!p.configured,
-    }))
-    selectedProviders.value = providerOptions.value
-      .filter((o) => o.available)
-      .map((o) => o.key)
-      .slice(0, 4) || ['claude']
+    modelVariants.value = items
+    // Default selection: every provider's `is_default` variant if its
+    // API key is configured. Falls back to the first configured variant
+    // overall so the page is usable out of the box.
+    const defaults = items.filter((v) => v.is_default && v.configured).map((v) => v.id)
+    if (defaults.length) {
+      selectedVariantIds.value = defaults
+    } else {
+      const first = items.find((v) => v.configured)
+      selectedVariantIds.value = first ? [first.id] : []
+    }
   } catch {
-    // fall back to defaults; backend will still gate on is_configured
+    // No variants endpoint — leave empty; UI shows an empty picker.
   }
 }
 
-const totalQueries = computed(() => promptCount.value * (selectedProviders.value.length || 0))
+const totalQueries = computed(() => promptCount.value * (selectedVariantIds.value.length || 0))
 const canRun = computed(() => totalQueries.value > 0)
 
 // ── Run + poll ───────────────────────────────────────────────────
@@ -822,7 +923,7 @@ async function runProbe() {
   try {
     const { data } = await llmRanking.modelTest(websiteId, {
       prompts: selectedPrompts.value.map((p) => p.text),
-      providers: selectedProviders.value,
+      models: selectedVariantIds.value,
     })
     runId.value = (data?.data || data)?.run_id
     if (!runId.value) throw new Error('No run id returned.')
@@ -845,7 +946,7 @@ const displayRun = computed(() => lastRun.value || liveRun.value)
 const resultsProviders = computed(() => {
   const fromState = displayRun.value?.providers
   if (Array.isArray(fromState) && fromState.length) return fromState
-  return selectedProviders.value
+  return selectedVariantIds.value
 })
 
 const openResponses = ref({}) // `${rowIdx}:${prov}` -> bool
@@ -1000,10 +1101,13 @@ function applyQueryPreselect() {
   }))
 }
 
+function _closeDropdownOnDocClick() { dropdownOpen.value = null }
 onMounted(async () => {
-  await Promise.all([loadSaved(), loadEnvs(), loadProviderHealth()])
+  await Promise.all([loadSaved(), loadEnvs(), loadModelVariants()])
   applyQueryPreselect()
+  document.addEventListener('click', _closeDropdownOnDocClick)
 })
+onBeforeUnmount(() => document.removeEventListener('click', _closeDropdownOnDocClick))
 </script>
 
 <style scoped>
@@ -1197,7 +1301,111 @@ onMounted(async () => {
 }
 .mt-input:focus { outline: none; border-color: #0f172a; }
 
-/* ── Models */
+/* ── Models: provider rows with variant dropdowns */
+.mt-pickcount {
+  font-size: 12px; font-weight: 600; color: #94a3b8;
+  padding: 4px 10px;
+  background: #f1f5f9; border-radius: 9999px;
+}
+.mt-providers { display: flex; flex-direction: column; gap: 10px; }
+.mt-provider-row {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  align-items: center; gap: 16px;
+  padding: 12px 16px;
+  background: #fff;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 12px;
+}
+.mt-provider-row.is-off { background: #f7f7f8; }
+.mt-provider-side { display: flex; align-items: center; gap: 10px; }
+.mt-provider-name { font-size: 14.5px; font-weight: 600; color: #0f172a; }
+
+.mt-variant-dd { position: relative; min-width: 0; }
+.mt-variant-btn {
+  width: 100%;
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px;
+  background: #fff;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 10px;
+  font: inherit; font-size: 13px; color: #0f172a;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color .15s ease;
+}
+.mt-variant-btn:hover:not(:disabled) { border-color: #0f172a; }
+.mt-variant-btn:disabled { background: #f1f5f9; color: #94a3b8; cursor: not-allowed; }
+.mt-variant-btn-empty { color: #94a3b8; flex: 1; }
+.mt-variant-btn-list { flex: 1; display: flex; flex-wrap: wrap; gap: 6px; }
+.mt-variant-caret { color: #94a3b8; flex: none; }
+
+.mt-variant-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; font-weight: 600;
+  padding: 3px 10px;
+  background: #0f172a; color: #fff;
+  border-radius: 9999px;
+}
+.mt-variant-pill-x {
+  cursor: pointer; opacity: 0.7;
+  font-size: 14px; line-height: 1;
+}
+.mt-variant-pill-x:hover { opacity: 1; }
+
+.mt-variant-menu {
+  position: absolute; top: calc(100% + 6px); left: 0; right: 0;
+  z-index: 30;
+  max-height: 320px; overflow-y: auto;
+  padding: 6px;
+  background: #fff;
+  border: 1px solid rgba(15, 23, 42, 0.10);
+  border-radius: 12px;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.14);
+}
+.mt-variant-menu-h {
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.10em;
+  text-transform: uppercase; color: #94a3b8;
+  padding: 8px 10px 6px;
+}
+.mt-variant-menu-item {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 20px 1fr auto;
+  align-items: center; gap: 8px;
+  padding: 9px 10px;
+  background: transparent; border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+  font: inherit; font-size: 13px; text-align: left;
+}
+.mt-variant-menu-item:hover { background: #fafafb; }
+.mt-variant-menu-item.is-on { background: #f1f5f9; }
+.mt-variant-check {
+  width: 18px; height: 18px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1.5px solid rgba(15, 23, 42, 0.18);
+  border-radius: 5px;
+  color: #fff;
+  background: #fff;
+}
+.mt-variant-menu-item.is-on .mt-variant-check { background: #0f172a; border-color: #0f172a; }
+.mt-variant-menu-label { font-weight: 600; color: #0f172a; }
+.mt-variant-menu-id {
+  font-size: 11px; color: #94a3b8; font-variant-numeric: tabular-nums;
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  grid-column: 2 / span 2;
+  margin-top: -2px;
+}
+.mt-variant-default {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  background: #ecfdf5; color: #047857;
+  border-radius: 9999px;
+}
+
+/* legacy chip classes kept in case any reference lingers */
 .mt-models { display: flex; flex-wrap: wrap; gap: 10px; }
 .mt-model-chip {
   display: inline-flex; align-items: center; gap: 10px;
@@ -1207,14 +1415,7 @@ onMounted(async () => {
   border-radius: 9999px;
   cursor: pointer;
   font-size: 14px; font-weight: 500;
-  transition: border-color .15s ease, background .15s ease;
 }
-.mt-model-chip input { position: absolute; opacity: 0; pointer-events: none; }
-.mt-model-chip:hover { border-color: #0f172a; }
-.mt-model-chip.is-on {
-  background: #0f172a; color: #fff; border-color: #0f172a;
-}
-.mt-model-chip.is-off { opacity: 0.55; cursor: not-allowed; background: #f7f7f8; }
 .mt-model-dot {
   width: 10px; height: 10px; border-radius: 50%;
   background: #cbd5e1;

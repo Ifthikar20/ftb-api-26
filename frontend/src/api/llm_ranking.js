@@ -20,6 +20,8 @@ export default {
     usage: (wid, params) => api.get(`/llm-ranking/${wid}/usage/`, { params }),
     // Per-provider configuration / health (only implemented providers returned)
     providerHealth: (wid) => api.get(`/llm-ranking/${wid}/provider-health/`),
+    // Selectable per-provider model variants (Sonnet 4.5, GPT-4o, etc).
+    modelVariants: (wid) => api.get(`/llm-ranking/${wid}/model-variants/`),
     history: (wid, params) => api.get(`/llm-ranking/${wid}/history/`, { params }),
     // Schedule endpoints
     getSchedule: (wid) => api.get(`/llm-ranking/${wid}/schedule/`),

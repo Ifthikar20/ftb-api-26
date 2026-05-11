@@ -16,6 +16,7 @@ urlpatterns = [
     path("<uuid:website_id>/audits/<uuid:audit_id>/providers/<str:provider>/", views.LLMRankingProviderDetailView.as_view(), name="llm-ranking-provider-detail"),
     path("<uuid:website_id>/usage/", views.LLMRankingUsageView.as_view(), name="llm-ranking-usage"),
     path("<uuid:website_id>/provider-health/", views.LLMRankingProviderHealthView.as_view(), name="llm-ranking-provider-health"),
+    path("<uuid:website_id>/model-variants/", views.ModelVariantsView.as_view(), name="llm-ranking-model-variants"),
     path("<uuid:website_id>/history/", views.LLMRankingHistoryView.as_view(), name="llm-ranking-history"),
     path("<uuid:website_id>/schedule/", views.LLMRankingScheduleView.as_view(), name="llm-ranking-schedule"),
     path("<uuid:website_id>/schedule/eta/", views.LLMRankingScheduleETAView.as_view(), name="llm-ranking-schedule-eta"),
