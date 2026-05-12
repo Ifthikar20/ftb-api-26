@@ -74,6 +74,19 @@
         <div v-if="showPostProcessing" class="mt-post-strip">
           <div
             class="mt-post-step"
+            :class="'is-' + (displayRun?.sentiment_status || 'queued')"
+          >
+            <span class="mt-post-icon">
+              <span v-if="(displayRun?.sentiment_status || '') === 'running'" class="mt-spinner is-dark"></span>
+              <svg v-else-if="(displayRun?.sentiment_status || '') === 'complete'" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7l3 3 5-6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <svg v-else-if="(displayRun?.sentiment_status || '') === 'failed'" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l8 8M11 3l-8 8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <span v-else-if="(displayRun?.sentiment_status || '') === 'skipped'" class="mt-post-dash">—</span>
+            </span>
+            <span class="mt-post-label">Sentiment classification</span>
+            <span class="mt-post-sub">{{ sentimentStatusText }}</span>
+          </div>
+          <div
+            class="mt-post-step"
             :class="'is-' + (displayRun?.analysis_status || 'queued')"
           >
             <span class="mt-post-icon">
@@ -221,7 +234,8 @@
                 <th class="mt-pm-h-prompt">Prompt</th>
                 <th class="mt-pm-h-num-cell">Discovery</th>
                 <th class="mt-pm-h-num-cell">Mentions</th>
-                <th class="mt-pm-h-num-cell">Earliest pos</th>
+                <th class="mt-pm-h-num-cell">Prominence</th>
+                <th class="mt-pm-h-num-cell">List rank</th>
                 <th class="mt-pm-h-num-cell">Avg ms</th>
                 <th class="mt-pm-h-best">Best model</th>
               </tr>
@@ -246,7 +260,11 @@
                     </span>
                   </td>
                   <td class="mt-pm-num-cell">{{ m.total_mentions }}</td>
-                  <td class="mt-pm-num-cell">{{ m.first_mention_pos === null ? '—' : m.first_mention_pos }}</td>
+                  <td class="mt-pm-num-cell">{{ m.best_prominence_pct ? m.best_prominence_pct + '%' : '—' }}</td>
+                  <td class="mt-pm-num-cell">
+                    <span v-if="m.best_list_rank">#{{ m.best_list_rank }}<span class="mt-pm-of"> / {{ m.best_list_size }}</span></span>
+                    <span v-else>—</span>
+                  </td>
                   <td class="mt-pm-num-cell">{{ m.avg_latency_ms || '—' }}</td>
                   <td class="mt-pm-best-cell">
                     <span v-if="m.best_model">{{ m.best_model }}</span>
@@ -261,10 +279,13 @@
                         <tr>
                           <th>Model</th>
                           <th>Outcome</th>
+                          <th>Sentiment</th>
                           <th class="mt-pm-num-cell">First mention</th>
+                          <th class="mt-pm-num-cell">Prominence</th>
+                          <th class="mt-pm-num-cell">List rank</th>
                           <th class="mt-pm-num-cell">Mentions</th>
-                          <th class="mt-pm-num-cell">Response chars</th>
-                          <th class="mt-pm-num-cell">Latency</th>
+                          <th class="mt-pm-num-cell">Chars</th>
+                          <th class="mt-pm-num-cell">ms</th>
                           <th>Delta vs best</th>
                         </tr>
                       </thead>
@@ -285,7 +306,18 @@
                               {{ cellLabel(displayRun.prompt_rows[m.index], perf.provider) }}
                             </span>
                           </td>
+                          <td>
+                            <span v-if="perf.sentiment" class="mt-pm-sent" :class="'is-' + perf.sentiment">
+                              {{ sentimentLabel(perf.sentiment) }}
+                            </span>
+                            <span v-else class="mt-pm-best-none">—</span>
+                          </td>
                           <td class="mt-pm-num-cell">{{ perf.first_pos === null ? '—' : perf.first_pos }}</td>
+                          <td class="mt-pm-num-cell">{{ perf.first_pos === null ? '—' : perf.prominence_pct + '%' }}</td>
+                          <td class="mt-pm-num-cell">
+                            <span v-if="perf.list_rank">#{{ perf.list_rank }}<span class="mt-pm-of"> / {{ perf.list_size }}</span></span>
+                            <span v-else>—</span>
+                          </td>
                           <td class="mt-pm-num-cell">{{ perf.mentions }}</td>
                           <td class="mt-pm-num-cell">{{ perf.chars || '—' }}</td>
                           <td class="mt-pm-num-cell">{{ perf.latency || '—' }}</td>
@@ -1270,6 +1302,23 @@ const showPostProcessing = computed(() => {
   const s = displayRun.value?.status
   return s === 'analyzing' || s === 'complete' || s === 'failed'
 })
+const sentimentStatusText = computed(() => {
+  const s = displayRun.value
+  if (!s) return ''
+  if (s.sentiment_status === 'running') return 'Labeling each brand mention as positive / neutral / negative / aside.'
+  if (s.sentiment_status === 'complete') {
+    const rows = s.prompt_rows || []
+    const labeled = rows.reduce(
+      (acc, row) => acc + (row.responses || []).filter((r) => r.sentiment).length,
+      0,
+    )
+    return labeled ? `Done — ${labeled} mention${labeled === 1 ? '' : 's'} classified.` : 'Done — no mentions to classify.'
+  }
+  if (s.sentiment_status === 'skipped') return 'Skipped — no brand mentions or no tooling provider configured.'
+  if (s.sentiment_status === 'failed') return s.sentiment_error || 'Sentiment classifier failed.'
+  return 'Queued.'
+})
+
 const analysisStatusText = computed(() => {
   const s = displayRun.value
   if (!s) return ''
@@ -1416,70 +1465,64 @@ function isRespBodyOpen(promptIdx, provider) {
 function perPromptModelMetrics(promptIdx) {
   const row = displayRun.value?.prompt_rows?.[promptIdx]
   if (!row) return []
-  const terms = (displayRun.value?.brand_terms || [])
-    .map((t) => (t || '').trim().toLowerCase())
-    .filter(Boolean)
   const provs = resultsProviders.value
 
-  // First pass: per-response first_pos and mention counts.
   const perfs = provs.map((prov) => {
     const r = (row.responses || []).find((x) => x.provider === prov)
     if (!r) {
       return {
         provider: prov,
-        first_pos: null, mentions: 0,
-        chars: 0, latency: 0,
-      }
-    }
-    const text = (r.response_text || '').toLowerCase()
-    let first_pos = null
-    let mentions = 0
-    for (const term of terms) {
-      if (!term || !text) continue
-      let from = 0
-      while (true) {
-        const i = text.indexOf(term, from)
-        if (i === -1) break
-        mentions += 1
-        if (first_pos === null || i < first_pos) first_pos = i
-        from = i + term.length
+        first_pos: null, mentions: 0, chars: 0, latency: 0,
+        prominence_pct: 0, list_rank: null, list_size: null,
+        sentiment: null,
       }
     }
     return {
       provider: prov,
-      first_pos,
-      mentions,
-      chars: (r.response_text || '').length,
+      first_pos: r.first_mention_pos,
+      mentions: r.mention_count || 0,
+      chars: r.response_chars || (r.response_text || '').length,
       latency: r.duration_ms ? Math.round(r.duration_ms) : 0,
+      prominence_pct: Math.round((r.prominence || 0) * 100),
+      list_rank: r.list_rank,
+      list_size: r.list_size,
+      sentiment: r.sentiment || null,
     }
   })
 
-  // "Best" position for this prompt = min(first_pos) across all models
-  // that mentioned the brand. The delta column shows each model's
-  // position relative to that best. Models that missed entirely get a
-  // qualitative miss label.
-  const positions = perfs.map((p) => p.first_pos).filter((x) => x !== null)
-  const best = positions.length ? Math.min(...positions) : null
+  // "Best" = whichever hit response had the highest prominence (length-
+  // normalized position). Falls back to lowest raw first_pos to break
+  // ties, then to the first listed model.
+  const hits = perfs.filter((p) => p.first_pos !== null)
+  const bestProm = hits.length ? Math.max(...hits.map((p) => p.prominence_pct)) : null
 
   return perfs.map((p) => {
     let delta_label = ''
     let delta_cls = ''
-    if (best === null) {
+    if (bestProm === null) {
       delta_label = ''
     } else if (p.first_pos === null) {
       delta_label = 'missed'
       delta_cls = 'is-neg'
-    } else if (p.first_pos === best) {
+    } else if (p.prominence_pct === bestProm) {
       delta_label = 'best'
       delta_cls = 'is-best'
     } else {
-      const d = p.first_pos - best
-      delta_label = `+${d} chars later`
+      const d = bestProm - p.prominence_pct
+      delta_label = `−${d}pp prominence`
       delta_cls = 'is-pos'
     }
     return { ...p, delta_label, delta_cls }
   })
 }
+
+const SENTIMENT_LABELS = {
+  positive: 'Positive',
+  neutral: 'Neutral',
+  negative: 'Negative',
+  non_recommendation: 'Aside',
+}
+function sentimentLabel(s) { return SENTIMENT_LABELS[s] || '' }
 function togglePromptRow(idx) {
   promptOpen.value = { ...promptOpen.value, [idx]: !promptOpen.value[idx] }
 }
@@ -1543,17 +1586,12 @@ function aggClass(row) {
   return 'is-some'
 }
 
-// Per-prompt aggregate metrics for the highlights cards. The
-// "earliest mention position" finds the smallest character index at
-// which any brand term appears in any model's response — a lower
-// number means the brand surfaced higher up in the answer (more
-// visible). The "best model" is the one that produced that earliest
-// mention.
+// Per-prompt aggregate metrics for the highlights table. Everything
+// is precomputed on the worker — first_mention_pos, mention_count,
+// prominence, list_rank, list_size, sentiment all arrive verbatim on
+// each response. We only roll up here.
 const perPromptMetrics = computed(() => {
   const rows = displayRun.value?.prompt_rows || []
-  const brandTerms = (displayRun.value?.brand_terms || [])
-    .map((t) => (t || '').trim().toLowerCase())
-    .filter(Boolean)
   const totalModels = resultsProviders.value.length
 
   return rows.map((row, idx) => {
@@ -1567,44 +1605,29 @@ const perPromptMetrics = computed(() => {
       ? Math.round(latencies.reduce((a, b) => a + b, 0) / latencies.length)
       : 0
 
-    // Count total brand mentions across every response (a single
-    // response that names the brand four times scores 4).
-    let total_mentions = 0
-    for (const r of responses) {
-      const text = (r.response_text || '').toLowerCase()
-      if (!text) continue
-      for (const term of brandTerms) {
-        if (!term) continue
-        let from = 0
-        while (true) {
-          const i = text.indexOf(term, from)
-          if (i === -1) break
-          total_mentions += 1
-          from = i + term.length
-        }
-      }
-    }
+    const total_mentions = responses.reduce(
+      (acc, r) => acc + (r.mention_count || 0), 0,
+    )
 
-    // Per-response earliest position of any brand term; track which
-    // model owns the absolute earliest mention.
+    // Best model = whichever hit had the highest prominence
+    // (= lowest first_mention_pos, length-normalized).
     let first_mention_pos = null
+    let best_prominence = 0
     let best_model = ''
-    let best_mention_pos = null
+    let best_list_rank = null
+    let best_list_size = null
     for (const r of responses) {
       if (!r.brand_mentioned) continue
-      const text = (r.response_text || '').toLowerCase()
-      if (!text) continue
-      let earliest = null
-      for (const term of brandTerms) {
-        if (!term) continue
-        const i = text.indexOf(term)
-        if (i !== -1 && (earliest === null || i < earliest)) earliest = i
-      }
-      if (earliest === null) continue
-      if (first_mention_pos === null || earliest < first_mention_pos) {
-        first_mention_pos = earliest
+      const p = r.prominence || 0
+      if (p > best_prominence
+          || (p === best_prominence
+              && (first_mention_pos === null
+                  || r.first_mention_pos < first_mention_pos))) {
+        best_prominence = p
+        first_mention_pos = r.first_mention_pos
         best_model = variantLabel(r.provider)
-        best_mention_pos = earliest
+        best_list_rank = r.list_rank
+        best_list_size = r.list_size
       }
     }
 
@@ -1621,9 +1644,11 @@ const perPromptMetrics = computed(() => {
       discovery_pct,
       total_mentions,
       first_mention_pos,
+      best_prominence_pct: Math.round(best_prominence * 100),
       avg_latency_ms,
       best_model,
-      best_mention_pos,
+      best_list_rank,
+      best_list_size,
     }
   })
 })
@@ -2190,10 +2215,13 @@ onBeforeUnmount(() => document.removeEventListener('click', _closeDropdownOnDocC
 }
 
 .mt-post-strip {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
   margin-top: 14px;
   padding-top: 12px;
   border-top: 1px solid rgba(15, 23, 42, 0.06);
+}
+@media (max-width: 800px) {
+  .mt-post-strip { grid-template-columns: 1fr; }
 }
 .mt-post-step {
   display: grid;
@@ -2448,6 +2476,20 @@ onBeforeUnmount(() => document.removeEventListener('click', _closeDropdownOnDocC
 .mt-pm-delta .is-best { color: #047857; text-transform: uppercase; letter-spacing: 0.06em; font-size: 10.5px; }
 .mt-pm-delta .is-pos { color: #64748b; }
 .mt-pm-delta .is-neg { color: #b91c1c; text-transform: uppercase; letter-spacing: 0.06em; font-size: 10.5px; }
+
+.mt-pm-of { color: #94a3b8; font-weight: 400; }
+
+/* Sentiment pills */
+.mt-pm-sent {
+  display: inline-block;
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 2px 8px; border-radius: 9999px;
+}
+.mt-pm-sent.is-positive { background: #ecfdf5; color: #047857; }
+.mt-pm-sent.is-neutral  { background: #f1f5f9; color: #475569; }
+.mt-pm-sent.is-negative { background: #fef2f2; color: #b91c1c; }
+.mt-pm-sent.is-non_recommendation { background: #fef3c7; color: #92400e; }
 .mt-pm-resp {
   background: #fff;
   border: 1px solid rgba(15, 23, 42, 0.06);

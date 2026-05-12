@@ -324,13 +324,18 @@ def run_model_test(self, *, run_id: str, website_id: str, user_id: int | None,
         if user_id is not None:
             user = get_user_model().objects.filter(id=user_id).first()
 
-        terms_lower = [t.lower() for t in brand_terms if t]
+        brand_pat = _compile_brand_pattern(brand_terms)
 
-        def _hit(text: str) -> bool:
-            if not text or not terms_lower:
-                return False
-            low = text.lower()
-            return any(t in low for t in terms_lower)
+        def _empty_metrics():
+            return {
+                "brand_mentioned": False,
+                "mention_count": 0,
+                "first_mention_pos": None,
+                "prominence": 0.0,
+                "list_rank": None,
+                "list_size": None,
+                "sentiment": None,
+            }
 
         for p_idx, prompt_text in enumerate(prompts):
             row = {"prompt": prompt_text, "responses": []}
@@ -349,8 +354,9 @@ def run_model_test(self, *, run_id: str, website_id: str, user_id: int | None,
                     row["responses"].append({
                         "provider": key, "succeeded": False,
                         "error": "Provider not configured (missing API key).",
-                        "response_text": "", "brand_mentioned": False,
+                        "response_text": "",
                         "duration_ms": 0,
+                        **_empty_metrics(),
                     })
                 else:
                     try:
@@ -358,21 +364,25 @@ def run_model_test(self, *, run_id: str, website_id: str, user_id: int | None,
                             prompt_text, user=user, website=website,
                             audit_id="model_test", role="upstream",
                         )
+                        text_out = getattr(pr, "text", "") or ""
+                        metrics = _analyze_response(text_out, brand_pat)
                         row["responses"].append({
                             "provider": key,
                             "succeeded": bool(pr.succeeded),
                             "error": getattr(pr, "error", "") or "",
-                            "response_text": getattr(pr, "text", "") or "",
-                            "brand_mentioned": _hit(getattr(pr, "text", "") or ""),
+                            "response_text": text_out,
+                            "response_chars": len(text_out),
                             "duration_ms": getattr(pr, "duration_ms", 0) or 0,
+                            **metrics,
                         })
                     except Exception as exc:
                         logger.warning("model_test %s/%s failed: %s", run_id, key, exc)
                         row["responses"].append({
                             "provider": key, "succeeded": False,
                             "error": str(exc)[:300],
-                            "response_text": "", "brand_mentioned": False,
+                            "response_text": "",
                             "duration_ms": 0,
+                            **_empty_metrics(),
                         })
 
                 state["completed"] = state.get("completed", 0) + 1
@@ -396,14 +406,43 @@ def run_model_test(self, *, run_id: str, website_id: str, user_id: int | None,
             "discovery_rate": round(prompts_with_hit / max(len(prompts), 1) * 100, 1),
         }
 
-        # ── Post-processing: verbose synthesis + Gemini web grounding ──
-        # Both steps are best-effort. A failure here is surfaced in the
-        # state but does not mark the whole run as failed, since the raw
-        # per-model responses are already valuable on their own.
+        # ── Post-processing: sentiment + synthesis + Gemini grounding ──
+        # All three steps are best-effort. A failure does not mark the
+        # whole run as failed, since the raw per-model responses are
+        # already valuable.
         state["status"] = "analyzing"
         state["current_provider"] = ""
+        state["sentiment_status"] = "running"
         state["analysis_status"] = "running"
         state["grounding_status"] = "running"
+        _model_test_state_set(run_id, state)
+
+        # Sentiment classification (per hit response). Cheap single
+        # batched LLM call via the synthesis provider. Mutates each
+        # response with a ``sentiment`` field. Skips silently when no
+        # tooling provider is configured or no responses contain the
+        # brand.
+        try:
+            sentiment_map = _classify_response_sentiments(
+                brand_terms=brand_terms,
+                prompt_rows=results,
+                user=user,
+                website=website,
+            )
+            if sentiment_map:
+                for pi, row in enumerate(results):
+                    for r in row.get("responses", []):
+                        k = f"{pi}:{r.get('provider', '')}"
+                        if k in sentiment_map:
+                            r["sentiment"] = sentiment_map[k]
+                state["sentiment_status"] = "complete"
+                state["prompt_rows"] = results
+            else:
+                state["sentiment_status"] = "skipped"
+        except Exception as exc:
+            logger.warning("model_test %s sentiment failed: %s", run_id, exc)
+            state["sentiment_status"] = "failed"
+            state["sentiment_error"] = str(exc)[:300]
         _model_test_state_set(run_id, state)
 
         # Skip synthesis when there's nothing useful to analyze. A run
@@ -522,6 +561,100 @@ def _persist_model_test_run(*, run_id, website_id, user_id, state, duration_seco
     ModelTestRun.objects.update_or_create(id=run_id, defaults=defaults)
 
 
+# ── Model Test response analyzers ──────────────────────────────────
+
+import re as _re
+
+# Reasonably general list-item detector. Matches:
+#   "1. ..."  "1) ..."  "1: ..."  "- ..."  "* ..."  "• ..."
+# at the start of a (possibly indented) line, capturing the body.
+_LIST_ITEM_RE = _re.compile(r"(?m)^[ \t]*(?:\d+[\.\)\:]|[-*•])[ \t]+(.+?)$")
+
+
+def _compile_brand_pattern(terms):
+    """Build a single case-insensitive regex with word boundaries.
+
+    Sorting longest-first means "Acme Co" wins over "Acme" when both
+    are aliases. Word boundaries (``\\b``) prevent "Apple" from matching
+    "applesauce" or "Snapple", which was the biggest false-positive
+    source under the old substring detector.
+    """
+    cleaned = sorted(
+        [t.strip() for t in (terms or []) if t and t.strip()],
+        key=len, reverse=True,
+    )
+    if not cleaned:
+        return None
+    escaped = [_re.escape(t) for t in cleaned]
+    return _re.compile(r"\b(?:" + "|".join(escaped) + r")\b", _re.IGNORECASE)
+
+
+def _detect_list_rank(text, pattern):
+    """Find the brand's rank in a numbered/bulleted list, if any.
+
+    Returns ``(rank, list_size)`` where rank is 1-indexed. Returns
+    ``(None, list_size)`` when a list exists but the brand is in
+    paragraph text instead of a list item. Returns ``(None, None)``
+    when no list is detected at all.
+    """
+    if not text or pattern is None:
+        return None, None
+    items = _LIST_ITEM_RE.findall(text)
+    if not items:
+        return None, None
+    for idx, body in enumerate(items, 1):
+        if pattern.search(body):
+            return idx, len(items)
+    return None, len(items)
+
+
+def _analyze_response(text, pattern):
+    """Compute every per-response metric in one place.
+
+    The returned dict is merged onto the response row. All FE metrics
+    read these fields verbatim — there is no client-side recounting.
+    """
+    if not text or pattern is None:
+        return {
+            "brand_mentioned": False,
+            "mention_count": 0,
+            "first_mention_pos": None,
+            "prominence": 0.0,
+            "list_rank": None,
+            "list_size": None,
+            "sentiment": None,
+        }
+    matches = list(pattern.finditer(text))
+    if not matches:
+        rank, size = _detect_list_rank(text, pattern)  # surfaces list size
+        return {
+            "brand_mentioned": False,
+            "mention_count": 0,
+            "first_mention_pos": None,
+            "prominence": 0.0,
+            "list_rank": None,
+            "list_size": size,
+            "sentiment": None,
+        }
+    first_pos = matches[0].start()
+    text_len = max(len(text), 1)
+    # Prominence = how far from the start of the response the brand
+    # first appeared, normalised by length. 1.0 = at the very start;
+    # 0.0 = at the very end. This makes a mention at char 50 in a
+    # 500-char reply rank above one at char 50 in a 5000-char reply.
+    prominence = round(1.0 - (first_pos / text_len), 4)
+    rank, size = _detect_list_rank(text, pattern)
+    return {
+        "brand_mentioned": True,
+        "mention_count": len(matches),
+        "first_mention_pos": first_pos,
+        "prominence": prominence,
+        "list_rank": rank,
+        "list_size": size,
+        "sentiment": None,  # filled later by _classify_response_sentiments
+    }
+
+
 # ── Model Test post-processing helpers ─────────────────────────────
 
 _SYNTHESIS_SYSTEM = (
@@ -530,6 +663,98 @@ _SYNTHESIS_SYSTEM = (
     "decision-grade report for the marketing lead. You always cite specific "
     "prompts and exact phrases from the responses. You never invent data."
 )
+
+_SENTIMENT_LABELS = {"positive", "neutral", "negative", "non_recommendation"}
+
+
+def _classify_response_sentiments(*, brand_terms, prompt_rows, user, website) -> dict:
+    """Single batched LLM call that labels each hit response.
+
+    Returns ``{"<promptIdx>:<provider>": label}`` where label is one of
+    positive / neutral / negative / non_recommendation. Returns an empty
+    dict when no tooling provider is configured or no hits exist —
+    callers should treat that as "skipped".
+
+    Why one call: classifying N responses in one prompt is dramatically
+    cheaper than N round-trips and the LLM benefits from the
+    cross-response context.
+    """
+    from apps.llm_ranking.providers import get_synthesis_provider
+
+    items = []
+    for pi, row in enumerate(prompt_rows):
+        for r in (row.get("responses") or []):
+            if not r.get("brand_mentioned"):
+                continue
+            text = (r.get("response_text") or "").strip()
+            if not text:
+                continue
+            # Trim each block so a long-tailed response doesn't blow
+            # the classifier's context window. 1500 chars is plenty
+            # to read the tone of the mention.
+            items.append({
+                "pi": pi,
+                "provider": r.get("provider", ""),
+                "text": text if len(text) <= 1500 else text[:1500] + " […]",
+            })
+    if not items:
+        return {}
+
+    provider = get_synthesis_provider()
+    if provider is None:
+        return {}
+
+    brand = (brand_terms[0] if brand_terms else "the brand").strip() or "the brand"
+
+    blocks = []
+    for i, it in enumerate(items, 1):
+        blocks.append(f"### Response {i}\n{it['text']}")
+    body = "\n\n".join(blocks)
+
+    user_prompt = (
+        f"Brand under test: **{brand}**\n\n"
+        f"For each of the {len(items)} responses below, classify how the "
+        f"brand is mentioned. Use EXACTLY one of these lowercase labels:\n\n"
+        f"- positive            — the brand is recommended favourably, "
+        f"described as a good choice, or named as a top option.\n"
+        f"- neutral             — the brand is named factually, with no "
+        f"value judgement either way.\n"
+        f"- negative            — the brand is criticised, warned about, "
+        f"or framed as a poor choice.\n"
+        f"- non_recommendation  — the brand is mentioned only as an "
+        f"example or aside, not as an answer to the user's question.\n\n"
+        f"=== RESPONSES ===\n{body}\n=== END ===\n\n"
+        f"Output exactly {len(items)} lines, one per response, in this "
+        f"format and nothing else:\n"
+        f"Response 1: <label>\n"
+        f"Response 2: <label>\n"
+        f"…\n"
+    )
+
+    result = provider.query(
+        user_prompt,
+        system_prompt="You are a precise classification engine. Output only the requested labels.",
+        user=user, website=website,
+        audit_id="model_test_sentiment", role="synthesis",
+    )
+    if not result.succeeded:
+        raise RuntimeError(result.error or "sentiment classifier failed")
+
+    out: dict[str, str] = {}
+    line_re = _re.compile(r"^\s*Response\s+(\d+)\s*:\s*([a-z_]+)", _re.IGNORECASE)
+    for line in (result.text or "").splitlines():
+        m = line_re.match(line)
+        if not m:
+            continue
+        idx = int(m.group(1)) - 1
+        label = m.group(2).strip().lower()
+        if not (0 <= idx < len(items)):
+            continue
+        if label not in _SENTIMENT_LABELS:
+            continue
+        it = items[idx]
+        out[f"{it['pi']}:{it['provider']}"] = label
+    return out
 
 
 def _model_test_synthesize(*, brand_terms, prompts, prompt_rows, providers,
