@@ -194,60 +194,91 @@
         </div>
       </section>
 
-      <!-- Per-prompt highlights — the headline metric for each prompt -->
-      <section v-if="displayRun?.prompt_rows?.length" class="mt-card">
+      <!-- Per-prompt highlights — accordion table -->
+      <section v-if="displayRun?.prompt_rows?.length" class="mt-card mt-pm-wrap">
         <div class="mt-card-head">
           <div>
             <h2 class="mt-card-h">Per-prompt highlights</h2>
             <p class="mt-card-sub">
-              The headline metric for each prompt in this run. Discovery
-              is how many selected models surfaced
-              <strong>{{ brandLabel }}</strong>. Earlier first-mention
-              position means the brand appeared higher in the answer.
+              One row per prompt with the metrics that matter for a
+              discovery audit. Click any row to expand and read each
+              model's response for that prompt.
             </p>
+          </div>
+          <div class="mt-card-head-actions">
+            <button class="mt-link" @click="togglePromptExpandAll">
+              {{ allPromptsOpen ? 'Collapse all' : 'Expand all' }}
+            </button>
           </div>
         </div>
 
-        <div class="mt-promptmetrics">
-          <div
-            v-for="m in perPromptMetrics"
-            :key="m.index"
-            class="mt-pm-card"
-            :class="m.discovery_count > 0 ? 'is-hit' : 'is-miss'"
-          >
-            <div class="mt-pm-head">
-              <span class="mt-pm-num">#{{ m.index + 1 }}</span>
-              <span class="mt-pm-pill" :class="m.discovery_count > 0 ? 'is-hit' : 'is-miss'">
-                {{ m.discovery_count }} / {{ m.total_models }} mentioned
-              </span>
-            </div>
-            <div class="mt-pm-prompt" :title="m.prompt">{{ m.prompt }}</div>
-            <div class="mt-pm-grid">
-              <div class="mt-pm-stat">
-                <div class="mt-pm-stat-num">{{ m.discovery_pct }}%</div>
-                <div class="mt-pm-stat-cap">discovery</div>
-              </div>
-              <div class="mt-pm-stat">
-                <div class="mt-pm-stat-num">{{ m.total_mentions }}</div>
-                <div class="mt-pm-stat-cap">total mentions</div>
-              </div>
-              <div class="mt-pm-stat">
-                <div class="mt-pm-stat-num">{{ m.first_mention_pos === null ? '—' : m.first_mention_pos }}</div>
-                <div class="mt-pm-stat-cap">earliest pos (chars)</div>
-              </div>
-              <div class="mt-pm-stat">
-                <div class="mt-pm-stat-num">{{ m.avg_latency_ms || '—' }}<span v-if="m.avg_latency_ms" class="mt-pm-unit"> ms</span></div>
-                <div class="mt-pm-stat-cap">avg latency</div>
-              </div>
-            </div>
-            <div class="mt-pm-best">
-              <span class="mt-pm-best-cap">Best model:</span>
-              <strong>{{ m.best_model || '— none mentioned —' }}</strong>
-              <span v-if="m.best_mention_pos !== null" class="mt-pm-best-pos">
-                at char {{ m.best_mention_pos }}
-              </span>
-            </div>
-          </div>
+        <div class="mt-pm-scroll">
+          <table class="mt-pm-tbl">
+            <thead>
+              <tr>
+                <th class="mt-pm-h-caret"></th>
+                <th class="mt-pm-h-num">#</th>
+                <th class="mt-pm-h-prompt">Prompt</th>
+                <th class="mt-pm-h-num-cell">Discovery</th>
+                <th class="mt-pm-h-num-cell">Mentions</th>
+                <th class="mt-pm-h-num-cell">Earliest pos</th>
+                <th class="mt-pm-h-num-cell">Avg ms</th>
+                <th class="mt-pm-h-best">Best model</th>
+              </tr>
+            </thead>
+            <tbody>
+              <template v-for="m in perPromptMetrics" :key="m.index">
+                <tr
+                  class="mt-pm-row"
+                  :class="{ 'is-open': promptOpen[m.index], 'is-hit': m.discovery_count > 0, 'is-miss': m.discovery_count === 0 }"
+                  @click="togglePromptRow(m.index)"
+                >
+                  <td class="mt-pm-caret">
+                    <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5" :style="{ transform: promptOpen[m.index] ? 'rotate(90deg)' : 'none' }">
+                      <path d="M3 2l4 3-4 3" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  </td>
+                  <td class="mt-pm-num-cell">{{ m.index + 1 }}</td>
+                  <td class="mt-pm-prompt-cell" :title="m.prompt">{{ m.prompt }}</td>
+                  <td class="mt-pm-num-cell">
+                    <span class="mt-pm-pill" :class="m.discovery_count > 0 ? 'is-hit' : 'is-miss'">
+                      {{ m.discovery_count }} / {{ m.total_models }}
+                    </span>
+                  </td>
+                  <td class="mt-pm-num-cell">{{ m.total_mentions }}</td>
+                  <td class="mt-pm-num-cell">{{ m.first_mention_pos === null ? '—' : m.first_mention_pos }}</td>
+                  <td class="mt-pm-num-cell">{{ m.avg_latency_ms || '—' }}</td>
+                  <td class="mt-pm-best-cell">
+                    <span v-if="m.best_model">{{ m.best_model }}</span>
+                    <span v-else class="mt-pm-best-none">none</span>
+                  </td>
+                </tr>
+                <tr v-if="promptOpen[m.index]" class="mt-pm-detail-row">
+                  <td colspan="8" class="mt-pm-detail">
+                    <div
+                      v-for="r in (displayRun.prompt_rows[m.index].responses || [])"
+                      :key="r.provider"
+                      class="mt-pm-resp"
+                      :class="cellClass(displayRun.prompt_rows[m.index], r.provider)"
+                    >
+                      <div class="mt-pm-resp-head">
+                        <span class="mt-model-dot" :class="'is-' + providerKeyOf(r.provider)"></span>
+                        <span class="mt-pm-resp-name">{{ variantLabel(r.provider) }}</span>
+                        <span class="mt-pivot-pill" :class="cellClass(displayRun.prompt_rows[m.index], r.provider)">
+                          {{ cellLabel(displayRun.prompt_rows[m.index], r.provider) }}
+                        </span>
+                        <span v-if="r.duration_ms" class="mt-pm-resp-ms">{{ Math.round(r.duration_ms) }} ms</span>
+                      </div>
+                      <div v-if="r.response_text" class="mt-pm-resp-body">
+                        <span v-html="highlightBrand(r.response_text)"></span>
+                      </div>
+                      <div v-else-if="r.error" class="mt-pm-resp-err">{{ r.error }}</div>
+                    </div>
+                  </td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
         </div>
       </section>
 
@@ -1318,6 +1349,26 @@ const resultsProviders = computed(() => {
   return selectedVariantIds.value
 })
 
+// Per-prompt accordion open/close state. Keyed by prompt index.
+const promptOpen = ref({})
+function togglePromptRow(idx) {
+  promptOpen.value = { ...promptOpen.value, [idx]: !promptOpen.value[idx] }
+}
+const allPromptsOpen = computed(() => {
+  const rows = displayRun.value?.prompt_rows || []
+  return rows.length > 0 && rows.every((_, i) => promptOpen.value[i])
+})
+function togglePromptExpandAll() {
+  const rows = displayRun.value?.prompt_rows || []
+  if (allPromptsOpen.value) {
+    promptOpen.value = {}
+  } else {
+    const next = {}
+    for (let i = 0; i < rows.length; i += 1) next[i] = true
+    promptOpen.value = next
+  }
+}
+
 const openResponses = ref({}) // `${rowIdx}:${prov}` -> bool
 function toggleResponse(rowIdx, prov) {
   const k = `${rowIdx}:${prov}`
@@ -2163,63 +2214,94 @@ onBeforeUnmount(() => document.removeEventListener('click', _closeDropdownOnDocC
 .mt-mini-num { font-size: 14px; font-weight: 600; color: #0f172a; }
 .mt-mini-cap { font-size: 10.5px; color: #94a3b8; }
 
-/* ── Per-prompt highlights */
-.mt-promptmetrics {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 0;
-  border-top: 1px solid rgba(15, 23, 42, 0.08);
-  border-left: 1px solid rgba(15, 23, 42, 0.08);
+/* ── Per-prompt highlights (accordion table) */
+.mt-pm-wrap { padding: 24px 0 0; }
+.mt-pm-wrap .mt-card-head { padding: 0 28px; }
+.mt-pm-scroll { overflow-x: auto; }
+.mt-pm-tbl {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  min-width: 820px;
 }
-.mt-pm-card {
-  padding: 18px 20px;
+.mt-pm-tbl thead th {
+  text-align: left;
+  font-size: 10.5px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: #94a3b8;
+  padding: 12px 12px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.10);
   background: #fff;
-  border-right: 1px solid rgba(15, 23, 42, 0.08);
-  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
-  display: flex; flex-direction: column; gap: 12px;
 }
-.mt-pm-card.is-miss { background: #fafafb; }
-.mt-pm-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.mt-pm-num {
-  font-size: 11.5px; font-weight: 700; color: #94a3b8;
+.mt-pm-h-caret { width: 28px; padding-left: 28px !important; }
+.mt-pm-h-num { width: 36px; text-align: right !important; }
+.mt-pm-h-prompt { min-width: 260px; }
+.mt-pm-h-num-cell { width: 110px; text-align: right !important; }
+.mt-pm-h-best { min-width: 180px; }
+
+.mt-pm-row {
+  cursor: pointer;
+  transition: background .12s ease;
+}
+.mt-pm-row td {
+  padding: 12px 12px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.04);
+  vertical-align: middle;
+}
+.mt-pm-row:hover { background: #fafafb; }
+.mt-pm-row.is-open { background: #fafafb; }
+.mt-pm-row.is-miss td { color: #64748b; }
+.mt-pm-row.is-open td { border-bottom-color: transparent; }
+
+.mt-pm-caret { padding-left: 28px !important; color: #94a3b8; }
+.mt-pm-caret svg { transition: transform .15s ease; display: block; }
+.mt-pm-num-cell {
+  text-align: right;
   font-variant-numeric: tabular-nums;
+  color: #0f172a;
+  font-weight: 500;
 }
+.mt-pm-prompt-cell {
+  color: #0f172a; line-height: 1.45;
+  max-width: 0;  /* enables truncation */
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.mt-pm-best-cell { color: #0f172a; font-weight: 500; padding-right: 28px !important; }
+.mt-pm-best-none { color: #94a3b8; font-weight: 400; }
+
 .mt-pm-pill {
+  display: inline-block;
   font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em;
   text-transform: uppercase;
   padding: 3px 9px; border-radius: 9999px;
 }
 .mt-pm-pill.is-hit  { background: #ecfdf5; color: #047857; }
 .mt-pm-pill.is-miss { background: #f1f5f9; color: #64748b; }
-.mt-pm-prompt {
-  font-size: 13px; color: #0f172a; line-height: 1.45;
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
-  overflow: hidden;
+
+/* Expanded row */
+.mt-pm-detail-row td { padding: 0; border-bottom: 1px solid rgba(15, 23, 42, 0.06); }
+.mt-pm-detail {
+  background: #fafafb;
+  padding: 12px 28px 18px 56px;
+  display: flex; flex-direction: column; gap: 10px;
 }
-.mt-pm-grid {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
-  padding: 12px 0;
-  border-top: 1px solid rgba(15, 23, 42, 0.06);
-  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+.mt-pm-resp {
+  background: #fff;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  border-radius: 6px;
+  padding: 12px 14px;
 }
-.mt-pm-stat-num {
-  font-size: 20px; font-weight: 500; color: #0f172a;
-  font-variant-numeric: tabular-nums; line-height: 1;
-  letter-spacing: -0.02em;
+.mt-pm-resp.is-fail { background: #fef2f2; border-color: #fecaca; }
+.mt-pm-resp.is-hit { border-left: 3px solid #047857; }
+.mt-pm-resp-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.mt-pm-resp-name { font-size: 13px; font-weight: 600; color: #0f172a; }
+.mt-pm-resp-ms { font-size: 11.5px; color: #94a3b8; font-variant-numeric: tabular-nums; margin-left: auto; }
+.mt-pm-resp-body {
+  margin-top: 8px;
+  font-size: 12.5px; color: #334155; line-height: 1.55;
+  white-space: pre-wrap;
 }
-.mt-pm-unit { font-size: 12px; color: #94a3b8; font-weight: 400; margin-left: 2px; }
-.mt-pm-stat-cap {
-  margin-top: 4px;
-  font-size: 10.5px; font-weight: 600; color: #94a3b8;
-  text-transform: uppercase; letter-spacing: 0.06em;
-}
-.mt-pm-best {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
-  font-size: 12.5px; color: #475569;
-}
-.mt-pm-best-cap { font-weight: 600; color: #94a3b8; letter-spacing: 0.04em; text-transform: uppercase; font-size: 10.5px; }
-.mt-pm-best strong { color: #0f172a; font-weight: 600; }
-.mt-pm-best-pos { color: #94a3b8; font-size: 11.5px; }
+.mt-pm-resp-err { margin-top: 6px; font-size: 12px; color: #b91c1c; }
 
 /* ── Pivot table */
 .mt-pivot-wrap { padding: 24px 0 12px; }
