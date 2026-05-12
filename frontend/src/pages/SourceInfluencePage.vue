@@ -1175,11 +1175,10 @@ async function loadModelVariants() {
 
 const totalQueries = computed(() => promptCount.value * (selectedVariantIds.value.length || 0))
 const canRun = computed(() => totalQueries.value > 0)
-// Rough sequential ETA: ~3s upstream + 1.5s pacing pause between
-// cells (kept in sync with MODEL_TEST_INTER_CALL_SLEEP_MS_DEFAULT on
-// the backend). Surfaced near the Run button so users can sanity-
-// check long runs.
-const etaSeconds = computed(() => Math.max(1, Math.round(totalQueries.value * 4.5)))
+// Rough sequential ETA: ~3s per upstream call. Inter-call pacing
+// is now 250ms (kept in sync with MODEL_TEST_INTER_CALL_SLEEP_MS on
+// the backend) so it doesn't materially shift the estimate.
+const etaSeconds = computed(() => Math.max(1, totalQueries.value * 3))
 
 // ── Run + poll ───────────────────────────────────────────────────
 const running = ref(false)

@@ -269,15 +269,13 @@ def _record_failure(schedule, now) -> None:
 MODEL_TEST_CACHE_KEY = "model_test:run:{run_id}"
 MODEL_TEST_TTL_SECONDS = 60 * 60  # 1h — plenty for poll-and-leave UX
 
-# Seconds to sleep BETWEEN each (prompt, model) cell. Paces the run so:
-#   1. The FE has time to poll the cached state and render each cell
-#      before the next one arrives.
-#   2. We stay well under per-provider rate-limit ceilings even when
-#      a user picks many variants from the same provider in one run.
-#   3. The run feels considered rather than a fire-and-forget burst.
+# Seconds to sleep BETWEEN each (prompt, model) cell. Small by design:
+# just enough for the FE's 1.5s poll to catch the most recent result
+# before the next call kicks off. The per-provider TokenBucket already
+# enforces real rate limits — this pause is purely for UX pacing.
 # Configurable via the MODEL_TEST_INTER_CALL_SLEEP_MS Django setting.
-# Defaults to 1.5s — change in dev.py if you want faster local runs.
-MODEL_TEST_INTER_CALL_SLEEP_MS_DEFAULT = 1500
+# 0 disables pacing entirely (back to flat-out fan-out).
+MODEL_TEST_INTER_CALL_SLEEP_MS_DEFAULT = 250
 
 def _model_test_state_get(run_id: str) -> dict | None:
     from django.core.cache import cache
