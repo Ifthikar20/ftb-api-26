@@ -798,6 +798,83 @@
       </span>
     </div>
 
+    <!-- ── Test history + token usage ──────────────────────────── -->
+    <section v-if="history.length || historyTokens.total" class="mt-card mt-history-card">
+      <div class="mt-card-head">
+        <div>
+          <div class="mt-card-eyebrow">Test history</div>
+          <h2 class="mt-card-h">Past runs</h2>
+          <p class="mt-card-sub">
+            Click any row to re-open the run. The strip below shows
+            aggregate token usage across the last
+            <strong>{{ history.length }}</strong> run<span v-if="history.length !== 1">s</span>.
+          </p>
+        </div>
+        <div class="mt-card-head-actions">
+          <button v-if="loadingHistory" class="mt-link" disabled>Loading…</button>
+          <button v-else class="mt-link" @click="loadHistory">Refresh</button>
+        </div>
+      </div>
+
+      <div class="mt-tokstrip">
+        <div class="mt-tok">
+          <div class="mt-tok-num">{{ formatThousands(historyTokens.input) }}</div>
+          <div class="mt-tok-cap">input tokens</div>
+        </div>
+        <div class="mt-tok">
+          <div class="mt-tok-num">{{ formatThousands(historyTokens.output) }}</div>
+          <div class="mt-tok-cap">output tokens</div>
+        </div>
+        <div class="mt-tok">
+          <div class="mt-tok-num">{{ formatThousands(historyTokens.total) }}</div>
+          <div class="mt-tok-cap">total tokens</div>
+        </div>
+        <div class="mt-tok">
+          <div class="mt-tok-num">{{ historyTokens.calls }}</div>
+          <div class="mt-tok-cap">model calls</div>
+        </div>
+      </div>
+
+      <div class="mt-hist-scroll">
+        <table class="mt-hist">
+          <thead>
+            <tr>
+              <th>When</th>
+              <th>Status</th>
+              <th class="mt-hist-num">Prompts</th>
+              <th class="mt-hist-num">Models</th>
+              <th class="mt-hist-num">Hits</th>
+              <th class="mt-hist-num">Discovery</th>
+              <th class="mt-hist-num">Tokens</th>
+              <th class="mt-hist-num">Duration</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="run in history"
+              :key="run.id"
+              class="mt-hist-row"
+              :class="{ 'is-active': route.query.run === run.id }"
+              @click="openHistoryRun(run.id)"
+            >
+              <td>{{ formatRelative(run.created_at) }}</td>
+              <td>
+                <span class="mt-status-tag" :class="'is-' + (run.status || 'queued')">
+                  {{ STATUS_LABELS[run.status] || run.status }}
+                </span>
+              </td>
+              <td class="mt-hist-num">{{ run.prompts }}</td>
+              <td class="mt-hist-num">{{ run.providers }}</td>
+              <td class="mt-hist-num">{{ run.hits }}</td>
+              <td class="mt-hist-num">{{ run.discovery_rate }}%</td>
+              <td class="mt-hist-num">{{ formatThousands(run.total_tokens) }}</td>
+              <td class="mt-hist-num">{{ run.duration_seconds ? Math.round(run.duration_seconds) + 's' : '—' }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
     </template> <!-- /v-if="!hasActiveRun" -->
 
     <div v-if="errorMsg" class="mt-error">{{ errorMsg }}</div>
@@ -1610,6 +1687,63 @@ const resultsProviders = computed(() => {
 const synthesisOpen = ref(true)
 const groundingOpen = ref(true)
 
+// ── Test history (recent ModelTestRun rows) ─────────────────────
+const history = ref([])
+const loadingHistory = ref(false)
+
+async function loadHistory() {
+  loadingHistory.value = true
+  try {
+    const { data } = await llmRanking.modelTestHistory(websiteId, { limit: 20 })
+    history.value = (data?.data || data || {}).runs || []
+  } catch {
+    history.value = []
+  } finally {
+    loadingHistory.value = false
+  }
+}
+
+const historyTokens = computed(() => {
+  let input = 0, output = 0, calls = 0
+  for (const r of history.value) {
+    input += r.total_input_tokens || 0
+    output += r.total_output_tokens || 0
+    calls += r.completed_calls || 0
+  }
+  return { input, output, total: input + output, calls }
+})
+
+function formatThousands(n) {
+  const v = Number(n) || 0
+  if (v < 1000) return String(v)
+  if (v < 1000000) return (v / 1000).toFixed(1).replace(/\.0$/, '') + 'k'
+  return (v / 1000000).toFixed(2).replace(/\.0+$/, '') + 'M'
+}
+
+function formatRelative(iso) {
+  if (!iso) return '—'
+  const t = new Date(iso).getTime()
+  if (Number.isNaN(t)) return '—'
+  const diff = Date.now() - t
+  const m = Math.round(diff / 60000)
+  if (m < 1) return 'just now'
+  if (m < 60) return `${m}m ago`
+  const h = Math.round(m / 60)
+  if (h < 24) return `${h}h ago`
+  const d = Math.round(h / 24)
+  if (d < 7) return `${d}d ago`
+  return new Date(iso).toLocaleDateString()
+}
+
+function openHistoryRun(id) {
+  // Re-open a past run by setting ?run= and letting the hydrate
+  // logic in onMounted handle the rest. We trigger that by
+  // updating the URL and calling hydrateRunFromUrl directly so
+  // the user doesn't need a navigation.
+  router.replace({ query: { ...route.query, run: id } })
+  hydrateRunFromUrl()
+}
+
 // Per-prompt accordion open/close state. Keyed by prompt index.
 // `promptManuallyCollapsed` records rows the user has actively
 // collapsed during a streaming run so the auto-expand watcher
@@ -2058,13 +2192,20 @@ function applyQueryPreselect() {
 
 function _closeDropdownOnDocClick() { dropdownOpen.value = null }
 onMounted(async () => {
-  await Promise.all([loadSaved(), loadEnvs(), loadModelVariants()])
+  await Promise.all([loadSaved(), loadEnvs(), loadModelVariants(), loadHistory()])
   applyQueryPreselect()
   // ?run=<id> in the URL means we're refreshing on a results view —
   // refetch and re-render so the user stays where they were.
   await hydrateRunFromUrl()
   document.addEventListener('click', _closeDropdownOnDocClick)
 })
+
+// Refresh history whenever a run reaches a terminal state so the
+// most recent row shows up without the user having to click Refresh.
+watch(
+  () => displayRun.value?.status,
+  (s) => { if (s === 'complete' || s === 'failed') loadHistory() },
+)
 onBeforeUnmount(() => document.removeEventListener('click', _closeDropdownOnDocClick))
 </script>
 
@@ -2669,6 +2810,68 @@ onBeforeUnmount(() => document.removeEventListener('click', _closeDropdownOnDocC
 .mt-citations li { font-size: 13px; }
 .mt-citations a { color: #0f172a; text-decoration: underline; text-underline-offset: 3px; }
 .mt-citations a:hover { color: #475569; }
+
+/* ── Test history card */
+.mt-history-card { padding: 24px 0 0; }
+.mt-history-card .mt-card-head { padding: 0 28px; }
+
+.mt-tokstrip {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0;
+  margin: 0 28px 18px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.mt-tok {
+  padding: 14px 16px;
+  border-right: 1px solid rgba(15, 23, 42, 0.06);
+  background: #fff;
+}
+.mt-tok:last-child { border-right: 0; }
+.mt-tok-num {
+  font-size: 18px; font-weight: 500; color: #0f172a;
+  letter-spacing: -0.02em; line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.mt-tok-cap {
+  margin-top: 4px;
+  font-size: 10.5px; font-weight: 600; color: #94a3b8;
+  text-transform: uppercase; letter-spacing: 0.06em;
+}
+
+.mt-hist-scroll { overflow-x: auto; padding: 0 28px 24px; }
+.mt-hist {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  min-width: 720px;
+}
+.mt-hist thead th {
+  text-align: left;
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.08em;
+  text-transform: uppercase; color: #94a3b8;
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.10);
+}
+.mt-hist-num { text-align: right !important; font-variant-numeric: tabular-nums; }
+.mt-hist-row {
+  cursor: pointer;
+  transition: background .12s ease;
+}
+.mt-hist-row td {
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.04);
+  color: #0f172a;
+}
+.mt-hist-row:hover { background: #fafafb; }
+.mt-hist-row.is-active { background: #f1f5f9; }
+
+@media (max-width: 720px) {
+  .mt-tokstrip { grid-template-columns: 1fr 1fr; }
+  .mt-tok:nth-child(2n) { border-right: 0; }
+}
 
 .mt-runmode {
   display: flex; gap: 12px; align-items: flex-start;

@@ -1538,6 +1538,62 @@ class ModelTestRunView(TenantScopedAPIView):
                         status=status.HTTP_202_ACCEPTED)
 
 
+class ModelTestHistoryView(TenantScopedAPIView):
+    """
+    GET — return a paginated list of recent Model Test runs for this
+    website.
+
+    Each row carries enough to render a one-line history entry without
+    a follow-up call: status, timing, prompt/model counts, hit count,
+    discovery rate, and aggregate token usage. ``?limit=`` caps the
+    page; defaults to 20 and is hard-capped at 100 so a hostile client
+    can't drag the whole table over the wire.
+    """
+
+    def get(self, request, website_id):
+        from apps.llm_ranking.models import ModelTestRun
+        self.get_website(website_id)
+        try:
+            limit = int(request.query_params.get("limit") or 20)
+        except (TypeError, ValueError):
+            limit = 20
+        limit = max(1, min(limit, 100))
+
+        qs = (
+            ModelTestRun.objects
+            .filter(website_id=website_id)
+            .order_by("-created_at")
+            .values(
+                "id", "status", "created_at", "completed_at",
+                "duration_seconds", "total_calls", "completed_calls",
+                "prompts", "providers", "summary", "error_message",
+            )[:limit]
+        )
+        rows = []
+        for r in qs:
+            summary = r.get("summary") or {}
+            rows.append({
+                "id": str(r["id"]),
+                "status": r["status"],
+                "created_at": r["created_at"].isoformat() if r["created_at"] else None,
+                "completed_at": r["completed_at"].isoformat() if r["completed_at"] else None,
+                "duration_seconds": r["duration_seconds"],
+                "prompts": len(r.get("prompts") or []),
+                "providers": len(r.get("providers") or []),
+                "providers_list": list(r.get("providers") or []),
+                "total_calls": r["total_calls"],
+                "completed_calls": r["completed_calls"],
+                "hits": summary.get("hits") or 0,
+                "prompts_with_hit": summary.get("prompts_with_hit") or 0,
+                "discovery_rate": summary.get("discovery_rate") or 0,
+                "total_input_tokens": summary.get("total_input_tokens") or 0,
+                "total_output_tokens": summary.get("total_output_tokens") or 0,
+                "total_tokens": summary.get("total_tokens") or 0,
+                "error": r.get("error_message") or "",
+            })
+        return Response({"runs": rows, "count": len(rows)})
+
+
 class ModelTestStatusView(TenantScopedAPIView):
     """GET — return current state of a Model Test run for polling.
 

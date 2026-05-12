@@ -32,4 +32,6 @@ export default {
     // Standalone Model Test probe (does not create an audit row).
     modelTest: (wid, payload) => api.post(`/llm-ranking/${wid}/model-test/`, payload),
     modelTestStatus: (wid, runId) => api.get(`/llm-ranking/${wid}/model-test/${runId}/`),
+    // History of past Model Test runs for this website.
+    modelTestHistory: (wid, params) => api.get(`/llm-ranking/${wid}/model-test-history/`, { params }),
 }

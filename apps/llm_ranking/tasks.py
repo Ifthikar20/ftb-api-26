@@ -390,6 +390,8 @@ def run_model_test(self, *, run_id: str, website_id: str, user_id: int | None,
                             "response_text": text_out,
                             "response_chars": len(text_out),
                             "duration_ms": getattr(pr, "duration_ms", 0) or 0,
+                            "input_tokens": int(getattr(pr, "input_tokens", 0) or 0),
+                            "output_tokens": int(getattr(pr, "output_tokens", 0) or 0),
                             **metrics,
                         })
                     except Exception as exc:
@@ -424,6 +426,14 @@ def run_model_test(self, *, run_id: str, website_id: str, user_id: int | None,
             1 for r in results if any(x["brand_mentioned"] for x in r["responses"])
         )
         hits = sum(1 for r in results for x in r["responses"] if x["brand_mentioned"])
+        total_input_tokens = sum(
+            int(x.get("input_tokens") or 0)
+            for r in results for x in r["responses"]
+        )
+        total_output_tokens = sum(
+            int(x.get("output_tokens") or 0)
+            for r in results for x in r["responses"]
+        )
         state["summary"] = {
             "prompts": len(prompts),
             "providers": providers,
@@ -431,6 +441,9 @@ def run_model_test(self, *, run_id: str, website_id: str, user_id: int | None,
             "hits": hits,
             "prompts_with_hit": prompts_with_hit,
             "discovery_rate": round(prompts_with_hit / max(len(prompts), 1) * 100, 1),
+            "total_input_tokens": total_input_tokens,
+            "total_output_tokens": total_output_tokens,
+            "total_tokens": total_input_tokens + total_output_tokens,
         }
 
         # ── Post-processing: sentiment + synthesis + Gemini grounding ──
