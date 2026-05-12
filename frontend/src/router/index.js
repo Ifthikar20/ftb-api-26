@@ -133,12 +133,14 @@ const GATE_EXEMPT = new Set([
 router.beforeEach(async (to, from, next) => {
     const auth = useAuthStore()
 
-    // On first load, try to restore session from the refresh-token
-    // cookie. We only flip `sessionRestored` to true once we either
-    // succeed OR the server actively rejects the cookie (401/403).
-    // A transient failure (network blip, 5xx) leaves the flag false
-    // so the very next navigation tries again — otherwise the user
-    // would be stuck on /login until a full reload.
+    // On first load, restore the session. Two paths:
+    //   1. accessToken hydrated from localStorage — assume it's good
+    //      and fetch /auth/me to confirm. If it 401s the interceptor
+    //      will trigger a refresh-cookie attempt automatically.
+    //   2. No token in storage — try refresh cookie directly.
+    // sessionRestored only flips to true once we have a definitive
+    // answer (success, or confirmed 401/403). Transient failures
+    // leave it false so the next nav retries.
     if (!sessionRestored && !auth.isAuthenticated) {
         const hadSession = localStorage.getItem('fb-session')
         if (hadSession) {
@@ -148,19 +150,20 @@ router.beforeEach(async (to, from, next) => {
                     await auth.fetchSession()
                     sessionRestored = true
                 } else if (!localStorage.getItem('fb-session')) {
-                    // refreshToken cleared fb-session — that means the
-                    // server returned 401/403. No valid session.
                     sessionRestored = true
                 }
-                // else: transient failure; retry on next navigation.
             } catch {
-                // Belt and braces — refreshToken catches its own errors,
-                // but if anything else escapes we still don't lock the
-                // user out permanently.
+                // belt + braces; refreshToken handles its own errors
             }
         } else {
             sessionRestored = true
         }
+    } else if (!sessionRestored && auth.isAuthenticated) {
+        // Access token came from localStorage — verify it works.
+        // The interceptor handles 401 by attempting a refresh; if
+        // that also fails it clears auth and bounces to login.
+        sessionRestored = true
+        auth.fetchSession().catch(() => {})
     }
 
     if (to.meta.requiresAuth && !auth.isAuthenticated) {

@@ -444,30 +444,36 @@ def run_model_test(self, *, run_id: str, website_id: str, user_id: int | None,
         state["grounding_status"] = "running"
         _model_test_state_set(run_id, state)
 
-        # Sentiment classification (per hit response). Cheap single
-        # batched LLM call via the synthesis provider. Mutates each
-        # response with a ``sentiment`` field. Skips silently when no
-        # tooling provider is configured or no responses contain the
-        # brand.
+        # Sentiment classification (per hit response) + near-miss
+        # detection (per non-hit response). Both run inside a single
+        # batched LLM call via the synthesis provider — much cheaper
+        # than two passes.
         try:
-            sentiment_map = _classify_response_sentiments(
-                brand_terms=brand_terms,
+            classifications = _classify_responses(
+                brand=brand_terms[0] if brand_terms else "",
                 prompt_rows=results,
-                user=user,
                 website=website,
+                user=user,
             )
-            if sentiment_map:
+            if classifications:
                 for pi, row in enumerate(results):
                     for r in row.get("responses", []):
                         k = f"{pi}:{r.get('provider', '')}"
-                        if k in sentiment_map:
-                            r["sentiment"] = sentiment_map[k]
+                        c = classifications.get(k)
+                        if not c:
+                            continue
+                        if c.get("sentiment"):
+                            r["sentiment"] = c["sentiment"]
+                        if c.get("relevance"):
+                            r["relevance"] = c["relevance"]
+                        if c.get("evidence_phrase"):
+                            r["evidence_phrase"] = c["evidence_phrase"]
                 state["sentiment_status"] = "complete"
                 state["prompt_rows"] = results
             else:
                 state["sentiment_status"] = "skipped"
         except Exception as exc:
-            logger.warning("model_test %s sentiment failed: %s", run_id, exc)
+            logger.warning("model_test %s classification failed: %s", run_id, exc)
             state["sentiment_status"] = "failed"
             state["sentiment_error"] = str(exc)[:300]
         _model_test_state_set(run_id, state)
@@ -692,37 +698,49 @@ _SYNTHESIS_SYSTEM = (
 )
 
 _SENTIMENT_LABELS = {"positive", "neutral", "negative", "non_recommendation"}
+_RELEVANCE_LABELS = {"direct", "near_miss", "category_match", "unrelated"}
 
 
-def _classify_response_sentiments(*, brand_terms, prompt_rows, user, website) -> dict:
-    """Single batched LLM call that labels each hit response.
+def _classify_responses(*, brand, prompt_rows, user, website) -> dict:
+    """Single batched LLM call that classifies every response.
 
-    Returns ``{"<promptIdx>:<provider>": label}`` where label is one of
-    positive / neutral / negative / non_recommendation. Returns an empty
-    dict when no tooling provider is configured or no hits exist —
-    callers should treat that as "skipped".
+    Returns ``{"<promptIdx>:<provider>": {sentiment, relevance, evidence_phrase}}``.
 
-    Why one call: classifying N responses in one prompt is dramatically
-    cheaper than N round-trips and the LLM benefits from the
-    cross-response context.
+    - **sentiment** (only for direct hits): positive / neutral / negative /
+      non_recommendation.
+    - **relevance** (for every succeeded response): how close was the
+      answer to actually surfacing the brand, even without naming it.
+        - direct          — brand was literally named in the response.
+        - near_miss       — a phrase describes the brand's exact product
+                            or capability, but the brand name itself
+                            is missing. Pure recoverable visibility win.
+        - category_match  — the answer is about the brand's category /
+                            problem space but doesn't describe the
+                            brand's specific offering. Soft signal.
+        - unrelated       — the response is off-topic entirely.
+    - **evidence_phrase**: the exact ≤200-char quote that triggered the
+      classification. Empty for ``direct`` (already in the text via
+      highlighting) and ``unrelated`` (nothing useful to quote).
+
+    Empty dict signals "skipped" to the caller.
     """
     from apps.llm_ranking.providers import get_synthesis_provider
 
     items = []
     for pi, row in enumerate(prompt_rows):
+        prompt_text = row.get("prompt", "")
         for r in (row.get("responses") or []):
-            if not r.get("brand_mentioned"):
+            if not r.get("succeeded"):
                 continue
             text = (r.get("response_text") or "").strip()
             if not text:
                 continue
-            # Trim each block so a long-tailed response doesn't blow
-            # the classifier's context window. 1500 chars is plenty
-            # to read the tone of the mention.
             items.append({
                 "pi": pi,
                 "provider": r.get("provider", ""),
-                "text": text if len(text) <= 1500 else text[:1500] + " […]",
+                "prompt": prompt_text,
+                "text": text if len(text) <= 1800 else text[:1800] + " […]",
+                "brand_mentioned": bool(r.get("brand_mentioned")),
             })
     if not items:
         return {}
@@ -731,56 +749,88 @@ def _classify_response_sentiments(*, brand_terms, prompt_rows, user, website) ->
     if provider is None:
         return {}
 
-    brand = (brand_terms[0] if brand_terms else "the brand").strip() or "the brand"
+    brand_label = (brand or "").strip() or "the brand"
 
     blocks = []
     for i, it in enumerate(items, 1):
-        blocks.append(f"### Response {i}\n{it['text']}")
+        hint = "BRAND_LITERALLY_MENTIONED" if it["brand_mentioned"] else "BRAND_NOT_MENTIONED"
+        blocks.append(
+            f"### Response {i} [{hint}]\n"
+            f"Question: {it['prompt']}\n"
+            f"Answer: {it['text']}"
+        )
     body = "\n\n".join(blocks)
 
     user_prompt = (
-        f"Brand under test: **{brand}**\n\n"
-        f"For each of the {len(items)} responses below, classify how the "
-        f"brand is mentioned. Use EXACTLY one of these lowercase labels:\n\n"
-        f"- positive            — the brand is recommended favourably, "
-        f"described as a good choice, or named as a top option.\n"
-        f"- neutral             — the brand is named factually, with no "
-        f"value judgement either way.\n"
-        f"- negative            — the brand is criticised, warned about, "
-        f"or framed as a poor choice.\n"
-        f"- non_recommendation  — the brand is mentioned only as an "
-        f"example or aside, not as an answer to the user's question.\n\n"
+        f"Brand under test: **{brand_label}**\n\n"
+        f"For each of the {len(items)} responses below, output ONE line "
+        f"with three fields separated by ` | `:\n\n"
+        f"`Response <N>: <relevance> | <sentiment_or_none> | <evidence_phrase_or_none>`\n\n"
+        f"## relevance — pick exactly one:\n"
+        f"- direct          — {brand_label} is literally named in the answer.\n"
+        f"- near_miss       — the answer describes {brand_label}'s product, "
+        f"capability, or value proposition in detail but never names the "
+        f"brand. (E.g. for an apartment-listing brand: the answer "
+        f"recommends comparing rentals by build year and amenities.)\n"
+        f"- category_match  — the answer is in {brand_label}'s problem "
+        f"space but doesn't describe what the brand specifically offers. "
+        f"Soft / generic.\n"
+        f"- unrelated       — the answer is about a different topic.\n\n"
+        f"## sentiment — only fill when relevance == direct, else write `none`:\n"
+        f"- positive / neutral / negative / non_recommendation\n"
+        f"(definitions: positive=recommended; neutral=named factually; "
+        f"negative=criticised; non_recommendation=mentioned as an aside.)\n\n"
+        f"## evidence_phrase — only fill when relevance is "
+        f"near_miss or category_match. Otherwise write `none`.\n"
+        f"A SINGLE direct quote from the answer (≤200 chars, no "
+        f"ellipses, no paraphrasing) that best supports your relevance "
+        f"classification. This is what an analyst would underline.\n\n"
         f"=== RESPONSES ===\n{body}\n=== END ===\n\n"
-        f"Output exactly {len(items)} lines, one per response, in this "
-        f"format and nothing else:\n"
-        f"Response 1: <label>\n"
-        f"Response 2: <label>\n"
-        f"…\n"
+        f"Output exactly {len(items)} lines in the format above. No "
+        f"other text. Do not add explanations."
     )
 
     result = provider.query(
         user_prompt,
-        system_prompt="You are a precise classification engine. Output only the requested labels.",
+        system_prompt=(
+            "You are a precise classification engine. Output only the "
+            "requested labels and quotes, one line per response."
+        ),
         user=user, website=website,
-        audit_id="model_test_sentiment", role="synthesis",
+        audit_id="model_test_classify", role="synthesis",
     )
     if not result.succeeded:
-        raise RuntimeError(result.error or "sentiment classifier failed")
+        raise RuntimeError(result.error or "classifier failed")
 
-    out: dict[str, str] = {}
-    line_re = _re.compile(r"^\s*Response\s+(\d+)\s*:\s*([a-z_]+)", _re.IGNORECASE)
+    out: dict[str, dict] = {}
+    # Tolerant parser — labels are simple words, evidence phrase may
+    # contain spaces and punctuation.
+    line_re = _re.compile(
+        r"^\s*Response\s+(\d+)\s*:\s*([a-z_]+)\s*\|\s*([a-z_]+)\s*\|\s*(.+?)\s*$",
+        _re.IGNORECASE,
+    )
     for line in (result.text or "").splitlines():
         m = line_re.match(line)
         if not m:
             continue
         idx = int(m.group(1)) - 1
-        label = m.group(2).strip().lower()
+        relevance = m.group(2).strip().lower()
+        sentiment = m.group(3).strip().lower()
+        phrase = m.group(4).strip()
         if not (0 <= idx < len(items)):
             continue
-        if label not in _SENTIMENT_LABELS:
+        if relevance not in _RELEVANCE_LABELS:
             continue
+        entry: dict = {"relevance": relevance}
+        if sentiment in _SENTIMENT_LABELS:
+            entry["sentiment"] = sentiment
+        if phrase and phrase.lower() != "none":
+            # Strip surrounding quotes the LLM often adds.
+            cleaned = phrase.strip(' "\'`')
+            if cleaned and len(cleaned) <= 240:
+                entry["evidence_phrase"] = cleaned
         it = items[idx]
-        out[f"{it['pi']}:{it['provider']}"] = label
+        out[f"{it['pi']}:{it['provider']}"] = entry
     return out
 
 

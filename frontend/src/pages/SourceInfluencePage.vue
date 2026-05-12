@@ -281,6 +281,10 @@
                     <span class="mt-pm-pill" :class="m.discovery_count > 0 ? 'is-hit' : 'is-miss'">
                       {{ m.discovery_count }} / {{ m.total_models }}
                     </span>
+                    <div v-if="m.near_miss_count || m.category_match_count" class="mt-pm-softline">
+                      <span v-if="m.near_miss_count" class="mt-pm-rel is-near_miss">+{{ m.near_miss_count }} near</span>
+                      <span v-if="m.category_match_count" class="mt-pm-rel is-category_match">+{{ m.category_match_count }} cat</span>
+                    </div>
                   </td>
                   <td class="mt-pm-num-cell">{{ m.total_mentions }}</td>
                   <td class="mt-pm-num-cell">{{ m.best_prominence_pct ? m.best_prominence_pct + '%' : '—' }}</td>
@@ -302,6 +306,7 @@
                         <tr>
                           <th>Model</th>
                           <th>Outcome</th>
+                          <th>Relevance</th>
                           <th>Sentiment</th>
                           <th class="mt-pm-num-cell">First mention</th>
                           <th class="mt-pm-num-cell">Prominence</th>
@@ -313,9 +318,8 @@
                         </tr>
                       </thead>
                       <tbody>
+                        <template v-for="perf in perPromptModelMetrics(m.index)" :key="perf.provider">
                         <tr
-                          v-for="perf in perPromptModelMetrics(m.index)"
-                          :key="perf.provider"
                           class="mt-pm-perf-row"
                           :class="cellClass(displayRun.prompt_rows[m.index], perf.provider)"
                           @click.stop="toggleRespBody(m.index, perf.provider)"
@@ -328,6 +332,12 @@
                             <span class="mt-pm-pill" :class="cellClass(displayRun.prompt_rows[m.index], perf.provider)">
                               {{ cellLabel(displayRun.prompt_rows[m.index], perf.provider) }}
                             </span>
+                          </td>
+                          <td>
+                            <span v-if="perf.relevance" class="mt-pm-rel" :class="'is-' + perf.relevance">
+                              {{ relevanceLabel(perf.relevance) }}
+                            </span>
+                            <span v-else class="mt-pm-best-none">—</span>
                           </td>
                           <td>
                             <span v-if="perf.sentiment" class="mt-pm-sent" :class="'is-' + perf.sentiment">
@@ -349,6 +359,13 @@
                             <span v-else class="mt-pm-best-none">—</span>
                           </td>
                         </tr>
+                        <tr v-if="perf.evidence_phrase" class="mt-pm-evidence-row">
+                          <td colspan="11" class="mt-pm-evidence">
+                            <span class="mt-pm-evidence-label">Closest phrase in this response:</span>
+                            <span class="mt-pm-evidence-quote">"{{ perf.evidence_phrase }}"</span>
+                          </td>
+                        </tr>
+                        </template>
                       </tbody>
                     </table>
 
@@ -1564,6 +1581,8 @@ function perPromptModelMetrics(promptIdx) {
       list_rank: r.list_rank,
       list_size: r.list_size,
       sentiment: r.sentiment || null,
+      relevance: r.relevance || null,
+      evidence_phrase: r.evidence_phrase || '',
     }
   })
 
@@ -1600,6 +1619,14 @@ const SENTIMENT_LABELS = {
   non_recommendation: 'Aside',
 }
 function sentimentLabel(s) { return SENTIMENT_LABELS[s] || '' }
+
+const RELEVANCE_LABELS = {
+  direct: 'Direct hit',
+  near_miss: 'Near miss',
+  category_match: 'Category',
+  unrelated: 'Unrelated',
+}
+function relevanceLabel(s) { return RELEVANCE_LABELS[s] || '' }
 function togglePromptRow(idx) {
   const next = !promptOpen.value[idx]
   promptOpen.value = { ...promptOpen.value, [idx]: next }
@@ -1721,6 +1748,17 @@ const perPromptMetrics = computed(() => {
       ? Math.round((discovery_count / totalModels) * 100)
       : 0
 
+    // Soft signals: how many non-mentioning responses still
+    // described the brand (near-miss) or its category. Surfacing
+    // these prevents a "0/4 missed" row from looking like a total
+    // wash when the underlying answers were thematically close.
+    const near_miss_count = responses.filter(
+      (r) => r.relevance === 'near_miss',
+    ).length
+    const category_match_count = responses.filter(
+      (r) => r.relevance === 'category_match',
+    ).length
+
     return {
       index: idx,
       prompt: row.prompt || '',
@@ -1734,6 +1772,8 @@ const perPromptMetrics = computed(() => {
       best_model,
       best_list_rank,
       best_list_size,
+      near_miss_count,
+      category_match_count,
     }
   })
 })
@@ -2616,6 +2656,43 @@ onBeforeUnmount(() => document.removeEventListener('click', _closeDropdownOnDocC
 .mt-pm-sent.is-neutral  { background: #f1f5f9; color: #475569; }
 .mt-pm-sent.is-negative { background: #fef2f2; color: #b91c1c; }
 .mt-pm-sent.is-non_recommendation { background: #fef3c7; color: #92400e; }
+
+/* Relevance pills */
+.mt-pm-rel {
+  display: inline-block;
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 2px 8px; border-radius: 9999px;
+}
+.mt-pm-rel.is-direct         { background: #ecfdf5; color: #047857; }
+.mt-pm-rel.is-near_miss      { background: #e0e7ff; color: #3730a3; }
+.mt-pm-rel.is-category_match { background: #fef3c7; color: #92400e; }
+.mt-pm-rel.is-unrelated      { background: #f1f5f9; color: #94a3b8; }
+
+.mt-pm-softline {
+  margin-top: 4px;
+  display: flex; gap: 4px; justify-content: flex-end; flex-wrap: wrap;
+}
+
+/* Evidence-phrase row inside the per-model perf table */
+.mt-pm-evidence-row td.mt-pm-evidence {
+  padding: 8px 12px 12px 38px;
+  background: #fafafb;
+  border-top: 0;
+  font-size: 12px;
+  color: #475569;
+}
+.mt-pm-evidence-label {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.08em;
+  text-transform: uppercase; color: #94a3b8;
+  margin-right: 8px;
+}
+.mt-pm-evidence-quote {
+  font-style: italic; color: #0f172a;
+  border-left: 2px solid #3730a3;
+  padding-left: 10px;
+  display: inline-block;
+}
 .mt-pm-resp {
   background: #fff;
   border: 1px solid rgba(15, 23, 42, 0.06);

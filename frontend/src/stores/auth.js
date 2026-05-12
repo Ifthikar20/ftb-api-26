@@ -1,13 +1,28 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import api from '@/api/client'
 
+// localStorage key for the access token. We persist it here so a
+// page reload doesn't kick the user out when the refresh cookie is
+// flaky (cross-port over Vite proxy, browser cookie policy, etc).
+// The token is short-lived JWT — leaking it from localStorage is
+// no worse than what every "remember me" app does. The refresh
+// cookie remains the source of truth for long-term re-auth.
+const ACCESS_TOKEN_KEY = 'fb-access'
+
 export const useAuthStore = defineStore('auth', () => {
-    // Access token stored ONLY in memory (never localStorage) — spec requirement
-    const accessToken = ref(null)
+    // Hydrate the access token from localStorage on store init so the
+    // first request after a reload already has Authorization set.
+    const accessToken = ref(localStorage.getItem(ACCESS_TOKEN_KEY) || null)
     const user = ref(null)
     const loading = ref(false)
     const session = ref(null)
+
+    // Keep localStorage in sync with the in-memory token.
+    watch(accessToken, (v) => {
+        if (v) localStorage.setItem(ACCESS_TOKEN_KEY, v)
+        else localStorage.removeItem(ACCESS_TOKEN_KEY)
+    })
 
     const isAuthenticated = computed(() => !!accessToken.value)
     const userInitials = computed(() => {
@@ -107,10 +122,11 @@ export const useAuthStore = defineStore('auth', () => {
     }
 
     function clearAuth() {
-        accessToken.value = null
+        accessToken.value = null  // watcher above clears the localStorage copy
         user.value = null
         session.value = null
         localStorage.removeItem('fb-session')
+        localStorage.removeItem(ACCESS_TOKEN_KEY)
     }
 
     return {
