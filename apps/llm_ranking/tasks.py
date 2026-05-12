@@ -269,6 +269,16 @@ def _record_failure(schedule, now) -> None:
 MODEL_TEST_CACHE_KEY = "model_test:run:{run_id}"
 MODEL_TEST_TTL_SECONDS = 60 * 60  # 1h — plenty for poll-and-leave UX
 
+# Seconds to sleep BETWEEN each (prompt, model) cell. Paces the run so:
+#   1. The FE has time to poll the cached state and render each cell
+#      before the next one arrives.
+#   2. We stay well under per-provider rate-limit ceilings even when
+#      a user picks many variants from the same provider in one run.
+#   3. The run feels considered rather than a fire-and-forget burst.
+# Configurable via the MODEL_TEST_INTER_CALL_SLEEP_MS Django setting.
+# Defaults to 1.5s — change in dev.py if you want faster local runs.
+MODEL_TEST_INTER_CALL_SLEEP_MS_DEFAULT = 1500
+
 def _model_test_state_get(run_id: str) -> dict | None:
     from django.core.cache import cache
     return cache.get(MODEL_TEST_CACHE_KEY.format(run_id=run_id))
@@ -299,6 +309,15 @@ def run_model_test(self, *, run_id: str, website_id: str, user_id: int | None,
 
     import time as _time
     started_monotonic = _time.monotonic()
+
+    # Resolve pacing once per run so the worker doesn't import Django
+    # settings 16+ times per audit.
+    from django.conf import settings as _settings
+    inter_call_ms = int(getattr(
+        _settings, "MODEL_TEST_INTER_CALL_SLEEP_MS",
+        MODEL_TEST_INTER_CALL_SLEEP_MS_DEFAULT,
+    ))
+    inter_call_sec = max(0.0, inter_call_ms / 1000.0)
 
     state = _model_test_state_get(run_id) or {}
     state.update({
@@ -387,6 +406,16 @@ def run_model_test(self, *, run_id: str, website_id: str, user_id: int | None,
 
                 state["completed"] = state.get("completed", 0) + 1
                 _model_test_state_set(run_id, state)
+
+                # Pace the next call so the UI catches up and we don't
+                # burst the upstream. Skipped after the very last cell
+                # since nothing follows.
+                is_last_cell = (
+                    p_idx == len(prompts) - 1
+                    and key == providers[-1]
+                )
+                if inter_call_sec > 0 and not is_last_cell:
+                    _time.sleep(inter_call_sec)
 
             state["prompt_rows"].append(row)
             _model_test_state_set(run_id, state)
