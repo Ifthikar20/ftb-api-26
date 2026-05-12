@@ -2365,14 +2365,25 @@ onBeforeUnmount(() => document.removeEventListener('click', _closeDropdownOnDocC
 }
 
 /* ── Synthesis & grounding cards */
-.mt-synth, .mt-ground { padding: 24px 28px; }
-.mt-md { color: #334155; font-size: 14px; line-height: 1.65; }
-.mt-md h3 { font-size: 16px; font-weight: 700; color: #0f172a; margin: 18px 0 8px; }
-.mt-md h4 { font-size: 14px; font-weight: 700; color: #0f172a; margin: 14px 0 6px; }
-.mt-md h5 { font-size: 13px; font-weight: 700; color: #0f172a; margin: 12px 0 6px; }
-.mt-md p { margin: 0 0 10px; }
-.mt-md ul, .mt-md ol { margin: 0 0 12px; padding-left: 22px; }
-.mt-md li { margin: 4px 0; }
+.mt-synth, .mt-ground { padding: 28px 32px; }
+.mt-md {
+  color: #334155; font-size: 13.5px; line-height: 1.65;
+  max-width: 70ch;  /* keep line length readable */
+}
+.mt-md h3 {
+  font-size: 11px; font-weight: 700; letter-spacing: 0.10em;
+  text-transform: uppercase; color: #94a3b8;
+  margin: 22px 0 8px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(15, 23, 42, 0.06);
+}
+.mt-md h3:first-child { padding-top: 0; border-top: 0; margin-top: 0; }
+.mt-md h4 { font-size: 14px; font-weight: 600; color: #0f172a; margin: 14px 0 6px; }
+.mt-md h5 { font-size: 13px; font-weight: 600; color: #0f172a; margin: 12px 0 6px; }
+.mt-md p { margin: 0 0 12px; }
+.mt-md ul, .mt-md ol { margin: 0 0 14px; padding-left: 22px; }
+.mt-md li { margin: 6px 0; padding-left: 4px; }
+.mt-md li::marker { color: #94a3b8; }
 .mt-md strong { color: #0f172a; font-weight: 600; }
 .mt-md em { color: #475569; }
 .mt-md code {
