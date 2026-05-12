@@ -278,7 +278,7 @@
                   <td class="mt-pm-num-cell">{{ m.index + 1 }}</td>
                   <td class="mt-pm-prompt-cell" :title="m.prompt">{{ m.prompt }}</td>
                   <td class="mt-pm-num-cell">
-                    <span class="mt-pm-pill" :class="m.discovery_count > 0 ? 'is-hit' : 'is-miss'">
+                    <span class="mt-pm-pill" :class="m.coverage_cls">
                       {{ m.discovery_count }} / {{ m.total_models }}
                     </span>
                     <div v-if="m.near_miss_count || m.category_match_count" class="mt-pm-softline">
@@ -1400,15 +1400,19 @@ const latestCompletedResponse = computed(() => {
     if (!responses.length) continue
     const r = responses[responses.length - 1]
     const ok = !!r.succeeded
-    const isHit = !!r.brand_mentioned
+    let label, cls
+    if (!ok) { label = 'failed'; cls = 'is-fail' }
+    else if (r.brand_mentioned) { label = 'mentioned'; cls = 'is-hit' }
+    else if (r.relevance === 'near_miss') { label = 'near miss'; cls = 'is-near' }
+    else if (r.relevance === 'category_match') { label = 'category'; cls = 'is-cat' }
+    else { label = 'no match'; cls = 'is-miss' }
     return {
       provider: r.provider,
       prompt_idx: i,
       text: r.response_text || '',
       error: r.error || '',
       duration_ms: r.duration_ms || 0,
-      label: ok ? (isHit ? 'mentioned' : 'no mention') : 'failed',
-      cls:   ok ? (isHit ? 'is-hit' : 'is-miss') : 'is-fail',
+      label, cls,
       raw: r,  // pass-through so renderResponse can read .entities
     }
   }
@@ -1423,15 +1427,27 @@ const statusLog = computed(() => {
   const out = []
   rows.forEach((row, pi) => {
     (row.responses || []).forEach((r) => {
-      const isHit = !!r.brand_mentioned
       const ok = !!r.succeeded
+      let state, cls
+      if (!ok) {
+        state = r.error ? `failed: ${(r.error || '').slice(0, 60)}` : 'failed'
+        cls = 'is-fail'
+      } else if (r.brand_mentioned) {
+        state = 'mentioned'; cls = 'is-hit'
+      } else if (r.relevance === 'near_miss') {
+        state = 'near miss'; cls = 'is-near'
+      } else if (r.relevance === 'category_match') {
+        state = 'category'; cls = 'is-cat'
+      } else {
+        state = 'no match'; cls = 'is-miss'
+      }
       out.push({
         key: `${pi}:${r.provider}`,
         step: `${pi + 1}.${(displayRun.value?.providers || []).indexOf(r.provider) + 1}`,
         text: `${variantLabel(r.provider)} — ${(row.prompt || '').slice(0, 80)}${(row.prompt || '').length > 80 ? '…' : ''}`,
         ms: r.duration_ms ? Math.round(r.duration_ms) : 0,
-        state: ok ? (isHit ? 'mentioned' : 'no mention') : (r.error ? `failed: ${(r.error || '').slice(0, 60)}` : 'failed'),
-        cls: ok ? (isHit ? 'is-hit' : 'is-miss') : 'is-fail',
+        state,
+        cls,
       })
     })
   })
@@ -1666,17 +1682,31 @@ function isResponseOpen(rowIdx, prov) {
 function cellResponse(row, prov) {
   return (row?.responses || []).find((r) => r.provider === prov) || null
 }
+// Outcome pill colour. Five buckets so an analyst sees nuance, not
+// just hit/miss:
+//   is-hit   — brand named verbatim
+//   is-near  — relevance=near_miss (described offering without name)
+//   is-cat   — relevance=category_match (in the problem space)
+//   is-miss  — relevance=unrelated, or no relevance yet
+//   is-fail  — call failed
+//   is-pending — call hasn't completed yet
 function cellClass(row, prov) {
   const r = cellResponse(row, prov)
   if (!r) return 'is-pending'
   if (!r.succeeded) return 'is-fail'
-  return r.brand_mentioned ? 'is-hit' : 'is-miss'
+  if (r.brand_mentioned) return 'is-hit'
+  if (r.relevance === 'near_miss') return 'is-near'
+  if (r.relevance === 'category_match') return 'is-cat'
+  return 'is-miss'
 }
 function cellLabel(row, prov) {
   const r = cellResponse(row, prov)
   if (!r) return 'pending'
   if (!r.succeeded) return 'failed'
-  return r.brand_mentioned ? 'mentioned' : 'no mention'
+  if (r.brand_mentioned) return 'mentioned'
+  if (r.relevance === 'near_miss') return 'near miss'
+  if (r.relevance === 'category_match') return 'category'
+  return 'no match'
 }
 function cellLatency(row, prov) {
   const r = cellResponse(row, prov)
@@ -1760,6 +1790,14 @@ const perPromptMetrics = computed(() => {
       (r) => r.relevance === 'category_match',
     ).length
 
+    // Coverage pill colour reflects the strongest signal seen for
+    // this prompt. A direct hit always wins; otherwise near-miss
+    // upgrades a "miss" to indigo, category upgrades to amber.
+    let coverage_cls = 'is-miss'
+    if (discovery_count > 0) coverage_cls = 'is-hit'
+    else if (near_miss_count > 0) coverage_cls = 'is-near'
+    else if (category_match_count > 0) coverage_cls = 'is-cat'
+
     return {
       index: idx,
       prompt: row.prompt || '',
@@ -1775,6 +1813,7 @@ const perPromptMetrics = computed(() => {
       best_list_size,
       near_miss_count,
       category_match_count,
+      coverage_cls,
     }
   })
 })
@@ -2404,6 +2443,8 @@ onBeforeUnmount(() => document.removeEventListener('click', _closeDropdownOnDocC
   font-variant-numeric: tabular-nums;
 }
 .mt-status-log-item.is-hit  { background: #ecfdf5; color: #047857; }
+.mt-status-log-item.is-near { background: #e0e7ff; color: #3730a3; }
+.mt-status-log-item.is-cat  { background: #fef3c7; color: #92400e; }
 .mt-status-log-item.is-miss { background: #fafafb; color: #475569; }
 .mt-status-log-item.is-fail { background: #fef2f2; color: #b91c1c; }
 .mt-status-log-step { font-weight: 700; color: #94a3b8; font-size: 11.5px; }
@@ -2648,6 +2689,8 @@ onBeforeUnmount(() => document.removeEventListener('click', _closeDropdownOnDocC
   padding: 3px 9px; border-radius: 9999px;
 }
 .mt-pm-pill.is-hit  { background: #ecfdf5; color: #047857; }
+.mt-pm-pill.is-near { background: #e0e7ff; color: #3730a3; }
+.mt-pm-pill.is-cat  { background: #fef3c7; color: #92400e; }
 .mt-pm-pill.is-miss { background: #f1f5f9; color: #64748b; }
 
 /* Expanded row */
@@ -2827,9 +2870,11 @@ onBeforeUnmount(() => document.removeEventListener('click', _closeDropdownOnDocC
   text-transform: uppercase;
   padding: 3px 9px; border-radius: 9999px;
 }
-.mt-pivot-pill.is-hit, .mt-pivot-cell.is-hit .mt-pivot-pill { background: #ecfdf5; color: #047857; }
-.mt-pivot-pill.is-miss, .mt-pivot-cell.is-miss .mt-pivot-pill { background: #f1f5f9; color: #64748b; }
-.mt-pivot-pill.is-fail, .mt-pivot-cell.is-fail .mt-pivot-pill { background: #fef2f2; color: #b91c1c; }
+.mt-pivot-pill.is-hit,   .mt-pivot-cell.is-hit   .mt-pivot-pill { background: #ecfdf5; color: #047857; }
+.mt-pivot-pill.is-near,  .mt-pivot-cell.is-near  .mt-pivot-pill { background: #e0e7ff; color: #3730a3; }
+.mt-pivot-pill.is-cat,   .mt-pivot-cell.is-cat   .mt-pivot-pill { background: #fef3c7; color: #92400e; }
+.mt-pivot-pill.is-miss,  .mt-pivot-cell.is-miss  .mt-pivot-pill { background: #f1f5f9; color: #64748b; }
+.mt-pivot-pill.is-fail,  .mt-pivot-cell.is-fail  .mt-pivot-pill { background: #fef2f2; color: #b91c1c; }
 .mt-pivot-pill.is-pending, .mt-pivot-cell.is-pending .mt-pivot-pill {
   background: #fef3c7; color: #92400e;
 }
