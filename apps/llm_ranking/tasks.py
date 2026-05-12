@@ -1024,28 +1024,42 @@ def _model_test_google_grounding(*, brand_terms, prompts, website) -> dict | Non
 
     text = (getattr(response, "text", "") or "").strip()
 
-    # Citations are surfaced by the SDK as `grounding_metadata` on each
-    # candidate. Shape varies; collect best-effort URLs without crashing
-    # when the field is missing.
+    # Citations: query Google Programmable Search directly with the
+    # user's prompts and the brand name. We used to surface Gemini's
+    # `grounding_metadata.grounding_chunks` here, but those URIs are
+    # opaque vertexaisearch.cloud.google.com redirects which made the
+    # favicon/domain UI useless. Hitting CSE gives us the real
+    # publisher URL up-front. Falls back to [] when the API isn't
+    # configured — the markdown summary above is still useful on its
+    # own, so we don't surface that as an error.
+    from apps.llm_ranking.services.google_search import (
+        is_configured as _cse_configured,
+        search_many as _cse_search_many,
+    )
+
     citations: list[dict] = []
-    try:
-        cand = (getattr(response, "candidates", None) or [None])[0]
-        gm = getattr(cand, "grounding_metadata", None) if cand else None
-        chunks = getattr(gm, "grounding_chunks", None) if gm else None
-        for ch in (chunks or []):
-            web = getattr(ch, "web", None)
-            if web is None:
-                continue
-            url = getattr(web, "uri", "") or ""
-            title = getattr(web, "title", "") or url
-            if url:
-                citations.append({"url": url, "title": title})
-    except Exception:
-        citations = []
+    citations_source = "none"
+    if _cse_configured():
+        cse_queries = [p for p in (prompts or []) if isinstance(p, str) and p.strip()]
+        if brand and brand != "the brand":
+            cse_queries = [brand] + cse_queries
+        results = _cse_search_many(cse_queries, num_per_query=5, max_total=20)
+        citations = [
+            {
+                "url":     r["url"],
+                "title":   r["title"],
+                "snippet": r.get("snippet", ""),
+                "domain":  r.get("domain", ""),
+                "queries": r.get("queries", []),
+            }
+            for r in results
+        ]
+        citations_source = "google_cse" if citations else "google_cse_empty"
 
     return {
         "markdown": text,
         "citations": citations,
+        "citations_source": citations_source,
         "model": "gemini-1.5-pro",
         "grounded": used_grounding,
     }

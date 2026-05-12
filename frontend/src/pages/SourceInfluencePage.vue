@@ -160,7 +160,14 @@
         <template v-if="groundingOpen">
           <div class="mt-md" v-html="renderMarkdown(displayRun.google_grounding.markdown)"></div>
           <div v-if="(displayRun.google_grounding.citations || []).length" class="mt-citations">
-            <div class="mt-citations-h">Sources</div>
+            <div class="mt-citations-h">
+              Sources
+              <span
+                v-if="displayRun.google_grounding.citations_source === 'google_cse'"
+                class="mt-citations-tag"
+                title="Citations are the top organic Google Search results for your prompts — fetched directly from the Google Programmable Search API."
+              >via Google Search</span>
+            </div>
             <ul class="mt-cite-chips">
               <li
                 v-for="(c, i) in displayRun.google_grounding.citations"
@@ -172,18 +179,18 @@
                   target="_blank"
                   rel="noopener noreferrer"
                   class="mt-cite-chip"
-                  :title="c.title || c.url"
+                  :title="citationTooltip(c)"
                 >
                   <img
                     class="mt-cite-favicon"
                     :src="citationFavicon(c.url)"
-                    :alt="citationDomain(c.url) + ' favicon'"
+                    :alt="(c.domain || citationDomain(c.url)) + ' favicon'"
                     loading="lazy"
                     referrerpolicy="no-referrer"
                     @error="onCiteFaviconError($event)"
                   />
                   <span class="mt-cite-text">
-                    <span class="mt-cite-domain">{{ citationDomain(c.url) }}</span>
+                    <span class="mt-cite-domain">{{ c.domain || citationDomain(c.url) }}</span>
                     <span v-if="c.title" class="mt-cite-title">{{ c.title }}</span>
                   </span>
                   <svg class="mt-cite-out" width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
@@ -953,6 +960,17 @@ function onCiteFaviconError(ev) {
   if (ev?.target && ev.target.src !== _CITE_FAVICON_FALLBACK) {
     ev.target.src = _CITE_FAVICON_FALLBACK
   }
+}
+// Rich tooltip: snippet (if Google returned one) + which of the
+// user's prompts surfaced this citation (multi-prompt runs).
+function citationTooltip(c) {
+  const parts = []
+  if (c?.title) parts.push(c.title)
+  if (c?.snippet) parts.push(c.snippet)
+  if (Array.isArray(c?.queries) && c.queries.length) {
+    parts.push(`Surfaced by: ${c.queries.join(' · ')}`)
+  }
+  return parts.join('\n\n') || c?.url || ''
 }
 
 // Audit type — surfaced as a chip in the page header + the status
@@ -2865,6 +2883,20 @@ onBeforeUnmount(() => document.removeEventListener('click', _closeDropdownOnDocC
 .mt-citations li { font-size: 13px; }
 .mt-citations a { color: #0f172a; text-decoration: underline; text-underline-offset: 3px; }
 .mt-citations a:hover { color: #475569; }
+
+.mt-citations-tag {
+  display: inline-flex;
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #4338ca;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  vertical-align: middle;
+}
 
 .mt-cite-chips {
   display: flex !important;

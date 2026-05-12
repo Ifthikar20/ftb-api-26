@@ -353,6 +353,12 @@ CANVA_CLIENT_SECRET = env("CANVA_CLIENT_SECRET", default="")
 GEMINI_API_KEY = env("GEMINI_API_KEY", default="")
 PERPLEXITY_API_KEY = env("PERPLEXITY_API_KEY", default="")
 
+# Google Programmable Search (Custom Search JSON API). Used by the
+# Model Test pipeline to fetch real publisher URLs for the citations
+# UI — see apps/llm_ranking/services/google_search.py.
+GOOGLE_API_KEY = env("GOOGLE_API_KEY", default="")
+GOOGLE_CSE_ID = env("GOOGLE_CSE_ID", default="")
+
 # ── Social Leads (Facebook, LinkedIn, X) ──
 FACEBOOK_APP_ID = env("FACEBOOK_APP_ID", default="")
 FACEBOOK_APP_SECRET = env("FACEBOOK_APP_SECRET", default="")
