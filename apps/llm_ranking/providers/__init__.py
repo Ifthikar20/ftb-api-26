@@ -54,6 +54,16 @@ MODEL_VARIANTS: dict[str, list[tuple[str, str, bool]]] = {
         ("Sonar Small (web)", "llama-3.1-sonar-small-128k-online", True),
         ("Sonar Large (web)", "llama-3.1-sonar-large-128k-online", False),
     ],
+    # DeepSeek is excluded from the main audit registry (PROVIDERS) but
+    # surfaced in the Model Test picker because it's a cheap, useful
+    # baseline for "did the model mention us" probes. The variants
+    # registry, list_model_variants(), and get_provider_for_variant()
+    # all consult TOOLING_PROVIDERS for these so the audit router
+    # remains unaffected.
+    "deepseek": [
+        ("DeepSeek Chat",     "deepseek-chat",     True),
+        ("DeepSeek Reasoner", "deepseek-reasoner", False),
+    ],
 }
 
 
@@ -64,12 +74,14 @@ def list_model_variants() -> list[dict]:
     as the wire-format choice in Model Test runs), the model id sent to
     the SDK, a friendly label, and whether the underlying provider is
     configured. Variants are excluded when the provider class isn't in
-    PROVIDERS (defensive — should not happen).
+    either PROVIDERS or TOOLING_PROVIDERS (defensive — should not
+    happen). DeepSeek is sourced from TOOLING_PROVIDERS so it appears
+    in Model Test but stays out of the main audit router.
     """
     from django.conf import settings
     out: list[dict] = []
     for provider_key, variants in MODEL_VARIANTS.items():
-        cls = PROVIDERS.get(provider_key)
+        cls = PROVIDERS.get(provider_key) or TOOLING_PROVIDERS.get(provider_key)
         if cls is None:
             continue
         configured = bool(getattr(settings, cls.api_key_setting, ""))
@@ -90,14 +102,18 @@ def parse_variant(variant_id: str) -> tuple[str, str] | None:
 
     Returns None when the variant is malformed or references a provider
     that no longer exists. The caller should treat None as an unknown
-    variant and surface a clear error to the user.
+    variant and surface a clear error to the user. Accepts any provider
+    that's in PROVIDERS *or* TOOLING_PROVIDERS so Model Test can route
+    to DeepSeek (which is tooling-only).
     """
     if not variant_id or ":" not in variant_id:
         return None
     provider, model_id = variant_id.split(":", 1)
     provider = provider.strip().lower()
     model_id = model_id.strip()
-    if not provider or not model_id or provider not in PROVIDERS:
+    if not provider or not model_id:
+        return None
+    if provider not in PROVIDERS and provider not in TOOLING_PROVIDERS:
         return None
     return provider, model_id
 
@@ -118,13 +134,15 @@ def get_provider_for_variant(variant_id: str) -> LLMProvider | None:
 
     Mutates the instance's `.model` so the upstream SDK call routes to
     the requested variant. Returns None when the provider is unknown,
-    the variant is malformed, or the API key isn't configured.
+    the variant is malformed, or the API key isn't configured. Looks
+    up the class in PROVIDERS first, then TOOLING_PROVIDERS, so Model
+    Test can dispatch DeepSeek without polluting the audit router.
     """
     parsed = parse_variant(variant_id)
     if parsed is None:
         return None
     provider_key, model_id = parsed
-    cls = PROVIDERS.get(provider_key)
+    cls = PROVIDERS.get(provider_key) or TOOLING_PROVIDERS.get(provider_key)
     if cls is None:
         return None
     instance = cls()
