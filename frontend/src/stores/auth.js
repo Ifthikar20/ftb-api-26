@@ -88,9 +88,21 @@ export const useAuthStore = defineStore('auth', () => {
             accessToken.value = result.access
             localStorage.setItem('fb-session', '1')
             return result.access
-        } catch {
-            clearAuth()
-            localStorage.removeItem('fb-session')
+        } catch (err) {
+            // Only clear auth when the server actively says the
+            // refresh cookie is no longer valid (401 / 403). Network
+            // hiccups, 5xx blips, browser delays — none of those mean
+            // the user is signed out, and clearing fb-session here
+            // makes every subsequent page load skip the refresh attempt
+            // entirely. Stay logged-in until the server says otherwise.
+            const status = err?.response?.status
+            if (status === 401 || status === 403) {
+                clearAuth()
+                localStorage.removeItem('fb-session')
+            }
+            // For anything else, leave fb-session alone so the next
+            // navigation can retry the refresh.
+            return null
         }
     }
 

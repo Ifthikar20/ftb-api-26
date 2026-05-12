@@ -133,19 +133,33 @@ const GATE_EXEMPT = new Set([
 router.beforeEach(async (to, from, next) => {
     const auth = useAuthStore()
 
-    // On first load, try to restore session from refresh token cookie
+    // On first load, try to restore session from the refresh-token
+    // cookie. We only flip `sessionRestored` to true once we either
+    // succeed OR the server actively rejects the cookie (401/403).
+    // A transient failure (network blip, 5xx) leaves the flag false
+    // so the very next navigation tries again — otherwise the user
+    // would be stuck on /login until a full reload.
     if (!sessionRestored && !auth.isAuthenticated) {
-        sessionRestored = true
         const hadSession = localStorage.getItem('fb-session')
         if (hadSession) {
             try {
                 await auth.refreshToken()
                 if (auth.accessToken) {
                     await auth.fetchSession()
+                    sessionRestored = true
+                } else if (!localStorage.getItem('fb-session')) {
+                    // refreshToken cleared fb-session — that means the
+                    // server returned 401/403. No valid session.
+                    sessionRestored = true
                 }
+                // else: transient failure; retry on next navigation.
             } catch {
-                // No valid session — continue as guest
+                // Belt and braces — refreshToken catches its own errors,
+                // but if anything else escapes we still don't lock the
+                // user out permanently.
             }
+        } else {
+            sessionRestored = true
         }
     }
 
