@@ -189,8 +189,11 @@
             <div class="mt-card-eyebrow">Results</div>
             <h2 class="mt-card-h">How each model performed</h2>
             <p class="mt-card-sub">
-              Discovery rate is the % of prompts where the brand appeared in
-              that model's answer. Latency is the median over completed calls.
+              <strong>Signal rate</strong> is the % of prompts where the
+              model either named <strong>{{ brandLabel }}</strong> directly
+              or described its offering / category. The breakdown below
+              shows where each model lands across direct / near-miss /
+              category. Latency is the median over completed calls.
             </p>
           </div>
         </div>
@@ -206,15 +209,43 @@
               <span class="mt-model-dot" :class="'is-' + providerKeyOf(m.provider)"></span>
               <span class="mt-scorecard-name">{{ variantLabel(m.provider) }}</span>
             </div>
-            <div class="mt-scorecard-big">{{ m.discovery_rate }}%</div>
-            <div class="mt-scorecard-cap">discovery</div>
+            <div class="mt-scorecard-big">{{ m.signal_rate }}%</div>
+            <div class="mt-scorecard-cap">any signal</div>
+
+            <!-- Mini stacked bar: direct + near + cat / total -->
+            <div class="mt-sc-bar" v-if="m.attempts">
+              <div
+                class="mt-sc-bar-seg is-hit"
+                :style="{ width: (m.hits / m.attempts * 100) + '%' }"
+                :title="`${m.hits} direct hit(s)`"
+              ></div>
+              <div
+                class="mt-sc-bar-seg is-near"
+                :style="{ width: (m.near_miss / m.attempts * 100) + '%' }"
+                :title="`${m.near_miss} near miss(es)`"
+              ></div>
+              <div
+                class="mt-sc-bar-seg is-cat"
+                :style="{ width: (m.category_match / m.attempts * 100) + '%' }"
+                :title="`${m.category_match} category match(es)`"
+              ></div>
+            </div>
+
             <div class="mt-scorecard-grid">
               <div>
-                <div class="mt-mini-num">{{ m.hits }}/{{ m.attempts }}</div>
-                <div class="mt-mini-cap">hits</div>
+                <div class="mt-mini-num">{{ m.hits }}<span class="mt-mini-of">/{{ m.attempts }}</span></div>
+                <div class="mt-mini-cap mt-mini-hit">direct</div>
               </div>
               <div>
-                <div class="mt-mini-num">{{ m.median_ms }} ms</div>
+                <div class="mt-mini-num">{{ m.near_miss }}<span class="mt-mini-of">/{{ m.attempts }}</span></div>
+                <div class="mt-mini-cap mt-mini-near">near miss</div>
+              </div>
+              <div>
+                <div class="mt-mini-num">{{ m.category_match }}<span class="mt-mini-of">/{{ m.attempts }}</span></div>
+                <div class="mt-mini-cap mt-mini-cat">category</div>
+              </div>
+              <div>
+                <div class="mt-mini-num">{{ m.median_ms }} <span class="mt-mini-of">ms</span></div>
                 <div class="mt-mini-cap">median latency</div>
               </div>
               <div>
@@ -1872,6 +1903,8 @@ const perModelStats = computed(() => {
     const cells = rows.map((row) => cellResponse(row, prov)).filter(Boolean)
     const attempts = cells.length
     const hits = cells.filter((c) => c.brand_mentioned).length
+    const near_miss = cells.filter((c) => c.relevance === 'near_miss').length
+    const category_match = cells.filter((c) => c.relevance === 'category_match').length
     const failures = cells.filter((c) => !c.succeeded).length
     const successes = cells.filter((c) => c.succeeded)
     const lat = successes
@@ -1881,7 +1914,6 @@ const perModelStats = computed(() => {
     const median_ms = lat.length
       ? lat[Math.floor(lat.length / 2)]
       : 0
-    // "Solo finds" = prompts where ONLY this model found the brand
     let unique_finds = 0
     for (const row of rows) {
       const hitsHere = (row.responses || []).filter((r) => r.brand_mentioned)
@@ -1892,7 +1924,19 @@ const perModelStats = computed(() => {
     const discovery_rate = attempts
       ? Math.round((hits / attempts) * 1000) / 10
       : 0
-    return { provider: prov, attempts, hits, failures, median_ms, unique_finds, discovery_rate }
+    // "Any signal" = direct mention OR near miss OR category match.
+    // This is the headline metric when literal hits are zero — it
+    // tells you whether the model is at least thinking in the right
+    // neighbourhood, even if it isn't naming the brand.
+    const signal_rate = attempts
+      ? Math.round(((hits + near_miss + category_match) / attempts) * 1000) / 10
+      : 0
+    return {
+      provider: prov, attempts,
+      hits, near_miss, category_match,
+      failures, median_ms, unique_finds,
+      discovery_rate, signal_rate,
+    }
   })
 })
 
@@ -2669,10 +2713,29 @@ onBeforeUnmount(() => document.removeEventListener('click', _closeDropdownOnDocC
   margin: 6px 0 18px;
 }
 .mt-scorecard-grid {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+  display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px 14px;
   padding-top: 12px;
   border-top: 1px solid rgba(15, 23, 42, 0.06);
 }
+.mt-mini-of { color: #94a3b8; font-weight: 400; font-size: 12px; }
+
+.mt-mini-cap.mt-mini-hit  { color: #047857; }
+.mt-mini-cap.mt-mini-near { color: #3730a3; }
+.mt-mini-cap.mt-mini-cat  { color: #92400e; }
+
+/* Stacked signal bar: green direct + indigo near + amber category,
+   grey remainder = unrelated / no signal. */
+.mt-sc-bar {
+  display: flex;
+  height: 6px;
+  margin: 8px 0 14px;
+  background: #f1f5f9;
+  border-radius: 9999px;
+  overflow: hidden;
+}
+.mt-sc-bar-seg.is-hit  { background: #047857; }
+.mt-sc-bar-seg.is-near { background: #4f46e5; }
+.mt-sc-bar-seg.is-cat  { background: #d97706; }
 .mt-mini-num { font-size: 14px; font-weight: 600; color: #0f172a; }
 .mt-mini-cap { font-size: 10.5px; color: #94a3b8; }
 
