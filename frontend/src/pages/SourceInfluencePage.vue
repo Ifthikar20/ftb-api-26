@@ -194,6 +194,63 @@
         </div>
       </section>
 
+      <!-- Per-prompt highlights — the headline metric for each prompt -->
+      <section v-if="displayRun?.prompt_rows?.length" class="mt-card">
+        <div class="mt-card-head">
+          <div>
+            <h2 class="mt-card-h">Per-prompt highlights</h2>
+            <p class="mt-card-sub">
+              The headline metric for each prompt in this run. Discovery
+              is how many selected models surfaced
+              <strong>{{ brandLabel }}</strong>. Earlier first-mention
+              position means the brand appeared higher in the answer.
+            </p>
+          </div>
+        </div>
+
+        <div class="mt-promptmetrics">
+          <div
+            v-for="m in perPromptMetrics"
+            :key="m.index"
+            class="mt-pm-card"
+            :class="m.discovery_count > 0 ? 'is-hit' : 'is-miss'"
+          >
+            <div class="mt-pm-head">
+              <span class="mt-pm-num">#{{ m.index + 1 }}</span>
+              <span class="mt-pm-pill" :class="m.discovery_count > 0 ? 'is-hit' : 'is-miss'">
+                {{ m.discovery_count }} / {{ m.total_models }} mentioned
+              </span>
+            </div>
+            <div class="mt-pm-prompt" :title="m.prompt">{{ m.prompt }}</div>
+            <div class="mt-pm-grid">
+              <div class="mt-pm-stat">
+                <div class="mt-pm-stat-num">{{ m.discovery_pct }}%</div>
+                <div class="mt-pm-stat-cap">discovery</div>
+              </div>
+              <div class="mt-pm-stat">
+                <div class="mt-pm-stat-num">{{ m.total_mentions }}</div>
+                <div class="mt-pm-stat-cap">total mentions</div>
+              </div>
+              <div class="mt-pm-stat">
+                <div class="mt-pm-stat-num">{{ m.first_mention_pos === null ? '—' : m.first_mention_pos }}</div>
+                <div class="mt-pm-stat-cap">earliest pos (chars)</div>
+              </div>
+              <div class="mt-pm-stat">
+                <div class="mt-pm-stat-num">{{ m.avg_latency_ms || '—' }}<span v-if="m.avg_latency_ms" class="mt-pm-unit"> ms</span></div>
+                <div class="mt-pm-stat-cap">avg latency</div>
+              </div>
+            </div>
+            <div class="mt-pm-best">
+              <span class="mt-pm-best-cap">Best model:</span>
+              <strong>{{ m.best_model || '— none mentioned —' }}</strong>
+              <span v-if="m.best_mention_pos !== null" class="mt-pm-best-pos">
+                at char {{ m.best_mention_pos }}
+              </span>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <!-- Pivot comparison table -->
       <section v-if="displayRun?.prompt_rows?.length" class="mt-card mt-pivot-wrap">
         <div class="mt-card-head">
@@ -1306,6 +1363,91 @@ function aggClass(row) {
   return 'is-some'
 }
 
+// Per-prompt aggregate metrics for the highlights cards. The
+// "earliest mention position" finds the smallest character index at
+// which any brand term appears in any model's response — a lower
+// number means the brand surfaced higher up in the answer (more
+// visible). The "best model" is the one that produced that earliest
+// mention.
+const perPromptMetrics = computed(() => {
+  const rows = displayRun.value?.prompt_rows || []
+  const brandTerms = (displayRun.value?.brand_terms || [])
+    .map((t) => (t || '').trim().toLowerCase())
+    .filter(Boolean)
+  const totalModels = resultsProviders.value.length
+
+  return rows.map((row, idx) => {
+    const responses = row.responses || []
+    const succeeded = responses.filter((r) => r.succeeded)
+    const hits = responses.filter((r) => r.brand_mentioned)
+    const latencies = succeeded
+      .map((r) => Math.round(r.duration_ms || 0))
+      .filter((x) => x > 0)
+    const avg_latency_ms = latencies.length
+      ? Math.round(latencies.reduce((a, b) => a + b, 0) / latencies.length)
+      : 0
+
+    // Count total brand mentions across every response (a single
+    // response that names the brand four times scores 4).
+    let total_mentions = 0
+    for (const r of responses) {
+      const text = (r.response_text || '').toLowerCase()
+      if (!text) continue
+      for (const term of brandTerms) {
+        if (!term) continue
+        let from = 0
+        while (true) {
+          const i = text.indexOf(term, from)
+          if (i === -1) break
+          total_mentions += 1
+          from = i + term.length
+        }
+      }
+    }
+
+    // Per-response earliest position of any brand term; track which
+    // model owns the absolute earliest mention.
+    let first_mention_pos = null
+    let best_model = ''
+    let best_mention_pos = null
+    for (const r of responses) {
+      if (!r.brand_mentioned) continue
+      const text = (r.response_text || '').toLowerCase()
+      if (!text) continue
+      let earliest = null
+      for (const term of brandTerms) {
+        if (!term) continue
+        const i = text.indexOf(term)
+        if (i !== -1 && (earliest === null || i < earliest)) earliest = i
+      }
+      if (earliest === null) continue
+      if (first_mention_pos === null || earliest < first_mention_pos) {
+        first_mention_pos = earliest
+        best_model = variantLabel(r.provider)
+        best_mention_pos = earliest
+      }
+    }
+
+    const discovery_count = hits.length
+    const discovery_pct = totalModels
+      ? Math.round((discovery_count / totalModels) * 100)
+      : 0
+
+    return {
+      index: idx,
+      prompt: row.prompt || '',
+      total_models: totalModels,
+      discovery_count,
+      discovery_pct,
+      total_mentions,
+      first_mention_pos,
+      avg_latency_ms,
+      best_model,
+      best_mention_pos,
+    }
+  })
+})
+
 // Per-model aggregate stats for the scorecards.
 const perModelStats = computed(() => {
   const rows = displayRun.value?.prompt_rows || []
@@ -2020,6 +2162,64 @@ onBeforeUnmount(() => document.removeEventListener('click', _closeDropdownOnDocC
 }
 .mt-mini-num { font-size: 14px; font-weight: 600; color: #0f172a; }
 .mt-mini-cap { font-size: 10.5px; color: #94a3b8; }
+
+/* ── Per-prompt highlights */
+.mt-promptmetrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 0;
+  border-top: 1px solid rgba(15, 23, 42, 0.08);
+  border-left: 1px solid rgba(15, 23, 42, 0.08);
+}
+.mt-pm-card {
+  padding: 18px 20px;
+  background: #fff;
+  border-right: 1px solid rgba(15, 23, 42, 0.08);
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+  display: flex; flex-direction: column; gap: 12px;
+}
+.mt-pm-card.is-miss { background: #fafafb; }
+.mt-pm-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.mt-pm-num {
+  font-size: 11.5px; font-weight: 700; color: #94a3b8;
+  font-variant-numeric: tabular-nums;
+}
+.mt-pm-pill {
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 3px 9px; border-radius: 9999px;
+}
+.mt-pm-pill.is-hit  { background: #ecfdf5; color: #047857; }
+.mt-pm-pill.is-miss { background: #f1f5f9; color: #64748b; }
+.mt-pm-prompt {
+  font-size: 13px; color: #0f172a; line-height: 1.45;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.mt-pm-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+  padding: 12px 0;
+  border-top: 1px solid rgba(15, 23, 42, 0.06);
+  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+}
+.mt-pm-stat-num {
+  font-size: 20px; font-weight: 500; color: #0f172a;
+  font-variant-numeric: tabular-nums; line-height: 1;
+  letter-spacing: -0.02em;
+}
+.mt-pm-unit { font-size: 12px; color: #94a3b8; font-weight: 400; margin-left: 2px; }
+.mt-pm-stat-cap {
+  margin-top: 4px;
+  font-size: 10.5px; font-weight: 600; color: #94a3b8;
+  text-transform: uppercase; letter-spacing: 0.06em;
+}
+.mt-pm-best {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+  font-size: 12.5px; color: #475569;
+}
+.mt-pm-best-cap { font-weight: 600; color: #94a3b8; letter-spacing: 0.04em; text-transform: uppercase; font-size: 10.5px; }
+.mt-pm-best strong { color: #0f172a; font-weight: 600; }
+.mt-pm-best-pos { color: #94a3b8; font-size: 11.5px; }
 
 /* ── Pivot table */
 .mt-pivot-wrap { padding: 24px 0 12px; }
