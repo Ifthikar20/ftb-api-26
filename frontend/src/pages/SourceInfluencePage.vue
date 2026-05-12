@@ -255,16 +255,60 @@
                 </tr>
                 <tr v-if="promptOpen[m.index]" class="mt-pm-detail-row">
                   <td colspan="8" class="mt-pm-detail">
+                    <!-- Per-model performance breakdown for THIS prompt -->
+                    <table class="mt-pm-perf">
+                      <thead>
+                        <tr>
+                          <th>Model</th>
+                          <th>Outcome</th>
+                          <th class="mt-pm-num-cell">First mention</th>
+                          <th class="mt-pm-num-cell">Mentions</th>
+                          <th class="mt-pm-num-cell">Response chars</th>
+                          <th class="mt-pm-num-cell">Latency</th>
+                          <th>Delta vs best</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr
+                          v-for="perf in perPromptModelMetrics(m.index)"
+                          :key="perf.provider"
+                          class="mt-pm-perf-row"
+                          :class="cellClass(displayRun.prompt_rows[m.index], perf.provider)"
+                          @click.stop="toggleRespBody(m.index, perf.provider)"
+                        >
+                          <td>
+                            <span class="mt-model-dot" :class="'is-' + providerKeyOf(perf.provider)"></span>
+                            {{ variantLabel(perf.provider) }}
+                          </td>
+                          <td>
+                            <span class="mt-pm-pill" :class="cellClass(displayRun.prompt_rows[m.index], perf.provider)">
+                              {{ cellLabel(displayRun.prompt_rows[m.index], perf.provider) }}
+                            </span>
+                          </td>
+                          <td class="mt-pm-num-cell">{{ perf.first_pos === null ? '—' : perf.first_pos }}</td>
+                          <td class="mt-pm-num-cell">{{ perf.mentions }}</td>
+                          <td class="mt-pm-num-cell">{{ perf.chars || '—' }}</td>
+                          <td class="mt-pm-num-cell">{{ perf.latency || '—' }}</td>
+                          <td class="mt-pm-delta">
+                            <span v-if="perf.delta_label" :class="perf.delta_cls">{{ perf.delta_label }}</span>
+                            <span v-else class="mt-pm-best-none">—</span>
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+
+                    <!-- Full response bodies — opened on row click -->
                     <div
                       v-for="r in (displayRun.prompt_rows[m.index].responses || [])"
                       :key="r.provider"
+                      v-show="isRespBodyOpen(m.index, r.provider)"
                       class="mt-pm-resp"
                       :class="cellClass(displayRun.prompt_rows[m.index], r.provider)"
                     >
                       <div class="mt-pm-resp-head">
                         <span class="mt-model-dot" :class="'is-' + providerKeyOf(r.provider)"></span>
                         <span class="mt-pm-resp-name">{{ variantLabel(r.provider) }}</span>
-                        <span class="mt-pivot-pill" :class="cellClass(displayRun.prompt_rows[m.index], r.provider)">
+                        <span class="mt-pm-pill" :class="cellClass(displayRun.prompt_rows[m.index], r.provider)">
                           {{ cellLabel(displayRun.prompt_rows[m.index], r.provider) }}
                         </span>
                         <span v-if="r.duration_ms" class="mt-pm-resp-ms">{{ Math.round(r.duration_ms) }} ms</span>
@@ -1351,6 +1395,91 @@ const resultsProviders = computed(() => {
 
 // Per-prompt accordion open/close state. Keyed by prompt index.
 const promptOpen = ref({})
+
+// Inside an open prompt row, the per-model performance table lets you
+// click a model row to reveal that model's full response below.
+const respBodyOpen = ref({})  // `${promptIdx}:${variantId}` -> bool
+function toggleRespBody(promptIdx, provider) {
+  const k = `${promptIdx}:${provider}`
+  respBodyOpen.value = { ...respBodyOpen.value, [k]: !respBodyOpen.value[k] }
+}
+function isRespBodyOpen(promptIdx, provider) {
+  return !!respBodyOpen.value[`${promptIdx}:${provider}`]
+}
+
+// Per-(prompt, model) breakdown shown in the accordion expansion.
+// Returns one row per model with first-mention position, mention
+// count, response length, latency, and a delta column showing how
+// this model's first-mention position compares to the best model
+// for that prompt (negative = earlier, positive = later, "—" when
+// either side never mentioned the brand).
+function perPromptModelMetrics(promptIdx) {
+  const row = displayRun.value?.prompt_rows?.[promptIdx]
+  if (!row) return []
+  const terms = (displayRun.value?.brand_terms || [])
+    .map((t) => (t || '').trim().toLowerCase())
+    .filter(Boolean)
+  const provs = resultsProviders.value
+
+  // First pass: per-response first_pos and mention counts.
+  const perfs = provs.map((prov) => {
+    const r = (row.responses || []).find((x) => x.provider === prov)
+    if (!r) {
+      return {
+        provider: prov,
+        first_pos: null, mentions: 0,
+        chars: 0, latency: 0,
+      }
+    }
+    const text = (r.response_text || '').toLowerCase()
+    let first_pos = null
+    let mentions = 0
+    for (const term of terms) {
+      if (!term || !text) continue
+      let from = 0
+      while (true) {
+        const i = text.indexOf(term, from)
+        if (i === -1) break
+        mentions += 1
+        if (first_pos === null || i < first_pos) first_pos = i
+        from = i + term.length
+      }
+    }
+    return {
+      provider: prov,
+      first_pos,
+      mentions,
+      chars: (r.response_text || '').length,
+      latency: r.duration_ms ? Math.round(r.duration_ms) : 0,
+    }
+  })
+
+  // "Best" position for this prompt = min(first_pos) across all models
+  // that mentioned the brand. The delta column shows each model's
+  // position relative to that best. Models that missed entirely get a
+  // qualitative miss label.
+  const positions = perfs.map((p) => p.first_pos).filter((x) => x !== null)
+  const best = positions.length ? Math.min(...positions) : null
+
+  return perfs.map((p) => {
+    let delta_label = ''
+    let delta_cls = ''
+    if (best === null) {
+      delta_label = ''
+    } else if (p.first_pos === null) {
+      delta_label = 'missed'
+      delta_cls = 'is-neg'
+    } else if (p.first_pos === best) {
+      delta_label = 'best'
+      delta_cls = 'is-best'
+    } else {
+      const d = p.first_pos - best
+      delta_label = `+${d} chars later`
+      delta_cls = 'is-pos'
+    }
+    return { ...p, delta_label, delta_cls }
+  })
+}
 function togglePromptRow(idx) {
   promptOpen.value = { ...promptOpen.value, [idx]: !promptOpen.value[idx] }
 }
@@ -2282,9 +2411,43 @@ onBeforeUnmount(() => document.removeEventListener('click', _closeDropdownOnDocC
 .mt-pm-detail-row td { padding: 0; border-bottom: 1px solid rgba(15, 23, 42, 0.06); }
 .mt-pm-detail {
   background: #fafafb;
-  padding: 12px 28px 18px 56px;
-  display: flex; flex-direction: column; gap: 10px;
+  padding: 14px 28px 18px 56px;
+  display: flex; flex-direction: column; gap: 12px;
 }
+/* Per-model performance breakdown table inside the expansion. */
+.mt-pm-perf {
+  width: 100%;
+  border-collapse: collapse;
+  background: #fff;
+  font-size: 12.5px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+}
+.mt-pm-perf thead th {
+  text-align: left;
+  padding: 9px 12px;
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em;
+  text-transform: uppercase; color: #94a3b8;
+  background: #fff;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+}
+.mt-pm-perf tbody td {
+  padding: 9px 12px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.04);
+  vertical-align: middle;
+}
+.mt-pm-perf tbody tr:last-child td { border-bottom: 0; }
+.mt-pm-perf-row { cursor: pointer; transition: background .12s ease; }
+.mt-pm-perf-row:hover { background: #fafafb; }
+.mt-pm-perf-row.is-fail { background: #fef2f2; }
+.mt-pm-perf-row.is-fail:hover { background: #fee2e2; }
+.mt-pm-delta {
+  font-size: 11.5px; font-weight: 600;
+  color: #64748b;
+  white-space: nowrap;
+}
+.mt-pm-delta .is-best { color: #047857; text-transform: uppercase; letter-spacing: 0.06em; font-size: 10.5px; }
+.mt-pm-delta .is-pos { color: #64748b; }
+.mt-pm-delta .is-neg { color: #b91c1c; text-transform: uppercase; letter-spacing: 0.06em; font-size: 10.5px; }
 .mt-pm-resp {
   background: #fff;
   border: 1px solid rgba(15, 23, 42, 0.06);
