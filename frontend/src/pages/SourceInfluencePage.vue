@@ -2718,13 +2718,14 @@ onBeforeUnmount(() => document.removeEventListener('click', _closeDropdownOnDocC
   border-top: 1px solid rgba(15, 23, 42, 0.06);
 }
 .mt-mini-of { color: #94a3b8; font-weight: 400; font-size: 12px; }
+.mt-mini-cap.mt-mini-hit,
+.mt-mini-cap.mt-mini-near,
+.mt-mini-cap.mt-mini-cat { color: #94a3b8; }
 
-.mt-mini-cap.mt-mini-hit  { color: #047857; }
-.mt-mini-cap.mt-mini-near { color: #3730a3; }
-.mt-mini-cap.mt-mini-cat  { color: #92400e; }
-
-/* Stacked signal bar: green direct + indigo near + amber category,
-   grey remainder = unrelated / no signal. */
+/* Stacked signal bar: monochrome by intensity, not hue.
+   Direct hits get the darkest tone; near miss and category step
+   down through mid-grey so the eye reads "strength" without
+   pulling new colours into the page. */
 .mt-sc-bar {
   display: flex;
   height: 6px;
@@ -2733,9 +2734,9 @@ onBeforeUnmount(() => document.removeEventListener('click', _closeDropdownOnDocC
   border-radius: 9999px;
   overflow: hidden;
 }
-.mt-sc-bar-seg.is-hit  { background: #047857; }
-.mt-sc-bar-seg.is-near { background: #4f46e5; }
-.mt-sc-bar-seg.is-cat  { background: #d97706; }
+.mt-sc-bar-seg.is-hit  { background: #0f172a; }
+.mt-sc-bar-seg.is-near { background: #64748b; }
+.mt-sc-bar-seg.is-cat  { background: #cbd5e1; }
 .mt-mini-num { font-size: 14px; font-weight: 600; color: #0f172a; }
 .mt-mini-cap { font-size: 10.5px; color: #94a3b8; }
 
