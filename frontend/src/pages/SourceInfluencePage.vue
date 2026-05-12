@@ -161,12 +161,35 @@
           <div class="mt-md" v-html="renderMarkdown(displayRun.google_grounding.markdown)"></div>
           <div v-if="(displayRun.google_grounding.citations || []).length" class="mt-citations">
             <div class="mt-citations-h">Sources</div>
-            <ul>
+            <ul class="mt-cite-chips">
               <li
                 v-for="(c, i) in displayRun.google_grounding.citations"
                 :key="i"
+                class="mt-cite-chip-li"
               >
-                <a :href="c.url" target="_blank" rel="noopener">{{ c.title || c.url }}</a>
+                <a
+                  :href="c.url"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="mt-cite-chip"
+                  :title="c.title || c.url"
+                >
+                  <img
+                    class="mt-cite-favicon"
+                    :src="citationFavicon(c.url)"
+                    :alt="citationDomain(c.url) + ' favicon'"
+                    loading="lazy"
+                    referrerpolicy="no-referrer"
+                    @error="onCiteFaviconError($event)"
+                  />
+                  <span class="mt-cite-text">
+                    <span class="mt-cite-domain">{{ citationDomain(c.url) }}</span>
+                    <span v-if="c.title" class="mt-cite-title">{{ c.title }}</span>
+                  </span>
+                  <svg class="mt-cite-out" width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M5 11l6-6M6 5h5v5" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </a>
               </li>
             </ul>
           </div>
@@ -899,6 +922,38 @@ const brandLabel = computed(() => {
   const w = appStore.activeWebsite
   return (w?.business_name || w?.name || 'your brand').trim()
 })
+
+// Grounding citations — render each as a favicon + domain chip linking
+// out to the source. We use Google's S2 favicon endpoint because it
+// already has a permissive CORS / referrer policy and is fast.
+function citationDomain(url) {
+  try {
+    const u = new URL(url)
+    return u.hostname.replace(/^www\./, '')
+  } catch {
+    return url || ''
+  }
+}
+function citationFavicon(url) {
+  const host = citationDomain(url)
+  if (!host) return ''
+  return `https://www.google.com/s2/favicons?sz=32&domain=${encodeURIComponent(host)}`
+}
+// Inline SVG placeholder used when the favicon fetch fails (e.g. host
+// blocks Google's fetcher). Keeps the chip from going broken-image.
+const _CITE_FAVICON_FALLBACK =
+  'data:image/svg+xml;utf8,'
+  + encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" '
+    + 'stroke="%23475569" stroke-width="1.5">'
+    + '<circle cx="8" cy="8" r="6"/><path d="M2 8h12M8 2c2 2 2 10 0 12M8 2c-2 2-2 10 0 12"/>'
+    + '</svg>'
+  )
+function onCiteFaviconError(ev) {
+  if (ev?.target && ev.target.src !== _CITE_FAVICON_FALLBACK) {
+    ev.target.src = _CITE_FAVICON_FALLBACK
+  }
+}
 
 // Audit type — surfaced as a chip in the page header + the status
 // panel so users always see what kind of probe this is. "Discovery"
@@ -2810,6 +2865,64 @@ onBeforeUnmount(() => document.removeEventListener('click', _closeDropdownOnDocC
 .mt-citations li { font-size: 13px; }
 .mt-citations a { color: #0f172a; text-decoration: underline; text-underline-offset: 3px; }
 .mt-citations a:hover { color: #475569; }
+
+.mt-cite-chips {
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: wrap;
+  gap: 6px !important;
+}
+.mt-cite-chip-li { font-size: 13px; }
+.mt-cite-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 320px;
+  padding: 5px 10px 5px 6px;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  background: #fff;
+  color: #0f172a;
+  text-decoration: none;
+  font-size: 12px;
+  line-height: 1.2;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+.mt-cite-chip:hover {
+  border-color: #94a3b8;
+  background: #f8fafc;
+  color: #0f172a;
+}
+.mt-cite-favicon {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  background: #f1f5f9;
+  flex-shrink: 0;
+}
+.mt-cite-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.mt-cite-domain {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+}
+.mt-cite-title {
+  font-size: 11px;
+  color: #64748b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+}
+.mt-cite-out { color: #94a3b8; flex-shrink: 0; }
+.mt-cite-chip:hover .mt-cite-out { color: #475569; }
 
 /* ── Test history card */
 .mt-history-card { padding: 24px 0 0; }

@@ -21,6 +21,7 @@ urlpatterns = [
     path("<uuid:website_id>/schedule/", views.LLMRankingScheduleView.as_view(), name="llm-ranking-schedule"),
     path("<uuid:website_id>/schedule/eta/", views.LLMRankingScheduleETAView.as_view(), name="llm-ranking-schedule-eta"),
     path("<uuid:website_id>/schedule/run-now/", views.LLMRankingScheduleRunNowView.as_view(), name="llm-ranking-schedule-run-now"),
+    path("<uuid:website_id>/geo-tags/", views.LLMRankingGEOTagsView.as_view(), name="llm-ranking-geo-tags"),
     path("<uuid:website_id>/model-test/", views.ModelTestRunView.as_view(), name="llm-ranking-model-test"),
     path("<uuid:website_id>/model-test-history/", views.ModelTestHistoryView.as_view(), name="llm-ranking-model-test-history"),
     path("<uuid:website_id>/model-test/<str:run_id>/", views.ModelTestStatusView.as_view(), name="llm-ranking-model-test-status"),

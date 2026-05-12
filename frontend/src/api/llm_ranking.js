@@ -29,6 +29,10 @@ export default {
     deleteSchedule: (wid) => api.delete(`/llm-ranking/${wid}/schedule/`),
     scheduleETA: (wid) => api.get(`/llm-ranking/${wid}/schedule/eta/`),
     runScheduleNow: (wid) => api.post(`/llm-ranking/${wid}/schedule/run-now/`),
+    // GEO domain tagger — given a list of prompts, returns a map of
+    // {prompt: {category, recommendations, ...}} per the GEO paper's
+    // 7-category taxonomy. See apps/llm_ranking/services/geo_tagger.py.
+    geoTags: (wid, prompts) => api.post(`/llm-ranking/${wid}/geo-tags/`, { prompts }),
     // Standalone Model Test probe (does not create an audit row).
     modelTest: (wid, payload) => api.post(`/llm-ranking/${wid}/model-test/`, payload),
     modelTestStatus: (wid, runId) => api.get(`/llm-ranking/${wid}/model-test/${runId}/`),

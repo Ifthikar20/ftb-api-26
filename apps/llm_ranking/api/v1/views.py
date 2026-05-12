@@ -561,6 +561,30 @@ class LLMRankingRecommendationsView(TenantScopedAPIView):
         return Response({"recommendations": recs, "overall_score": audit.overall_score})
 
 
+class LLMRankingGEOTagsView(TenantScopedAPIView):
+    """
+    POST — tag a list of prompts with one of the 7 GEO domain
+    categories (debate / facts / law_gov / people_society /
+    explanation / history / opinion) from the GEO paper, and return
+    the ranked GEO tactic recommendations for each domain.
+
+    Body: {"prompts": ["...", "..."]}
+    Response: {"tags": {"<prompt>": {category, recommendations, ...}}}
+    """
+
+    def post(self, request, website_id):
+        self.get_website(website_id)
+        prompts = request.data.get("prompts") or []
+        if not isinstance(prompts, list):
+            return Response(
+                {"error": "prompts must be a list of strings."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        prompts = [p for p in prompts if isinstance(p, str) and p.strip()][:200]
+        from apps.llm_ranking.services.geo_tagger import tag_prompts
+        return Response({"tags": tag_prompts(prompts)})
+
+
 class LLMRankingPromptResultsView(TenantScopedAPIView):
     """
     GET — prompt-level aggregation for an audit.
