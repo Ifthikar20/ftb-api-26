@@ -299,7 +299,8 @@
                   </td>
                 </tr>
                 <tr v-if="promptOpen[m.index]" class="mt-pm-detail-row">
-                  <td colspan="8" class="mt-pm-detail">
+                  <td colspan="9" class="mt-pm-detail">
+                    <div class="mt-pm-detail-inner">
                     <!-- Per-model performance breakdown for THIS prompt -->
                     <table class="mt-pm-perf">
                       <thead>
@@ -389,6 +390,7 @@
                         <span v-html="renderResponse(r.response_text, r)"></span>
                       </div>
                       <div v-else-if="r.error" class="mt-pm-resp-err">{{ r.error }}</div>
+                    </div>
                     </div>
                   </td>
                 </tr>
@@ -2683,6 +2685,8 @@ onBeforeUnmount(() => document.removeEventListener('click', _closeDropdownOnDocC
   border-collapse: collapse;
   font-size: 13px;
   min-width: 820px;
+  table-layout: fixed;          /* prevents wide expanded rows from
+                                   forcing the whole table to reflow */
 }
 .mt-pm-tbl thead th {
   text-align: left;
@@ -2740,17 +2744,24 @@ onBeforeUnmount(() => document.removeEventListener('click', _closeDropdownOnDocC
 .mt-pm-pill.is-cat  { background: #fef3c7; color: #92400e; }
 .mt-pm-pill.is-miss { background: #f1f5f9; color: #64748b; }
 
-/* Expanded row */
+/* Expanded row. The outer table is `table-layout: fixed` so the
+   `<td>` width is locked to the column widths above. The inner
+   div is the actual scroll container — its overflow-x: auto keeps
+   the wide per-model perf table from bleeding past the card. */
 .mt-pm-detail-row td { padding: 0; border-bottom: 1px solid rgba(15, 23, 42, 0.06); }
 .mt-pm-detail {
   background: #fafafb;
+  padding: 0;
+  min-width: 0;
+}
+.mt-pm-detail-inner {
   padding: 14px 28px 18px 56px;
   display: flex; flex-direction: column; gap: 12px;
   min-width: 0;
   max-width: 100%;
-  overflow-x: auto;          /* if the inner perf table is wider than the card */
+  overflow-x: auto;
 }
-.mt-pm-detail .mt-pm-perf {
+.mt-pm-detail-inner .mt-pm-perf {
   table-layout: auto;
   max-width: 100%;
 }
@@ -2759,19 +2770,20 @@ onBeforeUnmount(() => document.removeEventListener('click', _closeDropdownOnDocC
   width: 100%;
   border-collapse: collapse;
   background: #fff;
-  font-size: 12.5px;
+  font-size: 12px;
   border: 1px solid rgba(15, 23, 42, 0.08);
 }
 .mt-pm-perf thead th {
   text-align: left;
-  padding: 9px 12px;
-  font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em;
+  padding: 8px 8px;
+  font-size: 10px; font-weight: 700; letter-spacing: 0.05em;
   text-transform: uppercase; color: #94a3b8;
   background: #fff;
   border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+  white-space: nowrap;
 }
 .mt-pm-perf tbody td {
-  padding: 9px 12px;
+  padding: 8px 8px;
   border-bottom: 1px solid rgba(15, 23, 42, 0.04);
   vertical-align: middle;
 }
