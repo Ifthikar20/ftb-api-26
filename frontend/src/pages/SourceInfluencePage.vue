@@ -40,6 +40,12 @@
             <div class="mt-status-meta-num">{{ liveCompleted }}/{{ liveTotal || totalQueries }}</div>
             <div class="mt-status-meta-cap">calls done</div>
           </div>
+          <button
+            v-if="!running"
+            class="mt-btn-soft mt-btn-sm mt-status-new"
+            @click="startNewAudit"
+            title="Configure and run a new audit"
+          >+ New audit</button>
         </div>
 
         <div class="mt-live-bar">
@@ -330,6 +336,11 @@
       </section>
     </template>
 
+    <!-- Config sections (env / prompts / models / run) hide once a run
+         is active. The "New audit" button in the status panel brings
+         them back. -->
+    <template v-if="!hasActiveRun">
+
     <!-- ── 1. Environment picker (compact strip) ────────────────── -->
     <section class="mt-card mt-env-card">
       <div class="mt-env-line">
@@ -558,6 +569,8 @@
         aliases on each model's response.
       </span>
     </div>
+
+    </template> <!-- /v-if="!hasActiveRun" -->
 
     <div v-if="errorMsg" class="mt-error">{{ errorMsg }}</div>
   </div>
@@ -1056,6 +1069,18 @@ async function runProbe() {
 }
 
 onBeforeUnmount(stopPolling)
+
+// Reset the page back to its configuration view. Used by the
+// "New audit" button so the user can tweak env / prompts / models
+// and run a fresh test without losing the previous results from the
+// DB (those stay queryable via /model-test/<run_id>/ + history).
+function startNewAudit() {
+  lastRun.value = null
+  liveRun.value = null
+  runId.value = null
+  errorMsg.value = ''
+  openResponses.value = {}
+}
 
 // ── Results helpers ──────────────────────────────────────────────
 const displayRun = computed(() => lastRun.value || liveRun.value)
@@ -1778,10 +1803,11 @@ onBeforeUnmount(() => document.removeEventListener('click', _closeDropdownOnDocC
 .mt-status-card { padding: 18px 20px; }
 .mt-status-head {
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: auto 1fr auto auto;
   gap: 14px; align-items: center;
   margin-bottom: 12px;
 }
+.mt-status-new { white-space: nowrap; }
 .mt-status-tag {
   font-size: 10.5px; font-weight: 700; letter-spacing: 0.10em;
   text-transform: uppercase;
