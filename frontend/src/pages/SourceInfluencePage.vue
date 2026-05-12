@@ -76,11 +76,14 @@
         </div>
 
         <!-- Verbose run log: every (prompt, model) cell as a line item -->
-        <div v-if="statusLog.length" class="mt-status-log">
-          <div class="mt-status-log-h">Run log</div>
+        <!-- Run log: only while in flight, capped to the most recent
+             few calls. Once the run completes the accordion table
+             below is the primary read; the log just becomes noise. -->
+        <div v-if="running && statusLog.length" class="mt-status-log">
+          <div class="mt-status-log-h">Latest activity</div>
           <ul class="mt-status-log-list">
             <li
-              v-for="ev in statusLog"
+              v-for="ev in statusLog.slice(0, 5)"
               :key="ev.key"
               class="mt-status-log-item"
               :class="ev.cls"
@@ -91,6 +94,13 @@
               <span class="mt-status-log-state">{{ ev.state }}</span>
             </li>
           </ul>
+          <div v-if="statusLog.length > 5 || pendingCellCount" class="mt-status-log-more">
+            <span v-if="statusLog.length > 5">+ {{ statusLog.length - 5 }} earlier</span>
+            <span v-if="pendingCellCount" class="mt-status-log-pending">
+              <span class="mt-spinner is-dark"></span>
+              {{ pendingCellCount }} pending
+            </span>
+          </div>
         </div>
 
         <!-- Post-processing sub-status -->
@@ -1458,6 +1468,15 @@ const latestCompletedResponse = computed(() => {
 // Flatten prompt_rows -> a verbose event log (one row per model call).
 // Newest events appear at the top so the user always sees the latest.
 // Capped at 50 entries to keep the panel manageable.
+// Calls still to come, surfaced as a "+ N pending" hint at the
+// bottom of the live activity panel. total minus completed, floored
+// at 0.
+const pendingCellCount = computed(() => {
+  const s = displayRun.value
+  if (!s || !running.value) return 0
+  return Math.max(0, (s.total || 0) - (s.completed || 0))
+})
+
 const statusLog = computed(() => {
   const rows = displayRun.value?.prompt_rows || []
   const out = []
@@ -2479,6 +2498,15 @@ onBeforeUnmount(() => document.removeEventListener('click', _closeDropdownOnDocC
   font-size: 10.5px; font-weight: 700; letter-spacing: 0.10em;
   text-transform: uppercase; color: #94a3b8;
   margin-bottom: 8px;
+}
+.mt-status-log-more {
+  display: flex; align-items: center; gap: 14px;
+  margin-top: 8px;
+  font-size: 11.5px; color: #94a3b8;
+}
+.mt-status-log-pending {
+  display: inline-flex; align-items: center; gap: 6px;
+  color: #475569; font-weight: 500;
 }
 .mt-status-log-list {
   list-style: none; margin: 0; padding: 0;
