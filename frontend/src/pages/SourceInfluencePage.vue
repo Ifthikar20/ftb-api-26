@@ -94,47 +94,6 @@
         </div>
 
         <!-- Post-processing sub-status -->
-        <div v-if="showPostProcessing" class="mt-post-strip">
-          <div
-            class="mt-post-step"
-            :class="'is-' + (displayRun?.sentiment_status || 'queued')"
-          >
-            <span class="mt-post-icon">
-              <span v-if="(displayRun?.sentiment_status || '') === 'running'" class="mt-spinner is-dark"></span>
-              <svg v-else-if="(displayRun?.sentiment_status || '') === 'complete'" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7l3 3 5-6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-              <svg v-else-if="(displayRun?.sentiment_status || '') === 'failed'" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l8 8M11 3l-8 8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-              <span v-else-if="(displayRun?.sentiment_status || '') === 'skipped'" class="mt-post-dash">—</span>
-            </span>
-            <span class="mt-post-label">Sentiment classification</span>
-            <span class="mt-post-sub">{{ sentimentStatusText }}</span>
-          </div>
-          <div
-            class="mt-post-step"
-            :class="'is-' + (displayRun?.analysis_status || 'queued')"
-          >
-            <span class="mt-post-icon">
-              <span v-if="(displayRun?.analysis_status || '') === 'running'" class="mt-spinner is-dark"></span>
-              <svg v-else-if="(displayRun?.analysis_status || '') === 'complete'" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7l3 3 5-6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-              <svg v-else-if="(displayRun?.analysis_status || '') === 'failed'" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l8 8M11 3l-8 8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-              <span v-else-if="(displayRun?.analysis_status || '') === 'skipped'" class="mt-post-dash">—</span>
-            </span>
-            <span class="mt-post-label">Synthesis analysis</span>
-            <span class="mt-post-sub">{{ analysisStatusText }}</span>
-          </div>
-          <div
-            class="mt-post-step"
-            :class="'is-' + (displayRun?.grounding_status || 'queued')"
-          >
-            <span class="mt-post-icon">
-              <span v-if="(displayRun?.grounding_status || '') === 'running'" class="mt-spinner is-dark"></span>
-              <svg v-else-if="(displayRun?.grounding_status || '') === 'complete'" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7l3 3 5-6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-              <svg v-else-if="(displayRun?.grounding_status || '') === 'failed'" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l8 8M11 3l-8 8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-              <span v-else-if="(displayRun?.grounding_status || '') === 'skipped'" class="mt-post-dash">—</span>
-            </span>
-            <span class="mt-post-label">Web grounding via Gemini</span>
-            <span class="mt-post-sub">{{ groundingStatusText }}</span>
-          </div>
-        </div>
       </section>
 
       <!-- Synthesis (verbose Markdown) -->
