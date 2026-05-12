@@ -159,7 +159,7 @@
         </button>
         <template v-if="groundingOpen">
           <div class="mt-md" v-html="renderMarkdown(displayRun.google_grounding.markdown)"></div>
-          <div v-if="(displayRun.google_grounding.citations || []).length" class="mt-citations">
+          <div v-if="(displayRun.google_grounding.citations || []).length || displayRun.google_grounding.citations_source === 'google_cse_quota'" class="mt-citations">
             <div class="mt-citations-h">
               Sources
               <span
@@ -167,6 +167,33 @@
                 class="mt-citations-tag"
                 title="Citations are the top organic Google Search results for your prompts — fetched directly from the Google Programmable Search API."
               >via Google Search</span>
+              <span
+                v-if="displayRun.google_grounding.citations_stats?.queries_made != null"
+                class="mt-citations-stats"
+                :title="citationStatsTooltip(displayRun.google_grounding.citations_stats)"
+              >
+                {{ formatCitationStats(displayRun.google_grounding.citations_stats) }}
+              </span>
+            </div>
+
+            <!-- Warnings: per-run cap, per-user daily quota, mid-run blocks. -->
+            <div
+              v-if="displayRun.google_grounding.citations_source === 'google_cse_quota'"
+              class="mt-cite-banner is-quota"
+            >
+              <strong>Daily Google Search quota reached.</strong>
+              You've used today's allowance for the
+              <em>{{ displayRun.google_grounding.citations_stats?.plan || 'free' }}</em>
+              plan. Resets at midnight UTC — or upgrade for a higher daily limit.
+            </div>
+            <div
+              v-else-if="displayRun.google_grounding.citations_stats?.capped"
+              class="mt-cite-banner is-cap"
+            >
+              Showing top {{ displayRun.google_grounding.citations.length }} citations from the first
+              {{ displayRun.google_grounding.citations_stats.queries_made }} of
+              {{ displayRun.google_grounding.citations_stats.prompts_seen }} prompts
+              (capped to keep Google Search cost predictable).
             </div>
             <ul class="mt-cite-chips">
               <li
@@ -961,6 +988,37 @@ function onCiteFaviconError(ev) {
     ev.target.src = _CITE_FAVICON_FALLBACK
   }
 }
+// Compact summary like "12 queries · 3 cached · 188 left today".
+// Hidden when stats are missing (legacy runs).
+function formatCitationStats(s) {
+  if (!s) return ''
+  const parts = []
+  if (s.queries_made != null) {
+    parts.push(`${s.queries_made} ${s.queries_made === 1 ? 'query' : 'queries'}`)
+  }
+  if (s.cache_hits) parts.push(`${s.cache_hits} cached`)
+  if (s.quota_remaining != null) parts.push(`${s.quota_remaining} left today`)
+  return parts.join(' · ')
+}
+function citationStatsTooltip(s) {
+  if (!s) return ''
+  const lines = [
+    `Prompts run through Google Search: ${s.queries_made}/${s.prompts_seen ?? s.queries_made}`,
+    `Paid API calls: ${s.api_calls}`,
+    `Cache hits (free): ${s.cache_hits}`,
+  ]
+  if (s.errors) lines.push(`Errors: ${s.errors}`)
+  if (s.quota_blocks) lines.push(`Skipped due to daily quota: ${s.quota_blocks}`)
+  if (s.plan) lines.push(`Plan: ${s.plan} · ${s.quota_remaining} queries left today`)
+  if (s.capped) {
+    lines.push(
+      `Capped at max_queries=${s.max_queries}, `
+      + `max_total=${s.max_total} per run.`,
+    )
+  }
+  return lines.join('\n')
+}
+
 // Rich tooltip: snippet (if Google returned one) + which of the
 // user's prompts surfaced this citation (multi-prompt runs).
 function citationTooltip(c) {
@@ -2897,6 +2955,33 @@ onBeforeUnmount(() => document.removeEventListener('click', _closeDropdownOnDocC
   text-transform: none;
   vertical-align: middle;
 }
+.mt-citations-stats {
+  margin-left: 10px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #64748b;
+  letter-spacing: 0;
+  text-transform: none;
+  cursor: help;
+}
+.mt-cite-banner {
+  margin: 8px 0 0;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.mt-cite-banner.is-quota {
+  background: #fef2f2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+}
+.mt-cite-banner.is-cap {
+  background: #fffbeb;
+  color: #92400e;
+  border: 1px solid #fde68a;
+}
+.mt-cite-banner em { font-style: normal; font-weight: 600; text-transform: capitalize; }
 
 .mt-cite-chips {
   display: flex !important;

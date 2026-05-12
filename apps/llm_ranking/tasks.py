@@ -547,6 +547,7 @@ def run_model_test(self, *, run_id: str, website_id: str, user_id: int | None,
                     brand_terms=brand_terms,
                     prompts=prompts,
                     website=website,
+                    user_id=user_id,
                 )
                 state["grounding_status"] = "complete"
             except Exception as exc:
@@ -955,7 +956,7 @@ def _model_test_synthesize(*, brand_terms, prompts, prompt_rows, providers,
     }
 
 
-def _model_test_google_grounding(*, brand_terms, prompts, website) -> dict | None:
+def _model_test_google_grounding(*, brand_terms, prompts, website, user_id=None) -> dict | None:
     """
     One Gemini call with Google Search grounding to find live web context
     on the brand and (optionally) the topic of the prompts.
@@ -1039,11 +1040,18 @@ def _model_test_google_grounding(*, brand_terms, prompts, website) -> dict | Non
 
     citations: list[dict] = []
     citations_source = "none"
+    citations_stats: dict = {}
     if _cse_configured():
         cse_queries = [p for p in (prompts or []) if isinstance(p, str) and p.strip()]
         if brand and brand != "the brand":
             cse_queries = [brand] + cse_queries
-        results = _cse_search_many(cse_queries, num_per_query=5, max_total=20)
+        envelope = _cse_search_many(
+            cse_queries,
+            num_per_query=5,
+            max_total=20,
+            max_queries=15,
+            user_id=user_id,
+        )
         citations = [
             {
                 "url":     r["url"],
@@ -1052,14 +1060,34 @@ def _model_test_google_grounding(*, brand_terms, prompts, website) -> dict | Non
                 "domain":  r.get("domain", ""),
                 "queries": r.get("queries", []),
             }
-            for r in results
+            for r in envelope["citations"]
         ]
-        citations_source = "google_cse" if citations else "google_cse_empty"
+        citations_stats = {
+            "queries_made":   envelope["queries_made"],
+            "api_calls":      envelope["api_calls"],
+            "cache_hits":     envelope["cache_hits"],
+            "errors":         envelope["errors"],
+            "quota_blocks":   envelope["quota_blocks"],
+            "max_queries":    envelope["max_queries"],
+            "max_total":      envelope["max_total"],
+            "capped":         envelope["capped"],
+            "quota_exceeded": envelope["quota_exceeded"],
+            "plan":           envelope["plan"],
+            "quota_remaining": envelope["quota_remaining"],
+            "prompts_seen":   len(cse_queries),
+        }
+        if envelope["quota_exceeded"]:
+            citations_source = "google_cse_quota"
+        elif citations:
+            citations_source = "google_cse"
+        else:
+            citations_source = "google_cse_empty"
 
     return {
         "markdown": text,
         "citations": citations,
         "citations_source": citations_source,
+        "citations_stats": citations_stats,
         "model": "gemini-1.5-pro",
         "grounded": used_grounding,
     }
