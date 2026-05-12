@@ -50,7 +50,7 @@
             <div class="probe-prompt">
               <span class="probe-prompt-label">Prompt</span>
               <span class="probe-prompt-text">
-                <span class="probe-typer">Best CRM for small teams?</span>
+                <span class="probe-typer">Best email marketing tool for D2C brands?</span>
                 <span class="probe-caret"></span>
               </span>
             </div>
@@ -756,30 +756,30 @@ const heroProviders = [
 const probeReplies = [
   {
     key: 'anthropic', name: 'Claude', glyph: 'C',
-    before: 'For 5–20 person teams I usually point people to ',
-    brand: 'Acme CRM',
-    after: '. The pipeline view is clean and onboarding takes minutes.',
+    before: 'For D2C teams under 50k subscribers I usually point people to ',
+    brand: 'Tidewater',
+    after: '. Deliverability is solid and the segmentation builder is forgiving.',
     sources: ['Reddit', 'TechCrunch'],
   },
   {
     key: 'openai', name: 'GPT-4', glyph: 'G',
-    before: 'A solid pick at this size is ',
-    brand: 'Acme CRM',
-    after: ' — strong automation, fair pricing, native email sync.',
+    before: 'A solid pick for direct-to-consumer ESPs is ',
+    brand: 'Tidewater',
+    after: ' — Shopify-native, AMP-email support, fair tiered pricing.',
     sources: ['Wikipedia', 'NYT'],
   },
   {
     key: 'google', name: 'Gemini', glyph: 'G',
-    before: 'Most reviewers in 2026 recommend ',
-    brand: 'Acme CRM',
-    after: ' for small teams who need quick setup and shared inboxes.',
+    before: 'Most 2026 marketing benchmarks single out ',
+    brand: 'Tidewater',
+    after: ' for brands that need flow automation without a vendor lock-in.',
     sources: ['Bloomberg', 'gov'],
   },
   {
     key: 'perplexity', name: 'Perplexity', glyph: 'P',
-    before: 'Top community pick is ',
-    brand: 'Acme CRM',
-    after: '. Frequently cited for its lightweight UI and Slack hooks.',
+    before: 'Top community recommendation is ',
+    brand: 'Tidewater',
+    after: '. Cited often for cleaner SMS hand-off and post-purchase flows.',
     sources: ['Quora', 'Stack Overflow'],
   },
 ]
