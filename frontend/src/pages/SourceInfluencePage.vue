@@ -782,13 +782,14 @@
 
 <script setup>
 import { ref, computed, nextTick, onMounted, onBeforeUnmount, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/app'
 import { useToast } from '@/composables/useToast'
 import llmRanking from '@/api/llm_ranking'
 import promptLibrary from '@/api/promptLibrary'
 
 const route = useRoute()
+const router = useRouter()
 const appStore = useAppStore()
 const toast = useToast()
 const websiteId = route.params.websiteId
@@ -1262,6 +1263,10 @@ async function runProbe() {
     })
     runId.value = (data?.data || data)?.run_id
     if (!runId.value) throw new Error('No run id returned.')
+    // Push the run_id into the URL so a page refresh lands back on
+    // these results (status view falls back to the DB if Redis has
+    // expired). Also makes the URL shareable.
+    router.replace({ query: { ...route.query, run: runId.value } })
     await pollOnce()
     if (running.value) {
       pollTimer = setInterval(pollOnce, 1500)
@@ -1275,16 +1280,55 @@ async function runProbe() {
 
 onBeforeUnmount(stopPolling)
 
-// Reset the page back to its configuration view. Used by the
-// "New audit" button so the user can tweak env / prompts / models
-// and run a fresh test without losing the previous results from the
-// DB (those stay queryable via /model-test/<run_id>/ + history).
+// Reset the page back to its configuration view. Drops the ?run=
+// query param so a refresh now lands on the config view, not the
+// (now-orphaned) old results.
 function startNewAudit() {
   lastRun.value = null
   liveRun.value = null
   runId.value = null
   errorMsg.value = ''
   openResponses.value = {}
+  const next = { ...route.query }
+  delete next.run
+  router.replace({ query: next })
+}
+
+// Hydrate a previous run when the page is opened with ?run=<id>.
+// Used on first mount so a refresh on the results view stays on
+// the results view. The status endpoint reads from Redis first,
+// falling back to the persisted ModelTestRun row when Redis has
+// expired — see ModelTestStatusView in apps/llm_ranking/api/v1.
+async function hydrateRunFromUrl() {
+  const id = (route.query.run || '').toString().trim()
+  if (!id) return
+  runId.value = id
+  try {
+    const { data } = await llmRanking.modelTestStatus(websiteId, id)
+    const state = data?.data || data
+    if (!state) return
+    if (state.status === 'complete' || state.status === 'failed') {
+      lastRun.value = state
+      liveRun.value = state
+      running.value = false
+    } else {
+      // Still in flight on the worker — pick up polling where the
+      // previous tab left off.
+      liveRun.value = state
+      running.value = true
+      pollTimer = setInterval(pollOnce, 1500)
+    }
+  } catch (e) {
+    // 404 = run expired or never existed. Clear the stale query
+    // param so the user lands on the config view cleanly.
+    if (e?.response?.status === 404) {
+      const next = { ...route.query }
+      delete next.run
+      router.replace({ query: next })
+      return
+    }
+    errorMsg.value = e.displayMessage || 'Could not load that run.'
+  }
 }
 
 // ── Results helpers ──────────────────────────────────────────────
@@ -1965,6 +2009,9 @@ function _closeDropdownOnDocClick() { dropdownOpen.value = null }
 onMounted(async () => {
   await Promise.all([loadSaved(), loadEnvs(), loadModelVariants()])
   applyQueryPreselect()
+  // ?run=<id> in the URL means we're refreshing on a results view —
+  // refetch and re-render so the user stays where they were.
+  await hydrateRunFromUrl()
   document.addEventListener('click', _closeDropdownOnDocClick)
 })
 onBeforeUnmount(() => document.removeEventListener('click', _closeDropdownOnDocClick))
