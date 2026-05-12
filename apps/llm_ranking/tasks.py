@@ -1072,7 +1072,7 @@ def _model_test_google_grounding(*, brand_terms, prompts, website, user_id=None)
             "max_total":      envelope["max_total"],
             "capped":         envelope["capped"],
             "quota_exceeded": envelope["quota_exceeded"],
-            "plan":           envelope["plan"],
+            "daily_limit":    envelope["daily_limit"],
             "quota_remaining": envelope["quota_remaining"],
             "prompts_seen":   len(cse_queries),
         }

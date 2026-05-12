@@ -151,11 +151,8 @@ def test_search_many_respects_max_queries(settings):
 def test_per_user_daily_quota_blocks_excess(settings):
     settings.GOOGLE_API_KEY = "k"
     settings.GOOGLE_CSE_ID = "cx"
-    # Anonymous quota is 50 — pretend a user has that quota too by
-    # leaving the subscription empty (defaults to free in _plan_for_user).
-    with patch.object(google_search, "quota_for_user", return_value=3), \
-         patch.object(google_search, "_plan_for_user", return_value="free"), \
-         patch.object(google_search.requests, "get") as mock_get:
+    settings.GOOGLE_CSE_DAILY_LIMIT_PER_USER = 3
+    with patch.object(google_search.requests, "get") as mock_get:
         mock_get.return_value = _stub_response([{"link": "https://x.com", "title": "X"}])
         envelope = google_search.search_many(
             [f"q{i}" for i in range(10)],
@@ -171,15 +168,23 @@ def test_per_user_daily_quota_blocks_excess(settings):
     assert envelope["quota_blocks"] == 1  # the 4th attempt was refused
     assert envelope["quota_exceeded"] is True
     assert envelope["quota_remaining"] == 0
+    assert envelope["daily_limit"] == 3
 
 
 @pytest.mark.django_db
 def test_quota_remaining_counts_down(settings):
     settings.GOOGLE_API_KEY = "k"
     settings.GOOGLE_CSE_ID = "cx"
-    with patch.object(google_search, "quota_for_user", return_value=10), \
-         patch.object(google_search.requests, "get",
+    settings.GOOGLE_CSE_DAILY_LIMIT_PER_USER = 10
+    with patch.object(google_search.requests, "get",
                       return_value=_stub_response([{"link": "https://x.com", "title": "X"}])):
         google_search.search("q1", user_id=7)
         google_search.search("q2", user_id=7)
     assert google_search.quota_remaining(7) == 8
+
+
+@pytest.mark.django_db
+def test_daily_limit_default_is_100_when_unset(settings):
+    if hasattr(settings, "GOOGLE_CSE_DAILY_LIMIT_PER_USER"):
+        del settings.GOOGLE_CSE_DAILY_LIMIT_PER_USER
+    assert google_search.quota_for_user(123) == google_search.DEFAULT_DAILY_LIMIT_PER_USER

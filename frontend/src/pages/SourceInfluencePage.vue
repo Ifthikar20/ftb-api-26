@@ -182,9 +182,9 @@
               class="mt-cite-banner is-quota"
             >
               <strong>Daily Google Search quota reached.</strong>
-              You've used today's allowance for the
-              <em>{{ displayRun.google_grounding.citations_stats?.plan || 'free' }}</em>
-              plan. Resets at midnight UTC — or upgrade for a higher daily limit.
+              You've used all
+              {{ displayRun.google_grounding.citations_stats?.daily_limit ?? '' }}
+              of today's Google Search calls. Resets at midnight UTC.
             </div>
             <div
               v-else-if="displayRun.google_grounding.citations_stats?.capped"
@@ -1009,7 +1009,9 @@ function citationStatsTooltip(s) {
   ]
   if (s.errors) lines.push(`Errors: ${s.errors}`)
   if (s.quota_blocks) lines.push(`Skipped due to daily quota: ${s.quota_blocks}`)
-  if (s.plan) lines.push(`Plan: ${s.plan} · ${s.quota_remaining} queries left today`)
+  if (s.daily_limit != null) {
+    lines.push(`Daily limit: ${s.quota_remaining}/${s.daily_limit} queries left today`)
+  }
   if (s.capped) {
     lines.push(
       `Capped at max_queries=${s.max_queries}, `

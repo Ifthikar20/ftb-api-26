@@ -37,19 +37,10 @@ DEFAULT_MAX_QUERIES = 15  # Per-run safety cap.
 DEFAULT_MAX_TOTAL = 20  # Per-run citation cap.
 CACHE_TTL = 60 * 60     # 1h — search results drift but slowly.
 
-# Plan -> daily CSE query allowance. Mirrors the spend buckets we sell.
-# Anonymous / unauthenticated callers get the free-tier limit so the
-# probe still works on the marketing site without a login.
-DAILY_QUOTAS = {
-    "free":       50,
-    "individual": 200,
-    "starter":    200,
-    "growth":     500,
-    "pro":        1000,
-    "scale":      2000,
-    "enterprise": 5000,
-}
-ANONYMOUS_QUOTA = DAILY_QUOTAS["free"]
+# Daily CSE query allowance per user. Single flat number — every user
+# gets the same cap, regardless of plan. Resets at UTC midnight.
+# Override with GOOGLE_CSE_DAILY_LIMIT_PER_USER in env.
+DEFAULT_DAILY_LIMIT_PER_USER = 100
 
 
 def is_configured() -> bool:
@@ -82,22 +73,13 @@ def _quota_key(user_id) -> str:
     return f"gcse:quota:{user_id or 'anon'}:{_today_str()}"
 
 
-def _plan_for_user(user_id) -> str:
-    if not user_id:
-        return "free"
-    try:
-        from apps.billing.models import Subscription
-        sub = Subscription.objects.filter(user_id=user_id).only("plan").first()
-        return (sub.plan if sub else "free") or "free"
-    except Exception:
-        return "free"
-
-
 def quota_for_user(user_id) -> int:
-    if not user_id:
-        return ANONYMOUS_QUOTA
-    plan = _plan_for_user(user_id)
-    return DAILY_QUOTAS.get(plan, DAILY_QUOTAS["free"])
+    """Daily CSE query allowance. Same flat number for every caller."""
+    return int(getattr(
+        settings,
+        "GOOGLE_CSE_DAILY_LIMIT_PER_USER",
+        DEFAULT_DAILY_LIMIT_PER_USER,
+    ))
 
 
 def quota_remaining(user_id) -> int:
@@ -271,6 +253,6 @@ def search_many(
         "max_total":      max_total,
         "capped":         capped,
         "quota_exceeded": quota_exceeded,
-        "plan":           _plan_for_user(user_id),
+        "daily_limit":    quota_for_user(user_id),
         "quota_remaining": quota_remaining(user_id),
     }

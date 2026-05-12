@@ -358,6 +358,9 @@ PERPLEXITY_API_KEY = env("PERPLEXITY_API_KEY", default="")
 # UI — see apps/llm_ranking/services/google_search.py.
 GOOGLE_API_KEY = env("GOOGLE_API_KEY", default="")
 GOOGLE_CSE_ID = env("GOOGLE_CSE_ID", default="")
+# Per-user daily cap on Google Custom Search calls. Same flat number
+# for every user (free + paid). Resets at UTC midnight.
+GOOGLE_CSE_DAILY_LIMIT_PER_USER = env.int("GOOGLE_CSE_DAILY_LIMIT_PER_USER", default=100)
 
 # ── Social Leads (Facebook, LinkedIn, X) ──
 FACEBOOK_APP_ID = env("FACEBOOK_APP_ID", default="")
