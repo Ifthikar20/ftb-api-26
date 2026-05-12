@@ -52,6 +52,29 @@
           <div class="mt-live-fill" :style="{ width: livePct + '%' }"></div>
         </div>
 
+        <!-- Latest response peek — visible during a live run so the
+             user sees content land cell-by-cell without scrolling. -->
+        <div v-if="running && latestCompletedResponse" class="mt-livepeek">
+          <div class="mt-livepeek-h">
+            <span class="mt-livepeek-tag">Just in</span>
+            <span class="mt-model-dot" :class="'is-' + providerKeyOf(latestCompletedResponse.provider)"></span>
+            <span class="mt-livepeek-model">{{ variantLabel(latestCompletedResponse.provider) }}</span>
+            <span class="mt-pivot-pill" :class="latestCompletedResponse.cls">
+              {{ latestCompletedResponse.label }}
+            </span>
+            <span v-if="latestCompletedResponse.duration_ms" class="mt-livepeek-ms">
+              {{ Math.round(latestCompletedResponse.duration_ms) }} ms
+            </span>
+            <span class="mt-livepeek-prompt">— prompt #{{ latestCompletedResponse.prompt_idx + 1 }}</span>
+          </div>
+          <div v-if="latestCompletedResponse.text" class="mt-livepeek-body">
+            <span v-html="highlightBrand(latestCompletedResponse.text)"></span>
+          </div>
+          <div v-else-if="latestCompletedResponse.error" class="mt-livepeek-err">
+            {{ latestCompletedResponse.error }}
+          </div>
+        </div>
+
         <!-- Verbose run log: every (prompt, model) cell as a line item -->
         <div v-if="statusLog.length" class="mt-status-log">
           <div class="mt-status-log-h">Run log</div>
@@ -741,7 +764,7 @@
 </template>
 
 <script setup>
-import { ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, nextTick, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAppStore } from '@/stores/app'
 import { useToast } from '@/composables/useToast'
@@ -1345,6 +1368,34 @@ const groundingStatusText = computed(() => {
   return 'Queued.'
 })
 
+// The most-recently-arrived response cell. While the run streams,
+// this is what the "Just in" peek panel shows so the user always
+// sees fresh content land without scrolling.
+const latestCompletedResponse = computed(() => {
+  const rows = displayRun.value?.prompt_rows || []
+  if (!rows.length) return null
+  // Walk from the end backwards: the last row is the currently-active
+  // prompt; the last response in that row is the most recent cell.
+  for (let i = rows.length - 1; i >= 0; i -= 1) {
+    const row = rows[i]
+    const responses = row.responses || []
+    if (!responses.length) continue
+    const r = responses[responses.length - 1]
+    const ok = !!r.succeeded
+    const isHit = !!r.brand_mentioned
+    return {
+      provider: r.provider,
+      prompt_idx: i,
+      text: r.response_text || '',
+      error: r.error || '',
+      duration_ms: r.duration_ms || 0,
+      label: ok ? (isHit ? 'mentioned' : 'no mention') : 'failed',
+      cls:   ok ? (isHit ? 'is-hit' : 'is-miss') : 'is-fail',
+    }
+  }
+  return null
+})
+
 // Flatten prompt_rows -> a verbose event log (one row per model call).
 // Newest events appear at the top so the user always sees the latest.
 // Capped at 50 entries to keep the panel manageable.
@@ -1443,7 +1494,32 @@ const resultsProviders = computed(() => {
 })
 
 // Per-prompt accordion open/close state. Keyed by prompt index.
+// `promptManuallyCollapsed` records rows the user has actively
+// collapsed during a streaming run so the auto-expand watcher
+// (below) doesn't fight them.
 const promptOpen = ref({})
+const promptManuallyCollapsed = ref({})
+
+// While a run is streaming, auto-expand the most-recently-active
+// prompt row so model responses appear as they land. Rows the user
+// manually collapses stay collapsed for the rest of the run.
+watch(
+  () => ({
+    pi: displayRun.value?.current_prompt_index ?? null,
+    rowsLen: (displayRun.value?.prompt_rows || []).length,
+    status: displayRun.value?.status,
+  }),
+  ({ pi, rowsLen }) => {
+    if (!running.value) return
+    const lastIdx = Math.max(rowsLen - 1, pi ?? -1)
+    if (lastIdx < 0) return
+    if (promptManuallyCollapsed.value[lastIdx]) return
+    if (!promptOpen.value[lastIdx]) {
+      promptOpen.value = { ...promptOpen.value, [lastIdx]: true }
+    }
+  },
+  { immediate: true, deep: true },
+)
 
 // Inside an open prompt row, the per-model performance table lets you
 // click a model row to reveal that model's full response below.
@@ -1524,7 +1600,15 @@ const SENTIMENT_LABELS = {
 }
 function sentimentLabel(s) { return SENTIMENT_LABELS[s] || '' }
 function togglePromptRow(idx) {
-  promptOpen.value = { ...promptOpen.value, [idx]: !promptOpen.value[idx] }
+  const next = !promptOpen.value[idx]
+  promptOpen.value = { ...promptOpen.value, [idx]: next }
+  if (!next) {
+    promptManuallyCollapsed.value = { ...promptManuallyCollapsed.value, [idx]: true }
+  } else {
+    const cp = { ...promptManuallyCollapsed.value }
+    delete cp[idx]
+    promptManuallyCollapsed.value = cp
+  }
 }
 const allPromptsOpen = computed(() => {
   const rows = displayRun.value?.prompt_rows || []
@@ -2174,6 +2258,36 @@ onBeforeUnmount(() => document.removeEventListener('click', _closeDropdownOnDocC
 .mt-status-meta { text-align: right; }
 .mt-status-meta-num { font-size: 22px; font-weight: 500; color: #0f172a; font-variant-numeric: tabular-nums; line-height: 1; letter-spacing: -0.02em; }
 .mt-status-meta-cap { font-size: 10.5px; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.06em; margin-top: 2px; }
+
+/* Live "Just in" peek — shows the most recent cell's content
+   during a streaming run so the user doesn't need to click. */
+.mt-livepeek {
+  margin-top: 14px;
+  padding: 12px 14px;
+  background: #fafafb;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 6px;
+}
+.mt-livepeek-h {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  font-size: 12.5px;
+}
+.mt-livepeek-tag {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.10em;
+  text-transform: uppercase;
+  padding: 2px 8px; border-radius: 9999px;
+  background: #0f172a; color: #fff;
+}
+.mt-livepeek-model { font-weight: 600; color: #0f172a; }
+.mt-livepeek-ms { font-size: 11.5px; color: #94a3b8; font-variant-numeric: tabular-nums; }
+.mt-livepeek-prompt { color: #94a3b8; }
+.mt-livepeek-body {
+  margin-top: 10px;
+  font-size: 12.5px; color: #334155; line-height: 1.55;
+  white-space: pre-wrap;
+  max-height: 220px; overflow-y: auto;
+}
+.mt-livepeek-err { margin-top: 8px; font-size: 12px; color: #b91c1c; }
 
 .mt-status-log {
   margin-top: 14px;
