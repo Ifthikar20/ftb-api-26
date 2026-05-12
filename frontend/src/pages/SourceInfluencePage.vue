@@ -68,7 +68,7 @@
             <span class="mt-livepeek-prompt">— prompt #{{ latestCompletedResponse.prompt_idx + 1 }}</span>
           </div>
           <div v-if="latestCompletedResponse.text" class="mt-livepeek-body">
-            <span v-html="highlightBrand(latestCompletedResponse.text)"></span>
+            <span v-html="renderResponse(latestCompletedResponse.text, latestCompletedResponse.raw)"></span>
           </div>
           <div v-else-if="latestCompletedResponse.error" class="mt-livepeek-err">
             {{ latestCompletedResponse.error }}
@@ -386,7 +386,7 @@
                         <span v-if="r.duration_ms" class="mt-pm-resp-ms">{{ Math.round(r.duration_ms) }} ms</span>
                       </div>
                       <div v-if="r.response_text" class="mt-pm-resp-body">
-                        <span v-html="highlightBrand(r.response_text)"></span>
+                        <span v-html="renderResponse(r.response_text, r)"></span>
                       </div>
                       <div v-else-if="r.error" class="mt-pm-resp-err">{{ r.error }}</div>
                     </div>
@@ -451,7 +451,7 @@
                     class="mt-pivot-body"
                     @click.stop
                   >
-                    <span v-html="highlightBrand(cellText(row, prov))"></span>
+                    <span v-html="renderResponse(cellText(row, prov), cellResponse(row, prov))"></span>
                   </div>
                 </td>
                 <td class="mt-pivot-agg">
@@ -1409,6 +1409,7 @@ const latestCompletedResponse = computed(() => {
       duration_ms: r.duration_ms || 0,
       label: ok ? (isHit ? 'mentioned' : 'no mention') : 'failed',
       cls:   ok ? (isHit ? 'is-hit' : 'is-miss') : 'is-fail',
+      raw: r,  // pass-through so renderResponse can read .entities
     }
   }
   return null
@@ -1865,6 +1866,42 @@ function highlightBrand(text) {
     out = out.replace(new RegExp(`(${safe})`, 'ig'), '<mark class="mt-mark">$1</mark>')
   }
   return out
+}
+
+// Full response renderer: markdown → HTML, then layer on brand
+// highlighting (yellow mark) and entity highlighting (subtle slate
+// underline) for the LLM-extracted entities on this response.
+function renderResponse(text, response) {
+  if (!text) return ''
+  let html = renderMarkdown(text)
+  const terms = (displayRun.value?.brand_terms || []).filter(Boolean)
+  const escForRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  // Brand highlight — yellow background, prominent. Use word
+  // boundaries so we don't hit "Apple" inside "applesauce".
+  for (const t of terms) {
+    if (!t) continue
+    html = html.replace(
+      new RegExp(`(\\b${escForRe(t)}\\b)`, 'gi'),
+      '<mark class="mt-mark">$1</mark>',
+    )
+  }
+  // Entity highlight — subtle underline with hover tooltip. Skip
+  // entities that are substrings of the brand to avoid double-
+  // highlighting. Longest-first so multi-word entities win.
+  const entities = Array.isArray(response?.entities) ? response.entities.slice() : []
+  entities.sort((a, b) => b.length - a.length)
+  for (const ent of entities) {
+    if (!ent || ent.length < 2) continue
+    if (terms.some((t) => t && t.toLowerCase().includes(ent.toLowerCase()))) continue
+    html = html.replace(
+      // Wrap in a non-capturing group; flag literal entity match
+      // without word-boundary requirement (works for addresses,
+      // multi-word names, punctuation).
+      new RegExp(`(${escForRe(ent)})`, 'g'),
+      '<span class="mt-ent" title="entity">$1</span>',
+    )
+  }
+  return html
 }
 
 // ── Lifecycle ────────────────────────────────────────────────────
@@ -2325,8 +2362,20 @@ onBeforeUnmount(() => document.removeEventListener('click', _closeDropdownOnDocC
 .mt-livepeek-body {
   margin-top: 10px;
   font-size: 12.5px; color: #334155; line-height: 1.55;
-  white-space: pre-wrap;
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: anywhere;
   max-height: 220px; overflow-y: auto;
+  min-width: 0;
+}
+.mt-livepeek-body p { margin: 0 0 8px; }
+.mt-livepeek-body p:last-child { margin-bottom: 0; }
+.mt-livepeek-body ul, .mt-livepeek-body ol { margin: 6px 0 8px; padding-left: 20px; }
+.mt-livepeek-body li { margin: 3px 0; }
+.mt-livepeek-body strong { color: #0f172a; font-weight: 600; }
+.mt-livepeek-body h3, .mt-livepeek-body h4, .mt-livepeek-body h5 {
+  font-size: 13px; font-weight: 700; color: #0f172a;
+  margin: 10px 0 4px;
 }
 .mt-livepeek-err { margin-top: 8px; font-size: 12px; color: #b91c1c; }
 
@@ -2607,6 +2656,13 @@ onBeforeUnmount(() => document.removeEventListener('click', _closeDropdownOnDocC
   background: #fafafb;
   padding: 14px 28px 18px 56px;
   display: flex; flex-direction: column; gap: 12px;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;          /* if the inner perf table is wider than the card */
+}
+.mt-pm-detail .mt-pm-perf {
+  table-layout: auto;
+  max-width: 100%;
 }
 /* Per-model performance breakdown table inside the expansion. */
 .mt-pm-perf {
@@ -2707,7 +2763,23 @@ onBeforeUnmount(() => document.removeEventListener('click', _closeDropdownOnDocC
 .mt-pm-resp-body {
   margin-top: 8px;
   font-size: 12.5px; color: #334155; line-height: 1.55;
-  white-space: pre-wrap;
+  white-space: normal;        /* render markdown blocks, not raw */
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.mt-pm-resp-body p { margin: 0 0 8px; }
+.mt-pm-resp-body p:last-child { margin-bottom: 0; }
+.mt-pm-resp-body ul, .mt-pm-resp-body ol { margin: 6px 0 8px; padding-left: 20px; }
+.mt-pm-resp-body li { margin: 3px 0; }
+.mt-pm-resp-body h3, .mt-pm-resp-body h4, .mt-pm-resp-body h5 {
+  font-size: 12.5px; font-weight: 700; color: #0f172a;
+  margin: 10px 0 4px;
+}
+.mt-pm-resp-body strong { color: #0f172a; font-weight: 600; }
+.mt-pm-resp-body code {
+  background: #f1f5f9; padding: 0 5px; border-radius: 3px;
+  font-family: ui-monospace, SFMono-Regular, monospace; font-size: 12px;
 }
 .mt-pm-resp-err { margin-top: 6px; font-size: 12px; color: #b91c1c; }
 
@@ -2768,10 +2840,20 @@ onBeforeUnmount(() => document.removeEventListener('click', _closeDropdownOnDocC
   border: 1px solid rgba(15, 23, 42, 0.06);
   border-radius: 8px;
   font-size: 12.5px; color: #334155; line-height: 1.5;
-  white-space: pre-wrap;
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: anywhere;
   cursor: text;
 }
-.mt-mark { background: #fef08a; padding: 0 2px; border-radius: 3px; color: #0f172a; }
+.mt-pivot-body p { margin: 0 0 8px; }
+.mt-pivot-body p:last-child { margin-bottom: 0; }
+.mt-pivot-body ul, .mt-pivot-body ol { margin: 6px 0 8px; padding-left: 18px; }
+.mt-mark { background: #fef08a; padding: 0 2px; border-radius: 3px; color: #0f172a; font-weight: 600; }
+.mt-ent {
+  border-bottom: 1px dashed rgba(15, 23, 42, 0.30);
+  cursor: help;
+}
+.mt-ent:hover { background: #f1f5f9; }
 
 .mt-pivot-agg { text-align: center; }
 .mt-agg-pill {

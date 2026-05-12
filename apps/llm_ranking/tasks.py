@@ -468,6 +468,8 @@ def run_model_test(self, *, run_id: str, website_id: str, user_id: int | None,
                             r["relevance"] = c["relevance"]
                         if c.get("evidence_phrase"):
                             r["evidence_phrase"] = c["evidence_phrase"]
+                        if c.get("entities"):
+                            r["entities"] = c["entities"]
                 state["sentiment_status"] = "complete"
                 state["prompt_rows"] = results
             else:
@@ -764,30 +766,35 @@ def _classify_responses(*, brand, prompt_rows, user, website) -> dict:
     user_prompt = (
         f"Brand under test: **{brand_label}**\n\n"
         f"For each of the {len(items)} responses below, output ONE line "
-        f"with three fields separated by ` | `:\n\n"
-        f"`Response <N>: <relevance> | <sentiment_or_none> | <evidence_phrase_or_none>`\n\n"
+        f"with FOUR fields separated by ` | `:\n\n"
+        f"`Response <N>: <relevance> | <sentiment_or_none> | <evidence_phrase_or_none> | <entities_or_none>`\n\n"
         f"## relevance — pick exactly one:\n"
         f"- direct          — {brand_label} is literally named in the answer.\n"
         f"- near_miss       — the answer describes {brand_label}'s product, "
         f"capability, or value proposition in detail but never names the "
-        f"brand. (E.g. for an apartment-listing brand: the answer "
-        f"recommends comparing rentals by build year and amenities.)\n"
+        f"brand.\n"
         f"- category_match  — the answer is in {brand_label}'s problem "
-        f"space but doesn't describe what the brand specifically offers. "
-        f"Soft / generic.\n"
+        f"space but doesn't describe what the brand specifically offers.\n"
         f"- unrelated       — the answer is about a different topic.\n\n"
-        f"## sentiment — only fill when relevance == direct, else write `none`:\n"
-        f"- positive / neutral / negative / non_recommendation\n"
-        f"(definitions: positive=recommended; neutral=named factually; "
-        f"negative=criticised; non_recommendation=mentioned as an aside.)\n\n"
-        f"## evidence_phrase — only fill when relevance is "
-        f"near_miss or category_match. Otherwise write `none`.\n"
-        f"A SINGLE direct quote from the answer (≤200 chars, no "
-        f"ellipses, no paraphrasing) that best supports your relevance "
-        f"classification. This is what an analyst would underline.\n\n"
+        f"## sentiment — only when relevance == direct, else `none`:\n"
+        f"- positive / neutral / negative / non_recommendation\n\n"
+        f"## evidence_phrase — only when relevance is near_miss or "
+        f"category_match, else `none`. A single direct quote from the "
+        f"answer (≤200 chars, no ellipses, no paraphrasing).\n\n"
+        f"## entities — comma-separated list of the most useful named "
+        f"entities to highlight in the answer for an analyst (cap 12 "
+        f"entries; each ≤80 chars). Prioritise in this order:\n"
+        f"  1. Competitor / alternative business or product names\n"
+        f"  2. Specific service offerings the answer recommends\n"
+        f"  3. Place names (cities, neighbourhoods, addresses)\n"
+        f"  4. Concrete product features or numeric specifications\n"
+        f"Each entity must appear VERBATIM in the answer — no "
+        f"paraphrasing or capitalisation changes. Skip the brand itself "
+        f"({brand_label}) since it's already highlighted. Write `none` "
+        f"if nothing useful to highlight.\n\n"
         f"=== RESPONSES ===\n{body}\n=== END ===\n\n"
         f"Output exactly {len(items)} lines in the format above. No "
-        f"other text. Do not add explanations."
+        f"other text."
     )
 
     result = provider.query(
@@ -803,20 +810,26 @@ def _classify_responses(*, brand, prompt_rows, user, website) -> dict:
         raise RuntimeError(result.error or "classifier failed")
 
     out: dict[str, dict] = {}
-    # Tolerant parser — labels are simple words, evidence phrase may
-    # contain spaces and punctuation.
-    line_re = _re.compile(
+    # Tolerant parser. We expect 4 ` | `-separated fields. Older
+    # tooling that only emits 3 still works via the fallback regex.
+    line_re_4 = _re.compile(
+        r"^\s*Response\s+(\d+)\s*:\s*([a-z_]+)\s*\|\s*([a-z_]+)\s*\|\s*(.+?)\s*\|\s*(.+?)\s*$",
+        _re.IGNORECASE,
+    )
+    line_re_3 = _re.compile(
         r"^\s*Response\s+(\d+)\s*:\s*([a-z_]+)\s*\|\s*([a-z_]+)\s*\|\s*(.+?)\s*$",
         _re.IGNORECASE,
     )
     for line in (result.text or "").splitlines():
-        m = line_re.match(line)
+        m4 = line_re_4.match(line)
+        m = m4 or line_re_3.match(line)
         if not m:
             continue
         idx = int(m.group(1)) - 1
         relevance = m.group(2).strip().lower()
         sentiment = m.group(3).strip().lower()
         phrase = m.group(4).strip()
+        entities_raw = m.group(5).strip() if m4 else ""
         if not (0 <= idx < len(items)):
             continue
         if relevance not in _RELEVANCE_LABELS:
@@ -825,10 +838,16 @@ def _classify_responses(*, brand, prompt_rows, user, website) -> dict:
         if sentiment in _SENTIMENT_LABELS:
             entry["sentiment"] = sentiment
         if phrase and phrase.lower() != "none":
-            # Strip surrounding quotes the LLM often adds.
             cleaned = phrase.strip(' "\'`')
             if cleaned and len(cleaned) <= 240:
                 entry["evidence_phrase"] = cleaned
+        if entities_raw and entities_raw.lower() != "none":
+            # Split on commas, strip surrounding quotes/spaces, cap
+            # length and total count.
+            parts = [p.strip(' "\'`') for p in entities_raw.split(",")]
+            entities = [p for p in parts if p and len(p) <= 80][:12]
+            if entities:
+                entry["entities"] = entities
         it = items[idx]
         out[f"{it['pi']}:{it['provider']}"] = entry
     return out
