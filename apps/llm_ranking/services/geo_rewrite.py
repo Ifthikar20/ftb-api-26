@@ -284,4 +284,5 @@ def rewrite(
         "rewritten": rewritten,
         "diff":      _diff_stats(source_text, rewritten),
         "quota_remaining": quota_remaining(user_id),
+        "daily_limit":     quota_for_user(user_id),
     }

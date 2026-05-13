@@ -373,8 +373,11 @@
                     </div>
                     <p class="mt-cite-panel-sub">
                       Picks a paper-validated rewrite for this source's domain and
-                      runs the snippet through Claude. Counts against your daily
-                      rewrite budget ({{ rewriteQuota }}/day).
+                      runs the snippet through Claude.
+                      <span v-if="rewriteQuota !== '—'">
+                        {{ rewriteQuota }} rewrite{{ rewriteQuota === 1 ? '' : 's' }} left today.
+                      </span>
+                      <span v-else>One Claude call per click.</span>
                     </p>
                     <label class="mt-cite-panel-label">Method</label>
                     <select v-model="activeAction.method" class="mt-cite-panel-input">
@@ -384,11 +387,17 @@
                       <option value="cite_sources">Cite a primary source (+27.5%)</option>
                       <option value="authoritative">More authoritative tone (+10%)</option>
                     </select>
-                    <label class="mt-cite-panel-label">Source snippet to rewrite</label>
+                    <label class="mt-cite-panel-label">
+                      Source text to rewrite
+                      <span class="mt-cite-panel-hint">
+                        — pre-filled with the Google snippet for context;
+                        replace with the paragraph from your page you actually want optimized.
+                      </span>
+                    </label>
                     <textarea
                       v-model="activeAction.sourceText"
                       class="mt-cite-panel-input mt-cite-panel-ta"
-                      rows="4"
+                      rows="5"
                       placeholder="Paste the paragraph from your page that you want optimized..."
                     ></textarea>
                     <div class="mt-cite-panel-actions">
@@ -419,8 +428,11 @@
                     </div>
                     <p class="mt-cite-panel-sub">
                       Claude reads the response, the source, and your query, then
-                      rates the citation 1-5 across seven dimensions. Each click
-                      consumes one judge call ({{ judgeQuota }}/day).
+                      rates the citation 1-5 across seven dimensions.
+                      <span v-if="judgeQuota !== '—'">
+                        {{ judgeQuota }} judge call{{ judgeQuota === 1 ? '' : 's' }} left today.
+                      </span>
+                      <span v-else>One Claude call per click.</span>
                     </p>
                     <div class="mt-cite-panel-actions">
                       <button
@@ -1399,7 +1411,9 @@ async function runRewrite() {
       query:       a.citation?.queries?.[0] || '',
     })
     if (!data?.ok) {
-      a.error = _rewriteErrorLabel(data?.error) || 'Rewrite failed.'
+      a.error = _rewriteErrorLabel(data) || 'Rewrite failed.'
+      // Quota errors carry the remaining counter — surface it even on failure.
+      if (data?.quota_remaining != null) rewriteQuota.value = data.quota_remaining
     } else {
       a.result = data
       if (data.quota_remaining != null) rewriteQuota.value = data.quota_remaining
@@ -1418,10 +1432,18 @@ async function runScore() {
   a.result = null
   try {
     const wid = route.params.websiteId || route.params.wid
-    const r = displayRun.value
+    const run = displayRun.value
+    const responseText = run?.google_grounding?.markdown || ''
+    if (!responseText.trim()) {
+      a.error = 'No grounding response yet — run the audit first.'
+      return
+    }
     const { data } = await llmRanking.geoJudge(wid, {
-      query:          a.citation?.queries?.[0] || r?.brand_label || '',
-      response_text:  r?.google_grounding?.markdown || '',
+      // First prompt that surfaced this citation, falling back to the
+      // brand name (the page-wide subject) when the citation came
+      // through implicitly.
+      query:          a.citation?.queries?.[0] || brandLabel.value || '',
+      response_text:  responseText,
       citation_index: a.index + 1,
       citation_url:   a.citation?.url || '',
       samples:        1,
@@ -1438,14 +1460,19 @@ async function runScore() {
   }
 }
 
-function _rewriteErrorLabel(code) {
-  return {
-    quota_exceeded:        'Daily rewrite quota reached. Resets at midnight UTC.',
+function _rewriteErrorLabel(payload) {
+  const code = payload?.error || payload
+  const limit = payload?.daily_limit
+  const messages = {
+    quota_exceeded: limit
+      ? `Daily rewrite quota reached (${limit}/day). Resets at midnight UTC.`
+      : 'Daily rewrite quota reached. Resets at midnight UTC.',
     unknown_method:        'Unknown method.',
     empty_source:          'Paste a source snippet first.',
     anthropic_key_missing: 'Anthropic key not configured.',
     rewriter_error:        'Claude rewrite failed — try again.',
-  }[code] || code
+  }
+  return messages[code] || code
 }
 
 // Audit type — surfaced as a chip in the page header + the status
@@ -3632,6 +3659,11 @@ onBeforeUnmount(() => document.removeEventListener('click', _closeDropdownOnDocC
   font-weight: 600;
   color: #475569;
   margin: 8px 0 4px;
+}
+.mt-cite-panel-hint {
+  font-weight: 400;
+  color: #94a3b8;
+  font-style: italic;
 }
 .mt-cite-panel-input {
   width: 100%;
