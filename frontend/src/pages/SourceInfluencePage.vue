@@ -204,6 +204,84 @@
               high-ROI source{{ highRoiCount(displayRun.google_grounding.citations) === 1 ? '' : 's' }} to optimize first
               (cited but ranked outside Google's top 3).
             </p>
+
+            <!-- Plain-English explainer for the metrics + badges that
+                 follow. Collapsed by default so it doesn't crowd repeat
+                 users; one click opens the legend, the methodology, and
+                 a pointer to the paper. -->
+            <details class="mt-cite-help">
+              <summary>How to read this section</summary>
+              <div class="mt-cite-help-body">
+                <p>
+                  Each card below is a web page Gemini cited when answering your prompts.
+                  The badges show how much each source <em>actually influenced</em> the
+                  response and where it's worth spending optimization effort, based on
+                  Aggarwal et al. 2024,
+                  <a href="https://arxiv.org/abs/2311.09735" target="_blank" rel="noopener noreferrer">
+                    “GEO: Generative Engine Optimization”</a> (KDD&nbsp;’24).
+                </p>
+                <dl class="mt-cite-help-dl">
+                  <dt>
+                    <span class="mt-cite-rank mt-cite-help-eg">#3</span>
+                    Google rank
+                  </dt>
+                  <dd>
+                    Where this URL appears in Google's organic results for the query
+                    that surfaced it. Lower&nbsp;= better SEO position. The paper
+                    finds GEO content rewrites help rank&nbsp;4&nbsp;and&nbsp;5
+                    sources up to&nbsp;+115%, but can actually <em>hurt</em>
+                    rank&nbsp;1 sources.
+                  </dd>
+                  <dt>
+                    <span class="mt-cite-imp mt-cite-help-eg">Imp<sub>pwc</sub> 0.42</span>
+                    Position-Adjusted Word Count
+                  </dt>
+                  <dd>
+                    Paper&nbsp;eq.&nbsp;3 — fraction of the response's words that cite
+                    this source, weighted by sentence position (top sentences count
+                    for more because that's what readers actually see). Ranges
+                    0&nbsp;→&nbsp;1; higher means the response leans on this source
+                    more heavily.
+                  </dd>
+                  <dt>
+                    <span class="mt-cite-lift mt-cite-help-eg">+41%</span>
+                    Projected lift
+                  </dt>
+                  <dd>
+                    Paper Table&nbsp;1's average lift in Imp<sub>pwc</sub> if you
+                    apply the rewrite method we recommend for this source's domain.
+                    Re-running the audit after the rewrite measures the actual lift
+                    via eq.&nbsp;4: <code>(Imp(r') − Imp(r)) / Imp(r) × 100</code>.
+                  </dd>
+                  <dt>
+                    <span class="mt-cite-roi mt-cite-help-eg">High ROI</span>
+                    /
+                    <span class="mt-cite-roi is-low mt-cite-help-eg">Already winning</span>
+                    ROI bucket
+                  </dt>
+                  <dd>
+                    “High ROI” sources are cited but rank outside Google's top&nbsp;3
+                    — the paper shows these gain most from rewrites. “Already
+                    winning” sources are rank&nbsp;1; rewriting them is risky because
+                    the same techniques can <em>reduce</em> their visibility.
+                  </dd>
+                </dl>
+                <p class="mt-cite-help-actions-note">
+                  Click <strong>Optimize</strong> on any source to apply one of the
+                  five paper-validated rewrite strategies — Quotation Addition
+                  (+41%), Statistics Addition (+32%), Fluency Optimization (+28%),
+                  Cite Sources (+27.5%), or Authoritative Tone (+10%). Keyword
+                  stuffing and unique-word insertion are deliberately excluded — the
+                  paper shows they hurt visibility, not help.
+                </p>
+                <p class="mt-cite-help-actions-note">
+                  Click <strong>Score</strong> to get a 1-5 Claude-as-judge rating
+                  across 7 sub-metrics (Relevance, Influence, Uniqueness, Diversity,
+                  Follow-up likelihood, Subjective Position, Subjective Count) — the
+                  paper's “Subjective Impression” signal.
+                </p>
+              </div>
+            </details>
             <ul class="mt-cite-chips">
               <li
                 v-for="(c, i) in displayRun.google_grounding.citations"
@@ -266,6 +344,114 @@
                     <path d="M5 11l6-6M6 5h5v5" stroke-linecap="round" stroke-linejoin="round"/>
                   </svg>
                 </a>
+                <div class="mt-cite-actions">
+                  <button
+                    type="button"
+                    class="mt-cite-action"
+                    :disabled="c.geo_roi === 'low'"
+                    :title="c.geo_roi === 'low'
+                      ? 'This source is already rank 1 — paper shows GEO rewrites can REDUCE visibility for already-winning sources.'
+                      : 'Run the recommended GEO rewrite strategy on this source\\'s snippet to project the lift.'"
+                    @click="openOptimize(c, i)"
+                  >Optimize</button>
+                  <button
+                    type="button"
+                    class="mt-cite-action"
+                    title="Run the Claude-as-judge G-Eval scoring (7 sub-metrics) on this citation."
+                    @click="openScore(c, i)"
+                  >Score</button>
+                </div>
+                <div
+                  v-if="activeAction.index === i"
+                  class="mt-cite-panel"
+                >
+                  <!-- Rewrite panel -->
+                  <template v-if="activeAction.kind === 'rewrite'">
+                    <div class="mt-cite-panel-h">
+                      <strong>Optimize with a GEO strategy</strong>
+                      <button class="mt-cite-panel-x" @click="closeAction">×</button>
+                    </div>
+                    <p class="mt-cite-panel-sub">
+                      Picks a paper-validated rewrite for this source's domain and
+                      runs the snippet through Claude. Counts against your daily
+                      rewrite budget ({{ rewriteQuota }}/day).
+                    </p>
+                    <label class="mt-cite-panel-label">Method</label>
+                    <select v-model="activeAction.method" class="mt-cite-panel-input">
+                      <option value="quotation_addition">Add a quotation (+41%)</option>
+                      <option value="statistics_addition">Add a statistic (+32%)</option>
+                      <option value="fluency_optimization">Optimize fluency (+28%)</option>
+                      <option value="cite_sources">Cite a primary source (+27.5%)</option>
+                      <option value="authoritative">More authoritative tone (+10%)</option>
+                    </select>
+                    <label class="mt-cite-panel-label">Source snippet to rewrite</label>
+                    <textarea
+                      v-model="activeAction.sourceText"
+                      class="mt-cite-panel-input mt-cite-panel-ta"
+                      rows="4"
+                      placeholder="Paste the paragraph from your page that you want optimized..."
+                    ></textarea>
+                    <div class="mt-cite-panel-actions">
+                      <button
+                        type="button"
+                        class="mt-cite-panel-go"
+                        :disabled="activeAction.loading || !activeAction.sourceText.trim()"
+                        @click="runRewrite"
+                      >{{ activeAction.loading ? 'Rewriting…' : 'Run rewrite' }}</button>
+                    </div>
+                    <div v-if="activeAction.error" class="mt-cite-panel-err">
+                      {{ activeAction.error }}
+                    </div>
+                    <div v-if="activeAction.result" class="mt-cite-panel-result">
+                      <div class="mt-cite-panel-result-h">
+                        Rewritten ({{ activeAction.result.diff.before_words }}→{{ activeAction.result.diff.after_words }} words,
+                        projected +{{ activeAction.result.projected_lift_pct }}% Imp<sub>pwc</sub>)
+                      </div>
+                      <pre class="mt-cite-panel-out">{{ activeAction.result.rewritten }}</pre>
+                    </div>
+                  </template>
+
+                  <!-- Score panel -->
+                  <template v-else-if="activeAction.kind === 'score'">
+                    <div class="mt-cite-panel-h">
+                      <strong>Score this citation (G-Eval, 7 sub-metrics)</strong>
+                      <button class="mt-cite-panel-x" @click="closeAction">×</button>
+                    </div>
+                    <p class="mt-cite-panel-sub">
+                      Claude reads the response, the source, and your query, then
+                      rates the citation 1-5 across seven dimensions. Each click
+                      consumes one judge call ({{ judgeQuota }}/day).
+                    </p>
+                    <div class="mt-cite-panel-actions">
+                      <button
+                        type="button"
+                        class="mt-cite-panel-go"
+                        :disabled="activeAction.loading"
+                        @click="runScore"
+                      >{{ activeAction.loading ? 'Scoring…' : 'Run scoring' }}</button>
+                    </div>
+                    <div v-if="activeAction.error" class="mt-cite-panel-err">
+                      {{ activeAction.error }}
+                    </div>
+                    <table v-if="activeAction.result" class="mt-cite-panel-table">
+                      <thead>
+                        <tr><th>Metric</th><th>Score (1-5)</th><th>Why</th></tr>
+                      </thead>
+                      <tbody>
+                        <tr v-for="m in subMetrics" :key="m.key">
+                          <td>{{ m.label }}</td>
+                          <td class="num">{{ activeAction.result.scores[m.key]?.score ?? '—' }}</td>
+                          <td>{{ activeAction.result.scores[m.key]?.reason || '' }}</td>
+                        </tr>
+                        <tr class="is-avg">
+                          <td><strong>Average</strong></td>
+                          <td class="num"><strong>{{ activeAction.result.scores.average ?? '—' }}</strong></td>
+                          <td></td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </template>
+                </div>
               </li>
             </ul>
           </div>
@@ -1126,6 +1312,140 @@ function liftTooltip(c) {
     + `Method picked for this source’s domain — re-runs after the rewrite\n`
     + `will measure actual lift via eq. 4: (Imp(r’) − Imp(r)) / Imp(r) × 100.`
   )
+}
+
+// ── GEO actions: rewrite + G-Eval scoring ─────────────────────────
+// Both call into apps/llm_ranking/services/{geo_rewrite,subjective_impression}.py
+// via /llm-ranking/<wid>/geo/{rewrite,judge}/. Each click costs one
+// per-user daily call — same flat-quota pattern as the CSE budget.
+const subMetrics = [
+  { key: 'relevance',           label: 'Relevance' },
+  { key: 'influence',           label: 'Influence' },
+  { key: 'uniqueness',          label: 'Uniqueness' },
+  { key: 'diversity',           label: 'Diversity' },
+  { key: 'follow_up',           label: 'Follow-up likelihood' },
+  { key: 'subjective_position', label: 'Subjective position' },
+  { key: 'subjective_count',    label: 'Subjective count' },
+]
+
+const judgeQuota = ref('—')
+const rewriteQuota = ref('—')
+
+// One panel at a time — index identifies which chip is open, kind is
+// 'rewrite' or 'score', everything else is panel-local state.
+const activeAction = ref({
+  index: -1,
+  kind:  '',
+  method: 'quotation_addition',
+  sourceText: '',
+  loading: false,
+  error: '',
+  result: null,
+  citation: null,
+})
+
+function closeAction() {
+  activeAction.value = {
+    index: -1, kind: '', method: 'quotation_addition',
+    sourceText: '', loading: false, error: '', result: null, citation: null,
+  }
+}
+
+function openOptimize(citation, index) {
+  if (activeAction.value.index === index && activeAction.value.kind === 'rewrite') {
+    closeAction()
+    return
+  }
+  activeAction.value = {
+    index,
+    kind: 'rewrite',
+    method: citation?.recommended_method || 'quotation_addition',
+    sourceText: citation?.snippet || '',
+    loading: false,
+    error: '',
+    result: null,
+    citation,
+  }
+}
+
+function openScore(citation, index) {
+  if (activeAction.value.index === index && activeAction.value.kind === 'score') {
+    closeAction()
+    return
+  }
+  activeAction.value = {
+    index,
+    kind: 'score',
+    method: '',
+    sourceText: '',
+    loading: false,
+    error: '',
+    result: null,
+    citation,
+  }
+}
+
+async function runRewrite() {
+  const a = activeAction.value
+  if (!a.sourceText.trim()) return
+  a.loading = true
+  a.error = ''
+  a.result = null
+  try {
+    const wid = route.params.websiteId || route.params.wid
+    const { data } = await llmRanking.geoRewrite(wid, {
+      method:      a.method,
+      source_text: a.sourceText,
+      query:       a.citation?.queries?.[0] || '',
+    })
+    if (!data?.ok) {
+      a.error = _rewriteErrorLabel(data?.error) || 'Rewrite failed.'
+    } else {
+      a.result = data
+      if (data.quota_remaining != null) rewriteQuota.value = data.quota_remaining
+    }
+  } catch (err) {
+    a.error = err?.response?.data?.error || 'Rewrite failed.'
+  } finally {
+    a.loading = false
+  }
+}
+
+async function runScore() {
+  const a = activeAction.value
+  a.loading = true
+  a.error = ''
+  a.result = null
+  try {
+    const wid = route.params.websiteId || route.params.wid
+    const r = displayRun.value
+    const { data } = await llmRanking.geoJudge(wid, {
+      query:          a.citation?.queries?.[0] || r?.brand_label || '',
+      response_text:  r?.google_grounding?.markdown || '',
+      citation_index: a.index + 1,
+      citation_url:   a.citation?.url || '',
+      samples:        1,
+    })
+    a.result = data
+    if (data?.quota_remaining != null) judgeQuota.value = data.quota_remaining
+    if (data?.daily_limit != null && judgeQuota.value === '—') {
+      judgeQuota.value = data.daily_limit
+    }
+  } catch (err) {
+    a.error = err?.response?.data?.error || 'Scoring failed.'
+  } finally {
+    a.loading = false
+  }
+}
+
+function _rewriteErrorLabel(code) {
+  return {
+    quota_exceeded:        'Daily rewrite quota reached. Resets at midnight UTC.',
+    unknown_method:        'Unknown method.',
+    empty_source:          'Paste a source snippet first.',
+    anthropic_key_missing: 'Anthropic key not configured.',
+    rewriter_error:        'Claude rewrite failed — try again.',
+  }[code] || code
 }
 
 // Audit type — surfaced as a chip in the page header + the status
@@ -3200,6 +3520,181 @@ onBeforeUnmount(() => document.removeEventListener('click', _closeDropdownOnDocC
   padding: 2px 6px;
   font-variant-numeric: tabular-nums;
 }
+
+/* ── Explainer "How to read this section" ─────────────────────────── */
+.mt-cite-help {
+  margin: 8px 0 12px;
+  padding: 0;
+  font-size: 13px;
+  color: #334155;
+}
+.mt-cite-help summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: #475569;
+  padding: 6px 0;
+  user-select: none;
+}
+.mt-cite-help summary:hover { color: #0f172a; }
+.mt-cite-help-body {
+  padding: 10px 12px 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  margin-top: 6px;
+}
+.mt-cite-help-body p { margin: 0 0 10px; line-height: 1.5; }
+.mt-cite-help-body a { color: #1e40af; text-decoration: underline; }
+.mt-cite-help-body code {
+  font-size: 11px;
+  background: #e2e8f0;
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+.mt-cite-help-dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 8px 16px;
+  margin: 10px 0;
+}
+.mt-cite-help-dl dt {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.mt-cite-help-dl dd { margin: 0; line-height: 1.45; color: #475569; }
+.mt-cite-help-eg { pointer-events: none; }
+.mt-cite-help-actions-note { font-size: 12px; color: #475569; }
+
+/* ── Per-chip Optimize / Score actions + panel ────────────────────── */
+.mt-cite-chip-li {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+.mt-cite-actions {
+  display: flex;
+  gap: 6px;
+  margin-left: 24px;
+}
+.mt-cite-action {
+  font-size: 11px;
+  font-weight: 600;
+  color: #1e40af;
+  background: transparent;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+.mt-cite-action:hover:not(:disabled) {
+  background: #eff6ff;
+  border-color: #93c5fd;
+}
+.mt-cite-action:disabled {
+  color: #94a3b8;
+  cursor: not-allowed;
+  border-color: #e2e8f0;
+}
+.mt-cite-panel {
+  width: 100%;
+  margin: 6px 0 4px 24px;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 12px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+  max-width: 720px;
+}
+.mt-cite-panel-h {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+.mt-cite-panel-x {
+  font-size: 18px;
+  line-height: 1;
+  background: transparent;
+  border: 0;
+  color: #94a3b8;
+  cursor: pointer;
+}
+.mt-cite-panel-x:hover { color: #0f172a; }
+.mt-cite-panel-sub { font-size: 12px; color: #64748b; margin: 0 0 8px; }
+.mt-cite-panel-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: #475569;
+  margin: 8px 0 4px;
+}
+.mt-cite-panel-input {
+  width: 100%;
+  font-size: 13px;
+  padding: 6px 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  background: #ffffff;
+}
+.mt-cite-panel-ta { font-family: inherit; resize: vertical; }
+.mt-cite-panel-actions { margin-top: 10px; }
+.mt-cite-panel-go {
+  font-size: 12px;
+  font-weight: 600;
+  color: #ffffff;
+  background: #0f172a;
+  border: 0;
+  border-radius: 4px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+.mt-cite-panel-go:disabled { background: #94a3b8; cursor: not-allowed; }
+.mt-cite-panel-err {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #b91c1c;
+  background: #fee2e2;
+  padding: 6px 8px;
+  border-radius: 4px;
+}
+.mt-cite-panel-result { margin-top: 10px; }
+.mt-cite-panel-result-h {
+  font-size: 12px;
+  font-weight: 600;
+  color: #047857;
+  margin-bottom: 4px;
+}
+.mt-cite-panel-out {
+  font-size: 13px;
+  font-family: inherit;
+  white-space: pre-wrap;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  padding: 8px;
+  margin: 0;
+  max-height: 280px;
+  overflow: auto;
+}
+.mt-cite-panel-table {
+  width: 100%;
+  margin-top: 8px;
+  font-size: 12px;
+  border-collapse: collapse;
+}
+.mt-cite-panel-table th, .mt-cite-panel-table td {
+  text-align: left;
+  padding: 4px 6px;
+  border-bottom: 1px solid #f1f5f9;
+}
+.mt-cite-panel-table th { color: #64748b; font-weight: 600; }
+.mt-cite-panel-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.mt-cite-panel-table tr.is-avg td { border-top: 1px solid #cbd5e1; padding-top: 6px; }
 
 /* ── Test history card */
 .mt-history-card { padding: 24px 0 0; }

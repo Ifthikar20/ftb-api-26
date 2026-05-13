@@ -25,4 +25,7 @@ urlpatterns = [
     path("<uuid:website_id>/model-test/", views.ModelTestRunView.as_view(), name="llm-ranking-model-test"),
     path("<uuid:website_id>/model-test-history/", views.ModelTestHistoryView.as_view(), name="llm-ranking-model-test-history"),
     path("<uuid:website_id>/model-test/<str:run_id>/", views.ModelTestStatusView.as_view(), name="llm-ranking-model-test-status"),
+    # GEO action endpoints (Aggarwal et al. 2024)
+    path("<uuid:website_id>/geo/rewrite/", views.GeoRewriteView.as_view(), name="llm-ranking-geo-rewrite"),
+    path("<uuid:website_id>/geo/judge/",   views.GeoJudgeView.as_view(),   name="llm-ranking-geo-judge"),
 ]

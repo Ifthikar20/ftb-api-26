@@ -38,4 +38,12 @@ export default {
     modelTestStatus: (wid, runId) => api.get(`/llm-ranking/${wid}/model-test/${runId}/`),
     // History of past Model Test runs for this website.
     modelTestHistory: (wid, params) => api.get(`/llm-ranking/${wid}/model-test-history/`, { params }),
+    // GEO content rewrite — runs one of the 5 paper-validated strategies
+    // (quotation_addition, statistics_addition, cite_sources,
+    // fluency_optimization, authoritative) through Claude Sonnet.
+    geoRewrite: (wid, payload) => api.post(`/llm-ranking/${wid}/geo/rewrite/`, payload),
+    // G-Eval subjective-impression scoring for one citation across the
+    // 7 sub-metrics (Relevance, Influence, Uniqueness, Diversity,
+    // FollowUp, Subjective Position, Subjective Count).
+    geoJudge: (wid, payload) => api.post(`/llm-ranking/${wid}/geo/judge/`, payload),
 }

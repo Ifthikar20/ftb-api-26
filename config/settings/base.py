@@ -361,6 +361,12 @@ GOOGLE_CSE_ID = env("GOOGLE_CSE_ID", default="")
 # Per-user daily cap on Google Custom Search calls. Same flat number
 # for every user (free + paid). Resets at UTC midnight.
 GOOGLE_CSE_DAILY_LIMIT_PER_USER = env.int("GOOGLE_CSE_DAILY_LIMIT_PER_USER", default=100)
+# Per-user daily cap on G-Eval judge calls (subjective_impression.py).
+# One call scores all 7 sub-metrics for one citation in one shot.
+CLAUDE_JUDGE_DAILY_LIMIT_PER_USER = env.int("CLAUDE_JUDGE_DAILY_LIMIT_PER_USER", default=200)
+# Per-user daily cap on GEO content rewrites (geo_rewrite.py). Lower
+# because rewrites pull a whole document through the model.
+CLAUDE_REWRITE_DAILY_LIMIT_PER_USER = env.int("CLAUDE_REWRITE_DAILY_LIMIT_PER_USER", default=30)
 
 # ── Social Leads (Facebook, LinkedIn, X) ──
 FACEBOOK_APP_ID = env("FACEBOOK_APP_ID", default="")
