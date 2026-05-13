@@ -188,3 +188,47 @@ def test_daily_limit_default_is_100_when_unset(settings):
     if hasattr(settings, "GOOGLE_CSE_DAILY_LIMIT_PER_USER"):
         del settings.GOOGLE_CSE_DAILY_LIMIT_PER_USER
     assert google_search.quota_for_user(123) == google_search.DEFAULT_DAILY_LIMIT_PER_USER
+
+
+@pytest.mark.django_db
+def test_search_attaches_one_indexed_serp_rank(settings):
+    settings.GOOGLE_API_KEY = "k"
+    settings.GOOGLE_CSE_ID = "cx"
+    items = [
+        {"link": "https://first.com",  "title": "F"},
+        {"link": "https://second.com", "title": "S"},
+        {"link": "https://third.com",  "title": "T"},
+    ]
+    with patch.object(google_search.requests, "get", return_value=_stub_response(items)):
+        out = google_search.search("q")
+    assert [r["serp_rank"] for r in out] == [1, 2, 3]
+
+
+@pytest.mark.django_db
+def test_search_many_keeps_best_serp_rank_across_queries(settings):
+    """A URL seen at rank 4 for q1 and rank 1 for q2 must keep rank 1."""
+    settings.GOOGLE_API_KEY = "k"
+    settings.GOOGLE_CSE_ID = "cx"
+
+    def fake_get(url, params=None, timeout=None):
+        q = params["q"]
+        if q == "q1":
+            return _stub_response([
+                {"link": "https://other.com",  "title": "O"},
+                {"link": "https://other2.com", "title": "O2"},
+                {"link": "https://other3.com", "title": "O3"},
+                {"link": "https://target.com", "title": "T"},  # rank 4
+            ])
+        return _stub_response([
+            {"link": "https://target.com", "title": "T"},      # rank 1
+            {"link": "https://other4.com", "title": "O4"},
+        ])
+
+    with patch.object(google_search.requests, "get", side_effect=fake_get):
+        envelope = google_search.search_many(
+            ["q1", "q2"], num_per_query=10, max_total=20,
+        )
+
+    by_url = {r["url"]: r for r in envelope["citations"]}
+    assert by_url["https://target.com"]["best_serp_rank"] == 1
+    assert by_url["https://other.com"]["best_serp_rank"] == 1

@@ -956,6 +956,24 @@ def _model_test_synthesize(*, brand_terms, prompts, prompt_rows, providers,
     }
 
 
+# GEO ROI bucket per Aggarwal et al. 2024 "Generative Engine Optimization"
+# (KDD '24), Table 2: relative visibility lift from GEO rewrites is
+# strongly rank-dependent. Rank-1 sources usually lose, rank-4/5 gain
+# the most. Anything below the top 5 we treat as "high" (already
+# invisible — biggest upside).
+def _geo_roi_bucket(rank):
+    if rank is None:
+        return "high"
+    if rank <= 1:
+        return "low"
+    if rank <= 3:
+        return "medium"
+    return "high"
+
+
+_GEO_ROI_ORDER = {"high": 0, "medium": 1, "low": 2}
+
+
 def _model_test_google_grounding(*, brand_terms, prompts, website, user_id=None) -> dict | None:
     """
     One Gemini call with Google Search grounding to find live web context
@@ -1052,16 +1070,62 @@ def _model_test_google_grounding(*, brand_terms, prompts, website, user_id=None)
             max_queries=15,
             user_id=user_id,
         )
+        # Paper eq. 3: per-source Position-Adjusted Word Count over the
+        # LLM response. Citations are keyed by their 1-indexed order in
+        # the merged envelope, which is the same order the grounding
+        # prompt was told to use ("[1]", "[2]", ...).
+        from apps.llm_ranking.services import impression as _impression
+        n_sources = len(envelope["citations"])
+        imp_pwc = _impression.position_adjusted_word_counts(
+            text or "",
+            source_indices=range(1, n_sources + 1),
+        )
+        imp_wc = _impression.word_count_impression(
+            text or "",
+            source_indices=range(1, n_sources + 1),
+        )
         citations = [
             {
-                "url":     r["url"],
-                "title":   r["title"],
-                "snippet": r.get("snippet", ""),
-                "domain":  r.get("domain", ""),
-                "queries": r.get("queries", []),
+                "url":      r["url"],
+                "title":    r["title"],
+                "snippet":  r.get("snippet", ""),
+                "domain":   r.get("domain", ""),
+                "queries":  r.get("queries", []),
+                "serp_rank": r.get("best_serp_rank"),
+                # GEO ROI bucket — Aggarwal et al. 2024 (KDD '24, Table 2)
+                # show rank-1 sources LOSE visibility from GEO rewrites
+                # (Cite Sources −30.3% at rank 1) while rank-5 sources GAIN
+                # up to +115%. Low-rank-but-cited URLs are the place to spend
+                # rewrite/optimization effort.
+                "geo_roi":   _geo_roi_bucket(r.get("best_serp_rank")),
+                # Paper eq. 3 / eq. 2 — both normalized to [0, 1].
+                "impression_pwc": round(imp_pwc.get(idx, 0.0), 4),
+                "impression_wc":  round(imp_wc.get(idx, 0.0), 4),
+                # Paper Table 1 — average lift from the recommended
+                # rewrite method, projected via eq. 4. ``None`` for
+                # already-winning sources (low ROI bucket) since the
+                # paper shows GEO rewrites can REGRESS rank-1 sources.
+                "recommended_method": (
+                    None
+                    if _geo_roi_bucket(r.get("best_serp_rank")) == "low"
+                    else _impression.best_method_for_domain(r.get("domain"))
+                ),
+                "projected_lift_pct": (
+                    None
+                    if _geo_roi_bucket(r.get("best_serp_rank")) == "low"
+                    else _impression.projected_lift(
+                        _impression.best_method_for_domain(r.get("domain"))
+                    )
+                ),
             }
-            for r in envelope["citations"]
+            for idx, r in enumerate(envelope["citations"], start=1)
         ]
+        # Surface the high-ROI count so the UI can frame the recommendation.
+        citations = sorted(
+            citations,
+            key=lambda c: (_GEO_ROI_ORDER.get(c["geo_roi"], 99),
+                           c["serp_rank"] if c["serp_rank"] is not None else 99),
+        )
         citations_stats = {
             "queries_made":   envelope["queries_made"],
             "api_calls":      envelope["api_calls"],

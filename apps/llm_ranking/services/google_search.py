@@ -165,15 +165,16 @@ def search(
 
     items = data.get("items") or []
     results = []
-    for item in items:
+    for idx, item in enumerate(items, start=1):
         url = (item.get("link") or "").strip()
         if not url:
             continue
         results.append({
-            "url":     url,
-            "title":   item.get("title") or url,
-            "snippet": item.get("snippet") or "",
-            "domain":  _domain(url),
+            "url":       url,
+            "title":     item.get("title") or url,
+            "snippet":   item.get("snippet") or "",
+            "domain":    _domain(url),
+            "serp_rank": idx,  # 1-indexed Google organic rank for this query
         })
     cache.set(_cache_key(query, num), results, timeout=CACHE_TTL)
     return results
@@ -232,10 +233,16 @@ def search_many(
         for r in results:
             entry = seen.get(r["url"])
             if entry is None:
-                entry = {**r, "queries": [q]}
+                entry = {**r, "queries": [q], "best_serp_rank": r.get("serp_rank")}
                 seen[r["url"]] = entry
-            elif q not in entry["queries"]:
-                entry["queries"].append(q)
+            else:
+                if q not in entry["queries"]:
+                    entry["queries"].append(q)
+                # Keep the best (lowest) rank we've ever seen this URL at.
+                rk = r.get("serp_rank")
+                cur = entry.get("best_serp_rank")
+                if rk is not None and (cur is None or rk < cur):
+                    entry["best_serp_rank"] = rk
             if len(seen) >= max_total:
                 capped = True
                 break

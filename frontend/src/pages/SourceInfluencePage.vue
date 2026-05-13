@@ -195,6 +195,15 @@
               {{ displayRun.google_grounding.citations_stats.prompts_seen }} prompts
               (capped to keep Google Search cost predictable).
             </div>
+            <p
+              v-if="highRoiCount(displayRun.google_grounding.citations) > 0"
+              class="mt-cite-roi-note"
+              title="Per Aggarwal et al. 2024 (KDD '24, Table 2), GEO content rewrites lift rank-4/5 sources by up to ~115%, while rank-1 sources tend to LOSE visibility from the same rewrites. Prioritize optimizing low-ranked-but-cited URLs."
+            >
+              <strong>{{ highRoiCount(displayRun.google_grounding.citations) }}</strong>
+              high-ROI source{{ highRoiCount(displayRun.google_grounding.citations) === 1 ? '' : 's' }} to optimize first
+              (cited but ranked outside Google's top 3).
+            </p>
             <ul class="mt-cite-chips">
               <li
                 v-for="(c, i) in displayRun.google_grounding.citations"
@@ -206,8 +215,19 @@
                   target="_blank"
                   rel="noopener noreferrer"
                   class="mt-cite-chip"
+                  :class="['is-roi-' + (c.geo_roi || 'high')]"
                   :title="citationTooltip(c)"
                 >
+                  <span
+                    v-if="c.serp_rank"
+                    class="mt-cite-rank"
+                    :title="'Google organic rank #' + c.serp_rank + ' for the query that surfaced this source.'"
+                  >#{{ c.serp_rank }}</span>
+                  <span
+                    v-else
+                    class="mt-cite-rank is-unranked"
+                    title="Not in Google's top results — biggest upside from GEO rewrites."
+                  >#?</span>
                   <img
                     class="mt-cite-favicon"
                     :src="citationFavicon(c.url)"
@@ -219,7 +239,29 @@
                   <span class="mt-cite-text">
                     <span class="mt-cite-domain">{{ c.domain || citationDomain(c.url) }}</span>
                     <span v-if="c.title" class="mt-cite-title">{{ c.title }}</span>
+                    <span
+                      v-if="c.impression_pwc != null && c.impression_pwc > 0"
+                      class="mt-cite-imp"
+                      :title="impressionTooltip(c)"
+                    >
+                      Imp<sub>pwc</sub> {{ formatImpression(c.impression_pwc) }}
+                    </span>
                   </span>
+                  <span
+                    v-if="c.projected_lift_pct != null"
+                    class="mt-cite-lift"
+                    :title="liftTooltip(c)"
+                  >+{{ Math.round(c.projected_lift_pct) }}%</span>
+                  <span
+                    v-if="c.geo_roi === 'high'"
+                    class="mt-cite-roi"
+                    title="High ROI for GEO content rewrites — paper shows rank-4/5 sources gain up to +115% visibility after GEO."
+                  >High ROI</span>
+                  <span
+                    v-else-if="c.geo_roi === 'low'"
+                    class="mt-cite-roi is-low"
+                    title="Low ROI — already a top-1 result; paper shows GEO rewrites can DECREASE visibility for already-winning sources."
+                  >Already winning</span>
                   <svg class="mt-cite-out" width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M5 11l6-6M6 5h5v5" stroke-linecap="round" stroke-linejoin="round"/>
                   </svg>
@@ -1027,10 +1069,63 @@ function citationTooltip(c) {
   const parts = []
   if (c?.title) parts.push(c.title)
   if (c?.snippet) parts.push(c.snippet)
+  if (c?.serp_rank) parts.push(`Google organic rank: #${c.serp_rank}`)
   if (Array.isArray(c?.queries) && c.queries.length) {
     parts.push(`Surfaced by: ${c.queries.join(' · ')}`)
   }
   return parts.join('\n\n') || c?.url || ''
+}
+
+// GEO-ROI helper — number of cited sources where content rewrites are
+// expected to pay off (paper: rank-4+ or unranked). Drives the headline
+// "N high-ROI sources to optimize first" caption above the chip list.
+function highRoiCount(citations) {
+  if (!Array.isArray(citations)) return 0
+  return citations.filter((c) => (c?.geo_roi || 'high') === 'high').length
+}
+
+// Impression metric formatting. Imp_pwc lives in [0, 1] — show two
+// decimals so 0.04 doesn't round to a useless "0.0".
+function formatImpression(value) {
+  if (value == null || Number.isNaN(value)) return '—'
+  return value.toFixed(2)
+}
+
+// Tooltip for the Imp_pwc chip — explain what the user is looking at
+// without making them read the paper.
+function impressionTooltip(c) {
+  const wc = c?.impression_wc != null ? c.impression_wc.toFixed(2) : '—'
+  return [
+    'Position-Adjusted Word Count (Aggarwal et al. 2024, KDD ’24, eq. 3):',
+    'fraction of the response that cites this source, weighted by',
+    'sentence position (top sentences count for more — they’re what',
+    'people actually read).',
+    '',
+    `Raw word-count share (no position decay): ${wc}`,
+  ].join('\n')
+}
+
+// Tooltip explaining the projected lift badge.
+const _METHOD_LABEL = {
+  quotation_addition: 'add a relevant quotation from a credible source',
+  statistics_addition: 'add a supporting statistic',
+  fluency_optimization: 'tighten the prose for fluency',
+  cite_sources: 'cite a primary source for the key claim',
+  authoritative: 'rewrite in a more authoritative tone',
+  easy_to_understand: 'simplify the language',
+  technical_terms: 'add domain-specific technical terms',
+}
+function liftTooltip(c) {
+  const method = _METHOD_LABEL[c?.recommended_method] || c?.recommended_method || ''
+  const pct = c?.projected_lift_pct
+  if (pct == null) return ''
+  return (
+    `Projected +${pct.toFixed(1)}% lift in Position-Adjusted Word Count\n`
+    + `if you ${method}.\n\n`
+    + `Source: Aggarwal et al. 2024 (KDD ’24, Table 1, Table 3 domain map).\n`
+    + `Method picked for this source’s domain — re-runs after the rewrite\n`
+    + `will measure actual lift via eq. 4: (Imp(r’) − Imp(r)) / Imp(r) × 100.`
+  )
 }
 
 // Audit type — surfaced as a chip in the page header + the status
@@ -3042,6 +3137,69 @@ onBeforeUnmount(() => document.removeEventListener('click', _closeDropdownOnDocC
 }
 .mt-cite-out { color: #94a3b8; flex-shrink: 0; }
 .mt-cite-chip:hover .mt-cite-out { color: #475569; }
+
+.mt-cite-roi-note {
+  margin: 4px 0 8px;
+  font-size: 12px;
+  color: #475569;
+}
+.mt-cite-roi-note strong { color: #047857; font-weight: 700; }
+
+.mt-cite-rank {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 700;
+  color: #475569;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  padding: 1px 5px;
+  min-width: 24px;
+  text-align: center;
+}
+.mt-cite-rank.is-unranked { color: #94a3b8; }
+
+.mt-cite-roi {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #047857;
+  background: #d1fae5;
+  border-radius: 4px;
+  padding: 2px 6px;
+}
+.mt-cite-roi.is-low {
+  color: #92400e;
+  background: #fef3c7;
+}
+.mt-cite-chip.is-roi-high { border-color: #a7f3d0; }
+.mt-cite-chip.is-roi-low  { border-color: #fde68a; }
+
+.mt-cite-imp {
+  font-size: 10px;
+  font-weight: 600;
+  color: #475569;
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+}
+.mt-cite-imp sub {
+  font-size: 8px;
+  vertical-align: baseline;
+  position: relative;
+  bottom: -1px;
+}
+.mt-cite-lift {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 700;
+  color: #1e40af;
+  background: #dbeafe;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-variant-numeric: tabular-nums;
+}
 
 /* ── Test history card */
 .mt-history-card { padding: 24px 0 0; }
