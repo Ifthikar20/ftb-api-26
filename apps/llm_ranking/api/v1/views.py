@@ -1517,18 +1517,31 @@ class ModelTestRunView(TenantScopedAPIView):
         # with the existing status payload shape.
         providers = variants
 
+        # Brand terms = the canonical name + any aliases on the Website
+        # row, then anything the user added via the "Compare against"
+        # editor on the Source Influence page (extra_brand_terms in the
+        # POST payload). Deduped case-insensitively while preserving the
+        # original casing of the first occurrence — the matcher is
+        # case-insensitive anyway, but the chips read better with the
+        # spelling the user typed.
         brand_terms: list[str] = []
+        extra_in = request.data.get("extra_brand_terms") or []
+        if not isinstance(extra_in, list):
+            extra_in = []
         for term in [
             getattr(website, "business_name", None) or "",
             getattr(website, "name", None) or "",
+            *(getattr(website, "brand_aliases", None) or []),
+            *extra_in,
         ]:
-            term = (term or "").strip()
-            if term and term.lower() not in {t.lower() for t in brand_terms}:
+            term = (str(term) or "").strip()
+            if not term or len(term) > 80:
+                continue
+            if term.lower() not in {t.lower() for t in brand_terms}:
                 brand_terms.append(term)
-        for alias in (getattr(website, "brand_aliases", None) or []):
-            alias = (alias or "").strip()
-            if alias and alias.lower() not in {t.lower() for t in brand_terms}:
-                brand_terms.append(alias)
+        # Hard cap on the merged list so a hostile / overzealous client
+        # can't blow up the matcher regex with thousands of terms.
+        brand_terms = brand_terms[:50]
 
         run_id = uuid.uuid4().hex
         # Pre-seed the state row so a fast first poll never 404s before

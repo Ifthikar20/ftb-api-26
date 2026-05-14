@@ -106,6 +106,90 @@
         <!-- Post-processing sub-status -->
       </section>
 
+      <!-- Compare against — the terms the matcher uses to decide
+           hit / no-hit on every model response. Surfaces transparency
+           ("here's exactly what 'no match' was checked for") and lets
+           users add aliases / product names / competitors before
+           re-running. -->
+      <section
+        v-if="(displayRun?.brand_terms || []).length || displayRun"
+        class="mt-card mt-compare"
+      >
+        <div class="mt-card-head">
+          <div>
+            <div class="mt-card-eyebrow">Compare against</div>
+            <h2 class="mt-card-h">Terms a response is matched on</h2>
+            <p class="mt-card-sub">
+              A response counts as a <strong>match</strong> when any term below
+              appears in it (case-insensitive, whole-word). Add aliases, product
+              names, or competitor names to widen the net, then re-run.
+            </p>
+          </div>
+        </div>
+
+        <div class="mt-compare-body">
+          <ul class="mt-compare-chips">
+            <li
+              v-for="(t, i) in (displayRun.brand_terms || [])"
+              :key="'r-' + i"
+              class="mt-compare-chip is-locked"
+              :title="'Locked — this term was used by the current run. Add aliases below and re-run to widen the match.'"
+            >
+              <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M4 7V5a4 4 0 1 1 8 0v2M3 7h10v7H3z" stroke-linejoin="round"/>
+              </svg>
+              {{ t }}
+            </li>
+            <li
+              v-for="(t, i) in extraTerms"
+              :key="'x-' + i"
+              class="mt-compare-chip is-new"
+            >
+              {{ t }}
+              <button
+                type="button"
+                class="mt-compare-chip-x"
+                :title="'Remove ' + t"
+                @click="removeExtraTerm(i)"
+              >×</button>
+            </li>
+          </ul>
+
+          <form class="mt-compare-form" @submit.prevent="addExtraTerm">
+            <input
+              v-model="newTerm"
+              type="text"
+              class="mt-compare-input"
+              placeholder="Add an alias, product, or competitor — press Enter"
+              maxlength="80"
+            />
+            <button
+              type="submit"
+              class="mt-compare-add"
+              :disabled="!newTerm.trim()"
+            >Add</button>
+            <button
+              type="button"
+              class="mt-compare-rerun"
+              :disabled="!extraTerms.length || rerunInflight"
+              :title="extraTerms.length
+                ? 'Queue a fresh Model Test using the locked terms PLUS the new ones above.'
+                : 'Add at least one new term to re-run.'"
+              @click="rerunWithExtras"
+            >
+              {{ rerunInflight ? 'Queuing…' : 'Re-run with these terms' }}
+            </button>
+          </form>
+
+          <p v-if="rerunError" class="mt-compare-err">{{ rerunError }}</p>
+          <p class="mt-compare-help">
+            Matching uses a word-boundary regex —
+            <code>\\b(term1|term2|…)\\b</code> — so <em>Apple</em> won't match
+            <em>applesauce</em>, and longer aliases beat shorter ones.
+          </p>
+        </div>
+      </section>
+
       <!-- Google grounding — collapsible -->
       <section v-if="displayRun?.google_grounding?.markdown" class="mt-card mt-ground">
         <button
@@ -1231,6 +1315,63 @@ const brandLabel = computed(() => {
   const w = appStore.activeWebsite
   return (w?.business_name || w?.name || 'your brand').trim()
 })
+
+// ── "Compare against" editor ──────────────────────────────────────
+// Lets the user widen the brand-match list without leaving the page.
+// Terms here get merged with the website's canonical brand_terms when
+// "Re-run with these terms" queues a fresh Model Test.
+const extraTerms = ref([])
+const newTerm = ref('')
+const rerunInflight = ref(false)
+const rerunError = ref('')
+
+function addExtraTerm() {
+  const t = newTerm.value.trim()
+  if (!t) return
+  // Case-insensitive dedupe against both the locked run terms and
+  // anything the user already added.
+  const locked = (displayRun.value?.brand_terms || []).map((x) => x.toLowerCase())
+  const already = extraTerms.value.map((x) => x.toLowerCase())
+  if (locked.includes(t.toLowerCase()) || already.includes(t.toLowerCase())) {
+    newTerm.value = ''
+    return
+  }
+  extraTerms.value.push(t)
+  newTerm.value = ''
+}
+function removeExtraTerm(i) {
+  extraTerms.value.splice(i, 1)
+}
+async function rerunWithExtras() {
+  if (!extraTerms.value.length) return
+  rerunInflight.value = true
+  rerunError.value = ''
+  try {
+    const wid = route.params.websiteId || route.params.wid
+    const run = displayRun.value
+    // Reuse the same prompts + models as the current run so the user
+    // sees an apples-to-apples comparison with widened terms.
+    const payload = {
+      prompts:            run?.prompts || [],
+      models:             run?.providers || [],
+      extra_brand_terms:  extraTerms.value.slice(),
+    }
+    const { data } = await llmRanking.modelTest(wid, payload)
+    if (data?.run_id) {
+      // Switch to the new run — the existing watcher picks it up and
+      // streams in the new prompt_rows + match decisions.
+      router.replace({ query: { ...route.query, run: data.run_id } })
+      extraTerms.value = []
+    } else {
+      rerunError.value = 'Re-run was queued but no run_id came back.'
+    }
+  } catch (err) {
+    rerunError.value = err?.response?.data?.error
+      || 'Could not queue the re-run. Try again.'
+  } finally {
+    rerunInflight.value = false
+  }
+}
 
 // Grounding citations — render each as a favicon + domain chip linking
 // out to the source. We use Google's S2 favicon endpoint because it
@@ -3384,6 +3525,129 @@ onBeforeUnmount(() => document.removeEventListener('click', _closeDropdownOnDocC
 
 /* ── Grounding card */
 .mt-ground { padding: 28px 32px; }
+
+/* ── Compare-against card ──────────────────────────────────────── */
+.mt-compare { padding: 28px 32px; }
+.mt-compare-body { margin-top: 14px; }
+.mt-compare-chips {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.mt-compare-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 4px 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #1f2937;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.mt-compare-chip.is-locked {
+  background: #f1f5f9;
+  color: #475569;
+  border-color: #e2e8f0;
+}
+.mt-compare-chip.is-locked svg { color: #94a3b8; flex-shrink: 0; }
+.mt-compare-chip.is-new {
+  background: #ecfdf5;
+  color: #047857;
+  border-color: #a7f3d0;
+}
+.mt-compare-chip-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px; height: 16px;
+  border: 0;
+  background: transparent;
+  color: #059669;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 999px;
+  margin-left: 2px;
+}
+.mt-compare-chip-x:hover { background: rgba(5, 150, 105, 0.12); }
+.mt-compare-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.mt-compare-input {
+  flex: 1;
+  min-width: 220px;
+  font-size: 13px;
+  padding: 8px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #fff;
+  color: #0f172a;
+}
+.mt-compare-input:focus {
+  outline: none;
+  border-color: #0f172a;
+  box-shadow: 0 0 0 3px rgba(15, 23, 42, 0.08);
+}
+.mt-compare-add,
+.mt-compare-rerun {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 8px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+.mt-compare-add {
+  background: #fff;
+  color: #0f172a;
+  border-color: #cbd5e1;
+}
+.mt-compare-add:hover:not(:disabled) {
+  background: #f8fafc;
+  border-color: #94a3b8;
+}
+.mt-compare-add:disabled {
+  color: #94a3b8;
+  border-color: #e2e8f0;
+  cursor: not-allowed;
+}
+.mt-compare-rerun {
+  background: #0f172a;
+  color: #fff;
+}
+.mt-compare-rerun:hover:not(:disabled) { background: #1e293b; }
+.mt-compare-rerun:disabled {
+  background: #94a3b8;
+  cursor: not-allowed;
+}
+.mt-compare-err {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: #b91c1c;
+  background: #fee2e2;
+  padding: 6px 10px;
+  border-radius: 6px;
+}
+.mt-compare-help {
+  margin: 8px 0 0;
+  font-size: 11.5px;
+  color: #64748b;
+}
+.mt-compare-help code {
+  font-size: 11px;
+  background: #f1f5f9;
+  padding: 1px 5px;
+  border-radius: 3px;
+}
 .mt-collapse-head {
   width: 100%;
   background: transparent;
