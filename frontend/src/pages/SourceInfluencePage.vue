@@ -318,8 +318,9 @@
                     <span class="mt-cite-domain">{{ c.domain || citationDomain(c.url) }}</span>
                     <span v-if="c.title" class="mt-cite-title">{{ c.title }}</span>
                     <span
-                      v-if="c.impression_pwc != null && c.impression_pwc > 0"
+                      v-if="c.impression_pwc != null"
                       class="mt-cite-imp"
+                      :class="{ 'is-zero': c.impression_pwc === 0 }"
                       :title="impressionTooltip(c)"
                     >
                       Imp<sub>pwc</sub> {{ formatImpression(c.impression_pwc) }}
@@ -1293,14 +1294,23 @@ function formatImpression(value) {
 // without making them read the paper.
 function impressionTooltip(c) {
   const wc = c?.impression_wc != null ? c.impression_wc.toFixed(2) : '—'
-  return [
+  const lines = [
     'Position-Adjusted Word Count (Aggarwal et al. 2024, KDD ’24, eq. 3):',
     'fraction of the response that cites this source, weighted by',
     'sentence position (top sentences count for more — they’re what',
     'people actually read).',
     '',
     `Raw word-count share (no position decay): ${wc}`,
-  ].join('\n')
+  ]
+  if (c?.impression_pwc === 0) {
+    lines.push(
+      '',
+      'Score is 0 because the response did not cite this source inline.',
+      'It still appeared in Google Search for your prompt, which is why',
+      'it is listed here — but the LLM did not lean on it in this run.',
+    )
+  }
+  return lines.join('\n')
 }
 
 // Tooltip explaining the projected lift badge.
@@ -1438,13 +1448,16 @@ async function runScore() {
       a.error = 'No grounding response yet — run the audit first.'
       return
     }
+    // marker_index is what [N] in `response_text` resolves to (assigned
+    // by tasks.py via impression.inject_citation_markers). Display
+    // order is sorted by ROI bucket, so the array index is NOT a
+    // reliable mapping back to the [N] the judge will scan for.
+    // Fall back to display index when serving an older cached run.
+    const markerN = a.citation?.marker_index ?? (a.index + 1)
     const { data } = await llmRanking.geoJudge(wid, {
-      // First prompt that surfaced this citation, falling back to the
-      // brand name (the page-wide subject) when the citation came
-      // through implicitly.
       query:          a.citation?.queries?.[0] || brandLabel.value || '',
       response_text:  responseText,
-      citation_index: a.index + 1,
+      citation_index: markerN,
       citation_url:   a.citation?.url || '',
       samples:        1,
     })
@@ -3531,6 +3544,7 @@ onBeforeUnmount(() => document.removeEventListener('click', _closeDropdownOnDocC
   letter-spacing: 0;
   font-variant-numeric: tabular-nums;
 }
+.mt-cite-imp.is-zero { color: #94a3b8; font-weight: 500; }
 .mt-cite-imp sub {
   font-size: 8px;
   vertical-align: baseline;

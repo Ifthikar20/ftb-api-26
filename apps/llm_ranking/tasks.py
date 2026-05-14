@@ -1070,12 +1070,22 @@ def _model_test_google_grounding(*, brand_terms, prompts, website, user_id=None)
             max_queries=15,
             user_id=user_id,
         )
-        # Paper eq. 3: per-source Position-Adjusted Word Count over the
-        # LLM response. Citations are keyed by their 1-indexed order in
-        # the merged envelope, which is the same order the grounding
-        # prompt was told to use ("[1]", "[2]", ...).
+        # Inject [N] citation markers into the LLM response so the
+        # paper's Imp_pwc formula has something to key off of. Gemini
+        # grounding emits prose/inline-URL citations rather than the
+        # [N] format the paper assumes; without this step every
+        # citation scores Imp_pwc = 0 and the judge has no inline
+        # references to evaluate. See impression.inject_citation_markers.
         from apps.llm_ranking.services import impression as _impression
-        n_sources = len(envelope["citations"])
+        text, marked_citations = _impression.inject_citation_markers(
+            text or "",
+            envelope["citations"],
+        )
+        # marker_index is now set on every entry of marked_citations.
+        # Compute the paper's two impression metrics against the marker
+        # space (NOT against display order — they're decoupled now so
+        # we can sort the FE list by ROI without breaking the math).
+        n_sources = len(marked_citations)
         imp_pwc = _impression.position_adjusted_word_counts(
             text or "",
             source_indices=range(1, n_sources + 1),
@@ -1084,43 +1094,37 @@ def _model_test_google_grounding(*, brand_terms, prompts, website, user_id=None)
             text or "",
             source_indices=range(1, n_sources + 1),
         )
-        citations = [
-            {
+        citations = []
+        for r in marked_citations:
+            mi = r["marker_index"]
+            rank = r.get("best_serp_rank")
+            roi = _geo_roi_bucket(rank)
+            method = (
+                None if roi == "low"
+                else _impression.best_method_for_domain(r.get("domain"))
+            )
+            citations.append({
                 "url":      r["url"],
                 "title":    r["title"],
                 "snippet":  r.get("snippet", ""),
                 "domain":   r.get("domain", ""),
                 "queries":  r.get("queries", []),
-                "serp_rank": r.get("best_serp_rank"),
-                # GEO ROI bucket — Aggarwal et al. 2024 (KDD '24, Table 2)
-                # show rank-1 sources LOSE visibility from GEO rewrites
-                # (Cite Sources −30.3% at rank 1) while rank-5 sources GAIN
-                # up to +115%. Low-rank-but-cited URLs are the place to spend
-                # rewrite/optimization effort.
-                "geo_roi":   _geo_roi_bucket(r.get("best_serp_rank")),
-                # Paper eq. 3 / eq. 2 — both normalized to [0, 1].
-                "impression_pwc": round(imp_pwc.get(idx, 0.0), 4),
-                "impression_wc":  round(imp_wc.get(idx, 0.0), 4),
-                # Paper Table 1 — average lift from the recommended
-                # rewrite method, projected via eq. 4. ``None`` for
-                # already-winning sources (low ROI bucket) since the
-                # paper shows GEO rewrites can REGRESS rank-1 sources.
-                "recommended_method": (
-                    None
-                    if _geo_roi_bucket(r.get("best_serp_rank")) == "low"
-                    else _impression.best_method_for_domain(r.get("domain"))
-                ),
-                "projected_lift_pct": (
-                    None
-                    if _geo_roi_bucket(r.get("best_serp_rank")) == "low"
-                    else _impression.projected_lift(
-                        _impression.best_method_for_domain(r.get("domain"))
-                    )
-                ),
-            }
-            for idx, r in enumerate(envelope["citations"], start=1)
-        ]
-        # Surface the high-ROI count so the UI can frame the recommendation.
+                "serp_rank": rank,
+                "geo_roi":   roi,
+                # marker_index is what [N] in `markdown` resolves to.
+                # Stays stable across any FE re-sorting so the Score
+                # button and any future re-computation of Imp_pwc both
+                # point at the right source.
+                "marker_index": mi,
+                "impression_pwc": round(imp_pwc.get(mi, 0.0), 4),
+                "impression_wc":  round(imp_wc.get(mi, 0.0), 4),
+                "recommended_method": method,
+                "projected_lift_pct":
+                    None if method is None
+                    else _impression.projected_lift(method),
+            })
+        # Sort for display: high-ROI first, then by rank. marker_index
+        # is unchanged so [N] in the response still maps correctly.
         citations = sorted(
             citations,
             key=lambda c: (_GEO_ROI_ORDER.get(c["geo_roi"], 99),

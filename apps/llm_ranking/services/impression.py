@@ -236,3 +236,143 @@ def best_method_for_domain(domain: str | None) -> str:
         if m:
             return m
     return "quotation_addition"
+
+
+# ── Citation-marker injection ─────────────────────────────────────────────
+#
+# Generative engines (Gemini grounding in our case) don't always emit
+# the bracketed "[N]" citation markers the paper's formulas key off
+# of — they often inline URLs or prose-cite. Without the markers, our
+# Imp_pwc computation (which scans the response for [N]) returns zero
+# for every source, and the Subjective Impression judge has nothing to
+# evaluate.
+#
+# This helper post-processes the response by walking each citation in
+# its supplied order and appending "[N]" wherever the response
+# references the citation's domain, title, or full URL. The result is
+# a stable mapping from N (the marker we wrote) to the citation that
+# earned it, which the rest of the pipeline can use directly.
+
+_SENTENCE_SPLIT_INJECT = re.compile(r"(?<=[.!?])\s+")
+_URL_RE = re.compile(r"https?://[^\s)>\]]+")
+
+# Known publishers whose bare brand name doesn't appear in their
+# domain (so signatures derived from the URL alone miss them). Maps
+# the bare domain to extra substrings the matcher should also look
+# for in the LLM's prose. Kept short and conservative — only add an
+# alias when it's overwhelmingly unambiguous in this context.
+_PUBLISHER_ALIASES: dict[str, tuple[str, ...]] = {
+    "nytimes.com":      ("new york times", "nyt"),
+    "wsj.com":          ("wall street journal", "wsj"),
+    "ft.com":           ("financial times", " ft "),
+    "bbc.com":          ("bbc news", "bbc"),
+    "bbc.co.uk":        ("bbc news", "bbc"),
+    "stackoverflow.com": ("stack overflow", "stackoverflow"),
+    "techcrunch.com":   ("techcrunch",),
+    "bloomberg.com":    ("bloomberg",),
+    "wikipedia.org":    ("wikipedia",),
+    "reddit.com":       ("reddit",),
+    "quora.com":        ("quora",),
+    "medium.com":       ("medium.com", "medium article"),
+    "usa.gov":          ("usa.gov", ".gov sites", "gov sites"),
+    "hbr.org":          ("harvard business review", "hbr"),
+    "forbes.com":       ("forbes",),
+    "wired.com":        ("wired",),
+    "theverge.com":     ("the verge", "verge"),
+}
+
+
+def _domain_root(host: str) -> str:
+    """Strip 'www.' and any trailing slash so 'www.x.com/' → 'x.com'."""
+    host = (host or "").strip().lower().rstrip("/")
+    if host.startswith("www."):
+        host = host[4:]
+    return host
+
+
+def _citation_signatures(citation: dict) -> list[str]:
+    """Substrings that, if present in a sentence, are evidence the
+    sentence is drawing from this citation. Ordered most → least
+    specific so URL matches beat domain matches beat title matches."""
+    sigs: list[str] = []
+    url = (citation.get("url") or "").strip()
+    if url:
+        sigs.append(url)
+    domain = _domain_root(citation.get("domain") or "")
+    if domain:
+        sigs.append(domain)
+        # Known publisher aliases (e.g. nytimes.com → 'New York Times').
+        sigs.extend(_PUBLISHER_ALIASES.get(domain, ()))
+        # Brand name approximation — 'techcrunch.com' → 'techcrunch'.
+        host_root = domain.split(".")[0]
+        if len(host_root) >= 4:
+            sigs.append(host_root)
+    title = (citation.get("title") or "").strip()
+    if title and len(title) >= 6:
+        sigs.append(title)
+    return [s for s in sigs if s]
+
+
+def inject_citation_markers(
+    text: str,
+    citations: list[dict],
+) -> tuple[str, list[dict]]:
+    """
+    Walk ``text`` and append ``[N]`` markers to sentences that
+    reference each citation. Returns the rewritten text plus the
+    citations list with ``marker_index`` set on every entry (1-based).
+
+    Citations the response never mentions still get a ``marker_index``
+    (assigned in input order) but their marker never appears in the
+    text — those entries will score 0 in downstream Imp_pwc, which is
+    the correct outcome: a source that isn't cited has no impression.
+
+    Idempotent: if the response already contains "[N]" markers for
+    some citations, we don't double-tag.
+    """
+    if not text or not citations:
+        # Still attach indexes so downstream code never has to None-check.
+        for i, c in enumerate(citations or [], start=1):
+            c["marker_index"] = i
+        return text, citations or []
+
+    # Assign markers in the input order — callers control ordering.
+    indexed = []
+    for i, c in enumerate(citations, start=1):
+        c = dict(c)
+        c["marker_index"] = i
+        indexed.append(c)
+
+    # Detect already-present markers so we don't tag twice.
+    existing = set(int(m) for m in re.findall(r"\[(\d+)\]", text))
+
+    # Split into sentences. The split-after-punctuation approach
+    # consumes the trailing whitespace, so we rejoin with a single
+    # space — preserves paragraph flow without mangling spacing.
+    sentences = _SENTENCE_SPLIT_INJECT.split(text)
+
+    out_sentences: list[str] = []
+    for sentence in sentences:
+        lowered = sentence.lower()
+        appended: set[int] = set()
+        for c in indexed:
+            n = c["marker_index"]
+            if n in existing or n in appended:
+                continue
+            for sig in _citation_signatures(c):
+                s = sig.lower().strip()
+                if s and s in lowered:
+                    appended.add(n)
+                    break
+        if appended:
+            marker_str = "".join(f"[{n}]" for n in sorted(appended))
+            # Insert the marker BEFORE the trailing punctuation so the
+            # sentence still reads naturally: "... last year [1]."
+            stripped = sentence.rstrip()
+            if stripped and stripped[-1] in ".!?":
+                sentence = f"{stripped[:-1]} {marker_str}{stripped[-1]}"
+            else:
+                sentence = f"{stripped} {marker_str}"
+        out_sentences.append(sentence)
+
+    return " ".join(out_sentences), indexed

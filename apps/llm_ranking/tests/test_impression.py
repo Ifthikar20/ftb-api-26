@@ -154,3 +154,86 @@ def test_unknown_domain_falls_back_to_best_overall():
     assert impression.best_method_for_domain(None) == "quotation_addition"
     assert impression.best_method_for_domain("") == "quotation_addition"
     assert impression.best_method_for_domain("xyz") == "quotation_addition"
+
+
+# ── inject_citation_markers ──────────────────────────────────────────────
+
+def test_inject_assigns_marker_index_to_every_citation():
+    text = "Nothing references anything."
+    cits = [
+        {"url": "https://a.com/x", "domain": "a.com", "title": "A"},
+        {"url": "https://b.com/y", "domain": "b.com", "title": "B"},
+    ]
+    _, out = impression.inject_citation_markers(text, cits)
+    assert [c["marker_index"] for c in out] == [1, 2]
+
+
+def test_inject_appends_marker_when_domain_appears_inline():
+    text = "Tidewater raised $50M according to TechCrunch last year."
+    cits = [{"url": "https://techcrunch.com/x", "domain": "techcrunch.com", "title": "T"}]
+    new_text, out = impression.inject_citation_markers(text, cits)
+    assert "[1]" in new_text
+    # And it landed at the end of the sentence, not in the middle.
+    assert new_text.index("[1]") > new_text.index("TechCrunch")
+
+
+def test_inject_matches_full_url():
+    text = "See https://reddit.com/r/x for the thread."
+    cits = [{"url": "https://reddit.com/r/x", "domain": "reddit.com", "title": ""}]
+    new_text, _ = impression.inject_citation_markers(text, cits)
+    assert "[1]" in new_text
+
+
+def test_inject_matches_brand_root_word():
+    # 'wikipedia.org' → also catch the bare word 'wikipedia'.
+    text = "Wikipedia has a great article on this."
+    cits = [{"url": "https://en.wikipedia.org/wiki/X", "domain": "wikipedia.org", "title": ""}]
+    new_text, _ = impression.inject_citation_markers(text, cits)
+    assert "[1]" in new_text
+
+
+def test_inject_does_not_double_tag_existing_markers():
+    text = "TechCrunch wrote a piece [1]. Reddit threads agree."
+    cits = [
+        {"url": "https://techcrunch.com/x", "domain": "techcrunch.com", "title": "T"},
+        {"url": "https://reddit.com/r/x",   "domain": "reddit.com",     "title": "R"},
+    ]
+    new_text, out = impression.inject_citation_markers(text, cits)
+    # First citation already had its marker — count of [1] stays at 1.
+    assert new_text.count("[1]") == 1
+    # Reddit got a marker on the second sentence.
+    assert "[2]" in new_text
+    assert out[1]["marker_index"] == 2
+
+
+def test_inject_then_impw_lights_up():
+    """End-to-end: a Gemini-style response that doesn't include [N]
+    markers should still produce non-zero Imp_pwc after injection."""
+    text = (
+        "Tidewater is featured in TechCrunch as the top D2C ESP. "
+        "Reddit threads from the marketing community echo the recommendation."
+    )
+    cits = [
+        {"url": "https://techcrunch.com/x", "domain": "techcrunch.com", "title": "T"},
+        {"url": "https://reddit.com/r/x",   "domain": "reddit.com",     "title": "R"},
+    ]
+    new_text, marked = impression.inject_citation_markers(text, cits)
+    pwc = impression.position_adjusted_word_counts(
+        new_text, source_indices=[c["marker_index"] for c in marked],
+    )
+    # Before injection both would have been 0.0 — now both should be
+    # non-zero, and the citation in the FIRST sentence should outscore
+    # the one in the SECOND (paper eq. 3 position decay).
+    assert pwc[1] > 0
+    assert pwc[2] > 0
+    assert pwc[1] > pwc[2]
+
+
+def test_inject_handles_empty_inputs():
+    assert impression.inject_citation_markers("", []) == ("", [])
+    new_text, out = impression.inject_citation_markers("", [{"url": "x", "domain": "x", "title": ""}])
+    assert new_text == ""
+    assert out[0]["marker_index"] == 1
+    new_text, out = impression.inject_citation_markers("text", [])
+    assert new_text == "text"
+    assert out == []
