@@ -63,9 +63,16 @@
                 class="probe-card"
                 :class="'is-' + p.key"
                 :style="{ '--d': (idx * 0.45) + 's' }"
+                @pointermove="onCardTilt"
+                @pointerleave="onCardLeave"
               >
                 <div class="probe-card-head">
-                  <span class="probe-logo" :class="'is-' + p.key">{{ p.glyph }}</span>
+                  <span
+                    class="probe-logo"
+                    :class="'is-' + p.key"
+                    :aria-label="p.name + ' logo'"
+                    v-html="providerLogo(p.key)"
+                  ></span>
                   <span class="probe-name">{{ p.name }}</span>
                   <span class="probe-status">
                     <span class="probe-status-dot"></span>
@@ -78,23 +85,78 @@
                   <span class="probe-stream-text">{{ p.after }}</span>
                 </div>
                 <div class="probe-tags">
-                  <span v-for="src in p.sources" :key="src" class="probe-tag">{{ src }}</span>
+                  <span
+                    v-for="src in p.sources"
+                    :key="src.domain"
+                    class="probe-tag"
+                    :title="src.domain"
+                  >
+                    <img
+                      class="probe-tag-fav"
+                      :src="faviconFor(src.domain)"
+                      :alt="''"
+                      width="14" height="14"
+                      loading="lazy"
+                      referrerpolicy="no-referrer"
+                      @error="(e) => e.target.style.display = 'none'"
+                    />
+                    {{ src.label }}
+                  </span>
                 </div>
               </div>
             </div>
 
-            <!-- Summary footer -->
+            <!-- Summary footer: ring + four count-up metric tiles -->
             <div class="probe-foot">
               <div class="probe-ring" aria-hidden="true">
                 <svg viewBox="0 0 36 36">
+                  <defs>
+                    <linearGradient id="probe-ring-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%"  stop-color="#ff6b35"/>
+                      <stop offset="100%" stop-color="#ff9d6b"/>
+                    </linearGradient>
+                  </defs>
                   <circle class="probe-ring-bg" cx="18" cy="18" r="15.9"/>
                   <circle class="probe-ring-fg" cx="18" cy="18" r="15.9"/>
                 </svg>
-                <span class="probe-ring-num">38<i>%</i></span>
+                <span class="probe-ring-num">{{ animatedMetrics.visibility }}<i>%</i></span>
               </div>
               <div class="probe-foot-copy">
                 <div class="probe-foot-h">Visibility score</div>
-                <div class="probe-foot-sub">Your brand surfaced in 38% of category prompts <span class="probe-delta">+12 this week</span></div>
+                <div class="probe-foot-sub">
+                  Your brand surfaced in
+                  <strong>{{ animatedMetrics.visibility }}%</strong>
+                  of category prompts
+                  <span class="probe-delta">{{ probeMetrics.visibility.delta }} this week</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- New: live stats strip — four tiles, staggered fade-up. -->
+            <div class="probe-stats">
+              <div class="probe-stat" style="--d: 1.9s">
+                <div class="probe-stat-h">Mentions</div>
+                <div class="probe-stat-v">{{ animatedMetrics.mentions }}</div>
+                <div class="probe-stat-d is-up">{{ probeMetrics.mentions.delta }}</div>
+              </div>
+              <div class="probe-stat" style="--d: 2.05s">
+                <div class="probe-stat-h">Avg position</div>
+                <div class="probe-stat-v">{{ animatedMetrics.avgPosition.toFixed(1) }}</div>
+                <div class="probe-stat-d is-up">{{ probeMetrics.avgPosition.delta }}</div>
+              </div>
+              <div class="probe-stat" style="--d: 2.2s">
+                <div class="probe-stat-h">Citations</div>
+                <div class="probe-stat-v">{{ animatedMetrics.citations }}</div>
+                <div class="probe-stat-d is-up">{{ probeMetrics.citations.delta }}</div>
+              </div>
+              <div
+                class="probe-stat"
+                style="--d: 2.35s"
+                title="Position-Adjusted Word Count — paper eq. 3. Fraction of the AI response that cites your brand, weighted by sentence position."
+              >
+                <div class="probe-stat-h">Imp<sub>pwc</sub></div>
+                <div class="probe-stat-v">{{ animatedMetrics.impPwc.toFixed(2) }}</div>
+                <div class="probe-stat-d is-up">{{ probeMetrics.impPwc.delta }}</div>
               </div>
             </div>
           </div>
@@ -492,6 +554,57 @@ const activeCat = ref(0)
 const trackOffset = ref(0)
 const trackRef = ref(null)
 
+// ── Hero metric count-up ─────────────────────────────────────────
+// Framer-Motion-style spring-eased ramp from 0 → target on mount.
+// Built without a dep — single rAF loop, easeOutCubic over 1.4s, kicks
+// in 600ms after the card cascade ends so the eye lands on the new
+// value just as the user finishes reading the prompt.
+const animatedMetrics = ref({
+  visibility: 0, mentions: 0, avgPosition: 0, citations: 0, impPwc: 0,
+})
+let _metricRaf = null
+
+function _easeOutCubic(t) { return 1 - Math.pow(1 - t, 3) }
+
+function _animateMetrics() {
+  // probeMetrics is declared later in this script setup — read it
+  // lazily inside the closure so the temporal-dead-zone doesn't bite.
+  const targets = probeMetrics
+  const start = performance.now() + 600
+  const dur = 1400
+  function tick(now) {
+    const elapsed = Math.max(0, now - start)
+    const t = Math.min(1, elapsed / dur)
+    const e = _easeOutCubic(t)
+    animatedMetrics.value = {
+      visibility:  +(targets.visibility.value  * e).toFixed(0),
+      mentions:    +(targets.mentions.value    * e).toFixed(0),
+      avgPosition: +(targets.avgPosition.value * e).toFixed(1),
+      citations:   +(targets.citations.value   * e).toFixed(0),
+      impPwc:      +(targets.impPwc.value      * e).toFixed(2),
+    }
+    if (t < 1) _metricRaf = requestAnimationFrame(tick)
+  }
+  _metricRaf = requestAnimationFrame(tick)
+}
+
+// Magnetic-tilt for the four AI reply cards. CSS-only transform —
+// JS just sets two custom props off pointer position so the
+// transform stays on the compositor and never invalidates layout.
+function onCardTilt(ev) {
+  const el = ev.currentTarget
+  const r = el.getBoundingClientRect()
+  const x = (ev.clientX - r.left) / r.width  - 0.5
+  const y = (ev.clientY - r.top)  / r.height - 0.5
+  el.style.setProperty('--tx', `${x * 6}deg`)
+  el.style.setProperty('--ty', `${-y * 6}deg`)
+}
+function onCardLeave(ev) {
+  const el = ev.currentTarget
+  el.style.setProperty('--tx', '0deg')
+  el.style.setProperty('--ty', '0deg')
+}
+
 /* ── "Our tools for" section ── */
 const toolTab = ref(3) // default to "SEO Intelligence" active
 const toolTabs = [
@@ -700,6 +813,7 @@ onMounted(() => {
   startCycle()
   runTypewriter()
   startFeatureAutoAdvance()
+  _animateMetrics()
 
   // Count-up stats observer
   let statsObs = null
@@ -735,6 +849,7 @@ onMounted(() => {
     finalObs && finalObs.disconnect()
     clearInterval(cycleTimer)
     stopFeatureAutoAdvance()
+    if (_metricRaf) cancelAnimationFrame(_metricRaf)
     if (_promptCycleStop) _promptCycleStop()
   })
 
@@ -753,36 +868,99 @@ const heroProviders = [
 
 // Hero "probe" animation — shows the FetchBot loop: ask a prompt,
 // four AIs answer, your brand surfaces in each reply.
+// `sources` is `{label, domain}` so we can render the real favicon
+// for each citation chip via Google's favicon CDN.
 const probeReplies = [
   {
-    key: 'anthropic', name: 'Claude', glyph: 'C',
+    key: 'anthropic', name: 'Claude',
     before: 'For D2C teams under 50k subscribers I usually point people to ',
     brand: 'Tidewater',
     after: '. Deliverability is solid and the segmentation builder is forgiving.',
-    sources: ['Reddit', 'TechCrunch'],
+    sources: [
+      { label: 'Reddit',     domain: 'reddit.com' },
+      { label: 'TechCrunch', domain: 'techcrunch.com' },
+      { label: 'Wikipedia',  domain: 'wikipedia.org' },
+    ],
   },
   {
-    key: 'openai', name: 'GPT-4', glyph: 'G',
+    key: 'openai', name: 'GPT-4',
     before: 'A solid pick for direct-to-consumer ESPs is ',
     brand: 'Tidewater',
     after: ' — Shopify-native, AMP-email support, fair tiered pricing.',
-    sources: ['Wikipedia', 'NYT'],
+    sources: [
+      { label: 'NYT',       domain: 'nytimes.com' },
+      { label: 'Medium',    domain: 'medium.com' },
+      { label: 'Wikipedia', domain: 'wikipedia.org' },
+    ],
   },
   {
-    key: 'google', name: 'Gemini', glyph: 'G',
+    key: 'google', name: 'Gemini',
     before: 'Most 2026 marketing benchmarks single out ',
     brand: 'Tidewater',
     after: ' for brands that need flow automation without a vendor lock-in.',
-    sources: ['Bloomberg', 'gov'],
+    sources: [
+      { label: 'Bloomberg', domain: 'bloomberg.com' },
+      { label: 'BBC',       domain: 'bbc.com' },
+      { label: 'gov',       domain: 'usa.gov' },
+    ],
   },
   {
-    key: 'perplexity', name: 'Perplexity', glyph: 'P',
+    key: 'perplexity', name: 'Perplexity',
     before: 'Top community recommendation is ',
     brand: 'Tidewater',
     after: '. Cited often for cleaner SMS hand-off and post-purchase flows.',
-    sources: ['Quora', 'Stack Overflow'],
+    sources: [
+      { label: 'Quora',          domain: 'quora.com' },
+      { label: 'Stack Overflow', domain: 'stackoverflow.com' },
+      { label: 'Reddit',         domain: 'reddit.com' },
+    ],
   },
 ]
+
+// Live metrics for the hero footer — drives the stats strip + ring.
+// Each tile shows a count-up animation on first mount via `useCountUp`.
+const probeMetrics = {
+  visibility:   { value: 38,   suffix: '%',  label: 'Visibility',  delta: '+12' },
+  mentions:     { value: 56,   suffix: '',   label: 'Mentions',    delta: '+9'  },
+  avgPosition:  { value: 1.4,  suffix: '',   label: 'Avg position', delta: '−0.3', deltaPositive: true },
+  citations:    { value: 23,   suffix: '',   label: 'Citations',   delta: '+5'  },
+  impPwc:       { value: 0.42, suffix: '',   label: 'Imp pwc',     delta: '+0.08' },
+}
+
+// Provider logo registry — inline SVGs of each AI's actual brand
+// mark. Pure SVG so we don't need to ship any image asset.
+const providerLogos = {
+  anthropic: `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+    <path d="M14.8 3h-3.1L7.2 21h3.2l.95-4h4.55l.95 4h3.2L15.6 3h-.8zm-2.9 11.3 1.5-6 1.5 6h-3z"/>
+  </svg>`,
+  openai: `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+    <path d="M21.55 10.04a5.42 5.42 0 0 0-.47-4.46 5.5 5.5 0 0 0-5.92-2.63 5.42 5.42 0 0 0-4.07-1.82 5.5 5.5 0 0 0-5.25 3.81 5.42 5.42 0 0 0-3.63 2.63 5.5 5.5 0 0 0 .68 6.45 5.42 5.42 0 0 0 .47 4.46 5.5 5.5 0 0 0 5.92 2.63 5.42 5.42 0 0 0 4.08 1.82 5.5 5.5 0 0 0 5.25-3.82 5.42 5.42 0 0 0 3.62-2.63 5.5 5.5 0 0 0-.68-6.44zm-8.18 11.42a4.07 4.07 0 0 1-2.62-.95l.13-.07 4.4-2.55a.72.72 0 0 0 .37-.62v-6.23l1.86 1.08c.02 0 .03.03.03.05v5.16a4.08 4.08 0 0 1-4.17 4.13zm-8.78-3.74a4.07 4.07 0 0 1-.49-2.74l.13.08 4.4 2.55c.23.13.51.13.74 0l5.38-3.1v2.14a.07.07 0 0 1-.03.06l-4.45 2.57a4.08 4.08 0 0 1-5.58-1.49zM3.43 8.45a4.07 4.07 0 0 1 2.13-1.79V11.94a.71.71 0 0 0 .36.62l5.36 3.1-1.86 1.08a.07.07 0 0 1-.07 0L4.9 14.16a4.08 4.08 0 0 1-1.49-5.7zm15.27 3.55-5.38-3.13 1.86-1.07a.07.07 0 0 1 .07 0l4.45 2.57a4.08 4.08 0 0 1-.62 7.36V12.6a.72.72 0 0 0-.38-.62zM20.55 9c-.02-.02-.07-.05-.13-.08l-4.4-2.55a.71.71 0 0 0-.74 0l-5.38 3.1V7.32a.06.06 0 0 1 .03-.05l4.45-2.57a4.07 4.07 0 0 1 6.17 4.3zm-11.65 4.04L7.04 12c-.02-.01-.03-.04-.03-.06V6.78a4.07 4.07 0 0 1 6.68-3.13l-.13.08-4.4 2.55a.72.72 0 0 0-.37.62v6.14h.11zm1-2.18 2.4-1.39 2.4 1.39v2.76l-2.4 1.39-2.4-1.39v-2.76z"/>
+  </svg>`,
+  google: `<svg viewBox="0 0 24 24" aria-hidden="true">
+    <defs>
+      <linearGradient id="g-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%"  stop-color="#4285f4"/>
+        <stop offset="50%" stop-color="#9b72cb"/>
+        <stop offset="100%" stop-color="#d96570"/>
+      </linearGradient>
+    </defs>
+    <path fill="url(#g-grad)" d="M12 2 13.6 8.2 19.8 9.8 13.6 11.4 12 17.6 10.4 11.4 4.2 9.8 10.4 8.2zM18.2 13.6 19 16.6 22 17.4 19 18.2 18.2 21.2 17.4 18.2 14.4 17.4 17.4 16.6z"/>
+  </svg>`,
+  perplexity: `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+    <path d="M12 2 4 7v10l8 5 8-5V7l-8-5zm0 2.34L17.55 8 12 11.66 6.45 8 12 4.34zM6 9.7l5 3.3v6.7l-5-3.13V9.7zm12 0v6.87l-5 3.13V13l5-3.3z"/>
+  </svg>`,
+}
+
+function providerLogo(key) {
+  return providerLogos[key] || ''
+}
+
+// Favicon URL via Google's public favicon CDN — same trick we use on
+// the Source Influence page. sz=64 keeps it sharp on retina.
+function faviconFor(domain) {
+  if (!domain) return ''
+  return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=64`
+}
 
 const features = [
   {
@@ -1343,13 +1521,21 @@ em { color: #5B8DEF; font-style: italic; }
 .probe-logo {
   width: 22px; height: 22px; border-radius: 6px;
   display: inline-flex; align-items: center; justify-content: center;
-  font-size: 11px; font-weight: 700; color: #fff;
   flex-shrink: 0;
+  /* Brand mark uses currentColor; container provides the tinted bg. */
+  color: #fff;
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
-.probe-logo.is-anthropic  { background: #d97706; }
-.probe-logo.is-openai     { background: #10b981; }
-.probe-logo.is-google     { background: #4285f4; }
-.probe-logo.is-perplexity { background: #5b6cff; }
+.probe-logo svg {
+  width: 14px; height: 14px;
+  display: block;
+}
+.probe-card:hover .probe-logo { transform: scale(1.12) rotate(-3deg); }
+.probe-logo.is-anthropic  { background: #d97706; color: #fff; }
+.probe-logo.is-openai     { background: #0f1212; color: #fff; }
+/* Gemini logo is a gradient — keep container white so the gradient shows. */
+.probe-logo.is-google     { background: #ffffff; border: 1px solid rgba(15,23,42,0.08); }
+.probe-logo.is-perplexity { background: #1fb8a8; color: #fff; }
 .probe-name {
   font-size: 13px; font-weight: 600; color: #1f2937;
   flex: 1;
@@ -1394,11 +1580,23 @@ em { color: #5B8DEF; font-style: italic; }
   display: flex; flex-wrap: wrap; gap: 4px;
 }
 .probe-tag {
-  font-size: 10.5px; font-weight: 500;
-  padding: 2px 7px;
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 10.5px; font-weight: 600;
+  padding: 2px 8px 2px 4px;
   border-radius: 9999px;
   background: rgba(15, 23, 42, 0.05);
-  color: #6e6a65;
+  color: #4b5563;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+.probe-tag:hover {
+  background: rgba(15, 23, 42, 0.09);
+  transform: translateY(-1px);
+}
+.probe-tag-fav {
+  width: 14px; height: 14px; border-radius: 3px;
+  background: #fff;
+  object-fit: contain;
+  flex-shrink: 0;
 }
 
 /* Footer score ring */
@@ -1420,16 +1618,18 @@ em { color: #5B8DEF; font-style: italic; }
 }
 .probe-ring-fg {
   fill: none;
-  stroke: url(#probe-grad-fallback);
-  stroke: #ff6b35;
+  stroke: url(#probe-ring-grad);
   stroke-width: 3;
   stroke-linecap: round;
   stroke-dasharray: 100;
   stroke-dashoffset: 100;
+  filter: drop-shadow(0 0 6px rgba(255, 107, 53, 0.35));
   animation: probe-ring-fill 2s cubic-bezier(0.16, 1, 0.3, 1) 1.4s forwards;
 }
 @keyframes probe-ring-fill {
-  to { stroke-dashoffset: 62; }  /* 38% of 100 */
+  /* End offset = 100 − target % (visibility). Keep in sync with
+     probeMetrics.visibility.value in the script section. */
+  to { stroke-dashoffset: 62; }  /* 100 − 38 = 62 */
 }
 .probe-ring-num {
   position: absolute; inset: 0;
@@ -1451,8 +1651,98 @@ em { color: #5B8DEF; font-style: italic; }
   font-weight: 600; font-size: 10.5px;
 }
 
+/* ── Framer-style magnetic tilt on the four reply cards ─────────── */
+.probe-card {
+  transform-style: preserve-3d;
+  transform: perspective(900px) rotateY(var(--tx, 0deg)) rotateX(var(--ty, 0deg));
+  transition: transform 0.45s cubic-bezier(0.16, 1, 0.3, 1),
+              box-shadow 0.3s ease;
+  will-change: transform;
+}
+.probe-card:hover {
+  box-shadow: 0 12px 32px -16px rgba(15, 23, 42, 0.25),
+              0 0 0 1px rgba(255, 107, 53, 0.18);
+}
+
+/* ── New: live stats strip under the footer ─────────────────────── */
+.probe-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-top: 10px;
+}
+.probe-stat {
+  position: relative;
+  padding: 10px 12px;
+  border: 1px solid rgba(15, 23, 42, 0.07);
+  border-radius: 12px;
+  background: linear-gradient(180deg, #ffffff 0%, #fbfaf7 100%);
+  opacity: 0;
+  transform: translateY(6px);
+  animation: probe-stat-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) var(--d, 0s) forwards;
+  overflow: hidden;
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+.probe-stat:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px -10px rgba(15, 23, 42, 0.25);
+}
+@keyframes probe-stat-in {
+  to { opacity: 1; transform: translateY(0); }
+}
+/* Subtle sheen sweep on entrance — same vocabulary as .probe-card. */
+.probe-stat::after {
+  content: "";
+  position: absolute; inset: 0;
+  background: linear-gradient(110deg,
+    transparent 0%,
+    rgba(255, 107, 53, 0.10) 45%,
+    transparent 70%);
+  transform: translateX(-100%);
+  animation: probe-stat-sweep 1.4s cubic-bezier(0.16, 1, 0.3, 1) calc(var(--d, 0s) + 0.2s) forwards;
+  pointer-events: none;
+}
+@keyframes probe-stat-sweep {
+  to { transform: translateX(110%); }
+}
+.probe-stat-h {
+  font-size: 10px; font-weight: 600;
+  color: #6e6a65;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.probe-stat-h sub {
+  font-size: 7.5px;
+  vertical-align: baseline;
+  position: relative; bottom: -1px;
+  margin-left: 1px;
+  letter-spacing: 0;
+}
+.probe-stat-v {
+  font-size: 20px;
+  font-weight: 700;
+  color: #1f2937;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  margin: 2px 0 0;
+  line-height: 1.1;
+}
+.probe-stat-d {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 1px 6px;
+  border-radius: 9999px;
+  font-size: 9.5px; font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.probe-stat-d.is-up {
+  background: rgba(16, 185, 129, 0.12);
+  color: #059669;
+}
+
 @media (max-width: 720px) {
   .probe-grid { grid-template-columns: 1fr; }
+  .probe-stats { grid-template-columns: repeat(2, 1fr); }
 }
 @media (prefers-reduced-motion: reduce) {
   .probe-typer { animation: none; width: auto; }
@@ -1462,6 +1752,9 @@ em { color: #5B8DEF; font-style: italic; }
   .probe-mark { animation: none; background-position: 0 0; }
   .probe-ring-fg { animation: none; stroke-dashoffset: 62; }
   .probe-status-dot { animation: none; }
+  .probe-stat { opacity: 1; transform: none; animation: none; }
+  .probe-stat::after { display: none; }
+  .probe-card { transform: none; }
 }
 
 /* word-cycle transition (reused from the deleted features section) */
