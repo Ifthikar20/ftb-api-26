@@ -351,7 +351,7 @@
                     :disabled="c.geo_roi === 'low'"
                     :title="c.geo_roi === 'low'
                       ? 'This source is already rank 1 — paper shows GEO rewrites can REDUCE visibility for already-winning sources.'
-                      : 'Run the recommended GEO rewrite strategy on this source\\'s snippet to project the lift.'"
+                      : 'Run the recommended GEO rewrite strategy on the source snippet to project the lift.'"
                     @click="openOptimize(c, i)"
                   >Optimize</button>
                   <button
