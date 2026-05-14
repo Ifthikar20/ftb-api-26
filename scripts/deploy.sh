@@ -1,93 +1,134 @@
-#!/bin/bash
-# ═══════════════════════════════════════════════════════
-#  FetchBot — EC2 Production Deploy Script
-#  Run on a fresh Ubuntu 22.04 EC2 instance
-# ═══════════════════════════════════════════════════════
+#!/usr/bin/env bash
+# ════════════════════════════════════════════════════════════════════
+#  FetchBot — Deploy
+#
+#  Runs FROM your laptop and SSHs into the EC2 host. One script,
+#  four modes. Replaces the old deploy.sh + deploy_and_test.sh +
+#  deploy_and_monitor.sh trio.
+#
+#  Usage:
+#    bash scripts/deploy.sh              # deploy + smoke-test (default)
+#    bash scripts/deploy.sh --no-test    # deploy without smoke-test
+#    bash scripts/deploy.sh --test       # smoke-test only, no deploy
+#    bash scripts/deploy.sh --logs       # tail container logs for 60s
+#    bash scripts/deploy.sh --help
+#
+#  Environment overrides (all optional):
+#    BRANCH       git branch to deploy   (default: main)
+#    EC2_HOST     SSH host               (default: 100.31.135.211)
+#    EC2_USER     SSH user               (default: ubuntu)
+#    PEM_KEY      path to SSH key        (default: <repo>/fynda-deploy.pem)
+#    REMOTE_DIR   app dir on the server  (default: /opt/fetchbot/ftb-api-26)
+#    PUBLIC_HOST  smoke-test target      (default: https://fetchbot.ai)
+#
+#  First-time EC2 setup (apt update, Docker install, swap, repo
+#  clone) is NOT done here — it's a one-time concern. Bootstrap a
+#  fresh host with the commands in docs/EC2_BOOTSTRAP.md. This
+#  script assumes Docker, git, and the repo are already on the box.
+# ════════════════════════════════════════════════════════════════════
 
 set -euo pipefail
 
-BLUE='\033[0;34m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-RED='\033[0;31m'
-NC='\033[0m'
-BOLD='\033[1m'
+# ── Config ──────────────────────────────────────────────────────────
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-echo ""
-echo -e "${BLUE}${BOLD}  ╔══════════════════════════════════════╗${NC}"
-echo -e "${BLUE}${BOLD}  ║     🤖 FetchBot Production Deploy    ║${NC}"
-echo -e "${BLUE}${BOLD}  ╚══════════════════════════════════════╝${NC}"
-echo ""
+BRANCH="${BRANCH:-main}"
+EC2_HOST="${EC2_HOST:-100.31.135.211}"
+EC2_USER="${EC2_USER:-ubuntu}"
+PEM_KEY="${PEM_KEY:-$REPO_DIR/fynda-deploy.pem}"
+REMOTE_DIR="${REMOTE_DIR:-/opt/fetchbot/ftb-api-26}"
+PUBLIC_HOST="${PUBLIC_HOST:-https://fetchbot.ai}"
+COMPOSE_FILE="docker/docker-compose.prod.yml"
 
-APP_DIR="/opt/fetchbot"
-REPO_URL="${REPO_URL:-}"
+SSH_OPTS=(-i "$PEM_KEY" -o StrictHostKeyChecking=accept-new -o LogLevel=ERROR)
 
-# ── Step 1: System updates ──
-echo -e "${YELLOW}▸ [1/9] Updating system...${NC}"
-sudo apt-get update -qq
-sudo apt-get upgrade -y -qq
+# ── Style ───────────────────────────────────────────────────────────
+B=$'\033[1m'; R=$'\033[0;31m'; G=$'\033[0;32m'; Y=$'\033[1;33m'
+C=$'\033[0;36m'; D=$'\033[2m'; N=$'\033[0m'
+banner() {
+  printf "\n%s%s╔══════════════════════════════════════════════════╗%s\n" "$C" "$B" "$N"
+  printf "%s%s║  %-48s║%s\n" "$C" "$B" "$1" "$N"
+  printf "%s%s╚══════════════════════════════════════════════════╝%s\n\n" "$C" "$B" "$N"
+}
+step() { printf "\n%s%s▸ %s%s\n" "$C" "$B" "$*" "$N"; }
+ok()   { printf "  %s✓%s %s\n" "$G" "$N" "$*"; }
+warn() { printf "  %s⚠%s %s\n" "$Y" "$N" "$*"; }
+err()  { printf "  %s✗%s %s\n" "$R" "$N" "$*"; }
+die()  { err "$*"; exit 1; }
 
-# ── Step 2: Create swap (critical for t3.small) ──
-echo -e "${YELLOW}▸ [2/9] Setting up swap space...${NC}"
-if [ ! -f /swapfile ]; then
-    sudo fallocate -l 2G /swapfile
-    sudo chmod 600 /swapfile
-    sudo mkswap /swapfile
-    sudo swapon /swapfile
-    echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab > /dev/null
-    # Optimize swap behavior for low-memory servers
-    echo 'vm.swappiness=10' | sudo tee -a /etc/sysctl.conf > /dev/null
-    sudo sysctl -p > /dev/null
-    echo -e "${GREEN}  ✓ 2GB swap created (swappiness=10)${NC}"
-else
-    echo -e "${GREEN}  ✓ Swap already exists${NC}"
-fi
+ssh_remote()     { ssh "${SSH_OPTS[@]}" "$EC2_USER@$EC2_HOST" "$@"; }
+remote_compose() { ssh_remote "cd $REMOTE_DIR && docker compose -f $COMPOSE_FILE $*"; }
 
-# ── Step 3: Install Docker ──
-echo -e "${YELLOW}▸ [3/9] Installing Docker...${NC}"
-if ! command -v docker &>/dev/null; then
-    curl -fsSL https://get.docker.com | sudo sh
-    sudo usermod -aG docker "$USER"
-    echo -e "${GREEN}  ✓ Docker installed${NC}"
-    echo -e "${YELLOW}    NOTE: You may need to log out and back in for docker group${NC}"
-else
-    echo -e "${GREEN}  ✓ Docker already installed${NC}"
-fi
+# ── State carried between phases ────────────────────────────────────
+LOCAL_SHA=""; TARGET_SHA=""; PRIOR_SHA=""; DEPLOYED_SHA=""; SKIP_BUILD=0
 
-# ── Step 4: Clone or pull repo ──
-echo -e "${YELLOW}▸ [4/9] Setting up application...${NC}"
-if [ -d "$APP_DIR" ]; then
-    cd "$APP_DIR/ftb-api-26"
-    git pull origin main
-    echo -e "${GREEN}  ✓ Pulled latest code${NC}"
-else
-    if [ -z "$REPO_URL" ]; then
-        echo -e "${RED}  ✗ REPO_URL not set. Run with: REPO_URL=git@github.com:you/repo.git bash deploy.sh${NC}"
-        exit 1
+# ════════════════════════════════════════════════════════════════════
+# Phase 1 — Pre-flight (local checks)
+# ════════════════════════════════════════════════════════════════════
+preflight() {
+  step "Pre-flight"
+  [[ -f "$PEM_KEY" ]] || die "PEM key not found: $PEM_KEY"
+  command -v git >/dev/null || die "git not installed"
+  command -v ssh >/dev/null || die "ssh not installed"
+  chmod 600 "$PEM_KEY" 2>/dev/null || true
+
+  cd "$REPO_DIR"
+  git rev-parse --is-inside-work-tree >/dev/null 2>&1 \
+    || die "$REPO_DIR is not a git repo"
+
+  LOCAL_SHA=$(git rev-parse HEAD)
+  ok "Local HEAD: ${LOCAL_SHA:0:12} ($(git log -1 --format=%s))"
+
+  # Warn (but don't block) on a dirty tree — those changes will NOT
+  # deploy because we ship from origin/$BRANCH, not the local copy.
+  if ! git diff --quiet \
+       || ! git diff --cached --quiet \
+       || [[ -n "$(git ls-files --others --exclude-standard)" ]]; then
+    warn "Working tree is DIRTY — uncommitted changes will NOT deploy:"
+    git status --short | sed 's/^/      /'
+  fi
+
+  step "Sync with origin/$BRANCH"
+  git fetch origin "$BRANCH" --quiet
+  local local_b remote_b
+  local_b=$(git rev-parse "$BRANCH" 2>/dev/null || echo "")
+  remote_b=$(git rev-parse "origin/$BRANCH")
+  if [[ -z "$local_b" ]]; then
+    warn "Local '$BRANCH' not checked out; deploying origin/$BRANCH"
+  elif [[ "$local_b" != "$remote_b" ]]; then
+    if git merge-base --is-ancestor "$remote_b" "$local_b"; then
+      warn "Local '$BRANCH' has unpushed commits ahead of origin"
+      read -r -p "    Push to origin/$BRANCH now? [y/N] " ans
+      if [[ "$ans" =~ ^[Yy] ]]; then
+        git push origin "$BRANCH"
+        ok "Pushed."
+      else
+        warn "Skipping push — remote will deploy origin/$BRANCH (older than local)."
+      fi
+    else
+      warn "Local '$BRANCH' is BEHIND origin/$BRANCH; deploying origin/$BRANCH."
     fi
-    sudo mkdir -p "$APP_DIR"
-    sudo chown "$USER:$USER" "$APP_DIR"
-    git clone "$REPO_URL" "$APP_DIR"
-    cd "$APP_DIR/ftb-api-26"
-    echo -e "${GREEN}  ✓ Repository cloned${NC}"
-fi
+  else
+    ok "Local '$BRANCH' matches origin/$BRANCH"
+  fi
+  TARGET_SHA=$(git rev-parse "origin/$BRANCH")
+  ok "Target deploy SHA: ${TARGET_SHA:0:12}"
 
-# ── Step 5: Check .env.prod ──
-echo -e "${YELLOW}▸ [5/9] Checking environment config...${NC}"
-if [ ! -f .env.prod ]; then
-    cp .env.prod.example .env.prod
-    echo -e "${RED}  ⚠ Created .env.prod from template — EDIT IT NOW before continuing!${NC}"
-    echo -e "${RED}    nano $APP_DIR/ftb-api-26/.env.prod${NC}"
-    echo -e "${RED}    Then re-run this script.${NC}"
-    exit 1
-else
-    echo -e "${GREEN}  ✓ .env.prod found${NC}"
-fi
+  step "SSH connectivity"
+  ssh_remote "echo ok" >/dev/null 2>&1 \
+    || die "Cannot SSH to $EC2_USER@$EC2_HOST (check PEM key + security group)"
+  ok "Reachable: $EC2_USER@$EC2_HOST"
+}
 
-# Required vars — anything in this list missing or still set to a CHANGE_ME
-# placeholder fails the deploy. Optional keys (DeepSeek, SerpAPI, OAuth
-# integrations, AWS, Stripe) are warned about but don't block.
-REQUIRED_VARS=(
+# ════════════════════════════════════════════════════════════════════
+# Phase 2 — Validate remote .env.prod
+# Catches missing/placeholder keys BEFORE we restart anything.
+# ════════════════════════════════════════════════════════════════════
+validate_env() {
+  step "Validate remote .env.prod"
+
+  local REQUIRED=(
     DJANGO_SECRET_KEY
     JWT_SIGNING_KEY
     FIELD_ENCRYPTION_KEY
@@ -96,146 +137,293 @@ REQUIRED_VARS=(
     OPENAI_API_KEY
     GEMINI_API_KEY
     PERPLEXITY_API_KEY
-)
-OPTIONAL_VARS=(
+    GOOGLE_API_KEY
+    GOOGLE_CSE_ID
+  )
+  local OPTIONAL=(
     DEEPSEEK_API_KEY
     SERPAPI_KEY
     STRIPE_SECRET_KEY
     SENDGRID_API_KEY
     GOOGLE_OAUTH_CLIENT_ID
-)
-missing=()
-placeholder=()
-optional_missing=()
-# shellcheck disable=SC1091
-set -a; . ./.env.prod; set +a
-for v in "${REQUIRED_VARS[@]}"; do
-    val="${!v:-}"
-    if [ -z "$val" ]; then
-        missing+=("$v")
-    elif [[ "$val" == CHANGE_ME* ]]; then
-        placeholder+=("$v")
-    fi
+    GOOGLE_CSE_DAILY_LIMIT_PER_USER
+    CLAUDE_JUDGE_DAILY_LIMIT_PER_USER
+    CLAUDE_REWRITE_DAILY_LIMIT_PER_USER
+  )
+
+  # Run the whole check on the remote box so secrets never leave it.
+  local script
+  script=$(cat <<REMOTE
+set -e
+cd "$REMOTE_DIR"
+if [ ! -f .env.prod ]; then
+  echo "MISSING_FILE"
+  exit 0
+fi
+set -a
+. ./.env.prod
+set +a
+missing=
+placeholder=
+optional_missing=
+for v in ${REQUIRED[*]}; do
+  val=\${!v:-}
+  if [ -z "\$val" ]; then
+    missing="\$missing \$v"
+  elif [[ "\$val" == CHANGE_ME* ]]; then
+    placeholder="\$placeholder \$v"
+  fi
 done
-for v in "${OPTIONAL_VARS[@]}"; do
-    val="${!v:-}"
-    if [ -z "$val" ]; then
-        optional_missing+=("$v")
-    fi
+for v in ${OPTIONAL[*]}; do
+  val=\${!v:-}
+  if [ -z "\$val" ]; then
+    optional_missing="\$optional_missing \$v"
+  fi
 done
-if [ ${#missing[@]} -gt 0 ] || [ ${#placeholder[@]} -gt 0 ]; then
-    echo -e "${RED}  ✗ .env.prod is incomplete:${NC}"
-    [ ${#missing[@]}     -gt 0 ] && echo -e "${RED}    Missing: ${missing[*]}${NC}"
-    [ ${#placeholder[@]} -gt 0 ] && echo -e "${RED}    Still CHANGE_ME: ${placeholder[*]}${NC}"
-    echo -e "${RED}    Edit $APP_DIR/ftb-api-26/.env.prod and re-run.${NC}"
+echo "MISSING:\$missing"
+echo "PLACEHOLDER:\$placeholder"
+echo "OPTIONAL_MISSING:\$optional_missing"
+REMOTE
+  )
+  local out missing placeholder optional_missing
+  out=$(ssh_remote "$script")
+  if grep -q "^MISSING_FILE$" <<<"$out"; then
+    die ".env.prod missing at $EC2_HOST:$REMOTE_DIR — create it from .env.prod.example first."
+  fi
+  missing=$(grep "^MISSING:" <<<"$out" | cut -d: -f2-)
+  placeholder=$(grep "^PLACEHOLDER:" <<<"$out" | cut -d: -f2-)
+  optional_missing=$(grep "^OPTIONAL_MISSING:" <<<"$out" | cut -d: -f2-)
+
+  if [[ -n "${missing// }" || -n "${placeholder// }" ]]; then
+    err ".env.prod is incomplete:"
+    [[ -n "${missing// }" ]]     && printf "      %sMissing:%s        %s\n" "$R" "$N" "$missing"
+    [[ -n "${placeholder// }" ]] && printf "      %sStill CHANGE_ME:%s %s\n" "$R" "$N" "$placeholder"
+    printf "      %sFix:%s ssh %s@%s 'nano %s/.env.prod'\n" "$Y" "$N" "$EC2_USER" "$EC2_HOST" "$REMOTE_DIR"
     exit 1
-fi
-if [ ${#optional_missing[@]} -gt 0 ]; then
-    echo -e "${YELLOW}  ⚠ Optional features disabled (key missing): ${optional_missing[*]}${NC}"
-fi
-echo -e "${GREEN}  ✓ .env.prod looks good${NC}"
+  fi
+  if [[ -n "${optional_missing// }" ]]; then
+    warn "Optional features disabled (key missing):$optional_missing"
+  fi
+  ok ".env.prod looks good"
+}
 
-# ── Step 6: Build and start containers ──
-echo -e "${YELLOW}▸ [6/9] Building and starting containers...${NC}"
-cd "$APP_DIR/ftb-api-26"
-docker compose -f docker/docker-compose.prod.yml down 2>/dev/null || true
-docker compose -f docker/docker-compose.prod.yml up -d --build
+# ════════════════════════════════════════════════════════════════════
+# Phase 3 — Capture current production state
+# ════════════════════════════════════════════════════════════════════
+capture_prior() {
+  step "Capture current production state"
+  PRIOR_SHA=$(ssh_remote "cd $REMOTE_DIR && git rev-parse HEAD" 2>/dev/null || echo "unknown")
+  ok "Remote HEAD before deploy: ${PRIOR_SHA:0:12}"
+  if [[ "$PRIOR_SHA" == "$TARGET_SHA" ]]; then
+    warn "Remote already at target SHA — nothing new to ship."
+    read -r -p "    Force rebuild anyway? [y/N] " ans
+    if [[ "$ans" =~ ^[Yy] ]]; then
+      SKIP_BUILD=0
+    else
+      SKIP_BUILD=1
+    fi
+  fi
+}
 
-# Wait for DB to be ready
-echo -e "  Waiting for database..."
-sleep 10
+# ════════════════════════════════════════════════════════════════════
+# Phase 4 — Deploy (pull, rebuild, migrate)
+# ════════════════════════════════════════════════════════════════════
+deploy() {
+  step "Pull latest code on remote"
+  ssh_remote "cd $REMOTE_DIR \
+    && git fetch origin $BRANCH --quiet \
+    && git checkout $BRANCH \
+    && git reset --hard origin/$BRANCH"
+  local new_sha
+  new_sha=$(ssh_remote "cd $REMOTE_DIR && git rev-parse HEAD")
+  [[ "$new_sha" == "$TARGET_SHA" ]] \
+    || die "Remote SHA mismatch after pull (got ${new_sha:0:12}, expected ${TARGET_SHA:0:12})"
+  ok "Remote now at ${new_sha:0:12}"
 
-# ── Step 6b: Refresh frontend dist into the shared volume ──
-# The frontend service is a one-shot init container — `up -d` will not re-run
-# it once it has exited. We rebuild it without cache and run it explicitly so
-# the latest Vue build always lands in the frontend_dist volume that nginx
-# serves. Without this step, code in frontend/ never reaches users.
-echo -e "${YELLOW}  ▸ Rebuilding frontend bundle...${NC}"
-# Pass CACHE_DATE so the Dockerfile COPY layer always invalidates, even when
-# git pull didn't update file mtimes (ext4/overlay2 can preserve them).
-docker compose -f docker/docker-compose.prod.yml build \
-    --no-cache --build-arg CACHE_DATE="$(date +%s)" frontend
-# Remove the old init container (if it exited from a prior deploy) so `run`
-# starts fresh instead of reusing the stale exited container.
-docker compose -f docker/docker-compose.prod.yml rm -f frontend 2>/dev/null || true
-docker compose -f docker/docker-compose.prod.yml run --rm frontend
-docker compose -f docker/docker-compose.prod.yml restart nginx
-echo -e "${GREEN}  ✓ Frontend bundle refreshed${NC}"
+  if [[ "$SKIP_BUILD" == "1" ]]; then
+    warn "Skipping container rebuild"
+    return
+  fi
 
-# ── Step 7: Run migrations and collect static ──
-echo -e "${YELLOW}▸ [7/9] Running migrations...${NC}"
-docker compose -f docker/docker-compose.prod.yml exec -T web python manage.py migrate --noinput
-docker compose -f docker/docker-compose.prod.yml exec -T web python manage.py collectstatic --noinput 2>/dev/null || true
-echo -e "${GREEN}  ✓ Migrations applied${NC}"
+  local cache_bust
+  cache_bust=$(date +%s)
 
-# ── Step 8: Bootstrap Phase 1-4 data ──
-# Each command is idempotent and gated on whether its underlying app exists
-# in this build. Safe to run on every deploy.
-echo -e "${YELLOW}▸ [8/9] Bootstrapping Phase 1-4 data...${NC}"
+  step "Rebuild backend (web + celery)"
+  remote_compose "build --build-arg CACHE_DATE=$cache_bust web celery"
+  remote_compose "up -d web celery"
+  ok "Backend rebuilt and restarted"
 
-# Prompt Library effectiveness scoring — recomputes scores from the most
-# recent audits. First-deploy this is a noop because there are no audits.
-docker compose -f docker/docker-compose.prod.yml exec -T web \
-    python -c "from apps.prompt_library.services.effectiveness import refresh_all_effectiveness_scores; print(refresh_all_effectiveness_scores(), 'prompts rescored')" 2>/dev/null || \
-    echo -e "${YELLOW}    (skip: prompt effectiveness — apps.prompt_library not available)${NC}"
+  # Frontend is a one-shot init container — `up -d` won't re-run it
+  # once it has exited, so we explicitly rm + run + restart nginx.
+  step "Rebuild frontend bundle (no-cache)"
+  remote_compose "build --no-cache --build-arg CACHE_DATE=$cache_bust frontend"
+  remote_compose "rm -f frontend" >/dev/null 2>&1 || true
+  remote_compose "run --rm frontend"
+  remote_compose "restart nginx"
+  ok "Frontend bundle refreshed and nginx reloaded"
 
-# Source-influence snapshots — daily rollups normally run via Celery beat,
-# but compute one immediately so the dashboard shows fresh data after
-# deploy. Idempotent: upserts on (provider × industry × website × period).
-docker compose -f docker/docker-compose.prod.yml exec -T web \
-    python -c "from apps.citations.tasks import compute_source_influence_snapshots; compute_source_influence_snapshots(period_days=30); print('source-influence snapshots computed')" 2>/dev/null || \
-    echo -e "${YELLOW}    (skip: source-influence rollup — apps.citations not available)${NC}"
+  step "Apply migrations & collect static"
+  remote_compose "exec -T web python manage.py migrate --noinput"
+  remote_compose "exec -T web python manage.py collectstatic --noinput" \
+    >/dev/null 2>&1 || true
+  ok "Migrations applied"
+}
 
-# Brand Vault fact embeddings — backfills any embeddings missed by the
-# nightly job (e.g. OpenAI key was just added).
-docker compose -f docker/docker-compose.prod.yml exec -T web \
-    python -c "from apps.brand_vault.tasks import refresh_fact_embeddings; refresh_fact_embeddings(); print('brand-vault embeddings refreshed')" 2>/dev/null || \
-    echo -e "${YELLOW}    (skip: brand vault embeddings — apps.brand_vault not available)${NC}"
+# ════════════════════════════════════════════════════════════════════
+# Phase 5 — Post-deploy validation
+# ════════════════════════════════════════════════════════════════════
+validate_deploy() {
+  step "Post-deploy validation"
 
-# Voice agent backfills — legacy, kept for environments still running the
-# call-log feature.
-docker compose -f docker/docker-compose.prod.yml exec -T web \
-    python manage.py rescore_voice_calls 2>/dev/null || true
-docker compose -f docker/docker-compose.prod.yml exec -T web \
-    python manage.py rebuild_voice_usage 2>/dev/null || true
+  DEPLOYED_SHA=$(ssh_remote "cd $REMOTE_DIR && git rev-parse HEAD")
+  if [[ "$DEPLOYED_SHA" == "$TARGET_SHA" ]]; then
+    ok "Deployed SHA matches target (${DEPLOYED_SHA:0:12})"
+  else
+    err "SHA mismatch: deployed=${DEPLOYED_SHA:0:12} target=${TARGET_SHA:0:12}"
+  fi
 
-echo -e "${GREEN}  ✓ Bootstrap complete${NC}"
+  local unapplied
+  unapplied=$(remote_compose "exec -T web python manage.py showmigrations --plan" 2>/dev/null \
+              | grep -c '^\[ \]' || true)
+  if [[ "${unapplied:-0}" -eq 0 ]]; then
+    ok "All migrations applied"
+  else
+    warn "$unapplied migrations still unapplied"
+  fi
 
-# ── Step 9: Verify Celery beat is running ──
-# The new Phase 1-4 schedules (mine-daily-prompts, compute-source-influence,
-# refresh-fact-embeddings, generate-briefs-daily, etc.) all live on the beat
-# scheduler. If beat isn't up, none of them fire.
-echo -e "${YELLOW}▸ [9/9] Verifying Celery beat...${NC}"
-if docker compose -f docker/docker-compose.prod.yml ps celery_beat 2>/dev/null | grep -qE "running|Up"; then
-    echo -e "${GREEN}  ✓ Celery beat is running${NC}"
-else
-    echo -e "${YELLOW}  ⚠ Celery beat not detected — daily snapshots, prompt mining, and brief generation will not run.${NC}"
-    echo -e "${YELLOW}    Check: docker compose -f docker/docker-compose.prod.yml logs celery_beat${NC}"
-fi
+  ok "Container status:"
+  remote_compose "ps --format 'table {{.Service}}\t{{.State}}\t{{.Status}}'" \
+    | sed 's/^/      /'
 
-# ── Done! ──
+  local http
+  http=$(ssh_remote "curl -s -o /dev/null -w '%{http_code}' http://localhost/health/" 2>/dev/null || echo "000")
+  if [[ "$http" == "200" ]]; then
+    ok "Health endpoint: HTTP 200"
+  else
+    warn "Health endpoint: HTTP $http"
+  fi
+
+  local celery_pong
+  celery_pong=$(remote_compose "exec -T celery celery -A config.celery inspect ping --timeout 5" 2>/dev/null \
+                | grep -c "pong" || true)
+  if [[ "${celery_pong:-0}" -gt 0 ]]; then
+    ok "Celery worker responding"
+  else
+    warn "Celery ping failed (worker may still be warming up)"
+  fi
+}
+
+# ════════════════════════════════════════════════════════════════════
+# Phase 6 — Smoke test
+# Each check: "PATH|EXPECTED_CODE|DESCRIPTION".
+# 401 = endpoint exists + requires auth (right signal for JWT routes).
+# 200 = publicly reachable.
+# ════════════════════════════════════════════════════════════════════
+smoke_test() {
+  step "Smoke test: $PUBLIC_HOST"
+  local CHECKS=(
+    "/health/|200|backend health"
+    "/api/v1/auth/me/|401|/auth/me/ (JWT-gated)"
+    "/api/v1/auth/session/|401|/auth/session/"
+    "/api/v1/llm-ranking/00000000-0000-0000-0000-000000000000/preview-prompts/|401|/llm-ranking/.../preview-prompts/"
+    "/api/v1/llm-ranking/00000000-0000-0000-0000-000000000000/geo/rewrite/|401|/llm-ranking/.../geo/rewrite/ (NEW)"
+    "/api/v1/llm-ranking/00000000-0000-0000-0000-000000000000/geo/judge/|401|/llm-ranking/.../geo/judge/ (NEW)"
+    "/login|200|/login (SPA route)"
+    "/paywall|200|/paywall (SPA route)"
+    "/app-onboarding|200|/app-onboarding (SPA route)"
+  )
+  local FAIL=0
+  for row in "${CHECKS[@]}"; do
+    IFS='|' read -r path expected desc <<< "$row"
+    local got
+    got=$(curl -s -o /dev/null -w "%{http_code}" "${PUBLIC_HOST}${path}" || echo "000")
+    if [[ "$got" == "$expected" ]]; then
+      ok "$desc → $got"
+    else
+      err "$desc → got $got (expected $expected)"
+      FAIL=$((FAIL + 1))
+    fi
+  done
+
+  # POST /billing/checkout/ {pro} should 401 (auth-gated). 400 means
+  # the backend rejected "pro" as an invalid plan = old code is live.
+  local post_got
+  post_got=$(curl -s -X POST -H "Content-Type: application/json" \
+    -d '{"plan":"pro"}' \
+    -o /dev/null -w "%{http_code}" \
+    "${PUBLIC_HOST}/api/v1/billing/checkout/" || echo "000")
+  if [[ "$post_got" == "401" ]]; then
+    ok "POST /billing/checkout/ {pro} → 401 (plan accepted)"
+  else
+    err "POST /billing/checkout/ {pro} → $post_got (expected 401; 400 = old code)"
+    FAIL=$((FAIL + 1))
+  fi
+
+  if [[ $FAIL -gt 0 ]]; then
+    err "Smoke test failed — $FAIL check(s) regressed."
+    return 1
+  fi
+  ok "All endpoints responding as expected."
+  return 0
+}
+
+# ════════════════════════════════════════════════════════════════════
+# Phase 7 — Tail logs (--logs only)
+# 60s of streaming container logs so you can watch traffic warm up.
+# ════════════════════════════════════════════════════════════════════
+tail_logs() {
+  step "Tail container logs for 60s (Ctrl+C to stop earlier)"
+  remote_compose "logs --tail=50 --follow --timestamps" &
+  local pid=$!
+  sleep 60
+  kill "$pid" 2>/dev/null || true
+  wait "$pid" 2>/dev/null || true
+}
+
+# ════════════════════════════════════════════════════════════════════
+# Entry point
+# ════════════════════════════════════════════════════════════════════
+usage() {
+  sed -n '3,28p' "$0"
+}
+
+MODE="full"
+case "${1:-}" in
+  ""|--full)      MODE="full" ;;
+  --no-test)      MODE="deploy" ;;
+  --test)         MODE="test" ;;
+  --logs)         MODE="logs" ;;
+  -h|--help)      usage; exit 0 ;;
+  *)              echo "Unknown flag: $1"; usage; exit 1 ;;
+esac
+
+banner "FetchBot Deploy — branch=$BRANCH"
+
+case "$MODE" in
+  test)
+    smoke_test
+    exit $?
+    ;;
+  logs)
+    tail_logs
+    exit 0
+    ;;
+  deploy|full)
+    preflight
+    validate_env
+    capture_prior
+    deploy
+    validate_deploy
+    if [[ "$MODE" == "full" ]]; then
+      if ! smoke_test; then
+        err "Deploy completed but smoke tests failed — investigate before announcing."
+        exit 2
+      fi
+    fi
+    ;;
+esac
+
 echo ""
-echo -e "${GREEN}${BOLD}  ══════════════════════════════════════════${NC}"
-echo -e "${GREEN}${BOLD}  ✓ FetchBot is deployed!${NC}"
-echo -e "${GREEN}${BOLD}  ══════════════════════════════════════════${NC}"
-echo ""
-
-# Show container status
-echo -e "${BLUE}Container status:${NC}"
-docker compose -f docker/docker-compose.prod.yml ps
-echo ""
-
-# Health check
-echo -e "${BLUE}Health check:${NC}"
-if curl -s -o /dev/null -w "%{http_code}" http://localhost/health/ | grep -q "200"; then
-    echo -e "${GREEN}  ✓ API is healthy (HTTP 200)${NC}"
-else
-    echo -e "${YELLOW}  ⚠ Health check pending — containers may still be starting${NC}"
-fi
-
-echo ""
-echo -e "  ${BOLD}Next steps:${NC}"
-echo -e "  1. Point fetchbot.ai A record to this server's IP: $(curl -s ifconfig.me)"
-echo -e "  2. Set Cloudflare SSL to Full (Strict)"
-echo -e "  3. Visit https://fetchbot.ai"
+ok "Deploy complete  →  $PUBLIC_HOST"
+printf "    Before: %s   After: %s\n" "${PRIOR_SHA:0:12}" "${DEPLOYED_SHA:0:12}"
 echo ""
