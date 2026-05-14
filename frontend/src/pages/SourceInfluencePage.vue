@@ -318,6 +318,11 @@
                     <span class="mt-cite-domain">{{ c.domain || citationDomain(c.url) }}</span>
                     <span v-if="c.title" class="mt-cite-title">{{ c.title }}</span>
                     <span
+                      v-if="citationPath(c.url)"
+                      class="mt-cite-path"
+                      :title="c.url"
+                    >{{ citationPath(c.url) }}</span>
+                    <span
                       v-if="c.impression_pwc != null"
                       class="mt-cite-imp"
                       :class="{ 'is-zero': c.impression_pwc === 0 }"
@@ -372,6 +377,34 @@
                       <strong>Optimize with a GEO strategy</strong>
                       <button class="mt-cite-panel-x" @click="closeAction">×</button>
                     </div>
+                    <a
+                      v-if="activeAction.citation?.url"
+                      :href="activeAction.citation.url"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      class="mt-cite-panel-url"
+                      :title="activeAction.citation.url"
+                    >
+                      <img
+                        v-if="activeAction.citation?.url"
+                        class="mt-cite-panel-url-fav"
+                        :src="citationFavicon(activeAction.citation.url)"
+                        :alt="''"
+                        loading="lazy"
+                        referrerpolicy="no-referrer"
+                        @error="onCiteFaviconError($event)"
+                      />
+                      <span class="mt-cite-panel-url-domain">
+                        {{ activeAction.citation.domain || citationDomain(activeAction.citation.url) }}
+                      </span>
+                      <span
+                        v-if="citationPath(activeAction.citation.url)"
+                        class="mt-cite-panel-url-path"
+                      >{{ citationPath(activeAction.citation.url) }}</span>
+                      <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M5 11l6-6M6 5h5v5" stroke-linecap="round" stroke-linejoin="round"/>
+                      </svg>
+                    </a>
                     <p class="mt-cite-panel-sub">
                       Picks a paper-validated rewrite for this source's domain and
                       runs the snippet through Claude.
@@ -427,6 +460,33 @@
                       <strong>Score this citation (G-Eval, 7 sub-metrics)</strong>
                       <button class="mt-cite-panel-x" @click="closeAction">×</button>
                     </div>
+                    <a
+                      v-if="activeAction.citation?.url"
+                      :href="activeAction.citation.url"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      class="mt-cite-panel-url"
+                      :title="activeAction.citation.url"
+                    >
+                      <img
+                        class="mt-cite-panel-url-fav"
+                        :src="citationFavicon(activeAction.citation.url)"
+                        :alt="''"
+                        loading="lazy"
+                        referrerpolicy="no-referrer"
+                        @error="onCiteFaviconError($event)"
+                      />
+                      <span class="mt-cite-panel-url-domain">
+                        {{ activeAction.citation.domain || citationDomain(activeAction.citation.url) }}
+                      </span>
+                      <span
+                        v-if="citationPath(activeAction.citation.url)"
+                        class="mt-cite-panel-url-path"
+                      >{{ citationPath(activeAction.citation.url) }}</span>
+                      <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M5 11l6-6M6 5h5v5" stroke-linecap="round" stroke-linejoin="round"/>
+                      </svg>
+                    </a>
                     <p class="mt-cite-panel-sub">
                       Claude reads the response, the source, and your query, then
                       rates the citation 1-5 across seven dimensions.
@@ -1207,6 +1267,36 @@ function citationDomain(url) {
     return u.hostname.replace(/^www\./, '')
   } catch {
     return url || ''
+  }
+}
+// Visible URL path under the title — strips the protocol+host and
+// any tracking query string, then truncates from the middle so both
+// the leading section and the slug remain readable. Returns '' for a
+// bare-domain URL (no path to show) and for malformed input.
+function citationPath(url) {
+  if (!url) return ''
+  try {
+    const u = new URL(url)
+    let path = (u.pathname || '').replace(/\/+$/, '')
+    if (!path || path === '/') return ''
+    // Drop tracking-only query params; keep informative ones like `?q=`.
+    const KEEP = new Set(['q', 'id', 'p', 'page', 'ref'])
+    const kept = []
+    u.searchParams.forEach((v, k) => {
+      if (KEEP.has(k.toLowerCase())) kept.push(`${k}=${v}`)
+    })
+    if (kept.length) path += '?' + kept.join('&')
+    // Middle-truncate so '…/a/b/c/d/e/long-slug-here' shows as
+    // '/a/b/…/long-slug-here'.
+    const MAX = 56
+    if (path.length > MAX) {
+      const slugLen = Math.min(28, Math.floor(MAX * 0.55))
+      const headLen = MAX - slugLen - 1
+      path = path.slice(0, headLen) + '…' + path.slice(-slugLen)
+    }
+    return path
+  } catch {
+    return ''
   }
 }
 function citationFavicon(url) {
@@ -3493,8 +3583,20 @@ onBeforeUnmount(() => document.removeEventListener('click', _closeDropdownOnDocC
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 220px;
+  max-width: 280px;
 }
+.mt-cite-path {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10.5px;
+  color: #94a3b8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 280px;
+  margin-top: 1px;
+  letter-spacing: -0.01em;
+}
+.mt-cite-chip:hover .mt-cite-path { color: #64748b; }
 .mt-cite-out { color: #94a3b8; flex-shrink: 0; }
 .mt-cite-chip:hover .mt-cite-out { color: #475569; }
 
@@ -3667,6 +3769,48 @@ onBeforeUnmount(() => document.removeEventListener('click', _closeDropdownOnDocC
 }
 .mt-cite-panel-x:hover { color: #0f172a; }
 .mt-cite-panel-sub { font-size: 12px; color: #64748b; margin: 0 0 8px; }
+.mt-cite-panel-url {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  margin: 4px 0 6px;
+  padding: 5px 10px 5px 6px;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #0f172a;
+  text-decoration: none;
+  font-size: 11.5px;
+  line-height: 1.2;
+  overflow: hidden;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+.mt-cite-panel-url:hover {
+  border-color: #94a3b8;
+  background: #ffffff;
+  color: #0f172a;
+}
+.mt-cite-panel-url-fav {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  background: #fff;
+  flex-shrink: 0;
+}
+.mt-cite-panel-url-domain {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  flex-shrink: 0;
+}
+.mt-cite-panel-url-path {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  color: #64748b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .mt-cite-panel-label {
   display: block;
   font-size: 11px;
