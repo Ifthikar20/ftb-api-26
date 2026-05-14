@@ -22,12 +22,13 @@ from __future__ import annotations
 
 import hashlib
 import logging
-from datetime import datetime, timezone
 from urllib.parse import urlparse
 
 import requests
 from django.conf import settings
 from django.core.cache import cache
+
+from core.quota import DailyQuota
 
 logger = logging.getLogger("apps")
 
@@ -65,41 +66,25 @@ def _domain(url: str) -> str:
 
 # ── Per-user daily quota ──────────────────────────────────────────────────
 
-def _today_str() -> str:
-    return datetime.now(timezone.utc).strftime("%Y%m%d")
-
-
-def _quota_key(user_id) -> str:
-    return f"gcse:quota:{user_id or 'anon'}:{_today_str()}"
+_quota = DailyQuota(
+    namespace="gcse",
+    setting_name="GOOGLE_CSE_DAILY_LIMIT_PER_USER",
+    default_limit=DEFAULT_DAILY_LIMIT_PER_USER,
+)
 
 
 def quota_for_user(user_id) -> int:
     """Daily CSE query allowance. Same flat number for every caller."""
-    return int(getattr(
-        settings,
-        "GOOGLE_CSE_DAILY_LIMIT_PER_USER",
-        DEFAULT_DAILY_LIMIT_PER_USER,
-    ))
+    return _quota.limit(user_id)
 
 
 def quota_remaining(user_id) -> int:
     """Calls left for ``user_id`` today. Never negative."""
-    used = int(cache.get(_quota_key(user_id)) or 0)
-    return max(0, quota_for_user(user_id) - used)
+    return _quota.remaining(user_id)
 
 
 def _consume_quota(user_id, n: int = 1) -> bool:
-    """
-    Reserve ``n`` calls. Returns False (and doesn't increment) when
-    the user would exceed their daily quota.
-    """
-    key = _quota_key(user_id)
-    used = int(cache.get(key) or 0)
-    if used + n > quota_for_user(user_id):
-        return False
-    # 26h TTL covers DST + UTC midnight rollover slack.
-    cache.set(key, used + n, timeout=60 * 60 * 26)
-    return True
+    return _quota.consume(user_id, n)
 
 
 # ── Search ────────────────────────────────────────────────────────────────

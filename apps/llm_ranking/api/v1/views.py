@@ -11,6 +11,8 @@ from rest_framework.views import APIView
 
 from apps.llm_ranking.api.v1.serializers import (
     CreateScheduleSerializer,
+    GeoJudgeRequestSerializer,
+    GeoRewriteRequestSerializer,
     LLMRankingAuditListSerializer,
     LLMRankingAuditSerializer,
     LLMRankingScheduleSerializer,
@@ -1661,50 +1663,23 @@ class GeoRewriteView(TenantScopedAPIView):
     strategies (quotation_addition, statistics_addition, cite_sources,
     fluency_optimization, authoritative).
 
-    POST body:
-        {
-          "method":      "quotation_addition",
-          "source_text": "<raw text from the user's page>",
-          "query":       "<optional — the query this page should rank for>"
-        }
-
     Cost-controlled by ``CLAUDE_REWRITE_DAILY_LIMIT_PER_USER`` (default 30/day).
+    Input validation lives in :class:`GeoRewriteRequestSerializer` —
+    method allow-list, body size cap, non-empty source.
     """
-
-    MAX_INPUT_CHARS = 12_000  # ~3k tokens — keeps a single rewrite cheap.
 
     def post(self, request, website_id):
         from apps.llm_ranking.services import geo_rewrite
 
         self.get_website(website_id)
-
-        method = (request.data.get("method") or "").strip().lower()
-        source_text = request.data.get("source_text") or ""
-        query = (request.data.get("query") or "").strip() or None
-
-        if not isinstance(source_text, str) or not source_text.strip():
-            return Response(
-                {"error": "source_text is required.", "code": "invalid_payload"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        if len(source_text) > self.MAX_INPUT_CHARS:
-            return Response(
-                {"error": f"source_text must be {self.MAX_INPUT_CHARS} characters or fewer.",
-                 "code": "source_too_long"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        if method not in geo_rewrite.ALLOWED_METHODS:
-            return Response(
-                {"error": "Unknown rewrite method.",
-                 "code": "unknown_method",
-                 "allowed": sorted(geo_rewrite.ALLOWED_METHODS)},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        serializer = GeoRewriteRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
 
         result = geo_rewrite.rewrite(
-            source_text=source_text,
-            method=method,
-            query=query,
+            source_text=data["source_text"],
+            method=data["method"],
+            query=(data.get("query") or "").strip() or None,
             user_id=getattr(request.user, "id", None),
         )
         if not result.get("ok"):
@@ -1723,69 +1698,30 @@ class GeoJudgeView(TenantScopedAPIView):
     Influence, Uniqueness, Diversity, FollowUp, Subjective Position,
     Subjective Count) via Claude-as-judge.
 
-    POST body:
-        {
-          "query":           "...",
-          "response_text":   "...",
-          "citation_index":  3,
-          "citation_url":    "https://...",
-          "samples":         1
-        }
-
     Cost-controlled by ``CLAUDE_JUDGE_DAILY_LIMIT_PER_USER`` (default 200/day).
+    Input validation lives in :class:`GeoJudgeRequestSerializer` —
+    non-empty query/response, sample count clamped to MAX_SAMPLES.
     """
-
-    MAX_RESPONSE_CHARS = 20_000
-    MAX_SAMPLES = 5
 
     def post(self, request, website_id):
         from apps.llm_ranking.services import subjective_impression
 
         self.get_website(website_id)
-
-        query = (request.data.get("query") or "").strip()
-        response_text = request.data.get("response_text") or ""
-        citation_index = request.data.get("citation_index")
-        citation_url = (request.data.get("citation_url") or "").strip()
-        samples = request.data.get("samples", 1)
-
-        try:
-            citation_index = int(citation_index)
-            samples = max(1, min(int(samples), self.MAX_SAMPLES))
-        except (TypeError, ValueError):
-            return Response(
-                {"error": "citation_index and samples must be integers.",
-                 "code": "invalid_payload"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        if not query or not isinstance(response_text, str) or not response_text.strip():
-            return Response(
-                {"error": "query and response_text are required.",
-                 "code": "invalid_payload"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        if len(response_text) > self.MAX_RESPONSE_CHARS:
-            return Response(
-                {"error": f"response_text must be {self.MAX_RESPONSE_CHARS} characters or fewer.",
-                 "code": "response_too_long"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        serializer = GeoJudgeRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        user_id = getattr(request.user, "id", None)
 
         scores = subjective_impression.score_citation(
-            query=query,
-            response_text=response_text,
-            citation_index=citation_index,
-            citation_url=citation_url,
-            samples=samples,
-            user_id=getattr(request.user, "id", None),
+            query=data["query"],
+            response_text=data["response_text"],
+            citation_index=data["citation_index"],
+            citation_url=data.get("citation_url", ""),
+            samples=data.get("samples", 1),
+            user_id=user_id,
         )
         return Response({
             "scores":          scores,
-            "quota_remaining": subjective_impression.quota_remaining(
-                getattr(request.user, "id", None),
-            ),
-            "daily_limit":     subjective_impression.quota_for_user(
-                getattr(request.user, "id", None),
-            ),
+            "quota_remaining": subjective_impression.quota_remaining(user_id),
+            "daily_limit":     subjective_impression.quota_for_user(user_id),
         })

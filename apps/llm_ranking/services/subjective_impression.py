@@ -27,11 +27,11 @@ import json
 import logging
 import re
 import statistics
-from datetime import datetime, timezone
 from typing import Callable
 
 from django.conf import settings
-from django.core.cache import cache
+
+from core.quota import DailyQuota
 
 logger = logging.getLogger("apps")
 
@@ -113,36 +113,25 @@ Definitions:
 Keep each "reason" under 20 words."""
 
 
-# ── Per-user daily quota (mirrors google_search.py) ───────────────────────
+# ── Per-user daily quota ──────────────────────────────────────────────────
 
-def _today_str() -> str:
-    return datetime.now(timezone.utc).strftime("%Y%m%d")
-
-
-def _quota_key(user_id) -> str:
-    return f"geval:quota:{user_id or 'anon'}:{_today_str()}"
+_quota = DailyQuota(
+    namespace="geval",
+    setting_name="CLAUDE_JUDGE_DAILY_LIMIT_PER_USER",
+    default_limit=DEFAULT_DAILY_LIMIT_PER_USER,
+)
 
 
 def quota_for_user(user_id) -> int:
-    return int(getattr(
-        settings,
-        "CLAUDE_JUDGE_DAILY_LIMIT_PER_USER",
-        DEFAULT_DAILY_LIMIT_PER_USER,
-    ))
+    return _quota.limit(user_id)
 
 
 def quota_remaining(user_id) -> int:
-    used = int(cache.get(_quota_key(user_id)) or 0)
-    return max(0, quota_for_user(user_id) - used)
+    return _quota.remaining(user_id)
 
 
 def _consume_quota(user_id, n: int = 1) -> bool:
-    key = _quota_key(user_id)
-    used = int(cache.get(key) or 0)
-    if used + n > quota_for_user(user_id):
-        return False
-    cache.set(key, used + n, timeout=60 * 60 * 26)
-    return True
+    return _quota.consume(user_id, n)
 
 
 # ── Judge call ────────────────────────────────────────────────────────────
