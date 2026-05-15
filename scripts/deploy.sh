@@ -134,8 +134,13 @@ dep_validate_env() {
   local PROVIDER_STR="ANTHROPIC_API_KEY OPENAI_API_KEY GEMINI_API_KEY PERPLEXITY_API_KEY GOOGLE_API_KEY|GOOGLE_SEARCH_API_KEY GOOGLE_CSE_ID|GOOGLE_SEARCH_ENGINE_ID"
   local OPTIONAL_STR="DEEPSEEK_API_KEY SERPAPI_KEY STRIPE_SECRET_KEY SENDGRID_API_KEY GOOGLE_OAUTH_CLIENT_ID GOOGLE_CSE_DAILY_LIMIT_PER_USER CLAUDE_JUDGE_DAILY_LIMIT_PER_USER CLAUDE_REWRITE_DAILY_LIMIT_PER_USER"
 
-  local out
-  out=$(ssh "${SSH_OPTS[@]}" "$EC2_USER@$EC2_HOST" bash -s <<REMOTE
+  # macOS ships bash 3.2 which mis-parses heredocs inside command
+  # substitution when the body contains ')' (every case pattern).
+  # Write the remote script to a tempfile and pipe it via stdin
+  # instead. Works on every bash from 3.2 upward.
+  local _tmp_remote
+  _tmp_remote=$(mktemp)
+  cat > "$_tmp_remote" <<REMOTE
 set -e
 cd "$REMOTE_DIR"
 if [ ! -f .env.prod ]; then
@@ -213,7 +218,9 @@ echo "OPTIONAL_MISSING:\$optional_missing"
 echo "SANITY:\$sanity_warn"
 echo "DUPLICATES:\$duplicates"
 REMOTE
-  )
+  local out
+  out=$(ssh "${SSH_OPTS[@]}" "$EC2_USER@$EC2_HOST" bash -s < "$_tmp_remote")
+  rm -f "$_tmp_remote"
 
   if grep -q "^MISSING_FILE$" <<<"$out"; then
     die ".env.prod missing at $EC2_HOST:$REMOTE_DIR — create it from .env.prod.example first."
