@@ -144,7 +144,8 @@ dep_preflight() {
 #   --clean → docker system prune -af + docker volume prune -f
 #             (aggressive: removes ALL unused images, networks, volumes)
 dep_reclaim_disk() {
-  local mode="$1"
+  # ${1:-} so the default 'safe' call (no arg) doesn't trip `set -u`.
+  local mode="${1:-}"
   if [[ "$mode" == "aggressive" ]]; then
     step "Reclaiming disk (aggressive — docker system prune -af + volumes)"
     ssh_remote "docker system prune -af 2>&1 | tail -3" | sed 's/^/      /'
