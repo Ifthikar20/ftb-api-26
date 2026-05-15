@@ -23,6 +23,7 @@
 #    --logs          tail container logs for 60s
 #    --inspect-env   dump key names in remote .env.prod (no values)
 #    --force         bypass critical-secret + prod-sanity blockers
+#    --clean         docker system prune -af before build (aggressive)
 #
 #  Dev flags (--no-beat / --web-only) apply to the 'dev' subcommand.
 #  Migrate flags (--check) apply to the 'migrate' subcommand.
@@ -69,7 +70,7 @@ remote_compose() { ssh_remote "cd $REMOTE_DIR && docker compose -f $COMPOSE_FILE
 # ════════════════════════════════════════════════════════════════════
 # Subcommand: deploy
 # ════════════════════════════════════════════════════════════════════
-LOCAL_SHA=""; TARGET_SHA=""; PRIOR_SHA=""; DEPLOYED_SHA=""; SKIP_BUILD=0; FORCE="0"
+LOCAL_SHA=""; TARGET_SHA=""; PRIOR_SHA=""; DEPLOYED_SHA=""; SKIP_BUILD=0; FORCE="0"; CLEAN="0"
 
 dep_preflight() {
   step "Pre-flight"
@@ -122,6 +123,38 @@ dep_preflight() {
   ssh_remote "echo ok" >/dev/null 2>&1 \
     || die "Cannot SSH to $EC2_USER@$EC2_HOST (check PEM key + security group)"
   ok "Reachable: $EC2_USER@$EC2_HOST"
+
+  # Surface disk usage early so the user sees pressure before pip
+  # downloads 200 MB and the build crashes on layer-extract with
+  # 'no space left on device'.
+  step "Remote disk usage on /"
+  ssh_remote "df -h / | awk 'NR==2 {printf \"      %s used, %s avail (%s of %s)\n\", \$3, \$4, \$5, \$2}'"
+  # Pull the avail-in-GB integer; warn if it's tight.
+  local avail_g
+  avail_g=$(ssh_remote "df -BG / | awk 'NR==2 {gsub(/G/, \"\", \$4); print \$4}'" 2>/dev/null || echo "")
+  if [[ -n "$avail_g" && "$avail_g" =~ ^[0-9]+$ && "$avail_g" -lt 5 ]]; then
+    warn "Less than 5 GB free — Docker builds typically need 3-4 GB headroom."
+    warn "Re-run with --clean to docker-system-prune before building."
+  fi
+}
+
+# Reclaim disk space on the remote. Two modes:
+#   default → docker image prune -f + docker builder prune -f
+#             (safe: only removes dangling images / unreferenced build cache)
+#   --clean → docker system prune -af + docker volume prune -f
+#             (aggressive: removes ALL unused images, networks, volumes)
+dep_reclaim_disk() {
+  local mode="$1"
+  if [[ "$mode" == "aggressive" ]]; then
+    step "Reclaiming disk (aggressive — docker system prune -af + volumes)"
+    ssh_remote "docker system prune -af 2>&1 | tail -3" | sed 's/^/      /'
+    ssh_remote "docker volume prune -f 2>&1 | tail -3" | sed 's/^/      /'
+  else
+    step "Reclaiming disk (dangling images + build cache)"
+    ssh_remote "docker image prune -f 2>&1 | tail -3" | sed 's/^/      /'
+    ssh_remote "docker builder prune -f 2>&1 | tail -3" | sed 's/^/      /'
+  fi
+  ssh_remote "df -h / | awk 'NR==2 {printf \"      after: %s used, %s avail\n\", \$3, \$4}'"
 }
 
 dep_validate_env() {
@@ -328,6 +361,16 @@ dep_deploy() {
     return
   fi
 
+  # Reclaim disk before building. With --clean, run the aggressive
+  # 'docker system prune -af'; otherwise just prune dangling images +
+  # build cache. Either way prevents the 'no space left on device'
+  # extract-layer failure that bit us last deploy.
+  if [[ "$CLEAN" == "1" ]]; then
+    dep_reclaim_disk aggressive
+  else
+    dep_reclaim_disk
+  fi
+
   local cache_bust; cache_bust=$(date +%s)
 
   step "Rebuild backend (web + celery)"
@@ -444,6 +487,7 @@ cmd_deploy() {
   for arg in "$@"; do
     case "$arg" in
       --force)        FORCE="1" ;;
+      --clean)        CLEAN="1" ;;
       --no-test)      sub_mode="deploy" ;;
       --test)         sub_mode="test" ;;
       --logs)         sub_mode="logs" ;;
