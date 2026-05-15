@@ -302,7 +302,7 @@ via Hunter's MM iteration (no learning rate, monotone log-likelihood improvement
 
 Implementation: `services/plackett_luce.py` (pure Python, no NumPy dependency). Persisted on `LLMRankingAudit.brand_strengths` as `{brand: 0..1}`.
 
-**Offline evaluation:** `scripts/eval_ranking.py` reports NDCG@5 and MRR over completed audits, comparing the predicted ranking from `brand_strengths` against the empirical per-prompt ordering.
+**Offline evaluation:** `bash scripts/deploy.sh eval` reports NDCG@5 and MRR over completed audits, comparing the predicted ranking from `brand_strengths` against the empirical per-prompt ordering.
 
 ---
 

@@ -1,48 +1,44 @@
 #!/usr/bin/env bash
 # ════════════════════════════════════════════════════════════════════
-#  FetchBot — Deploy
+#  FetchBot — single-file dev + deploy entry point.
 #
-#  Runs FROM your laptop and SSHs into the EC2 host. One script,
-#  four modes. Replaces the old deploy.sh + deploy_and_test.sh +
-#  deploy_and_monitor.sh trio.
+#  One script. Multiple subcommands. Replaces deploy.sh,
+#  deploy_and_test.sh, deploy_and_monitor.sh, dev.sh, migrate_all.sh,
+#  health_check.py, seed_data.py, eval_ranking.py.
 #
 #  Usage:
-#    bash scripts/deploy.sh              # deploy + smoke-test (default)
-#    bash scripts/deploy.sh --no-test    # deploy without smoke-test
-#    bash scripts/deploy.sh --test       # smoke-test only, no deploy
-#    bash scripts/deploy.sh --logs       # tail container logs for 60s
-#    bash scripts/deploy.sh --inspect-env # dump key names in remote .env.prod
-#    bash scripts/deploy.sh --force      # bypass env-validation blockers
-#    bash scripts/deploy.sh --help
+#    bash scripts/deploy.sh                  # alias for 'deploy'
+#    bash scripts/deploy.sh deploy [flags]   # production deploy
+#    bash scripts/deploy.sh dev [flags]      # local Django + Celery
+#    bash scripts/deploy.sh migrate [flags]  # local Django migrations
+#    bash scripts/deploy.sh seed             # seed dev DB
+#    bash scripts/deploy.sh eval             # NDCG@5 / MRR ranking eval
+#    bash scripts/deploy.sh health           # container DB+cache probe
+#    bash scripts/deploy.sh install-hooks    # bind git pre-commit
+#    bash scripts/deploy.sh help
 #
-#  --force downgrades CRITICAL-secret + production-sanity errors to
-#  warnings so an incomplete .env.prod can still ship. Use with care:
-#  the missing keys mean the app won't start (DJANGO_SECRET_KEY,
-#  JWT_SIGNING_KEY, FIELD_ENCRYPTION_KEY, DB_PASSWORD) or production
-#  is running with DEBUG=True (tracebacks leak to public).
-#  Provider keys (Anthropic/OpenAI/Gemini/etc.) ALWAYS warn, never
-#  block — those features just degrade if a key is absent.
+#  Deploy flags (only apply to the 'deploy' subcommand):
+#    --no-test       deploy without smoke-test
+#    --test          smoke-test only, no deploy
+#    --logs          tail container logs for 60s
+#    --inspect-env   dump key names in remote .env.prod (no values)
+#    --force         bypass critical-secret + prod-sanity blockers
 #
-#  Environment overrides (all optional):
-#    BRANCH       git branch to deploy   (default: main)
-#    EC2_HOST     SSH host               (default: 100.31.135.211)
-#    EC2_USER     SSH user               (default: ubuntu)
-#    PEM_KEY      path to SSH key        (default: <repo>/fynda-deploy.pem)
-#    REMOTE_DIR   app dir on the server  (default: /opt/fetchbot/ftb-api-26)
-#    PUBLIC_HOST  smoke-test target      (default: https://fetchbot.ai)
+#  Dev flags (--no-beat / --web-only) apply to the 'dev' subcommand.
+#  Migrate flags (--check) apply to the 'migrate' subcommand.
 #
-#  First-time EC2 setup (apt update, Docker install, swap, repo
-#  clone) is NOT done here — it's a one-time concern. Bootstrap a
-#  fresh host with the commands in docs/EC2_BOOTSTRAP.md. This
-#  script assumes Docker, git, and the repo are already on the box.
+#  Environment overrides (deploy):
+#    BRANCH=main  EC2_HOST=…  EC2_USER=ubuntu  PEM_KEY=…
+#    REMOTE_DIR=/opt/fetchbot/ftb-api-26  PUBLIC_HOST=https://fetchbot.ai
 # ════════════════════════════════════════════════════════════════════
 
 set -euo pipefail
 
-# ── Config ──────────────────────────────────────────────────────────
+# ── Repo root ────────────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+# ── Deploy config (env-overridable) ──────────────────────────────────
 BRANCH="${BRANCH:-main}"
 EC2_HOST="${EC2_HOST:-100.31.135.211}"
 EC2_USER="${EC2_USER:-ubuntu}"
@@ -53,7 +49,7 @@ COMPOSE_FILE="docker/docker-compose.prod.yml"
 
 SSH_OPTS=(-i "$PEM_KEY" -o StrictHostKeyChecking=accept-new -o LogLevel=ERROR)
 
-# ── Style ───────────────────────────────────────────────────────────
+# ── Style ────────────────────────────────────────────────────────────
 B=$'\033[1m'; R=$'\033[0;31m'; G=$'\033[0;32m'; Y=$'\033[1;33m'
 C=$'\033[0;36m'; D=$'\033[2m'; N=$'\033[0m'
 banner() {
@@ -70,13 +66,12 @@ die()  { err "$*"; exit 1; }
 ssh_remote()     { ssh "${SSH_OPTS[@]}" "$EC2_USER@$EC2_HOST" "$@"; }
 remote_compose() { ssh_remote "cd $REMOTE_DIR && docker compose -f $COMPOSE_FILE $*"; }
 
-# ── State carried between phases ────────────────────────────────────
-LOCAL_SHA=""; TARGET_SHA=""; PRIOR_SHA=""; DEPLOYED_SHA=""; SKIP_BUILD=0
+# ════════════════════════════════════════════════════════════════════
+# Subcommand: deploy
+# ════════════════════════════════════════════════════════════════════
+LOCAL_SHA=""; TARGET_SHA=""; PRIOR_SHA=""; DEPLOYED_SHA=""; SKIP_BUILD=0; FORCE="0"
 
-# ════════════════════════════════════════════════════════════════════
-# Phase 1 — Pre-flight (local checks)
-# ════════════════════════════════════════════════════════════════════
-preflight() {
+dep_preflight() {
   step "Pre-flight"
   [[ -f "$PEM_KEY" ]] || die "PEM key not found: $PEM_KEY"
   command -v git >/dev/null || die "git not installed"
@@ -90,8 +85,6 @@ preflight() {
   LOCAL_SHA=$(git rev-parse HEAD)
   ok "Local HEAD: ${LOCAL_SHA:0:12} ($(git log -1 --format=%s))"
 
-  # Warn (but don't block) on a dirty tree — those changes will NOT
-  # deploy because we ship from origin/$BRANCH, not the local copy.
   if ! git diff --quiet \
        || ! git diff --cached --quiet \
        || [[ -n "$(git ls-files --others --exclude-standard)" ]]; then
@@ -131,32 +124,16 @@ preflight() {
   ok "Reachable: $EC2_USER@$EC2_HOST"
 }
 
-# ════════════════════════════════════════════════════════════════════
-# Phase 2 — Validate remote .env.prod
-# Catches missing/placeholder keys BEFORE we restart anything.
-# ════════════════════════════════════════════════════════════════════
-validate_env() {
+dep_validate_env() {
   step "Validate remote .env.prod"
 
-  # Three tiers of env vars:
-  #   CRITICAL — app literally cannot start safely without these.
-  #              Blocks deploy unless --force is passed.
-  #   PROVIDER — third-party API keys. Missing = that feature's
-  #              degraded (no Claude / no Perplexity / no citations),
-  #              but the app starts and other features work. Warns,
-  #              never blocks.
-  #   OPTIONAL — billing, email, OAuth, daily-quota knobs. Warns.
-  #
-  # Slot names may use 'A|B' to declare an alias — any one of the
-  # names supplies the value (e.g. GOOGLE_API_KEY|GOOGLE_SEARCH_API_KEY).
+  # CRITICAL — blocks deploy unless --force is passed.
+  # PROVIDER — warn only (missing = that feature degrades).
+  # OPTIONAL — informational.
   local CRITICAL_STR="DJANGO_SECRET_KEY JWT_SIGNING_KEY FIELD_ENCRYPTION_KEY DB_PASSWORD"
   local PROVIDER_STR="ANTHROPIC_API_KEY OPENAI_API_KEY GEMINI_API_KEY PERPLEXITY_API_KEY GOOGLE_API_KEY|GOOGLE_SEARCH_API_KEY GOOGLE_CSE_ID|GOOGLE_SEARCH_ENGINE_ID"
   local OPTIONAL_STR="DEEPSEEK_API_KEY SERPAPI_KEY STRIPE_SECRET_KEY SENDGRID_API_KEY GOOGLE_OAUTH_CLIENT_ID GOOGLE_CSE_DAILY_LIMIT_PER_USER CLAUDE_JUDGE_DAILY_LIMIT_PER_USER CLAUDE_REWRITE_DAILY_LIMIT_PER_USER"
 
-  # Force bash on the remote (Ubuntu's /bin/sh is dash, and we use
-  # ${!var} indirect expansion + [[ … == … ]] which are bash-only).
-  # Pipe the script over stdin so the laptop's shell never gets
-  # tangled in escaping.
   local out
   out=$(ssh "${SSH_OPTS[@]}" "$EC2_USER@$EC2_HOST" bash -s <<REMOTE
 set -e
@@ -165,95 +142,42 @@ if [ ! -f .env.prod ]; then
   echo "MISSING_FILE"
   exit 0
 fi
-
-# CRLF normalisation — a .env.prod edited on Windows / pasted from a
-# chat will source successfully but every value carries a trailing
-# carriage return, and the next subshell treats them as missing.
 if grep -q \$'\r' .env.prod 2>/dev/null; then
-  TMP=\$(mktemp)
-  tr -d '\r' < .env.prod > "\$TMP"
-  set -a; . "\$TMP"; set +a
-  rm -f "\$TMP"
+  TMP=\$(mktemp); tr -d '\r' < .env.prod > "\$TMP"
+  set -a; . "\$TMP"; set +a; rm -f "\$TMP"
 else
   set -a; . ./.env.prod; set +a
 fi
 
-# Helper: is the given value "obviously a placeholder"?
-#   CHANGE_ME…   – our template literal
-#   change-me…   – the lowercase variant
-#   bare "…"     – left as ellipsis
-#   ends in "…"  – AIza..., sk-..., 017..., etc.
-#   sk-...       – OpenAI placeholder shape
-#   AIza...      – Google placeholder shape
-#   017...       – common CSE-id placeholder
-#   whsec_...    – Stripe placeholder
-#   price_...    – Stripe placeholder
-#   SG....       – SendGrid placeholder
 is_placeholder() {
   local v=\$1
-  case "\$v" in
-    CHANGE_ME*|change-me*|change_me*) return 0 ;;
-    "..."|"\${v%...}...") :;;
-  esac
-  case "\$v" in
-    *...) return 0 ;;
-    sk-...) return 0 ;;
-    AIza...) return 0 ;;
-    017...) return 0 ;;
-    whsec_...) return 0 ;;
-    price_...) return 0 ;;
-    SG....) return 0 ;;
-  esac
+  case "\$v" in CHANGE_ME*|change-me*|change_me*) return 0;; esac
+  case "\$v" in *...) return 0;; esac
   return 1
 }
-
-# Resolve one slot — which may have aliases like "GOOGLE_API_KEY|GOOGLE_SEARCH_API_KEY".
-# Echoes "ok", "missing", or "placeholder" along with the resolved key name.
-#
-# Tries every name in the slot. If ANY one resolves to a real
-# (non-placeholder) value, the slot is "ok". Otherwise the slot is
-# "placeholder" (if at least one was a placeholder) or "missing".
-# This means an alias can rescue a placeholder canonical — e.g.
-# GOOGLE_API_KEY=AIza... + GOOGLE_SEARCH_API_KEY=AIzaSyBalM… → ok.
 resolve_slot() {
-  local slot=\$1
-  local IFS='|'
-  read -ra names <<< "\$slot"
-  local saw_placeholder=""
+  local slot=\$1; local IFS='|'; read -ra names <<< "\$slot"; local saw_placeholder=""
   for name in "\${names[@]}"; do
     local val="\${!name:-}"
     if [ -n "\$val" ]; then
-      if is_placeholder "\$val"; then
-        saw_placeholder="\$name"
-        continue
-      fi
-      echo "ok:\$name"
-      return
+      if is_placeholder "\$val"; then saw_placeholder="\$name"; continue; fi
+      echo "ok:\$name"; return
     fi
   done
-  if [ -n "\$saw_placeholder" ]; then
-    echo "placeholder:\$saw_placeholder"
-  else
-    echo "missing:\${names[0]}"
-  fi
+  if [ -n "\$saw_placeholder" ]; then echo "placeholder:\$saw_placeholder"
+  else echo "missing:\${names[0]}"; fi
 }
 
-crit_missing=""
-crit_placeholder=""
-prov_missing=""
-prov_placeholder=""
-optional_missing=""
+crit_missing=""; crit_placeholder=""; prov_missing=""; prov_placeholder=""; optional_missing=""
 for slot in $CRITICAL_STR; do
-  res=\$(resolve_slot "\$slot")
-  s="\${res%%:*}"; n="\${res#*:}"
+  res=\$(resolve_slot "\$slot"); s="\${res%%:*}"; n="\${res#*:}"
   case "\$s" in
     missing)     crit_missing="\$crit_missing \$slot" ;;
     placeholder) crit_placeholder="\$crit_placeholder \$n" ;;
   esac
 done
 for slot in $PROVIDER_STR; do
-  res=\$(resolve_slot "\$slot")
-  s="\${res%%:*}"; n="\${res#*:}"
+  res=\$(resolve_slot "\$slot"); s="\${res%%:*}"; n="\${res#*:}"
   case "\$s" in
     missing)     prov_missing="\$prov_missing \$slot" ;;
     placeholder) prov_placeholder="\$prov_placeholder \$n" ;;
@@ -261,14 +185,9 @@ for slot in $PROVIDER_STR; do
 done
 for v in $OPTIONAL_STR; do
   val="\${!v:-}"
-  if [ -z "\$val" ]; then
-    optional_missing="\$optional_missing \$v"
-  fi
+  [ -z "\$val" ] && optional_missing="\$optional_missing \$v"
 done
 
-# Production-config sanity checks. These don't fail validation by
-# themselves but they almost always indicate a dev .env copied to a
-# prod path, which causes hours of pain later.
 sanity_warn=""
 if [[ "\${DJANGO_SETTINGS_MODULE:-}" == *.dev || "\${DJANGO_SETTINGS_MODULE:-}" == *.development ]]; then
   sanity_warn="\$sanity_warn DJANGO_SETTINGS_MODULE=\${DJANGO_SETTINGS_MODULE}_(should-be-config.settings.prod);"
@@ -281,10 +200,6 @@ if [[ "\${ALLOWED_HOSTS:-}" == "localhost"* || "\${ALLOWED_HOSTS:-}" == *"127.0.
   sanity_warn="\$sanity_warn ALLOWED_HOSTS=\${ALLOWED_HOSTS}_(missing-prod-domain);"
 fi
 
-# Duplicate-key detection — only the LAST definition of a key wins on
-# 'source', so a stale placeholder above a real value is silently
-# fine, but a stale REAL value above another real value is a sneaky
-# foot-gun.
 duplicates=\$(tr -d '\r' < .env.prod \
   | grep -E '^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*=' \
   | sed -E 's/^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*)=.*/\1/' \
@@ -299,6 +214,7 @@ echo "SANITY:\$sanity_warn"
 echo "DUPLICATES:\$duplicates"
 REMOTE
   )
+
   if grep -q "^MISSING_FILE$" <<<"$out"; then
     die ".env.prod missing at $EC2_HOST:$REMOTE_DIR — create it from .env.prod.example first."
   fi
@@ -312,25 +228,17 @@ REMOTE
   sanity=$(grep "^SANITY:"     <<<"$out" | cut -d: -f2-)
   duplicates=$(grep "^DUPLICATES:" <<<"$out" | cut -d: -f2-)
 
-  # ── Tier 1: provider keys (warn only — feature degrades, app still runs) ──
   if [[ -n "${prov_missing// }" || -n "${prov_placeholder// }" ]]; then
     warn "Provider API keys absent or placeholder — those features will be disabled:"
     [[ -n "${prov_missing// }" ]]     && printf "      %sMissing:%s            %s\n" "$Y" "$N" "$prov_missing"
     [[ -n "${prov_placeholder// }" ]] && printf "      %sStill a placeholder:%s %s\n" "$Y" "$N" "$prov_placeholder"
   fi
-
-  # ── Tier 2: optional knobs (informational) ──
   if [[ -n "${optional_missing// }" ]]; then
     warn "Optional keys not set (defaults will apply):$optional_missing"
   fi
-
-  # ── Tier 3: duplicates (informational — last-defined wins) ──
   if [[ -n "${duplicates// }" ]]; then
-    warn "Keys defined more than once in .env.prod (last definition wins, earlier ones are dead):"
-    printf "      %s%s%s\n" "$Y" "$duplicates" "$N"
+    warn "Keys defined more than once (last definition wins): $duplicates"
   fi
-
-  # ── Tier 4: production sanity (warn — pass --force to override silently) ──
   if [[ -n "${sanity// }" ]]; then
     if [[ "$FORCE" == "1" ]]; then
       warn "Production sanity check (overridden by --force):"
@@ -341,8 +249,6 @@ REMOTE
       printf "      %s%s%s\n" "$Y" "${item//_/ }" "$N"
     done
   fi
-
-  # ── Tier 5: critical secrets (BLOCKS deploy unless --force) ──
   if [[ -n "${crit_missing// }" || -n "${crit_placeholder// }" ]]; then
     if [[ "$FORCE" == "1" ]]; then
       warn "Critical secrets missing/placeholder — proceeding anyway (--force):"
@@ -356,65 +262,29 @@ REMOTE
       printf "      Without these the app cannot start safely (DJANGO_SECRET_KEY,\n"
       printf "      JWT_SIGNING_KEY, FIELD_ENCRYPTION_KEY, DB_PASSWORD).\n\n"
       printf "      %sInspect what is actually set (names only):%s\n" "$Y" "$N"
-      printf "         bash scripts/deploy.sh --inspect-env\n\n"
+      printf "         bash scripts/deploy.sh deploy --inspect-env\n\n"
       printf "      %sFix the file in place:%s\n" "$Y" "$N"
       printf "         ssh -i %s %s@%s 'sudo nano %s/.env.prod'\n\n" "$PEM_KEY" "$EC2_USER" "$EC2_HOST" "$REMOTE_DIR"
-      printf "      %sOr bypass these checks (NOT for production traffic):%s\n" "$Y" "$N"
-      printf "         bash scripts/deploy.sh --force\n"
+      printf "      %sOr bypass (NOT for production traffic):%s\n" "$Y" "$N"
+      printf "         bash scripts/deploy.sh deploy --force\n"
       exit 1
     fi
   fi
-
   ok ".env.prod accepted"
 }
 
-# Dumps the KEY NAMES set in the remote .env.prod (no values cross the
-# wire). Use when validate_env reports keys as missing and you want to
-# confirm whether they're truly absent vs. mis-named vs. has a parse
-# issue (e.g. CRLF, unquoted value with #).
-inspect_env() {
-  step "Inspect remote .env.prod"
-  ssh "${SSH_OPTS[@]}" "$EC2_USER@$EC2_HOST" bash -s <<REMOTE
-set -e
-cd "$REMOTE_DIR"
-if [ ! -f .env.prod ]; then
-  echo "no .env.prod found at $REMOTE_DIR"
-  exit 1
-fi
-echo "Keys defined in $REMOTE_DIR/.env.prod (names only):"
-echo "──────────────────────────────────────────────────────"
-# Grab everything that looks like KEY=value, normalising CRLF first.
-tr -d '\r' < .env.prod \
-  | grep -E '^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*=' \
-  | sed -E 's/^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*)=.*/  \1/' \
-  | sort -u
-echo "──────────────────────────────────────────────────────"
-echo "Total: \$(tr -d '\r' < .env.prod | grep -cE '^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*=') keys"
-REMOTE
-}
-
-# ════════════════════════════════════════════════════════════════════
-# Phase 3 — Capture current production state
-# ════════════════════════════════════════════════════════════════════
-capture_prior() {
+dep_capture_prior() {
   step "Capture current production state"
   PRIOR_SHA=$(ssh_remote "cd $REMOTE_DIR && git rev-parse HEAD" 2>/dev/null || echo "unknown")
   ok "Remote HEAD before deploy: ${PRIOR_SHA:0:12}"
   if [[ "$PRIOR_SHA" == "$TARGET_SHA" ]]; then
     warn "Remote already at target SHA — nothing new to ship."
     read -r -p "    Force rebuild anyway? [y/N] " ans
-    if [[ "$ans" =~ ^[Yy] ]]; then
-      SKIP_BUILD=0
-    else
-      SKIP_BUILD=1
-    fi
+    [[ "$ans" =~ ^[Yy] ]] && SKIP_BUILD=0 || SKIP_BUILD=1
   fi
 }
 
-# ════════════════════════════════════════════════════════════════════
-# Phase 4 — Deploy (pull, rebuild, migrate)
-# ════════════════════════════════════════════════════════════════════
-deploy() {
+dep_deploy() {
   step "Pull latest code on remote"
   ssh_remote "cd $REMOTE_DIR \
     && git fetch origin $BRANCH --quiet \
@@ -431,16 +301,13 @@ deploy() {
     return
   fi
 
-  local cache_bust
-  cache_bust=$(date +%s)
+  local cache_bust; cache_bust=$(date +%s)
 
   step "Rebuild backend (web + celery)"
   remote_compose "build --build-arg CACHE_DATE=$cache_bust web celery"
   remote_compose "up -d web celery"
   ok "Backend rebuilt and restarted"
 
-  # Frontend is a one-shot init container — `up -d` won't re-run it
-  # once it has exited, so we explicitly rm + run + restart nginx.
   step "Rebuild frontend bundle (no-cache)"
   remote_compose "build --no-cache --build-arg CACHE_DATE=$cache_bust frontend"
   remote_compose "rm -f frontend" >/dev/null 2>&1 || true
@@ -455,19 +322,14 @@ deploy() {
   ok "Migrations applied"
 }
 
-# ════════════════════════════════════════════════════════════════════
-# Phase 5 — Post-deploy validation
-# ════════════════════════════════════════════════════════════════════
-validate_deploy() {
+dep_validate_deploy() {
   step "Post-deploy validation"
-
   DEPLOYED_SHA=$(ssh_remote "cd $REMOTE_DIR && git rev-parse HEAD")
   if [[ "$DEPLOYED_SHA" == "$TARGET_SHA" ]]; then
     ok "Deployed SHA matches target (${DEPLOYED_SHA:0:12})"
   else
     err "SHA mismatch: deployed=${DEPLOYED_SHA:0:12} target=${TARGET_SHA:0:12}"
   fi
-
   local unapplied
   unapplied=$(remote_compose "exec -T web python manage.py showmigrations --plan" 2>/dev/null \
               | grep -c '^\[ \]' || true)
@@ -476,36 +338,21 @@ validate_deploy() {
   else
     warn "$unapplied migrations still unapplied"
   fi
-
   ok "Container status:"
   remote_compose "ps --format 'table {{.Service}}\t{{.State}}\t{{.Status}}'" \
     | sed 's/^/      /'
-
   local http
   http=$(ssh_remote "curl -s -o /dev/null -w '%{http_code}' http://localhost/health/" 2>/dev/null || echo "000")
-  if [[ "$http" == "200" ]]; then
-    ok "Health endpoint: HTTP 200"
-  else
-    warn "Health endpoint: HTTP $http"
-  fi
-
+  if [[ "$http" == "200" ]]; then ok "Health endpoint: HTTP 200"
+  else warn "Health endpoint: HTTP $http"; fi
   local celery_pong
   celery_pong=$(remote_compose "exec -T celery celery -A config.celery inspect ping --timeout 5" 2>/dev/null \
                 | grep -c "pong" || true)
-  if [[ "${celery_pong:-0}" -gt 0 ]]; then
-    ok "Celery worker responding"
-  else
-    warn "Celery ping failed (worker may still be warming up)"
-  fi
+  if [[ "${celery_pong:-0}" -gt 0 ]]; then ok "Celery worker responding"
+  else warn "Celery ping failed (worker may still be warming up)"; fi
 }
 
-# ════════════════════════════════════════════════════════════════════
-# Phase 6 — Smoke test
-# Each check: "PATH|EXPECTED_CODE|DESCRIPTION".
-# 401 = endpoint exists + requires auth (right signal for JWT routes).
-# 200 = publicly reachable.
-# ════════════════════════════════════════════════════════════════════
-smoke_test() {
+dep_smoke_test() {
   step "Smoke test: $PUBLIC_HOST"
   local CHECKS=(
     "/health/|200|backend health"
@@ -523,41 +370,21 @@ smoke_test() {
     IFS='|' read -r path expected desc <<< "$row"
     local got
     got=$(curl -s -o /dev/null -w "%{http_code}" "${PUBLIC_HOST}${path}" || echo "000")
-    if [[ "$got" == "$expected" ]]; then
-      ok "$desc → $got"
-    else
-      err "$desc → got $got (expected $expected)"
-      FAIL=$((FAIL + 1))
-    fi
+    if [[ "$got" == "$expected" ]]; then ok "$desc → $got"
+    else err "$desc → got $got (expected $expected)"; FAIL=$((FAIL + 1)); fi
   done
-
-  # POST /billing/checkout/ {pro} should 401 (auth-gated). 400 means
-  # the backend rejected "pro" as an invalid plan = old code is live.
   local post_got
   post_got=$(curl -s -X POST -H "Content-Type: application/json" \
-    -d '{"plan":"pro"}' \
-    -o /dev/null -w "%{http_code}" \
+    -d '{"plan":"pro"}' -o /dev/null -w "%{http_code}" \
     "${PUBLIC_HOST}/api/v1/billing/checkout/" || echo "000")
-  if [[ "$post_got" == "401" ]]; then
-    ok "POST /billing/checkout/ {pro} → 401 (plan accepted)"
-  else
-    err "POST /billing/checkout/ {pro} → $post_got (expected 401; 400 = old code)"
-    FAIL=$((FAIL + 1))
-  fi
-
-  if [[ $FAIL -gt 0 ]]; then
-    err "Smoke test failed — $FAIL check(s) regressed."
-    return 1
-  fi
+  if [[ "$post_got" == "401" ]]; then ok "POST /billing/checkout/ {pro} → 401 (plan accepted)"
+  else err "POST /billing/checkout/ {pro} → $post_got (expected 401; 400 = old code)"; FAIL=$((FAIL + 1)); fi
+  if [[ $FAIL -gt 0 ]]; then err "Smoke test failed — $FAIL check(s) regressed."; return 1; fi
   ok "All endpoints responding as expected."
   return 0
 }
 
-# ════════════════════════════════════════════════════════════════════
-# Phase 7 — Tail logs (--logs only)
-# 60s of streaming container logs so you can watch traffic warm up.
-# ════════════════════════════════════════════════════════════════════
-tail_logs() {
+dep_tail_logs() {
   step "Tail container logs for 60s (Ctrl+C to stop earlier)"
   remote_compose "logs --tail=50 --follow --timestamps" &
   local pid=$!
@@ -566,60 +393,348 @@ tail_logs() {
   wait "$pid" 2>/dev/null || true
 }
 
-# ════════════════════════════════════════════════════════════════════
-# Entry point
-# ════════════════════════════════════════════════════════════════════
-usage() {
-  sed -n '3,28p' "$0"
+dep_inspect_env() {
+  step "Inspect remote .env.prod"
+  ssh "${SSH_OPTS[@]}" "$EC2_USER@$EC2_HOST" bash -s <<REMOTE
+set -e
+cd "$REMOTE_DIR"
+if [ ! -f .env.prod ]; then
+  echo "no .env.prod found at $REMOTE_DIR"; exit 1
+fi
+echo "Keys defined in $REMOTE_DIR/.env.prod (names only):"
+echo "──────────────────────────────────────────────────────"
+tr -d '\r' < .env.prod \
+  | grep -E '^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*=' \
+  | sed -E 's/^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*)=.*/  \1/' \
+  | sort -u
+echo "──────────────────────────────────────────────────────"
+echo "Total: \$(tr -d '\r' < .env.prod | grep -cE '^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*=') keys"
+REMOTE
 }
 
-MODE="full"
-FORCE="0"
-# Accept flags in any order; --force can combine with any mode.
-for arg in "$@"; do
-  case "$arg" in
-    --force)        FORCE="1" ;;
-    --no-test)      MODE="deploy" ;;
-    --test)         MODE="test" ;;
-    --logs)         MODE="logs" ;;
-    --inspect-env)  MODE="inspect" ;;
-    --full|"")      MODE="${MODE:-full}" ;;
-    -h|--help)      usage; exit 0 ;;
-    *)              echo "Unknown flag: $arg"; usage; exit 1 ;;
-  esac
-done
-
-banner "FetchBot Deploy — branch=$BRANCH"
-
-case "$MODE" in
-  test)
-    smoke_test
-    exit $?
-    ;;
-  logs)
-    tail_logs
-    exit 0
-    ;;
-  inspect)
-    inspect_env
-    exit 0
-    ;;
-  deploy|full)
-    preflight
-    validate_env
-    capture_prior
-    deploy
-    validate_deploy
-    if [[ "$MODE" == "full" ]]; then
-      if ! smoke_test; then
-        err "Deploy completed but smoke tests failed — investigate before announcing."
-        exit 2
+cmd_deploy() {
+  local sub_mode="full"
+  for arg in "$@"; do
+    case "$arg" in
+      --force)        FORCE="1" ;;
+      --no-test)      sub_mode="deploy" ;;
+      --test)         sub_mode="test" ;;
+      --logs)         sub_mode="logs" ;;
+      --inspect-env)  sub_mode="inspect" ;;
+      --full|"")      ;;
+      *) echo "Unknown deploy flag: $arg"; exit 1 ;;
+    esac
+  done
+  banner "FetchBot Deploy — branch=$BRANCH"
+  case "$sub_mode" in
+    test)    dep_smoke_test; exit $? ;;
+    logs)    dep_tail_logs; exit 0 ;;
+    inspect) dep_inspect_env; exit 0 ;;
+    deploy|full)
+      dep_preflight
+      dep_validate_env
+      dep_capture_prior
+      dep_deploy
+      dep_validate_deploy
+      if [[ "$sub_mode" == "full" ]]; then
+        if ! dep_smoke_test; then
+          err "Deploy completed but smoke tests failed — investigate before announcing."
+          exit 2
+        fi
       fi
-    fi
-    ;;
-esac
+      ;;
+  esac
+  echo ""
+  ok "Deploy complete  →  $PUBLIC_HOST"
+  printf "    Before: %s   After: %s\n" "${PRIOR_SHA:0:12}" "${DEPLOYED_SHA:0:12}"
+  echo ""
+}
 
-echo ""
-ok "Deploy complete  →  $PUBLIC_HOST"
-printf "    Before: %s   After: %s\n" "${PRIOR_SHA:0:12}" "${DEPLOYED_SHA:0:12}"
-echo ""
+# ════════════════════════════════════════════════════════════════════
+# Subcommand: dev (local Django + Celery worker + beat)
+# ════════════════════════════════════════════════════════════════════
+cmd_dev() {
+  local START_BEAT=1 WEB_ONLY=0
+  for arg in "$@"; do
+    case "$arg" in
+      --no-beat)   START_BEAT=0 ;;
+      --web-only)  WEB_ONLY=1 ;;
+      *) echo "Unknown dev flag: $arg"; exit 1 ;;
+    esac
+  done
+
+  cd "$REPO_DIR"
+  if [[ ! -f ".venv/bin/activate" ]]; then
+    err ".venv not found at ${REPO_DIR}/.venv"
+    echo "    Create it with:  python3.12 -m venv .venv && source .venv/bin/activate && pip install -r requirements/dev.txt"
+    exit 1
+  fi
+  # shellcheck disable=SC1091
+  source .venv/bin/activate
+  ok "venv activated ($(python --version))"
+
+  mkdir -p tmp
+  local PIDS=()
+  cleanup_dev() {
+    echo ""
+    step "stopping background services…"
+    for pid in "${PIDS[@]:-}"; do
+      [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null && kill "$pid" 2>/dev/null || true
+    done
+  }
+  trap cleanup_dev EXIT INT TERM
+
+  if [[ $WEB_ONLY -eq 0 ]]; then
+    step "starting Celery worker (logs: tmp/dev-worker.log)"
+    celery -A config worker \
+      -Q ai,default,integrations,webhooks -l info \
+      >tmp/dev-worker.log 2>&1 &
+    PIDS+=($!)
+    if [[ $START_BEAT -eq 1 ]]; then
+      step "starting Celery beat (logs: tmp/dev-beat.log)"
+      celery -A config beat -l info >tmp/dev-beat.log 2>&1 &
+      PIDS+=($!)
+    fi
+  fi
+
+  step "starting Django dev server on http://localhost:8000"
+  warn "(ctrl-c to stop everything)"
+  python manage.py runserver
+}
+
+# ════════════════════════════════════════════════════════════════════
+# Subcommand: migrate (local Django migrations)
+# ════════════════════════════════════════════════════════════════════
+cmd_migrate() {
+  local DRY_RUN=0
+  for arg in "$@"; do
+    case "$arg" in
+      --check|-n) DRY_RUN=1 ;;
+      *) echo "Unknown migrate flag: $arg"; exit 1 ;;
+    esac
+  done
+
+  cd "$REPO_DIR"
+  [[ -f manage.py ]] || die "manage.py not found in $REPO_DIR"
+
+  # Activate venv: .venv, then venv, then env. Fall back to system python with a warning.
+  local activated=""
+  for cand in .venv venv env; do
+    if [[ -f "$REPO_DIR/$cand/bin/activate" ]]; then
+      # shellcheck disable=SC1090
+      source "$REPO_DIR/$cand/bin/activate"
+      activated="$cand"
+      break
+    fi
+  done
+  if [[ -n "$activated" ]]; then
+    ok "venv activated: $activated/ ($(python --version 2>&1))"
+  else
+    warn "No project venv found — falling back to system Python: $(command -v python || echo NONE)"
+  fi
+  command -v python >/dev/null || die "python not on PATH"
+  python -c "import django, environ" 2>/dev/null \
+    || die "Django/django-environ not installed in the active Python. Run: pip install -r requirements/dev.txt"
+
+  export DJANGO_SETTINGS_MODULE="${DJANGO_SETTINGS_MODULE:-config.settings.dev}"
+  ok "DJANGO_SETTINGS_MODULE=$DJANGO_SETTINGS_MODULE"
+
+  step "Pending migrations"
+  python manage.py showmigrations --plan 2>&1 | grep -E '^\[ \]' || echo "  (none — head is clean)"
+
+  if [[ $DRY_RUN -eq 1 ]]; then
+    ok "Dry-run mode — nothing applied."
+    exit 0
+  fi
+
+  step "Applying migrations"
+  python manage.py migrate
+
+  step "Verifying head"
+  local pending
+  pending=$(python manage.py showmigrations --plan | grep -c '^\[ \]' || true)
+  if [[ "$pending" -gt 0 ]]; then
+    warn "$pending migration(s) still pending."
+  else
+    ok "All migrations applied."
+  fi
+}
+
+# ════════════════════════════════════════════════════════════════════
+# Subcommand: seed (dev DB)
+# ════════════════════════════════════════════════════════════════════
+cmd_seed() {
+  cd "$REPO_DIR"
+  for cand in .venv venv env; do
+    [[ -f "$REPO_DIR/$cand/bin/activate" ]] && source "$REPO_DIR/$cand/bin/activate" && break
+  done
+  step "Seeding dev DB"
+  DJANGO_SETTINGS_MODULE="${DJANGO_SETTINGS_MODULE:-config.settings.dev}" \
+    python <<'PYEOF'
+import os, sys, django
+sys.path.insert(0, os.getcwd())
+django.setup()
+from apps.accounts.models import User
+from apps.websites.models import Website, WebsiteSettings
+
+admin, c = User.objects.get_or_create(
+    email="admin@growthpilot.io",
+    defaults={"full_name": "Admin User", "company_name": "GrowthPilot",
+              "plan": "scale", "is_staff": True, "is_superuser": True,
+              "is_email_verified": True},
+)
+if c:
+    admin.set_password("AdminPass123!"); admin.save()
+    print(f"  created admin: {admin.email}")
+else:
+    print(f"  admin already exists: {admin.email}")
+
+demo, c = User.objects.get_or_create(
+    email="demo@example.com",
+    defaults={"full_name": "Demo User", "company_name": "Acme Corp",
+              "plan": "growth", "is_email_verified": True},
+)
+if c:
+    demo.set_password("DemoPass123!"); demo.save()
+    print(f"  created demo user: {demo.email}")
+
+site, c = Website.objects.get_or_create(
+    user=demo, url="https://demo.example.com",
+    defaults={"name": "Demo Website", "industry": "SaaS"},
+)
+if c:
+    WebsiteSettings.objects.get_or_create(website=site)
+    print(f"  created website: {site.name}")
+
+print("seed complete")
+PYEOF
+  ok "seed done"
+}
+
+# ════════════════════════════════════════════════════════════════════
+# Subcommand: eval (NDCG@5 / MRR over completed audits)
+# ════════════════════════════════════════════════════════════════════
+cmd_eval() {
+  cd "$REPO_DIR"
+  for cand in .venv venv env; do
+    [[ -f "$REPO_DIR/$cand/bin/activate" ]] && source "$REPO_DIR/$cand/bin/activate" && break
+  done
+  step "Ranking eval (NDCG@5 / MRR)"
+  DJANGO_SETTINGS_MODULE="${DJANGO_SETTINGS_MODULE:-config.settings.dev}" \
+    python <<'PYEOF'
+import math, os, sys, django
+from collections import defaultdict
+sys.path.insert(0, os.getcwd())
+django.setup()
+
+def dcg(rels): return sum(r / math.log2(i + 2) for i, r in enumerate(rels))
+def ndcg_at_k(pred, rel, k=5):
+    pr = [rel.get(b, 0.0) for b in pred[:k]]
+    ir = sorted(rel.values(), reverse=True)[:k]
+    idcg = dcg(ir)
+    return dcg(pr) / idcg if idcg > 0 else 0.0
+
+from apps.llm_ranking.models import LLMRankingAudit
+limit = int(os.environ.get("EVAL_LIMIT", "200"))
+audits = (LLMRankingAudit.objects
+          .filter(status=LLMRankingAudit.STATUS_COMPLETED)
+          .prefetch_related("results")
+          .order_by("-created_at")[:limit])
+
+ndcgs, mrrs, with_signal = [], [], 0
+for a in audits:
+    strengths = a.brand_strengths or {}
+    if not strengths: continue
+    with_signal += 1
+    predicted = sorted(strengths, key=strengths.get, reverse=True)
+    per_prompt = defaultdict(list)
+    for r in a.results.all():
+        if not (r.query_succeeded and r.mention_rank): continue
+        if r.is_mentioned:
+            per_prompt[r.prompt].append((a.business_name, int(r.mention_rank)))
+        for c in r.competitors_mentioned or []:
+            if not isinstance(c, dict): continue
+            pos = c.get("position"); name = (c.get("name") or "").strip()
+            if name and pos:
+                try: per_prompt[r.prompt].append((name, int(pos)))
+                except (TypeError, ValueError): continue
+    for items in per_prompt.values():
+        if not items: continue
+        agg = defaultdict(list)
+        for b, p in items: agg[b].append(p)
+        rel = {b: 1.0 / (sum(ps) / len(ps)) for b, ps in agg.items()}
+        ndcgs.append(ndcg_at_k(predicted, rel, k=5))
+        if a.business_name in predicted:
+            mrrs.append(1.0 / (predicted.index(a.business_name) + 1))
+
+print(f"Audits evaluated:   {with_signal}")
+print(f"Prompts evaluated:  {len(ndcgs)}")
+print(f"NDCG@5:             {(sum(ndcgs)/len(ndcgs)) if ndcgs else 0:.3f}")
+print(f"MRR:                {(sum(mrrs)/len(mrrs)) if mrrs else 0:.3f}")
+PYEOF
+}
+
+# ════════════════════════════════════════════════════════════════════
+# Subcommand: health (container DB+cache probe, exits 0/1)
+# ════════════════════════════════════════════════════════════════════
+cmd_health() {
+  DJANGO_SETTINGS_MODULE="${DJANGO_SETTINGS_MODULE:-config.settings.prod}" \
+    python <<'PYEOF'
+import os, sys, django
+django.setup()
+try:
+    from django.db import connection
+    connection.ensure_connection()
+    from django.core.cache import cache
+    cache.set("health_check", "ok", 30)
+    assert cache.get("health_check") == "ok"
+    print("Health check passed.")
+    sys.exit(0)
+except Exception as e:
+    print(f"Health check failed: {e}", file=sys.stderr)
+    sys.exit(1)
+PYEOF
+}
+
+# ════════════════════════════════════════════════════════════════════
+# Subcommand: install-hooks (bind scripts/git-hooks/* into .git/hooks)
+# ════════════════════════════════════════════════════════════════════
+cmd_install_hooks() {
+  cd "$REPO_DIR"
+  local src="$SCRIPT_DIR/git-hooks"
+  local dst="$REPO_DIR/.git/hooks"
+  [[ -d "$src" ]] || die "no scripts/git-hooks/ directory in this repo"
+  [[ -d "$dst" ]] || die "not a git checkout (.git/hooks missing)"
+  step "Installing git hooks from $src → $dst"
+  for hook in "$src"/*; do
+    name="$(basename "$hook")"
+    [[ "$name" == "install.sh" || "$name" == "README.md" ]] && continue
+    ln -sf "$hook" "$dst/$name"
+    chmod +x "$hook"
+    ok "linked $name"
+  done
+}
+
+# ════════════════════════════════════════════════════════════════════
+# Help
+# ════════════════════════════════════════════════════════════════════
+usage() {
+  sed -n '3,33p' "$0"
+}
+
+# ════════════════════════════════════════════════════════════════════
+# Dispatcher
+# ════════════════════════════════════════════════════════════════════
+case "${1:-}" in
+  ""|--full|--no-test|--test|--logs|--inspect-env|--force)
+    cmd_deploy "$@" ;;
+  deploy)        shift; cmd_deploy "$@" ;;
+  dev)           shift; cmd_dev "$@" ;;
+  migrate)       shift; cmd_migrate "$@" ;;
+  seed)          shift; cmd_seed ;;
+  eval)          shift; cmd_eval ;;
+  health)        shift; cmd_health ;;
+  install-hooks) shift; cmd_install_hooks ;;
+  help|-h|--help) usage; exit 0 ;;
+  *) echo "Unknown command: $1"; echo ""; usage; exit 1 ;;
+esac
