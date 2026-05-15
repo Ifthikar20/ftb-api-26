@@ -143,6 +143,17 @@ dep_validate_env() {
   cat > "$_tmp_remote" <<REMOTE
 set -e
 cd "$REMOTE_DIR"
+
+# Slot lists arrive as QUOTED string assignments so the '|' chars
+# in alias slots (GOOGLE_API_KEY|GOOGLE_SEARCH_API_KEY) are just
+# data, not pipeline operators. The for-loops below reference
+# these variables at runtime; word-splitting on whitespace gives
+# us one slot per loop iteration, and the embedded '|' survives
+# untouched into resolve_slot().
+CRITICAL_STR="$CRITICAL_STR"
+PROVIDER_STR="$PROVIDER_STR"
+OPTIONAL_STR="$OPTIONAL_STR"
+
 if [ ! -f .env.prod ]; then
   echo "MISSING_FILE"
   exit 0
@@ -174,21 +185,21 @@ resolve_slot() {
 }
 
 crit_missing=""; crit_placeholder=""; prov_missing=""; prov_placeholder=""; optional_missing=""
-for slot in $CRITICAL_STR; do
+for slot in \$CRITICAL_STR; do
   res=\$(resolve_slot "\$slot"); s="\${res%%:*}"; n="\${res#*:}"
   case "\$s" in
     missing)     crit_missing="\$crit_missing \$slot" ;;
     placeholder) crit_placeholder="\$crit_placeholder \$n" ;;
   esac
 done
-for slot in $PROVIDER_STR; do
+for slot in \$PROVIDER_STR; do
   res=\$(resolve_slot "\$slot"); s="\${res%%:*}"; n="\${res#*:}"
   case "\$s" in
     missing)     prov_missing="\$prov_missing \$slot" ;;
     placeholder) prov_placeholder="\$prov_placeholder \$n" ;;
   esac
 done
-for v in $OPTIONAL_STR; do
+for v in \$OPTIONAL_STR; do
   val="\${!v:-}"
   [ -z "\$val" ] && optional_missing="\$optional_missing \$v"
 done
