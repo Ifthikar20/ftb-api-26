@@ -356,8 +356,16 @@ PERPLEXITY_API_KEY = env("PERPLEXITY_API_KEY", default="")
 # Google Programmable Search (Custom Search JSON API). Used by the
 # Model Test pipeline to fetch real publisher URLs for the citations
 # UI — see apps/llm_ranking/services/google_search.py.
-GOOGLE_API_KEY = env("GOOGLE_API_KEY", default="")
-GOOGLE_CSE_ID = env("GOOGLE_CSE_ID", default="")
+# Google Programmable Search (Custom Search JSON API).
+#
+# Historically configured as GOOGLE_SEARCH_API_KEY + GOOGLE_SEARCH_ENGINE_ID
+# in some deployments; current code reads GOOGLE_API_KEY + GOOGLE_CSE_ID.
+# Fall back to the legacy names so an existing .env doesn't break, but
+# prefer the new names if both are set.
+GOOGLE_API_KEY = env("GOOGLE_API_KEY", default="") \
+    or env("GOOGLE_SEARCH_API_KEY", default="")
+GOOGLE_CSE_ID = env("GOOGLE_CSE_ID", default="") \
+    or env("GOOGLE_SEARCH_ENGINE_ID", default="")
 # Per-user daily cap on Google Custom Search calls. Same flat number
 # for every user (free + paid). Resets at UTC midnight.
 GOOGLE_CSE_DAILY_LIMIT_PER_USER = env.int("GOOGLE_CSE_DAILY_LIMIT_PER_USER", default=100)

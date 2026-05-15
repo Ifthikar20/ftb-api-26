@@ -12,7 +12,16 @@
 #    bash scripts/deploy.sh --test       # smoke-test only, no deploy
 #    bash scripts/deploy.sh --logs       # tail container logs for 60s
 #    bash scripts/deploy.sh --inspect-env # dump key names in remote .env.prod
+#    bash scripts/deploy.sh --force      # bypass env-validation blockers
 #    bash scripts/deploy.sh --help
+#
+#  --force downgrades CRITICAL-secret + production-sanity errors to
+#  warnings so an incomplete .env.prod can still ship. Use with care:
+#  the missing keys mean the app won't start (DJANGO_SECRET_KEY,
+#  JWT_SIGNING_KEY, FIELD_ENCRYPTION_KEY, DB_PASSWORD) or production
+#  is running with DEBUG=True (tracebacks leak to public).
+#  Provider keys (Anthropic/OpenAI/Gemini/etc.) ALWAYS warn, never
+#  block — those features just degrade if a key is absent.
 #
 #  Environment overrides (all optional):
 #    BRANCH       git branch to deploy   (default: main)
@@ -129,12 +138,25 @@ preflight() {
 validate_env() {
   step "Validate remote .env.prod"
 
-  local REQUIRED_STR="DJANGO_SECRET_KEY JWT_SIGNING_KEY FIELD_ENCRYPTION_KEY DB_PASSWORD ANTHROPIC_API_KEY OPENAI_API_KEY GEMINI_API_KEY PERPLEXITY_API_KEY GOOGLE_API_KEY GOOGLE_CSE_ID"
+  # Three tiers of env vars:
+  #   CRITICAL — app literally cannot start safely without these.
+  #              Blocks deploy unless --force is passed.
+  #   PROVIDER — third-party API keys. Missing = that feature's
+  #              degraded (no Claude / no Perplexity / no citations),
+  #              but the app starts and other features work. Warns,
+  #              never blocks.
+  #   OPTIONAL — billing, email, OAuth, daily-quota knobs. Warns.
+  #
+  # Slot names may use 'A|B' to declare an alias — any one of the
+  # names supplies the value (e.g. GOOGLE_API_KEY|GOOGLE_SEARCH_API_KEY).
+  local CRITICAL_STR="DJANGO_SECRET_KEY JWT_SIGNING_KEY FIELD_ENCRYPTION_KEY DB_PASSWORD"
+  local PROVIDER_STR="ANTHROPIC_API_KEY OPENAI_API_KEY GEMINI_API_KEY PERPLEXITY_API_KEY GOOGLE_API_KEY|GOOGLE_SEARCH_API_KEY GOOGLE_CSE_ID|GOOGLE_SEARCH_ENGINE_ID"
   local OPTIONAL_STR="DEEPSEEK_API_KEY SERPAPI_KEY STRIPE_SECRET_KEY SENDGRID_API_KEY GOOGLE_OAUTH_CLIENT_ID GOOGLE_CSE_DAILY_LIMIT_PER_USER CLAUDE_JUDGE_DAILY_LIMIT_PER_USER CLAUDE_REWRITE_DAILY_LIMIT_PER_USER"
 
   # Force bash on the remote (Ubuntu's /bin/sh is dash, and we use
-  # ${!var} indirect expansion + [[ … == CHANGE_ME* ]] which are
-  # bash-only). Pipe the script over stdin so quoting stays sane.
+  # ${!var} indirect expansion + [[ … == … ]] which are bash-only).
+  # Pipe the script over stdin so the laptop's shell never gets
+  # tangled in escaping.
   local out
   out=$(ssh "${SSH_OPTS[@]}" "$EC2_USER@$EC2_HOST" bash -s <<REMOTE
 set -e
@@ -144,10 +166,9 @@ if [ ! -f .env.prod ]; then
   exit 0
 fi
 
-# Normalise CRLF line endings before sourcing — a file edited on
-# Windows or copy-pasted from a chat will not load via 'source' if
-# values are quoted with a trailing \r, and we'll report keys as
-# missing even though they're present.
+# CRLF normalisation — a .env.prod edited on Windows / pasted from a
+# chat will source successfully but every value carries a trailing
+# carriage return, and the next subshell treats them as missing.
 if grep -q \$'\r' .env.prod 2>/dev/null; then
   TMP=\$(mktemp)
   tr -d '\r' < .env.prod > "\$TMP"
@@ -157,16 +178,86 @@ else
   set -a; . ./.env.prod; set +a
 fi
 
-missing=""
-placeholder=""
-optional_missing=""
-for v in $REQUIRED_STR; do
-  val="\${!v:-}"
-  if [ -z "\$val" ]; then
-    missing="\$missing \$v"
-  elif [[ "\$val" == CHANGE_ME* ]]; then
-    placeholder="\$placeholder \$v"
+# Helper: is the given value "obviously a placeholder"?
+#   CHANGE_ME…   – our template literal
+#   change-me…   – the lowercase variant
+#   bare "…"     – left as ellipsis
+#   ends in "…"  – AIza..., sk-..., 017..., etc.
+#   sk-...       – OpenAI placeholder shape
+#   AIza...      – Google placeholder shape
+#   017...       – common CSE-id placeholder
+#   whsec_...    – Stripe placeholder
+#   price_...    – Stripe placeholder
+#   SG....       – SendGrid placeholder
+is_placeholder() {
+  local v=\$1
+  case "\$v" in
+    CHANGE_ME*|change-me*|change_me*) return 0 ;;
+    "..."|"\${v%...}...") :;;
+  esac
+  case "\$v" in
+    *...) return 0 ;;
+    sk-...) return 0 ;;
+    AIza...) return 0 ;;
+    017...) return 0 ;;
+    whsec_...) return 0 ;;
+    price_...) return 0 ;;
+    SG....) return 0 ;;
+  esac
+  return 1
+}
+
+# Resolve one slot — which may have aliases like "GOOGLE_API_KEY|GOOGLE_SEARCH_API_KEY".
+# Echoes "ok", "missing", or "placeholder" along with the resolved key name.
+#
+# Tries every name in the slot. If ANY one resolves to a real
+# (non-placeholder) value, the slot is "ok". Otherwise the slot is
+# "placeholder" (if at least one was a placeholder) or "missing".
+# This means an alias can rescue a placeholder canonical — e.g.
+# GOOGLE_API_KEY=AIza... + GOOGLE_SEARCH_API_KEY=AIzaSyBalM… → ok.
+resolve_slot() {
+  local slot=\$1
+  local IFS='|'
+  read -ra names <<< "\$slot"
+  local saw_placeholder=""
+  for name in "\${names[@]}"; do
+    local val="\${!name:-}"
+    if [ -n "\$val" ]; then
+      if is_placeholder "\$val"; then
+        saw_placeholder="\$name"
+        continue
+      fi
+      echo "ok:\$name"
+      return
+    fi
+  done
+  if [ -n "\$saw_placeholder" ]; then
+    echo "placeholder:\$saw_placeholder"
+  else
+    echo "missing:\${names[0]}"
   fi
+}
+
+crit_missing=""
+crit_placeholder=""
+prov_missing=""
+prov_placeholder=""
+optional_missing=""
+for slot in $CRITICAL_STR; do
+  res=\$(resolve_slot "\$slot")
+  s="\${res%%:*}"; n="\${res#*:}"
+  case "\$s" in
+    missing)     crit_missing="\$crit_missing \$slot" ;;
+    placeholder) crit_placeholder="\$crit_placeholder \$n" ;;
+  esac
+done
+for slot in $PROVIDER_STR; do
+  res=\$(resolve_slot "\$slot")
+  s="\${res%%:*}"; n="\${res#*:}"
+  case "\$s" in
+    missing)     prov_missing="\$prov_missing \$slot" ;;
+    placeholder) prov_placeholder="\$prov_placeholder \$n" ;;
+  esac
 done
 for v in $OPTIONAL_STR; do
   val="\${!v:-}"
@@ -174,34 +265,107 @@ for v in $OPTIONAL_STR; do
     optional_missing="\$optional_missing \$v"
   fi
 done
-echo "MISSING:\$missing"
-echo "PLACEHOLDER:\$placeholder"
+
+# Production-config sanity checks. These don't fail validation by
+# themselves but they almost always indicate a dev .env copied to a
+# prod path, which causes hours of pain later.
+sanity_warn=""
+if [[ "\${DJANGO_SETTINGS_MODULE:-}" == *.dev || "\${DJANGO_SETTINGS_MODULE:-}" == *.development ]]; then
+  sanity_warn="\$sanity_warn DJANGO_SETTINGS_MODULE=\${DJANGO_SETTINGS_MODULE}_(should-be-config.settings.prod);"
+fi
+case "\${DEBUG:-}" in
+  True|true|1|yes) sanity_warn="\$sanity_warn DEBUG=\${DEBUG}_(must-be-False-in-prod);" ;;
+esac
+if [[ "\${ALLOWED_HOSTS:-}" == "localhost"* || "\${ALLOWED_HOSTS:-}" == *"127.0.0.1"* ]] \
+   && [[ "\${ALLOWED_HOSTS:-}" != *","* ]]; then
+  sanity_warn="\$sanity_warn ALLOWED_HOSTS=\${ALLOWED_HOSTS}_(missing-prod-domain);"
+fi
+
+# Duplicate-key detection — only the LAST definition of a key wins on
+# 'source', so a stale placeholder above a real value is silently
+# fine, but a stale REAL value above another real value is a sneaky
+# foot-gun.
+duplicates=\$(tr -d '\r' < .env.prod \
+  | grep -E '^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*=' \
+  | sed -E 's/^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*)=.*/\1/' \
+  | sort | uniq -d | tr '\n' ' ')
+
+echo "CRIT_MISSING:\$crit_missing"
+echo "CRIT_PLACEHOLDER:\$crit_placeholder"
+echo "PROV_MISSING:\$prov_missing"
+echo "PROV_PLACEHOLDER:\$prov_placeholder"
 echo "OPTIONAL_MISSING:\$optional_missing"
+echo "SANITY:\$sanity_warn"
+echo "DUPLICATES:\$duplicates"
 REMOTE
   )
   if grep -q "^MISSING_FILE$" <<<"$out"; then
     die ".env.prod missing at $EC2_HOST:$REMOTE_DIR — create it from .env.prod.example first."
   fi
-  local missing placeholder optional_missing
-  missing=$(grep "^MISSING:" <<<"$out" | cut -d: -f2-)
-  placeholder=$(grep "^PLACEHOLDER:" <<<"$out" | cut -d: -f2-)
-  optional_missing=$(grep "^OPTIONAL_MISSING:" <<<"$out" | cut -d: -f2-)
+  local crit_missing crit_placeholder prov_missing prov_placeholder
+  local optional_missing sanity duplicates
+  crit_missing=$(grep "^CRIT_MISSING:"     <<<"$out" | cut -d: -f2-)
+  crit_placeholder=$(grep "^CRIT_PLACEHOLDER:" <<<"$out" | cut -d: -f2-)
+  prov_missing=$(grep "^PROV_MISSING:"     <<<"$out" | cut -d: -f2-)
+  prov_placeholder=$(grep "^PROV_PLACEHOLDER:" <<<"$out" | cut -d: -f2-)
+  optional_missing=$(grep "^OPTIONAL_MISSING:"  <<<"$out" | cut -d: -f2-)
+  sanity=$(grep "^SANITY:"     <<<"$out" | cut -d: -f2-)
+  duplicates=$(grep "^DUPLICATES:" <<<"$out" | cut -d: -f2-)
 
-  if [[ -n "${missing// }" || -n "${placeholder// }" ]]; then
-    err ".env.prod is incomplete:"
-    [[ -n "${missing// }" ]]     && printf "      %sMissing:%s        %s\n" "$R" "$N" "$missing"
-    [[ -n "${placeholder// }" ]] && printf "      %sStill CHANGE_ME:%s %s\n" "$R" "$N" "$placeholder"
-    echo ""
-    printf "      %sInspect what is actually set in .env.prod (names only, no values):%s\n" "$Y" "$N"
-    printf "         bash scripts/deploy.sh --inspect-env\n\n"
-    printf "      %sFix the file in place:%s\n" "$Y" "$N"
-    printf "         ssh -i %s %s@%s 'sudo nano %s/.env.prod'\n" "$PEM_KEY" "$EC2_USER" "$EC2_HOST" "$REMOTE_DIR"
-    exit 1
+  # ── Tier 1: provider keys (warn only — feature degrades, app still runs) ──
+  if [[ -n "${prov_missing// }" || -n "${prov_placeholder// }" ]]; then
+    warn "Provider API keys absent or placeholder — those features will be disabled:"
+    [[ -n "${prov_missing// }" ]]     && printf "      %sMissing:%s            %s\n" "$Y" "$N" "$prov_missing"
+    [[ -n "${prov_placeholder// }" ]] && printf "      %sStill a placeholder:%s %s\n" "$Y" "$N" "$prov_placeholder"
   fi
+
+  # ── Tier 2: optional knobs (informational) ──
   if [[ -n "${optional_missing// }" ]]; then
-    warn "Optional features disabled (key missing):$optional_missing"
+    warn "Optional keys not set (defaults will apply):$optional_missing"
   fi
-  ok ".env.prod looks good"
+
+  # ── Tier 3: duplicates (informational — last-defined wins) ──
+  if [[ -n "${duplicates// }" ]]; then
+    warn "Keys defined more than once in .env.prod (last definition wins, earlier ones are dead):"
+    printf "      %s%s%s\n" "$Y" "$duplicates" "$N"
+  fi
+
+  # ── Tier 4: production sanity (warn — pass --force to override silently) ──
+  if [[ -n "${sanity// }" ]]; then
+    if [[ "$FORCE" == "1" ]]; then
+      warn "Production sanity check (overridden by --force):"
+    else
+      warn "Production sanity check — this looks like a dev .env on a prod host:"
+    fi
+    for item in $sanity; do
+      printf "      %s%s%s\n" "$Y" "${item//_/ }" "$N"
+    done
+  fi
+
+  # ── Tier 5: critical secrets (BLOCKS deploy unless --force) ──
+  if [[ -n "${crit_missing// }" || -n "${crit_placeholder// }" ]]; then
+    if [[ "$FORCE" == "1" ]]; then
+      warn "Critical secrets missing/placeholder — proceeding anyway (--force):"
+      [[ -n "${crit_missing// }" ]]     && printf "      %sMissing:%s            %s\n" "$Y" "$N" "$crit_missing"
+      [[ -n "${crit_placeholder// }" ]] && printf "      %sStill a placeholder:%s %s\n" "$Y" "$N" "$crit_placeholder"
+    else
+      err "Critical secrets missing or placeholder — deploy refused:"
+      [[ -n "${crit_missing// }" ]]     && printf "      %sMissing:%s            %s\n" "$R" "$N" "$crit_missing"
+      [[ -n "${crit_placeholder// }" ]] && printf "      %sStill a placeholder:%s %s\n" "$R" "$N" "$crit_placeholder"
+      echo ""
+      printf "      Without these the app cannot start safely (DJANGO_SECRET_KEY,\n"
+      printf "      JWT_SIGNING_KEY, FIELD_ENCRYPTION_KEY, DB_PASSWORD).\n\n"
+      printf "      %sInspect what is actually set (names only):%s\n" "$Y" "$N"
+      printf "         bash scripts/deploy.sh --inspect-env\n\n"
+      printf "      %sFix the file in place:%s\n" "$Y" "$N"
+      printf "         ssh -i %s %s@%s 'sudo nano %s/.env.prod'\n\n" "$PEM_KEY" "$EC2_USER" "$EC2_HOST" "$REMOTE_DIR"
+      printf "      %sOr bypass these checks (NOT for production traffic):%s\n" "$Y" "$N"
+      printf "         bash scripts/deploy.sh --force\n"
+      exit 1
+    fi
+  fi
+
+  ok ".env.prod accepted"
 }
 
 # Dumps the KEY NAMES set in the remote .env.prod (no values cross the
@@ -410,15 +574,20 @@ usage() {
 }
 
 MODE="full"
-case "${1:-}" in
-  ""|--full)      MODE="full" ;;
-  --no-test)      MODE="deploy" ;;
-  --test)         MODE="test" ;;
-  --logs)         MODE="logs" ;;
-  --inspect-env)  MODE="inspect" ;;
-  -h|--help)      usage; exit 0 ;;
-  *)              echo "Unknown flag: $1"; usage; exit 1 ;;
-esac
+FORCE="0"
+# Accept flags in any order; --force can combine with any mode.
+for arg in "$@"; do
+  case "$arg" in
+    --force)        FORCE="1" ;;
+    --no-test)      MODE="deploy" ;;
+    --test)         MODE="test" ;;
+    --logs)         MODE="logs" ;;
+    --inspect-env)  MODE="inspect" ;;
+    --full|"")      MODE="${MODE:-full}" ;;
+    -h|--help)      usage; exit 0 ;;
+    *)              echo "Unknown flag: $arg"; usage; exit 1 ;;
+  esac
+done
 
 banner "FetchBot Deploy — branch=$BRANCH"
 
