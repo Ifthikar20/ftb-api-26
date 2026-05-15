@@ -127,11 +127,20 @@ dep_preflight() {
 dep_validate_env() {
   step "Validate remote .env.prod"
 
-  # CRITICAL — blocks deploy unless --force is passed.
-  # PROVIDER — warn only (missing = that feature degrades).
-  # OPTIONAL — informational.
-  local CRITICAL_STR="DJANGO_SECRET_KEY JWT_SIGNING_KEY FIELD_ENCRYPTION_KEY DB_PASSWORD"
-  local PROVIDER_STR="ANTHROPIC_API_KEY OPENAI_API_KEY GEMINI_API_KEY PERPLEXITY_API_KEY GOOGLE_API_KEY|GOOGLE_SEARCH_API_KEY GOOGLE_CSE_ID|GOOGLE_SEARCH_ENGINE_ID"
+  # CRITICAL — app literally cannot start without these.
+  #   * DJANGO_SECRET_KEY: signs sessions, password-reset URLs, etc.
+  #   * JWT_SIGNING_KEY: signs API auth tokens.
+  #   * DB_PASSWORD: required for Postgres connection.
+  # PROVIDER — third-party / feature-degrades on absence.
+  #   * FIELD_ENCRYPTION_KEY: EncryptedTextField falls back to
+  #     plaintext when empty (see core/encryption/field_encryption.py
+  #     — _get_fernet returns None, save/read becomes a pass-through),
+  #     so app starts fine. Warn but don't block. Security caveat:
+  #     API keys/OAuth tokens/webhook URLs land in the DB as
+  #     plaintext until you set the key.
+  # OPTIONAL — billing, OAuth, etc.
+  local CRITICAL_STR="DJANGO_SECRET_KEY JWT_SIGNING_KEY DB_PASSWORD"
+  local PROVIDER_STR="FIELD_ENCRYPTION_KEY ANTHROPIC_API_KEY OPENAI_API_KEY GEMINI_API_KEY PERPLEXITY_API_KEY GOOGLE_API_KEY|GOOGLE_SEARCH_API_KEY GOOGLE_CSE_ID|GOOGLE_SEARCH_ENGINE_ID"
   local OPTIONAL_STR="DEEPSEEK_API_KEY SERPAPI_KEY STRIPE_SECRET_KEY SENDGRID_API_KEY GOOGLE_OAUTH_CLIENT_ID GOOGLE_CSE_DAILY_LIMIT_PER_USER CLAUDE_JUDGE_DAILY_LIMIT_PER_USER CLAUDE_REWRITE_DAILY_LIMIT_PER_USER"
 
   # macOS ships bash 3.2 which mis-parses heredocs inside command
@@ -277,8 +286,8 @@ REMOTE
       [[ -n "${crit_missing// }" ]]     && printf "      %sMissing:%s            %s\n" "$R" "$N" "$crit_missing"
       [[ -n "${crit_placeholder// }" ]] && printf "      %sStill a placeholder:%s %s\n" "$R" "$N" "$crit_placeholder"
       echo ""
-      printf "      Without these the app cannot start safely (DJANGO_SECRET_KEY,\n"
-      printf "      JWT_SIGNING_KEY, FIELD_ENCRYPTION_KEY, DB_PASSWORD).\n\n"
+      printf "      Without these the app cannot start (DJANGO_SECRET_KEY,\n"
+      printf "      JWT_SIGNING_KEY, DB_PASSWORD).\n\n"
       printf "      %sInspect what is actually set (names only):%s\n" "$Y" "$N"
       printf "         bash scripts/deploy.sh deploy --inspect-env\n\n"
       printf "      %sFix the file in place:%s\n" "$Y" "$N"
