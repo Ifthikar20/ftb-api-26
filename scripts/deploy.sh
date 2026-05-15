@@ -11,6 +11,7 @@
 #    bash scripts/deploy.sh --no-test    # deploy without smoke-test
 #    bash scripts/deploy.sh --test       # smoke-test only, no deploy
 #    bash scripts/deploy.sh --logs       # tail container logs for 60s
+#    bash scripts/deploy.sh --inspect-env # dump key names in remote .env.prod
 #    bash scripts/deploy.sh --help
 #
 #  Environment overrides (all optional):
@@ -128,54 +129,47 @@ preflight() {
 validate_env() {
   step "Validate remote .env.prod"
 
-  local REQUIRED=(
-    DJANGO_SECRET_KEY
-    JWT_SIGNING_KEY
-    FIELD_ENCRYPTION_KEY
-    DB_PASSWORD
-    ANTHROPIC_API_KEY
-    OPENAI_API_KEY
-    GEMINI_API_KEY
-    PERPLEXITY_API_KEY
-    GOOGLE_API_KEY
-    GOOGLE_CSE_ID
-  )
-  local OPTIONAL=(
-    DEEPSEEK_API_KEY
-    SERPAPI_KEY
-    STRIPE_SECRET_KEY
-    SENDGRID_API_KEY
-    GOOGLE_OAUTH_CLIENT_ID
-    GOOGLE_CSE_DAILY_LIMIT_PER_USER
-    CLAUDE_JUDGE_DAILY_LIMIT_PER_USER
-    CLAUDE_REWRITE_DAILY_LIMIT_PER_USER
-  )
+  local REQUIRED_STR="DJANGO_SECRET_KEY JWT_SIGNING_KEY FIELD_ENCRYPTION_KEY DB_PASSWORD ANTHROPIC_API_KEY OPENAI_API_KEY GEMINI_API_KEY PERPLEXITY_API_KEY GOOGLE_API_KEY GOOGLE_CSE_ID"
+  local OPTIONAL_STR="DEEPSEEK_API_KEY SERPAPI_KEY STRIPE_SECRET_KEY SENDGRID_API_KEY GOOGLE_OAUTH_CLIENT_ID GOOGLE_CSE_DAILY_LIMIT_PER_USER CLAUDE_JUDGE_DAILY_LIMIT_PER_USER CLAUDE_REWRITE_DAILY_LIMIT_PER_USER"
 
-  # Run the whole check on the remote box so secrets never leave it.
-  local script
-  script=$(cat <<REMOTE
+  # Force bash on the remote (Ubuntu's /bin/sh is dash, and we use
+  # ${!var} indirect expansion + [[ … == CHANGE_ME* ]] which are
+  # bash-only). Pipe the script over stdin so quoting stays sane.
+  local out
+  out=$(ssh "${SSH_OPTS[@]}" "$EC2_USER@$EC2_HOST" bash -s <<REMOTE
 set -e
 cd "$REMOTE_DIR"
 if [ ! -f .env.prod ]; then
   echo "MISSING_FILE"
   exit 0
 fi
-set -a
-. ./.env.prod
-set +a
-missing=
-placeholder=
-optional_missing=
-for v in ${REQUIRED[*]}; do
-  val=\${!v:-}
+
+# Normalise CRLF line endings before sourcing — a file edited on
+# Windows or copy-pasted from a chat will not load via 'source' if
+# values are quoted with a trailing \r, and we'll report keys as
+# missing even though they're present.
+if grep -q \$'\r' .env.prod 2>/dev/null; then
+  TMP=\$(mktemp)
+  tr -d '\r' < .env.prod > "\$TMP"
+  set -a; . "\$TMP"; set +a
+  rm -f "\$TMP"
+else
+  set -a; . ./.env.prod; set +a
+fi
+
+missing=""
+placeholder=""
+optional_missing=""
+for v in $REQUIRED_STR; do
+  val="\${!v:-}"
   if [ -z "\$val" ]; then
     missing="\$missing \$v"
   elif [[ "\$val" == CHANGE_ME* ]]; then
     placeholder="\$placeholder \$v"
   fi
 done
-for v in ${OPTIONAL[*]}; do
-  val=\${!v:-}
+for v in $OPTIONAL_STR; do
+  val="\${!v:-}"
   if [ -z "\$val" ]; then
     optional_missing="\$optional_missing \$v"
   fi
@@ -185,11 +179,10 @@ echo "PLACEHOLDER:\$placeholder"
 echo "OPTIONAL_MISSING:\$optional_missing"
 REMOTE
   )
-  local out missing placeholder optional_missing
-  out=$(ssh_remote "$script")
   if grep -q "^MISSING_FILE$" <<<"$out"; then
     die ".env.prod missing at $EC2_HOST:$REMOTE_DIR — create it from .env.prod.example first."
   fi
+  local missing placeholder optional_missing
   missing=$(grep "^MISSING:" <<<"$out" | cut -d: -f2-)
   placeholder=$(grep "^PLACEHOLDER:" <<<"$out" | cut -d: -f2-)
   optional_missing=$(grep "^OPTIONAL_MISSING:" <<<"$out" | cut -d: -f2-)
@@ -198,13 +191,42 @@ REMOTE
     err ".env.prod is incomplete:"
     [[ -n "${missing// }" ]]     && printf "      %sMissing:%s        %s\n" "$R" "$N" "$missing"
     [[ -n "${placeholder// }" ]] && printf "      %sStill CHANGE_ME:%s %s\n" "$R" "$N" "$placeholder"
-    printf "      %sFix:%s ssh %s@%s 'nano %s/.env.prod'\n" "$Y" "$N" "$EC2_USER" "$EC2_HOST" "$REMOTE_DIR"
+    echo ""
+    printf "      %sInspect what is actually set in .env.prod (names only, no values):%s\n" "$Y" "$N"
+    printf "         bash scripts/deploy.sh --inspect-env\n\n"
+    printf "      %sFix the file in place:%s\n" "$Y" "$N"
+    printf "         ssh -i %s %s@%s 'sudo nano %s/.env.prod'\n" "$PEM_KEY" "$EC2_USER" "$EC2_HOST" "$REMOTE_DIR"
     exit 1
   fi
   if [[ -n "${optional_missing// }" ]]; then
     warn "Optional features disabled (key missing):$optional_missing"
   fi
   ok ".env.prod looks good"
+}
+
+# Dumps the KEY NAMES set in the remote .env.prod (no values cross the
+# wire). Use when validate_env reports keys as missing and you want to
+# confirm whether they're truly absent vs. mis-named vs. has a parse
+# issue (e.g. CRLF, unquoted value with #).
+inspect_env() {
+  step "Inspect remote .env.prod"
+  ssh "${SSH_OPTS[@]}" "$EC2_USER@$EC2_HOST" bash -s <<REMOTE
+set -e
+cd "$REMOTE_DIR"
+if [ ! -f .env.prod ]; then
+  echo "no .env.prod found at $REMOTE_DIR"
+  exit 1
+fi
+echo "Keys defined in $REMOTE_DIR/.env.prod (names only):"
+echo "──────────────────────────────────────────────────────"
+# Grab everything that looks like KEY=value, normalising CRLF first.
+tr -d '\r' < .env.prod \
+  | grep -E '^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*=' \
+  | sed -E 's/^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*)=.*/  \1/' \
+  | sort -u
+echo "──────────────────────────────────────────────────────"
+echo "Total: \$(tr -d '\r' < .env.prod | grep -cE '^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*=') keys"
+REMOTE
 }
 
 # ════════════════════════════════════════════════════════════════════
@@ -393,6 +415,7 @@ case "${1:-}" in
   --no-test)      MODE="deploy" ;;
   --test)         MODE="test" ;;
   --logs)         MODE="logs" ;;
+  --inspect-env)  MODE="inspect" ;;
   -h|--help)      usage; exit 0 ;;
   *)              echo "Unknown flag: $1"; usage; exit 1 ;;
 esac
@@ -406,6 +429,10 @@ case "$MODE" in
     ;;
   logs)
     tail_logs
+    exit 0
+    ;;
+  inspect)
+    inspect_env
     exit 0
     ;;
   deploy|full)
