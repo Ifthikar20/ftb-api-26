@@ -61,6 +61,9 @@ LOCAL_APPS = [
     "apps.citations",
     "apps.brand_vault",
     "apps.content_studio",
+    # Stub app — kept only to satisfy historical lazy FK references
+    # from analytics migrations. All tables are managed=False.
+    "apps.leads",
 ]
 
 # Phase 2: extract citations from each LLMRankingResult after it's saved.
