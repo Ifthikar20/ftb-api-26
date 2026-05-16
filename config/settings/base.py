@@ -353,6 +353,29 @@ CANVA_CLIENT_SECRET = env("CANVA_CLIENT_SECRET", default="")
 GEMINI_API_KEY = env("GEMINI_API_KEY", default="")
 PERPLEXITY_API_KEY = env("PERPLEXITY_API_KEY", default="")
 
+# Google Programmable Search (Custom Search JSON API). Used by the
+# Model Test pipeline to fetch real publisher URLs for the citations
+# UI — see apps/llm_ranking/services/google_search.py.
+# Google Programmable Search (Custom Search JSON API).
+#
+# Historically configured as GOOGLE_SEARCH_API_KEY + GOOGLE_SEARCH_ENGINE_ID
+# in some deployments; current code reads GOOGLE_API_KEY + GOOGLE_CSE_ID.
+# Fall back to the legacy names so an existing .env doesn't break, but
+# prefer the new names if both are set.
+GOOGLE_API_KEY = env("GOOGLE_API_KEY", default="") \
+    or env("GOOGLE_SEARCH_API_KEY", default="")
+GOOGLE_CSE_ID = env("GOOGLE_CSE_ID", default="") \
+    or env("GOOGLE_SEARCH_ENGINE_ID", default="")
+# Per-user daily cap on Google Custom Search calls. Same flat number
+# for every user (free + paid). Resets at UTC midnight.
+GOOGLE_CSE_DAILY_LIMIT_PER_USER = env.int("GOOGLE_CSE_DAILY_LIMIT_PER_USER", default=100)
+# Per-user daily cap on G-Eval judge calls (subjective_impression.py).
+# One call scores all 7 sub-metrics for one citation in one shot.
+CLAUDE_JUDGE_DAILY_LIMIT_PER_USER = env.int("CLAUDE_JUDGE_DAILY_LIMIT_PER_USER", default=200)
+# Per-user daily cap on GEO content rewrites (geo_rewrite.py). Lower
+# because rewrites pull a whole document through the model.
+CLAUDE_REWRITE_DAILY_LIMIT_PER_USER = env.int("CLAUDE_REWRITE_DAILY_LIMIT_PER_USER", default=30)
+
 # ── Social Leads (Facebook, LinkedIn, X) ──
 FACEBOOK_APP_ID = env("FACEBOOK_APP_ID", default="")
 FACEBOOK_APP_SECRET = env("FACEBOOK_APP_SECRET", default="")

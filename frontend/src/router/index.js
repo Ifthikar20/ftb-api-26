@@ -133,20 +133,37 @@ const GATE_EXEMPT = new Set([
 router.beforeEach(async (to, from, next) => {
     const auth = useAuthStore()
 
-    // On first load, try to restore session from refresh token cookie
+    // On first load, restore the session. Two paths:
+    //   1. accessToken hydrated from localStorage — assume it's good
+    //      and fetch /auth/me to confirm. If it 401s the interceptor
+    //      will trigger a refresh-cookie attempt automatically.
+    //   2. No token in storage — try refresh cookie directly.
+    // sessionRestored only flips to true once we have a definitive
+    // answer (success, or confirmed 401/403). Transient failures
+    // leave it false so the next nav retries.
     if (!sessionRestored && !auth.isAuthenticated) {
-        sessionRestored = true
         const hadSession = localStorage.getItem('fb-session')
         if (hadSession) {
             try {
                 await auth.refreshToken()
                 if (auth.accessToken) {
                     await auth.fetchSession()
+                    sessionRestored = true
+                } else if (!localStorage.getItem('fb-session')) {
+                    sessionRestored = true
                 }
             } catch {
-                // No valid session — continue as guest
+                // belt + braces; refreshToken handles its own errors
             }
+        } else {
+            sessionRestored = true
         }
+    } else if (!sessionRestored && auth.isAuthenticated) {
+        // Access token came from localStorage — verify it works.
+        // The interceptor handles 401 by attempting a refresh; if
+        // that also fails it clears auth and bounces to login.
+        sessionRestored = true
+        auth.fetchSession().catch(() => {})
     }
 
     if (to.meta.requiresAuth && !auth.isAuthenticated) {

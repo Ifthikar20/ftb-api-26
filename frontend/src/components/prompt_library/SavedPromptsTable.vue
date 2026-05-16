@@ -1,17 +1,57 @@
 <template>
   <div class="spt-wrap">
-    <!-- Compact stat strip -->
+    <!-- Compact stat strip — only the three numbers worth seeing.
+         The tab badge already shows the saved count; here we focus
+         on the testing state which is what the user is acting on. -->
     <div v-if="prompts.length" class="spt-stat-strip">
-      <div class="spt-stat-cell"><span class="spt-stat-label">Total saved</span><span class="spt-stat-val">{{ prompts.length }}</span></div>
+      <div class="spt-stat-cell"><span class="spt-stat-label">Saved</span><span class="spt-stat-val">{{ prompts.length }}</span></div>
       <div class="spt-stat-cell"><span class="spt-stat-label">Tested</span><span class="spt-stat-val">{{ testedCount }}</span></div>
       <div class="spt-stat-cell"><span class="spt-stat-label">Untested</span><span class="spt-stat-val">{{ untestedCount }}</span></div>
-      <div class="spt-stat-cell"><span class="spt-stat-label">Avg trend</span><span class="spt-stat-val">{{ avgTrend }}</span></div>
-      <div class="spt-stat-cell"><span class="spt-stat-label">Environments</span><span class="spt-stat-val">{{ envs.length }}</span></div>
     </div>
 
-    <!-- Filters + new-env action -->
+    <!-- Environment filter strip — every env + "Unassigned" + "All".
+         Tapping a chip filters the table below to that env's prompts
+         and reveals the env-level actions on the right. Replaces the
+         3 stacked tables the previous design had. -->
+    <div v-if="prompts.length" class="spt-envrow">
+      <div class="spt-envchips">
+        <button
+          type="button"
+          class="spt-envchip"
+          :class="{ 'is-on': envFilter === 'all' }"
+          @click="envFilter = 'all'"
+        >All <span class="spt-envchip-count">{{ prompts.length }}</span></button>
+        <button
+          v-for="env in envs"
+          :key="env.id"
+          type="button"
+          class="spt-envchip"
+          :class="{ 'is-on': envFilter === env.id }"
+          @click="envFilter = env.id"
+        >
+          {{ env.name }}
+          <span class="spt-envchip-count">{{ (env.prompt_ids || []).length }}</span>
+        </button>
+        <button
+          type="button"
+          class="spt-envchip"
+          :class="{ 'is-on': envFilter === '__unassigned__' }"
+          @click="envFilter = '__unassigned__'"
+        >Unassigned <span class="spt-envchip-count">{{ unassignedCount }}</span></button>
+        <button class="spt-envchip is-add" @click="openCreateEnv">+ New environment</button>
+      </div>
+
+      <!-- Env-level actions appear only when a specific env is selected. -->
+      <div v-if="activeEnv" class="spt-envactions">
+        <button class="spt-envaction" @click="runEnvAsTest(activeEnv)">Run as Model Test</button>
+        <button class="spt-envaction" @click="renameEnv(activeEnv)">Rename</button>
+        <button class="spt-envaction is-danger" @click="deleteEnv(activeEnv)">Delete</button>
+      </div>
+    </div>
+
+    <!-- Search + style + run-audit shortcut -->
     <div v-if="prompts.length" class="spt-filters">
-      <input v-model="search" type="search" class="spt-search" placeholder="Filter saved prompts…" />
+      <input v-model="search" type="search" class="spt-search" placeholder="Filter prompts…" />
       <label class="spt-select-wrap">
         <span class="spt-select-label">Style</span>
         <select v-model="styleFilter" class="spt-select">
@@ -19,7 +59,6 @@
           <option v-for="s in styleOptions" :key="s.value" :value="s.value">{{ s.label }}</option>
         </select>
       </label>
-      <button class="spt-new-env-btn" @click="openCreateEnv">+ New environment</button>
       <AirButton variant="primary" size="sm" :as="'router-link'" :to="`/llm-ranking/${websiteId}`">
         Run audit
       </AirButton>
@@ -44,83 +83,75 @@
         </AirButton>
       </div>
 
-      <!-- Env-grouped list -->
-      <div v-else class="spt-groups">
-        <section v-for="group in visibleGroups" :key="group.key" class="spt-group">
-          <header class="spt-group-head">
-            <label class="spt-group-check" @click.stop>
+      <!-- One unified table. Env membership is a column, not a section. -->
+      <table v-else-if="visibleRows.length" class="spt-table">
+        <thead>
+          <tr>
+            <th style="width: 36px">
               <input
                 type="checkbox"
-                :checked="groupAllSelected(group)"
-                :indeterminate.prop="groupSomeSelected(group)"
-                @change="toggleGroup(group)"
+                :checked="allVisibleSelected"
+                :indeterminate.prop="someVisibleSelected"
+                @change="toggleAllVisible"
               />
-            </label>
-            <button class="spt-group-title" @click="toggleExpand(group.key)">
-              <svg class="spt-caret" :class="{ 'is-open': isExpanded(group.key) }"
-                   width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3l3 4 3-4" stroke-linecap="round" stroke-linejoin="round"/></svg>
-              <span class="spt-group-name">{{ group.name }}</span>
-              <span class="spt-group-count">{{ group.rows.length }}</span>
-            </button>
-            <div class="spt-group-tools" v-if="group.env">
-              <button class="spt-group-tool" @click="runEnvAsTest(group.env)">Run as Model Test</button>
-              <button class="spt-group-tool" @click="renameEnv(group.env)">Rename</button>
-              <button class="spt-group-tool is-danger" @click="deleteEnv(group.env)">Delete</button>
-            </div>
-          </header>
-
-          <div v-show="isExpanded(group.key)" class="spt-group-body">
-            <table v-if="group.rows.length" class="spt-table">
-              <thead>
-                <tr>
-                  <th style="width: 36px"></th>
-                  <th style="width: 110px">ID</th>
-                  <th style="width: 120px">Style</th>
-                  <th>Prompt</th>
-                  <th style="width: 130px">Last tested</th>
-                  <th style="width: 130px">Status</th>
-                  <th style="width: 140px" class="text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="row in group.rows" :key="row._brand_prompt_id"
-                    class="spt-row" :class="{ 'is-selected': selectedIds.has(row._brand_prompt_id) }">
-                  <td>
-                    <input
-                      type="checkbox"
-                      :checked="selectedIds.has(row._brand_prompt_id)"
-                      @change="toggleRow(row)"
-                    />
-                  </td>
-                  <td><span class="spt-id-pill">{{ formatId(row._brand_prompt_id) }}</span></td>
-                  <td><AirChip size="xs" variant="neutral">{{ titleCase(row.style) }}</AirChip></td>
-                  <td class="spt-prompt-cell"><div class="spt-prompt-text">{{ row.text || row.template_text }}</div></td>
-                  <td class="spt-muted">{{ row.last_tested_at ? formatRelative(row.last_tested_at) : '—' }}</td>
-                  <td>
-                    <span v-if="!row.runs_count" class="spt-status spt-status-untested">Untested</span>
-                    <span v-else-if="(row.effectiveness_score || 0) >= 0.7" class="spt-status spt-status-good">Top</span>
-                    <span v-else-if="(row.effectiveness_score || 0) >= 0.4" class="spt-status spt-status-mid">Steady</span>
-                    <span v-else class="spt-status spt-status-low">Underperforming</span>
-                  </td>
-                  <td class="text-right">
-                    <button class="spt-action-btn" :disabled="testingId === row.id" @click="onTest(row)" title="Smoke test against Claude">
-                      <span v-if="testingId === row.id" class="spt-spinner"></span>
-                      <span v-else>Test</span>
-                    </button>
-                    <button class="spt-action-btn spt-action-btn-ghost" @click="onRemove(row)" title="Remove from saved">×</button>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-            <div v-else class="spt-empty-filter">
-              {{ group.env ? 'No prompts in this environment yet.' : 'No prompts match these filters.' }}
-            </div>
-          </div>
-        </section>
+            </th>
+            <th style="width: 110px">ID</th>
+            <th style="width: 120px">Style</th>
+            <th>Prompt</th>
+            <th style="width: 200px">Environments</th>
+            <th style="width: 130px">Status</th>
+            <th style="width: 110px" class="text-right">Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr
+            v-for="row in visibleRows"
+            :key="row._brand_prompt_id"
+            class="spt-row"
+            :class="{ 'is-selected': selectedIds.has(row._brand_prompt_id) }"
+          >
+            <td>
+              <input
+                type="checkbox"
+                :checked="selectedIds.has(row._brand_prompt_id)"
+                @change="toggleRow(row)"
+              />
+            </td>
+            <td><span class="spt-id-pill">{{ formatId(row._brand_prompt_id) }}</span></td>
+            <td><AirChip size="xs" variant="neutral">{{ titleCase(row.style) }}</AirChip></td>
+            <td class="spt-prompt-cell"><div class="spt-prompt-text">{{ row.text || row.template_text }}</div></td>
+            <td>
+              <div v-if="envsForPrompt(row).length" class="spt-envtags">
+                <span
+                  v-for="e in envsForPrompt(row)"
+                  :key="e.id"
+                  class="spt-envtag"
+                >{{ e.name }}</span>
+              </div>
+              <span v-else class="spt-muted">—</span>
+            </td>
+            <td>
+              <span v-if="!row.runs_count" class="spt-status spt-status-untested">Untested</span>
+              <span v-else-if="(row.effectiveness_score || 0) >= 0.7" class="spt-status spt-status-good">Top</span>
+              <span v-else-if="(row.effectiveness_score || 0) >= 0.4" class="spt-status spt-status-mid">Steady</span>
+              <span v-else class="spt-status spt-status-low">Underperforming</span>
+            </td>
+            <td class="text-right">
+              <button class="spt-action-btn" :disabled="testingId === row.id" @click="onTest(row)" title="Smoke test against Claude">
+                <span v-if="testingId === row.id" class="spt-spinner"></span>
+                <span v-else>Test</span>
+              </button>
+              <button class="spt-action-btn spt-action-btn-ghost" @click="onRemove(row)" title="Remove from saved">×</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <div v-else class="spt-empty-filter">
+        No prompts match these filters.
       </div>
     </AirCard>
 
-    <!-- Sticky bulk-action bar -->
+    <!-- Sticky bulk-action bar (unchanged) -->
     <transition name="spt-bar">
       <div v-if="selectedIds.size > 0" class="spt-bar">
         <div class="spt-bar-info">
@@ -183,8 +214,9 @@ const smokeOpen = ref(false)
 const smokeResult = ref(null)
 const activeSmokePromptId = ref(null)
 const selectedIds = ref(new Set())   // brand_prompt_ids
-const expanded = ref(new Set())      // expanded env keys (string)
 const addMenuOpen = ref(false)
+// 'all' | '__unassigned__' | env.id
+const envFilter = ref('all')
 
 const styleOptions = [
   { value: 'story', label: 'Story' },
@@ -219,7 +251,8 @@ async function load() {
     const envRows = envResp?.data?.data || envResp?.data || []
     envs.value = Array.isArray(envRows) ? envRows : []
     // Default: every env expanded so the user sees their groups.
-    expanded.value = new Set(['__unassigned__', ...envs.value.map(e => e.id)])
+    // No-op — kept for parity with old behaviour. Env tabs replace
+    // the expand/collapse state entirely.
   } catch (e) {
     prompts.value = []
     envs.value = []
@@ -242,35 +275,66 @@ const filteredPrompts = computed(() => {
   })
 })
 
-// Build the env-grouped buckets. A prompt can sit in multiple envs;
-// we render it in every env it belongs to, plus 'Unassigned' if it
-// has no env. This matches the user's mental model of envs as labels.
-const visibleGroups = computed(() => {
-  const filteredById = new Map(filteredPrompts.value.map(p => [p._brand_prompt_id, p]))
-  const groups = []
-  // Track which ids are assigned to any env so we can compute 'unassigned'.
-  const assignedIds = new Set()
+// All env ids that contain each prompt. Used both for the
+// "Environments" column on each row and for the env filter logic.
+const envIdsByPrompt = computed(() => {
+  const map = new Map()
   for (const env of envs.value) {
-    const rows = []
     for (const id of (env.prompt_ids || [])) {
-      const row = filteredById.get(id)
-      if (row) rows.push(row)
-      assignedIds.add(id)
+      if (!map.has(id)) map.set(id, [])
+      map.get(id).push(env.id)
     }
-    groups.push({ key: env.id, name: env.name, env, rows })
   }
-  const unassignedRows = filteredPrompts.value.filter(
-    p => !assignedIds.has(p._brand_prompt_id)
-  )
-  groups.push({ key: '__unassigned__', name: 'Unassigned', env: null, rows: unassignedRows })
-  return groups
+  return map
+})
+function envsForPrompt(row) {
+  const ids = envIdsByPrompt.value.get(row._brand_prompt_id) || []
+  return envs.value.filter((e) => ids.includes(e.id))
+}
+
+const unassignedCount = computed(() => {
+  return prompts.value.filter(
+    (p) => !envIdsByPrompt.value.has(p._brand_prompt_id),
+  ).length
 })
 
-function isExpanded(key) { return expanded.value.has(key) }
-function toggleExpand(key) {
-  const next = new Set(expanded.value)
-  next.has(key) ? next.delete(key) : next.add(key)
-  expanded.value = next
+const activeEnv = computed(() => {
+  if (envFilter.value === 'all' || envFilter.value === '__unassigned__') return null
+  return envs.value.find((e) => e.id === envFilter.value) || null
+})
+
+// Flat list of rows visible right now. Applies the env-filter on
+// top of the search/style filter computed above.
+const visibleRows = computed(() => {
+  const rows = filteredPrompts.value
+  if (envFilter.value === 'all') return rows
+  if (envFilter.value === '__unassigned__') {
+    return rows.filter((p) => !envIdsByPrompt.value.has(p._brand_prompt_id))
+  }
+  const env = envs.value.find((e) => e.id === envFilter.value)
+  if (!env) return rows
+  const ids = new Set(env.prompt_ids || [])
+  return rows.filter((p) => ids.has(p._brand_prompt_id))
+})
+
+// Select-all helpers operate on the currently visible row set.
+const allVisibleSelected = computed(() => {
+  if (!visibleRows.value.length) return false
+  return visibleRows.value.every((r) => selectedIds.value.has(r._brand_prompt_id))
+})
+const someVisibleSelected = computed(() => {
+  if (!visibleRows.value.length) return false
+  const any = visibleRows.value.some((r) => selectedIds.value.has(r._brand_prompt_id))
+  return any && !allVisibleSelected.value
+})
+function toggleAllVisible() {
+  const next = new Set(selectedIds.value)
+  if (allVisibleSelected.value) {
+    for (const r of visibleRows.value) next.delete(r._brand_prompt_id)
+  } else {
+    for (const r of visibleRows.value) next.add(r._brand_prompt_id)
+  }
+  selectedIds.value = next
 }
 
 // ── Selection ───────────────────────────────────────────────────
@@ -281,25 +345,6 @@ function toggleRow(row) {
   selectedIds.value = next
 }
 function clearSelection() { selectedIds.value = new Set() }
-
-function groupAllSelected(group) {
-  if (!group.rows.length) return false
-  return group.rows.every(r => selectedIds.value.has(r._brand_prompt_id))
-}
-function groupSomeSelected(group) {
-  if (!group.rows.length) return false
-  const hit = group.rows.some(r => selectedIds.value.has(r._brand_prompt_id))
-  return hit && !groupAllSelected(group)
-}
-function toggleGroup(group) {
-  const next = new Set(selectedIds.value)
-  if (groupAllSelected(group)) {
-    for (const r of group.rows) next.delete(r._brand_prompt_id)
-  } else {
-    for (const r of group.rows) next.add(r._brand_prompt_id)
-  }
-  selectedIds.value = next
-}
 
 const canBulkRemove = computed(() => {
   // Only meaningful when every selected prompt sits in at least one env.
@@ -358,7 +403,7 @@ async function bulkCreateEnvFromSelection() {
     )
     const env = data?.data || data
     envs.value = [env, ...envs.value]
-    expanded.value = new Set([env.id, ...expanded.value])
+    envFilter.value = env.id
     toast.success(`Created "${env.name}".`)
     clearSelection()
   } catch (e) {
@@ -385,7 +430,7 @@ async function openCreateEnv() {
     const { data } = await promptLibrary.createTestEnvironment(props.websiteId, name.trim(), [])
     const env = data?.data || data
     envs.value = [env, ...envs.value]
-    expanded.value = new Set([env.id, ...expanded.value])
+    envFilter.value = env.id
   } catch (e) {
     const msg = e.response?.status === 409
       ? 'An environment with that name already exists.'
@@ -523,6 +568,65 @@ defineExpose({ load, count: computed(() => prompts.value.length) })
 @media (max-width: 600px) {
   .spt-stat-cell + .spt-stat-cell { padding-left: 0; border-left: 0; }
   .spt-stat-strip { gap: 12px 18px; }
+}
+
+/* Environment filter strip */
+.spt-envrow {
+  display: flex; gap: 14px; align-items: center;
+  flex-wrap: wrap;
+}
+.spt-envchips {
+  display: flex; gap: 6px; flex-wrap: wrap;
+  flex: 1; min-width: 0;
+}
+.spt-envchip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 11px;
+  background: #fff;
+  border: 1px solid rgba(15, 23, 42, 0.10);
+  border-radius: 9999px;
+  font-size: 12.5px; font-weight: 500; color: #0f172a;
+  cursor: pointer; white-space: nowrap;
+  transition: background .12s ease, border-color .12s ease;
+}
+.spt-envchip:hover { border-color: #0f172a; }
+.spt-envchip.is-on {
+  background: #0f172a; color: #fff; border-color: #0f172a;
+}
+.spt-envchip.is-add {
+  border-style: dashed; color: #475569;
+}
+.spt-envchip-count {
+  font-size: 11px; font-weight: 700;
+  padding: 1px 6px;
+  background: rgba(15, 23, 42, 0.08); color: #475569;
+  border-radius: 9999px;
+}
+.spt-envchip.is-on .spt-envchip-count {
+  background: rgba(255, 255, 255, 0.18); color: #fff;
+}
+.spt-envactions {
+  display: flex; gap: 6px; flex: none;
+}
+.spt-envaction {
+  background: transparent; border: 0;
+  padding: 5px 10px;
+  font: inherit; font-size: 12.5px; color: #475569;
+  cursor: pointer;
+  border-radius: 6px;
+}
+.spt-envaction:hover { background: #f1f5f9; color: #0f172a; }
+.spt-envaction.is-danger { color: #b91c1c; }
+.spt-envaction.is-danger:hover { background: #fef2f2; }
+
+/* Environment tags inside the table column */
+.spt-envtags { display: flex; flex-wrap: wrap; gap: 4px; }
+.spt-envtag {
+  font-size: 11px; font-weight: 500;
+  padding: 2px 8px;
+  background: #f1f5f9; color: #475569;
+  border-radius: 9999px;
+  white-space: nowrap;
 }
 
 .spt-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }

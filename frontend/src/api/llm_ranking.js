@@ -20,6 +20,8 @@ export default {
     usage: (wid, params) => api.get(`/llm-ranking/${wid}/usage/`, { params }),
     // Per-provider configuration / health (only implemented providers returned)
     providerHealth: (wid) => api.get(`/llm-ranking/${wid}/provider-health/`),
+    // Selectable per-provider model variants (Sonnet 4.5, GPT-4o, etc).
+    modelVariants: (wid) => api.get(`/llm-ranking/${wid}/model-variants/`),
     history: (wid, params) => api.get(`/llm-ranking/${wid}/history/`, { params }),
     // Schedule endpoints
     getSchedule: (wid) => api.get(`/llm-ranking/${wid}/schedule/`),
@@ -27,7 +29,21 @@ export default {
     deleteSchedule: (wid) => api.delete(`/llm-ranking/${wid}/schedule/`),
     scheduleETA: (wid) => api.get(`/llm-ranking/${wid}/schedule/eta/`),
     runScheduleNow: (wid) => api.post(`/llm-ranking/${wid}/schedule/run-now/`),
+    // GEO domain tagger — given a list of prompts, returns a map of
+    // {prompt: {category, recommendations, ...}} per the GEO paper's
+    // 7-category taxonomy. See apps/llm_ranking/services/geo_tagger.py.
+    geoTags: (wid, prompts) => api.post(`/llm-ranking/${wid}/geo-tags/`, { prompts }),
     // Standalone Model Test probe (does not create an audit row).
     modelTest: (wid, payload) => api.post(`/llm-ranking/${wid}/model-test/`, payload),
     modelTestStatus: (wid, runId) => api.get(`/llm-ranking/${wid}/model-test/${runId}/`),
+    // History of past Model Test runs for this website.
+    modelTestHistory: (wid, params) => api.get(`/llm-ranking/${wid}/model-test-history/`, { params }),
+    // GEO content rewrite — runs one of the 5 paper-validated strategies
+    // (quotation_addition, statistics_addition, cite_sources,
+    // fluency_optimization, authoritative) through Claude Sonnet.
+    geoRewrite: (wid, payload) => api.post(`/llm-ranking/${wid}/geo/rewrite/`, payload),
+    // G-Eval subjective-impression scoring for one citation across the
+    // 7 sub-metrics (Relevance, Influence, Uniqueness, Diversity,
+    // FollowUp, Subjective Position, Subjective Count).
+    geoJudge: (wid, payload) => api.post(`/llm-ranking/${wid}/geo/judge/`, payload),
 }
