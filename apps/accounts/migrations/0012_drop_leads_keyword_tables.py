@@ -21,7 +21,10 @@ DROP TABLE IF EXISTS analytics_trackedkeyword   CASCADE;
 DROP TABLE IF EXISTS analytics_keywordscanconfig CASCADE;
 DROP TABLE IF EXISTS analytics_platformcontent  CASCADE;
 
-DELETE FROM django_migrations WHERE app IN ('leads', 'social_leads');
+-- Only clear `social_leads` history; the `leads` app is retained as a
+-- stub (apps/leads/) so historical FK lazy references in analytics
+-- migrations resolve.
+DELETE FROM django_migrations WHERE app = 'social_leads';
 """
 
 NOOP_SQL = "SELECT 1;"

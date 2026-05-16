@@ -11,11 +11,7 @@ class Migration(migrations.Migration):
 
     initial = True
 
-    dependencies = [
-        # Run after the SQL drop of any legacy leads_* tables, so the
-        # django_migrations DELETE in that migration cannot remove this row.
-        ("accounts", "0012_drop_leads_keyword_tables"),
-    ]
+    dependencies = []
 
     operations = [
         migrations.CreateModel(
