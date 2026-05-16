@@ -71,6 +71,10 @@ def main() -> int:
         "--simple-password", action="store_true",
         help=f"Use a simple shared password ({SIMPLE_PASSWORD!r}) instead of a random one.",
     )
+    parser.add_argument(
+        "--password", "-p", default=None,
+        help="Explicit password to set for the user (single-user mode only).",
+    )
     args = parser.parse_args()
 
     _setup_django()
@@ -89,7 +93,12 @@ def main() -> int:
 
     created = []
     for email, full_name in targets:
-        password = SIMPLE_PASSWORD if args.simple_password else _generate_password()
+        if args.password and len(targets) == 1:
+            password = args.password
+        elif args.simple_password:
+            password = SIMPLE_PASSWORD
+        else:
+            password = _generate_password()
         result = _create_one(User, email, full_name, password)
         if result is not None:
             created.append((*result, full_name))
