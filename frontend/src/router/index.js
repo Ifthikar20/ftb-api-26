@@ -85,7 +85,11 @@ const routes = [
     protect('/llm-ranking/:websiteId/content/drafts/:draftId', 'content-studio-draft', () => import('@/pages/DraftEditorPage.vue'), true),
     protect('/llm-ranking/:websiteId/content/publish-targets', 'content-studio-targets', () => import('@/pages/PublishTargetsPage.vue'), true),
     protect('/llm-ranking/:websiteId/content/roi', 'content-studio-roi', () => import('@/pages/ROIPage.vue'), true),
-    protect('/app-onboarding', 'app-onboarding', () => import('@/pages/AppOnboardingPage.vue')),
+    // Legacy /app-onboarding redirects to the dashboard. The
+    // onboarding flow is now a modal overlay rendered by
+    // DashboardPage when the session marks the user as needing
+    // onboarding.
+    { path: '/app-onboarding', redirect: { name: 'dashboard' } },
     {
         path: '/paywall',
         name: 'paywall',
@@ -123,10 +127,13 @@ const router = createRouter({
 let sessionRestored = false
 
 // Routes exempt from the onboarding/paywall gate (user is mid-flow fixing their state)
+// Dashboard is intentionally included — the onboarding modal renders
+// on top of the dashboard for first-run users, so the route gate must
+// allow them through.
 const GATE_EXEMPT = new Set([
     'login', 'register', 'forgot-password', 'verify-email',
     'landing', 'terms', 'privacy',
-    'app-onboarding', 'paywall', 'not-found',
+    'dashboard', 'paywall', 'not-found',
 ])
 
 router.beforeEach(async (to, from, next) => {
@@ -188,7 +195,8 @@ router.beforeEach(async (to, from, next) => {
         }
         const route = auth.session?.next_route
         if (route === 'onboarding') {
-            return next({ name: 'app-onboarding' })
+            // Onboarding is now a modal on the dashboard.
+            return next({ name: 'dashboard' })
         }
         if (route === 'paywall') {
             return next({ name: 'paywall' })
