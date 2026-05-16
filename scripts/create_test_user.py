@@ -24,6 +24,9 @@ def _setup_django():
     django.setup()
 
 
+SIMPLE_PASSWORD = "TestPass1234"
+
+
 def _generate_password(length: int = 16) -> str:
     alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
     return "".join(secrets.choice(alphabet) for _ in range(length))
@@ -43,11 +46,10 @@ def _random_full_name() -> str:
     return f"{secrets.choice(_FIRST_NAMES)} {secrets.choice(_LAST_NAMES)}"
 
 
-def _create_one(User, email: str, full_name: str) -> tuple[str, str, str] | None:
+def _create_one(User, email: str, full_name: str, password: str) -> tuple[str, str, str] | None:
     if User.objects.filter(email=email).exists():
         print(f"SKIP: {email} already exists.", file=sys.stderr)
         return None
-    password = _generate_password()
     user = User.objects.create_user(
         email=email,
         password=password,
@@ -64,6 +66,10 @@ def main() -> int:
     parser.add_argument(
         "--count", "-n", type=int, default=None,
         help="Create N dummy users with randomized email/name.",
+    )
+    parser.add_argument(
+        "--simple-password", action="store_true",
+        help=f"Use a simple shared password ({SIMPLE_PASSWORD!r}) instead of a random one.",
     )
     args = parser.parse_args()
 
@@ -83,7 +89,8 @@ def main() -> int:
 
     created = []
     for email, full_name in targets:
-        result = _create_one(User, email, full_name)
+        password = SIMPLE_PASSWORD if args.simple_password else _generate_password()
+        result = _create_one(User, email, full_name, password)
         if result is not None:
             created.append((*result, full_name))
 
