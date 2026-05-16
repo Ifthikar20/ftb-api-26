@@ -57,18 +57,32 @@ class OnboardingSaveView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
+        from apps.websites.models import Website
         from apps.websites.services.website_service import WebsiteService
+        from core.validators.url_safety import assert_url_safe
 
         serializer = OnboardingSaveSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
-        website = WebsiteService.create(
-            user=request.user,
-            url=data["url"],
-            name=data["business_name"],
-            industry=data.get("industry", "") or "",
-        )
+        # Upsert: if the user already has a (live) website at this URL —
+        # typical when they revisit onboarding — update it in place
+        # rather than tripping the (user, url) unique constraint.
+        validated_url = assert_url_safe(data["url"])
+        website = Website.objects.filter(
+            user=request.user, url=validated_url
+        ).first()
+        if website is None:
+            website = WebsiteService.create(
+                user=request.user,
+                url=data["url"],
+                name=data["business_name"],
+                industry=data.get("industry", "") or "",
+            )
+        else:
+            website.name = data["business_name"] or website.name
+            if data.get("industry"):
+                website.industry = data["industry"]
 
         # Attach the user's edited description + keywords + competitors
         # straight onto the website row. These are the inputs the LLM
