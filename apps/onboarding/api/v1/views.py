@@ -77,6 +77,8 @@ class OnboardingSaveView(APIView):
             website.description = (data.get("description") or "")[:600]
         if hasattr(website, "topics"):
             website.topics = data.get("keywords") or []
+        if hasattr(website, "competitors"):
+            website.competitors = data.get("competitors") or []
         website.save()
 
         return Response({

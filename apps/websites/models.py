@@ -28,6 +28,7 @@ class Website(SoftDeleteMixin, TimestampMixin):
     industry = models.CharField(max_length=100, blank=True)
     description = models.TextField(blank=True, help_text="Business description for AI visibility analysis")
     topics = models.JSONField(default=list, blank=True, help_text="Selected AI visibility topics/categories")
+    competitors = models.JSONField(default=list, blank=True, help_text="Selected competitor brands as [{name, domain}]")
     pixel_key = models.UUIDField(default=uuid.uuid4, unique=True, db_index=True)
     pixel_verified = models.BooleanField(default=False)
     pixel_verified_at = models.DateTimeField(null=True, blank=True)

@@ -130,6 +130,52 @@
 
             <div class="ob-step-actions">
               <button class="ob-link-btn" @click="back">Back</button>
+              <button class="ob-cta" @click="goToCompetitors">
+                <span>Continue</span>
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M3 8h10M9 4l4 4-4 4"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <!-- ── Step 3: Confirm competitors ─────────────────────── -->
+        <section v-else-if="step === 3" key="competitors" class="ob-step ob-step-wide">
+          <div class="ob-stagger">
+            <span class="ob-eyebrow">Step 3 of 3 — competitors</span>
+            <h1 class="ob-title">Who should we benchmark you against?</h1>
+            <p class="ob-sub">
+              We found these from your space. Uncheck any that aren't real
+              competitors — they shape which brands the audit tracks.
+            </p>
+
+            <div class="ob-card">
+              <div v-if="form.competitors.length" class="ob-competitors">
+                <label
+                  v-for="(c, i) in form.competitors"
+                  :key="(c.domain || c.name) + i"
+                  class="ob-competitor"
+                  :class="{ 'is-selected': c.selected }"
+                >
+                  <input
+                    type="checkbox"
+                    v-model="c.selected"
+                    class="ob-competitor-check"
+                  />
+                  <div class="ob-competitor-body">
+                    <div class="ob-competitor-name">{{ c.name }}</div>
+                    <div v-if="c.domain" class="ob-competitor-domain">{{ c.domain }}</div>
+                  </div>
+                </label>
+              </div>
+              <p v-else class="ob-sub" style="margin: 0;">
+                We didn't find any competitors automatically. You can add them later in settings.
+              </p>
+            </div>
+
+            <div class="ob-step-actions">
+              <button class="ob-link-btn" @click="back">Back</button>
               <button class="ob-cta" :disabled="saving" @click="finish">
                 <span v-if="!saving">Finish setup</span>
                 <span v-else class="ob-spinner" aria-hidden="true"></span>
@@ -157,7 +203,7 @@ const auth = useAuthStore()
 const toast = useToast()
 
 const steps = Object.freeze([
-  { id: 'url' }, { id: 'scanning' }, { id: 'describe' },
+  { id: 'url' }, { id: 'scanning' }, { id: 'describe' }, { id: 'competitors' },
 ])
 
 const step = ref(0)
@@ -172,6 +218,7 @@ const form = ref({
   industry: '',
   description: '',
   keywords: [],
+  competitors: [],
 })
 
 const urlInputRef = ref(null)
@@ -238,6 +285,11 @@ async function startScan() {
       industry: payload.industry || '',
       description: payload.description_short || payload.description_raw || '',
       keywords: (payload.topics || []).slice(0, 8),
+      competitors: (payload.competitors || []).slice(0, 12).map(c => ({
+        name: c.name || c.domain || '',
+        domain: c.domain || '',
+        selected: true,
+      })),
     }
     step.value = 2
   } catch (e) {
@@ -251,7 +303,15 @@ async function startScan() {
 }
 
 function back() {
-  if (step.value > 0) step.value -= 1
+  // Skip the scanning step when stepping backwards — re-entering it
+  // would re-fire the scan and feel broken.
+  if (step.value === 3) step.value = 2
+  else if (step.value === 2) step.value = 0
+  else if (step.value > 0) step.value -= 1
+}
+
+function goToCompetitors() {
+  step.value = 3
 }
 
 function removeKeyword(k) {
@@ -267,6 +327,9 @@ async function finish() {
       industry: form.value.industry,
       description: form.value.description,
       keywords: form.value.keywords,
+      competitors: form.value.competitors
+        .filter(c => c.selected)
+        .map(c => ({ name: c.name, domain: c.domain })),
     })
     // Refresh the auth session so the gate sees the next step
     // (paywall) instead of routing back to onboarding.
@@ -623,6 +686,30 @@ onMounted(() => {
   transition: background 0.15s, color 0.15s;
 }
 .ob-chip-x:hover { background: var(--ob-accent-soft); color: var(--ob-accent); }
+
+/* ── Competitor checklist (step 3) ─────────────────────────── */
+.ob-competitors {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+.ob-competitor {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--ob-border);
+  border-radius: 10px;
+  background: #fff;
+  cursor: pointer;
+  transition: border-color 160ms var(--ob-spring), background 160ms var(--ob-spring);
+}
+.ob-competitor:hover { border-color: var(--ob-accent); }
+.ob-competitor.is-selected { background: var(--ob-accent-soft); border-color: var(--ob-accent); }
+.ob-competitor-check { width: 16px; height: 16px; accent-color: var(--ob-accent); }
+.ob-competitor-body { display: flex; flex-direction: column; line-height: 1.2; }
+.ob-competitor-name { font-size: 14px; font-weight: 500; }
+.ob-competitor-domain { font-size: 12px; color: var(--ob-muted); }
 
 /* Competitor list */
 .ob-comp-list {
