@@ -214,3 +214,71 @@ class CreateScheduleSerializer(serializers.Serializer):
         required=False,
         default=list,
     )
+
+
+# ── GEO actions (Aggarwal et al. 2024) ───────────────────────────────────
+
+
+class GeoRewriteRequestSerializer(serializers.Serializer):
+    """
+    Input serializer for POST /llm-ranking/<wid>/geo/rewrite/.
+
+    Validates that ``method`` is one of the five paper-validated GEO
+    strategies before the view consumes any quota or hits Claude.
+    """
+
+    # Imported here, not at module top, to avoid a circular import on
+    # serializer module load — the service imports django models too.
+    def _allowed_methods(self):
+        from apps.llm_ranking.services import geo_rewrite
+        return geo_rewrite.ALLOWED_METHODS
+
+    method = serializers.CharField(max_length=64)
+    source_text = serializers.CharField(max_length=12_000)
+    query = serializers.CharField(
+        max_length=2_000, required=False, allow_blank=True, default="",
+    )
+
+    def validate_method(self, value):
+        value = (value or "").strip().lower()
+        if value not in self._allowed_methods():
+            raise serializers.ValidationError(
+                f"Unknown method. Allowed: {sorted(self._allowed_methods())}"
+            )
+        return value
+
+    def validate_source_text(self, value):
+        if not (value or "").strip():
+            raise serializers.ValidationError("source_text is required.")
+        return value
+
+
+class GeoJudgeRequestSerializer(serializers.Serializer):
+    """
+    Input serializer for POST /llm-ranking/<wid>/geo/judge/.
+
+    Bounds response_text, requires a non-empty query, and clamps the
+    sample count to ``MAX_SAMPLES`` so a malicious payload can't burn
+    the whole judge budget in one call.
+    """
+    MAX_SAMPLES = 5
+
+    query = serializers.CharField(max_length=2_000)
+    response_text = serializers.CharField(max_length=20_000)
+    citation_index = serializers.IntegerField(min_value=1, max_value=999)
+    citation_url = serializers.CharField(
+        max_length=2_000, required=False, allow_blank=True, default="",
+    )
+    samples = serializers.IntegerField(
+        min_value=1, max_value=MAX_SAMPLES, required=False, default=1,
+    )
+
+    def validate_query(self, value):
+        if not (value or "").strip():
+            raise serializers.ValidationError("query is required.")
+        return value
+
+    def validate_response_text(self, value):
+        if not (value or "").strip():
+            raise serializers.ValidationError("response_text is required.")
+        return value

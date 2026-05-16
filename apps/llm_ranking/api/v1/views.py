@@ -11,6 +11,8 @@ from rest_framework.views import APIView
 
 from apps.llm_ranking.api.v1.serializers import (
     CreateScheduleSerializer,
+    GeoJudgeRequestSerializer,
+    GeoRewriteRequestSerializer,
     LLMRankingAuditListSerializer,
     LLMRankingAuditSerializer,
     LLMRankingScheduleSerializer,
@@ -559,6 +561,30 @@ class LLMRankingRecommendationsView(TenantScopedAPIView):
         from apps.llm_ranking.services.ranking_service import LLMRankingService
         recs = LLMRankingService.generate_recommendations(audit=audit)
         return Response({"recommendations": recs, "overall_score": audit.overall_score})
+
+
+class LLMRankingGEOTagsView(TenantScopedAPIView):
+    """
+    POST — tag a list of prompts with one of the 7 GEO domain
+    categories (debate / facts / law_gov / people_society /
+    explanation / history / opinion) from the GEO paper, and return
+    the ranked GEO tactic recommendations for each domain.
+
+    Body: {"prompts": ["...", "..."]}
+    Response: {"tags": {"<prompt>": {category, recommendations, ...}}}
+    """
+
+    def post(self, request, website_id):
+        self.get_website(website_id)
+        prompts = request.data.get("prompts") or []
+        if not isinstance(prompts, list):
+            return Response(
+                {"error": "prompts must be a list of strings."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        prompts = [p for p in prompts if isinstance(p, str) and p.strip()][:200]
+        from apps.llm_ranking.services.geo_tagger import tag_prompts
+        return Response({"tags": tag_prompts(prompts)})
 
 
 class LLMRankingPromptResultsView(TenantScopedAPIView):
@@ -1318,24 +1344,53 @@ class LLMRankingScheduleRunNowView(TenantScopedAPIView):
         )
 
 
+class ModelVariantsView(TenantScopedAPIView):
+    """GET — list every selectable model variant grouped by provider.
+
+    Each variant is a `"<provider>:<model_id>"` choice the Model Test
+    picker can send back as a member of `models`. The response also
+    flags whether the underlying provider's API key is configured, so
+    the UI can grey-out unavailable variants without a second call.
+    """
+
+    def get(self, request, website_id):
+        self.get_website(website_id)
+        from apps.llm_ranking.providers import list_model_variants
+        variants = list_model_variants()
+        return Response({
+            "variants": variants,
+            "configured_count": sum(1 for v in variants if v["configured"]),
+            "total": len(variants),
+        })
+
+
 class ModelTestRunView(TenantScopedAPIView):
     """
     Start a Model Test probe in the background.
 
     POST queues a Celery worker (`run_model_test`) that fires every
-    (prompt, provider) pair and writes per-step progress into Redis.
-    Returns a `run_id` immediately so the UI can poll
+    (prompt, model variant) pair and writes per-step progress into
+    Redis. Returns a `run_id` immediately so the UI can poll
     `ModelTestStatusView` and render results as they land.
     No LLMRankingAudit row is created — this is the lightweight
     'did the model find me' probe.
+
+    Accepts either:
+      - `models`: list of `"<provider>:<model_id>"` variant strings
+        (preferred — lets the picker compare e.g. Sonnet 4 vs 4.5), or
+      - `providers`: legacy list of provider keys; each is expanded to
+        its default variant for backward compatibility.
     """
 
     MAX_PROMPTS = 25
-    MAX_PROVIDERS = 4
+    MAX_VARIANTS = 8
+    MAX_PROMPT_CHARS = 2000
 
     def post(self, request, website_id):
         import uuid
-        from apps.llm_ranking.providers import PROVIDERS
+        from apps.llm_ranking.providers import (
+            PROVIDERS, default_variant_for, list_model_variants, parse_variant,
+        )
         from apps.llm_ranking.tasks import (
             MODEL_TEST_TTL_SECONDS,
             MODEL_TEST_CACHE_KEY,
@@ -1346,37 +1401,147 @@ class ModelTestRunView(TenantScopedAPIView):
         website = self.get_website(website_id)
 
         prompts = request.data.get("prompts", []) or []
-        providers = request.data.get("providers", []) or ["claude"]
-        if not isinstance(prompts, list) or not isinstance(providers, list):
-            return Response({"error": "prompts and providers must be arrays."},
-                            status=status.HTTP_400_BAD_REQUEST)
+        models_in = request.data.get("models", []) or []
+        providers_in = request.data.get("providers", []) or []
 
-        prompts = [str(p).strip() for p in prompts if str(p).strip()]
+        if not isinstance(prompts, list) or not isinstance(models_in, list) or not isinstance(providers_in, list):
+            return Response(
+                {"error": "prompts, models, and providers must be arrays.",
+                 "code": "invalid_payload"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Normalise prompts. Reject empties, oversize, and runs that
+        # exceed the per-call cap. The cap exists because models reject
+        # very long inputs and our per-prompt cell rendering breaks
+        # under multi-page responses.
+        normalised: list[str] = []
+        for raw in prompts:
+            s = str(raw).strip()
+            if not s:
+                continue
+            if len(s) > self.MAX_PROMPT_CHARS:
+                return Response(
+                    {"error": f"Each prompt must be {self.MAX_PROMPT_CHARS} characters or fewer.",
+                     "code": "prompt_too_long",
+                     "max_chars": self.MAX_PROMPT_CHARS},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            normalised.append(s)
+        prompts = normalised
         if not prompts:
-            return Response({"error": "At least one prompt is required."},
-                            status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"error": "At least one prompt is required.",
+                 "code": "no_prompts"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         if len(prompts) > self.MAX_PROMPTS:
-            return Response({"error": f"Max {self.MAX_PROMPTS} prompts per run."},
-                            status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"error": f"Max {self.MAX_PROMPTS} prompts per run.",
+                 "code": "too_many_prompts",
+                 "max_prompts": self.MAX_PROMPTS,
+                 "received": len(prompts)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
-        providers = [str(p).strip().lower() for p in providers if str(p).strip()]
-        providers = [p for p in providers if p in PROVIDERS][: self.MAX_PROVIDERS]
-        if not providers:
-            return Response({"error": "Pick at least one supported provider."},
-                            status=status.HTTP_400_BAD_REQUEST)
+        # Pre-flight: at least one provider must have an API key. Without
+        # this guard a user with zero keys would queue a run, see every
+        # cell fail, and have no idea why. Surface the gap clearly.
+        catalogue = list_model_variants()
+        configured_keys = {v["provider"] for v in catalogue if v["configured"]}
+        if not configured_keys:
+            return Response(
+                {"error": "No LLM providers are configured. Add at least one "
+                          "provider API key (Anthropic, OpenAI, Gemini, or "
+                          "Perplexity) in Settings before running a Model Test.",
+                 "code": "no_providers_configured"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
+        # Build the variant list. If the FE supplied `models`, validate
+        # each as `"<provider>:<model_id>"`. Otherwise expand legacy
+        # provider keys to their default variants so old clients keep
+        # working without code changes.
+        valid_variant_ids = {v["id"] for v in catalogue}
+        variants: list[str] = []
+        unknown: list[str] = []
+        unconfigured: list[str] = []
+        if models_in:
+            seen: set[str] = set()
+            for raw in models_in:
+                vid = str(raw).strip()
+                if not vid or parse_variant(vid) is None:
+                    unknown.append(vid)
+                    continue
+                if vid in seen:
+                    continue
+                seen.add(vid)
+                if vid not in valid_variant_ids:
+                    unknown.append(vid)
+                    continue
+                pkey, _ = parse_variant(vid)
+                if pkey not in configured_keys:
+                    unconfigured.append(vid)
+                    continue
+                variants.append(vid)
+        else:
+            for raw in (providers_in or ["claude"]):
+                pkey = str(raw).strip().lower()
+                if pkey not in PROVIDERS:
+                    continue
+                if pkey not in configured_keys:
+                    unconfigured.append(pkey)
+                    continue
+                vid = default_variant_for(pkey)
+                if vid and vid not in variants:
+                    variants.append(vid)
+
+        variants = variants[: self.MAX_VARIANTS]
+        if not variants:
+            details = {}
+            if unknown:
+                details["unknown_models"] = unknown
+            if unconfigured:
+                details["unconfigured_models"] = unconfigured
+            return Response(
+                {"error": "Pick at least one configured model. The selection "
+                          "either references unknown variant ids or providers "
+                          "without an API key.",
+                 "code": "no_runnable_models",
+                 **details},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # `providers` in the run state is the variant list — the FE keys
+        # results by these strings. Keep the name for backward compat
+        # with the existing status payload shape.
+        providers = variants
+
+        # Brand terms = the canonical name + any aliases on the Website
+        # row, then anything the user added via the "Compare against"
+        # editor on the Source Influence page (extra_brand_terms in the
+        # POST payload). Deduped case-insensitively while preserving the
+        # original casing of the first occurrence — the matcher is
+        # case-insensitive anyway, but the chips read better with the
+        # spelling the user typed.
         brand_terms: list[str] = []
+        extra_in = request.data.get("extra_brand_terms") or []
+        if not isinstance(extra_in, list):
+            extra_in = []
         for term in [
             getattr(website, "business_name", None) or "",
             getattr(website, "name", None) or "",
+            *(getattr(website, "brand_aliases", None) or []),
+            *extra_in,
         ]:
-            term = (term or "").strip()
-            if term and term.lower() not in {t.lower() for t in brand_terms}:
+            term = (str(term) or "").strip()
+            if not term or len(term) > 80:
+                continue
+            if term.lower() not in {t.lower() for t in brand_terms}:
                 brand_terms.append(term)
-        for alias in (getattr(website, "brand_aliases", None) or []):
-            alias = (alias or "").strip()
-            if alias and alias.lower() not in {t.lower() for t in brand_terms}:
-                brand_terms.append(alias)
+        # Hard cap on the merged list so a hostile / overzealous client
+        # can't blow up the matcher regex with thousands of terms.
+        brand_terms = brand_terms[:50]
 
         run_id = uuid.uuid4().hex
         # Pre-seed the state row so a fast first poll never 404s before
@@ -1412,17 +1577,164 @@ class ModelTestRunView(TenantScopedAPIView):
                         status=status.HTTP_202_ACCEPTED)
 
 
+class ModelTestHistoryView(TenantScopedAPIView):
+    """
+    GET — return a paginated list of recent Model Test runs for this
+    website.
+
+    Each row carries enough to render a one-line history entry without
+    a follow-up call: status, timing, prompt/model counts, hit count,
+    discovery rate, and aggregate token usage. ``?limit=`` caps the
+    page; defaults to 20 and is hard-capped at 100 so a hostile client
+    can't drag the whole table over the wire.
+    """
+
+    def get(self, request, website_id):
+        from apps.llm_ranking.models import ModelTestRun
+        self.get_website(website_id)
+        try:
+            limit = int(request.query_params.get("limit") or 20)
+        except (TypeError, ValueError):
+            limit = 20
+        limit = max(1, min(limit, 100))
+
+        qs = (
+            ModelTestRun.objects
+            .filter(website_id=website_id)
+            .order_by("-created_at")
+            .values(
+                "id", "status", "created_at", "completed_at",
+                "duration_seconds", "total_calls", "completed_calls",
+                "prompts", "providers", "summary", "error_message",
+            )[:limit]
+        )
+        rows = []
+        for r in qs:
+            summary = r.get("summary") or {}
+            rows.append({
+                "id": str(r["id"]),
+                "status": r["status"],
+                "created_at": r["created_at"].isoformat() if r["created_at"] else None,
+                "completed_at": r["completed_at"].isoformat() if r["completed_at"] else None,
+                "duration_seconds": r["duration_seconds"],
+                "prompts": len(r.get("prompts") or []),
+                "providers": len(r.get("providers") or []),
+                "providers_list": list(r.get("providers") or []),
+                "total_calls": r["total_calls"],
+                "completed_calls": r["completed_calls"],
+                "hits": summary.get("hits") or 0,
+                "prompts_with_hit": summary.get("prompts_with_hit") or 0,
+                "discovery_rate": summary.get("discovery_rate") or 0,
+                "total_input_tokens": summary.get("total_input_tokens") or 0,
+                "total_output_tokens": summary.get("total_output_tokens") or 0,
+                "total_tokens": summary.get("total_tokens") or 0,
+                "error": r.get("error_message") or "",
+            })
+        return Response({"runs": rows, "count": len(rows)})
+
+
 class ModelTestStatusView(TenantScopedAPIView):
-    """GET — return current state of a Model Test run for polling."""
+    """GET — return current state of a Model Test run for polling.
+
+    Reads from Redis first (the streaming source of truth while the run
+    is in flight). Falls back to the persisted ModelTestRun row when
+    Redis has expired so users can reopen historical runs.
+    """
 
     def get(self, request, website_id, run_id):
+        from apps.llm_ranking.models import ModelTestRun
         from apps.llm_ranking.tasks import _model_test_state_get
         self.get_website(website_id)
+
         state = _model_test_state_get(run_id)
-        if not state:
-            return Response({"error": "Run not found or expired."},
-                            status=status.HTTP_404_NOT_FOUND)
-        if state.get("website_id") and str(state["website_id"]) != str(website_id):
-            return Response({"error": "Not found."},
-                            status=status.HTTP_404_NOT_FOUND)
-        return Response(state)
+        if state:
+            if state.get("website_id") and str(state["website_id"]) != str(website_id):
+                return Response({"error": "Not found."},
+                                status=status.HTTP_404_NOT_FOUND)
+            return Response(state)
+
+        # Redis miss — try the durable archive.
+        run = (
+            ModelTestRun.objects
+            .filter(id=run_id, website_id=website_id)
+            .first()
+        )
+        if run is None:
+            return Response(
+                {"error": "Run not found or expired.", "code": "run_not_found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        return Response(run.to_state_dict())
+
+
+# ── GEO actions (Aggarwal et al. 2024, KDD '24) ───────────────────────────
+
+
+class GeoRewriteView(TenantScopedAPIView):
+    """
+    Rewrite a chunk of source text using one of the paper-validated GEO
+    strategies (quotation_addition, statistics_addition, cite_sources,
+    fluency_optimization, authoritative).
+
+    Cost-controlled by ``CLAUDE_REWRITE_DAILY_LIMIT_PER_USER`` (default 30/day).
+    Input validation lives in :class:`GeoRewriteRequestSerializer` —
+    method allow-list, body size cap, non-empty source.
+    """
+
+    def post(self, request, website_id):
+        from apps.llm_ranking.services import geo_rewrite
+
+        self.get_website(website_id)
+        serializer = GeoRewriteRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        result = geo_rewrite.rewrite(
+            source_text=data["source_text"],
+            method=data["method"],
+            query=(data.get("query") or "").strip() or None,
+            user_id=getattr(request.user, "id", None),
+        )
+        if not result.get("ok"):
+            http = (
+                status.HTTP_429_TOO_MANY_REQUESTS
+                if result.get("error") == "quota_exceeded"
+                else status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+            return Response(result, status=http)
+        return Response(result)
+
+
+class GeoJudgeView(TenantScopedAPIView):
+    """
+    Score one citation across the 7 G-Eval sub-metrics (Relevance,
+    Influence, Uniqueness, Diversity, FollowUp, Subjective Position,
+    Subjective Count) via Claude-as-judge.
+
+    Cost-controlled by ``CLAUDE_JUDGE_DAILY_LIMIT_PER_USER`` (default 200/day).
+    Input validation lives in :class:`GeoJudgeRequestSerializer` —
+    non-empty query/response, sample count clamped to MAX_SAMPLES.
+    """
+
+    def post(self, request, website_id):
+        from apps.llm_ranking.services import subjective_impression
+
+        self.get_website(website_id)
+        serializer = GeoJudgeRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        user_id = getattr(request.user, "id", None)
+
+        scores = subjective_impression.score_citation(
+            query=data["query"],
+            response_text=data["response_text"],
+            citation_index=data["citation_index"],
+            citation_url=data.get("citation_url", ""),
+            samples=data.get("samples", 1),
+            user_id=user_id,
+        )
+        return Response({
+            "scores":          scores,
+            "quota_remaining": subjective_impression.quota_remaining(user_id),
+            "daily_limit":     subjective_impression.quota_for_user(user_id),
+        })

@@ -604,7 +604,26 @@
                       <path d="M5 4l5 4-5 4"/>
                     </svg>
                     <span class="pt-prompt-block">
-                      <span class="pt-prompt-headline">{{ p.text }}</span>
+                      <span class="pt-prompt-headline">
+                        {{ p.text }}
+                        <span
+                          v-if="geoTagFor(p.text)"
+                          class="pt-geo-badge"
+                          :style="geoCategoryStyle(geoTagFor(p.text).category)"
+                          :title="`GEO domain: ${geoTagFor(p.text).category_label}. Tag source: ${geoTagFor(p.text).source}.`"
+                        >{{ geoTagFor(p.text).category_label }}</span>
+                        <span
+                          v-if="geoTopRecommendation(p.text)"
+                          class="pt-geo-tactic"
+                          :title="geoTopRecommendation(p.text).summary + ' (+' + geoTopRecommendation(p.text).lift + '% avg lift per GEO paper)'"
+                        >
+                          <svg width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M3 8l3 3 7-7" stroke-linecap="round" stroke-linejoin="round"/>
+                          </svg>
+                          {{ geoTopRecommendation(p.text).label }}
+                          <span class="pt-geo-lift">+{{ geoTopRecommendation(p.text).lift }}%</span>
+                        </span>
+                      </span>
                       <span v-if="p.rationale" class="pt-prompt-rationale">{{ p.rationale }}</span>
                     </span>
                   </span>
@@ -659,6 +678,31 @@
                       <span class="pt-detail-stat-label">Sentiment</span>
                       <span class="pt-detail-stat-value pt-sentiment" :class="'pt-sentiment-' + p.dominantSentiment">{{ p.dominantSentiment }}</span>
                     </div>
+                  </div>
+
+                  <div v-if="geoTagFor(p.text)" class="pt-detail-section pt-geo-block">
+                    <div class="pt-detail-label">
+                      GEO recommendations
+                      <span class="pt-geo-block-cat" :style="geoCategoryStyle(geoTagFor(p.text).category)">
+                        {{ geoTagFor(p.text).category_label }}
+                      </span>
+                    </div>
+                    <p class="pt-geo-block-sub">
+                      Per the GEO paper (Aggarwal et al., KDD '24), prompts in
+                      the <strong>{{ geoTagFor(p.text).category_label }}</strong>
+                      domain respond best to these tactics — ranked by
+                      published visibility lift on Position-Adjusted Word Count.
+                    </p>
+                    <ol class="pt-geo-list">
+                      <li v-for="rec in geoTagFor(p.text).recommendations" :key="rec.id" class="pt-geo-item">
+                        <span class="pt-geo-rank">#{{ rec.rank }}</span>
+                        <span class="pt-geo-body">
+                          <span class="pt-geo-label">{{ rec.label }}</span>
+                          <span class="pt-geo-summary">{{ rec.summary }}</span>
+                        </span>
+                        <span class="pt-geo-lift-pill">+{{ rec.lift }}%</span>
+                      </li>
+                    </ol>
                   </div>
 
                   <div class="pt-detail-section">
@@ -1915,7 +1959,7 @@
 </template>
 
 <script setup>
-import { ref, shallowRef, computed, onMounted, onBeforeUnmount, markRaw, nextTick } from 'vue'
+import { ref, shallowRef, computed, onMounted, onBeforeUnmount, markRaw, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from '@/composables/useToast'
 import { useAppStore } from '@/stores/app'
@@ -3192,6 +3236,66 @@ const intentGroups = computed(() => {
       return b.avgScore - a.avgScore
     })
 })
+
+// ── GEO domain tagger ────────────────────────────────────────────────────
+//
+// Tags each prompt with one of the 7 categories from the GEO paper
+// (Aggarwal et al., KDD '24) and surfaces the highest-lift GEO tactic
+// for that domain. Backend call batches up to 200 prompts; cached
+// server-side per prompt-hash, so reloading an audit is a no-op.
+
+const geoTagsByPrompt = ref({})
+const geoTagsLoading = ref(false)
+let _geoTagsLastKey = ''
+
+async function fetchGeoTagsForPrompts(texts) {
+  const unique = [...new Set(texts.filter(Boolean))]
+  if (!unique.length) return
+  const key = unique.slice().sort().join('|')
+  if (key === _geoTagsLastKey) return
+  _geoTagsLastKey = key
+  geoTagsLoading.value = true
+  try {
+    const { data } = await llmRankingApi.geoTags(websiteId, unique)
+    geoTagsByPrompt.value = data?.tags || {}
+  } catch (e) {
+    // Non-fatal: ranking UI still works without the GEO badge column.
+    geoTagsByPrompt.value = {}
+  } finally {
+    geoTagsLoading.value = false
+  }
+}
+
+watch(
+  () => (promptRows.value || []).map(r => r.text),
+  texts => { if (texts.length) fetchGeoTagsForPrompts(texts) },
+  { immediate: true },
+)
+
+function geoTagFor(promptText) {
+  return geoTagsByPrompt.value[promptText] || null
+}
+
+function geoTopRecommendation(promptText) {
+  const t = geoTagFor(promptText)
+  return t?.recommendations?.[0] || null
+}
+
+// Tailwind-ish hue per category so badges stay readable across themes.
+const GEO_CATEGORY_COLORS = Object.freeze({
+  debate:         { bg: '#fef3c7', fg: '#92400e' },
+  facts:          { bg: '#dbeafe', fg: '#1e40af' },
+  law_gov:        { bg: '#e0e7ff', fg: '#3730a3' },
+  people_society: { bg: '#fce7f3', fg: '#9d174d' },
+  explanation:    { bg: '#d1fae5', fg: '#065f46' },
+  history:        { bg: '#ede9fe', fg: '#5b21b6' },
+  opinion:        { bg: '#ffedd5', fg: '#9a3412' },
+})
+
+function geoCategoryStyle(category) {
+  const c = GEO_CATEGORY_COLORS[category] || { bg: '#e5e7eb', fg: '#374151' }
+  return { backgroundColor: c.bg, color: c.fg }
+}
 
 // Competitors leaderboard: aggregated across all prompts, not filtered
 const competitorLeaderboard = computed(() => {
@@ -6958,6 +7062,103 @@ onBeforeUnmount(() => {
 .pt-sentiment-neutral { color: #4b5563; }
 .pt-sentiment-negative { color: #dc2626; }
 .pt-sentiment-not_mentioned { color: #9ca3af; }
+
+/* ── GEO domain tagger (paper: arXiv 2311.09735) ───────────────── */
+.pt-geo-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 8px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  vertical-align: middle;
+}
+.pt-geo-tactic {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 6px;
+  padding: 1px 7px 1px 6px;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 11px;
+  font-weight: 500;
+  vertical-align: middle;
+}
+.pt-geo-tactic svg { color: #16a34a; flex-shrink: 0; }
+.pt-geo-lift {
+  margin-left: 2px;
+  padding-left: 5px;
+  border-left: 1px solid #e2e8f0;
+  color: #16a34a;
+  font-weight: 600;
+}
+
+.pt-geo-block { background: #fafbff; border-radius: 8px; padding: 12px; }
+.pt-geo-block-cat {
+  display: inline-flex;
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.pt-geo-block-sub {
+  margin: 6px 0 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-muted, #64748b);
+}
+.pt-geo-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.pt-geo-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+}
+.pt-geo-rank {
+  flex-shrink: 0;
+  width: 26px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #94a3b8;
+  letter-spacing: -0.02em;
+}
+.pt-geo-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.pt-geo-label { font-size: 13px; font-weight: 600; color: #0f172a; }
+.pt-geo-summary { font-size: 12px; line-height: 1.45; color: #475569; }
+.pt-geo-lift-pill {
+  flex-shrink: 0;
+  align-self: center;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #ecfdf5;
+  color: #047857;
+  font-size: 11px;
+  font-weight: 700;
+}
 
 .pt-detail-section {
   margin-top: 12px;

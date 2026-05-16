@@ -16,10 +16,16 @@ urlpatterns = [
     path("<uuid:website_id>/audits/<uuid:audit_id>/providers/<str:provider>/", views.LLMRankingProviderDetailView.as_view(), name="llm-ranking-provider-detail"),
     path("<uuid:website_id>/usage/", views.LLMRankingUsageView.as_view(), name="llm-ranking-usage"),
     path("<uuid:website_id>/provider-health/", views.LLMRankingProviderHealthView.as_view(), name="llm-ranking-provider-health"),
+    path("<uuid:website_id>/model-variants/", views.ModelVariantsView.as_view(), name="llm-ranking-model-variants"),
     path("<uuid:website_id>/history/", views.LLMRankingHistoryView.as_view(), name="llm-ranking-history"),
     path("<uuid:website_id>/schedule/", views.LLMRankingScheduleView.as_view(), name="llm-ranking-schedule"),
     path("<uuid:website_id>/schedule/eta/", views.LLMRankingScheduleETAView.as_view(), name="llm-ranking-schedule-eta"),
     path("<uuid:website_id>/schedule/run-now/", views.LLMRankingScheduleRunNowView.as_view(), name="llm-ranking-schedule-run-now"),
+    path("<uuid:website_id>/geo-tags/", views.LLMRankingGEOTagsView.as_view(), name="llm-ranking-geo-tags"),
     path("<uuid:website_id>/model-test/", views.ModelTestRunView.as_view(), name="llm-ranking-model-test"),
+    path("<uuid:website_id>/model-test-history/", views.ModelTestHistoryView.as_view(), name="llm-ranking-model-test-history"),
     path("<uuid:website_id>/model-test/<str:run_id>/", views.ModelTestStatusView.as_view(), name="llm-ranking-model-test-status"),
+    # GEO action endpoints (Aggarwal et al. 2024)
+    path("<uuid:website_id>/geo/rewrite/", views.GeoRewriteView.as_view(), name="llm-ranking-geo-rewrite"),
+    path("<uuid:website_id>/geo/judge/",   views.GeoJudgeView.as_view(),   name="llm-ranking-geo-judge"),
 ]
