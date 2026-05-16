@@ -32,7 +32,6 @@ class Website(SoftDeleteMixin, TimestampMixin):
     pixel_verified = models.BooleanField(default=False)
     pixel_verified_at = models.DateTimeField(null=True, blank=True)
     platform_type = models.CharField(max_length=20, choices=PLATFORM_TYPES, default="custom", blank=True)
-    onboarding_completed = models.BooleanField(default=False)
     crawl_status = models.CharField(max_length=20, default="pending")
     is_active = models.BooleanField(default=True)
 

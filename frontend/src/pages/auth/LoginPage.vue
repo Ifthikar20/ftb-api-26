@@ -67,8 +67,7 @@ onMounted(async () => {
       const session = await authStore.fetchSession()
       const next = session?.next_route
       if (next === 'onboarding') {
-        const wid = session?.onboarding?.first_incomplete_website_id
-        router.replace(wid ? `/onboarding/${wid}` : '/app-onboarding')
+        router.replace('/app-onboarding')
       } else if (next === 'paywall') {
         router.replace('/paywall')
       } else {
@@ -90,8 +89,7 @@ async function handleLogin() {
     if (route.query.redirect) {
       router.push(route.query.redirect)
     } else if (next === 'onboarding') {
-      const wid = session?.onboarding?.first_incomplete_website_id
-      router.push(wid ? `/onboarding/${wid}` : '/app-onboarding')
+      router.push('/app-onboarding')
     } else if (next === 'paywall') {
       router.push('/paywall')
     } else {

@@ -85,7 +85,6 @@ const routes = [
     protect('/llm-ranking/:websiteId/content/drafts/:draftId', 'content-studio-draft', () => import('@/pages/DraftEditorPage.vue'), true),
     protect('/llm-ranking/:websiteId/content/publish-targets', 'content-studio-targets', () => import('@/pages/PublishTargetsPage.vue'), true),
     protect('/llm-ranking/:websiteId/content/roi', 'content-studio-roi', () => import('@/pages/ROIPage.vue'), true),
-    protect('/onboarding/:websiteId', 'onboarding', () => import('@/pages/OnboardingPage.vue'), true),
     protect('/app-onboarding', 'app-onboarding', () => import('@/pages/AppOnboardingPage.vue')),
     {
         path: '/paywall',
@@ -127,7 +126,7 @@ let sessionRestored = false
 const GATE_EXEMPT = new Set([
     'login', 'register', 'forgot-password', 'verify-email',
     'landing', 'terms', 'privacy',
-    'onboarding', 'app-onboarding', 'paywall', 'not-found',
+    'app-onboarding', 'paywall', 'not-found',
 ])
 
 router.beforeEach(async (to, from, next) => {
@@ -189,8 +188,7 @@ router.beforeEach(async (to, from, next) => {
         }
         const route = auth.session?.next_route
         if (route === 'onboarding') {
-            const wid = auth.session?.onboarding?.first_incomplete_website_id
-            return next(wid ? { name: 'onboarding', params: { websiteId: wid } } : { name: 'app-onboarding' })
+            return next({ name: 'app-onboarding' })
         }
         if (route === 'paywall') {
             return next({ name: 'paywall' })

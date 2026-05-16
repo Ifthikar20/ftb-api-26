@@ -271,10 +271,9 @@ class SessionView(APIView):
         user = request.user
 
         websites = list(Website.objects.filter(user=user, is_active=True).only(
-            "id", "name", "url", "onboarding_completed"
+            "id", "name", "url"
         ))
-        needs_onboarding = not websites or any(not w.onboarding_completed for w in websites)
-        incomplete = next((w for w in websites if not w.onboarding_completed), None)
+        needs_onboarding = not websites
 
         sub = getattr(user, "subscription", None)
         if sub is None:
@@ -297,7 +296,6 @@ class SessionView(APIView):
             "user": UserProfileSerializer(user).data,
             "onboarding": {
                 "needs_onboarding": needs_onboarding,
-                "first_incomplete_website_id": str(incomplete.id) if incomplete else None,
                 "websites_count": len(websites),
             },
             "subscription": {
