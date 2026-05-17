@@ -190,6 +190,33 @@
                         v-model="c.selected"
                         class="ob-competitor-check"
                       />
+                      <!-- Logo lookup: Clearbit returns the brand mark for
+                           most known companies; on 404 the @error handler
+                           swaps to Google's favicon service; if that also
+                           fails we fall back to a circled initial. -->
+                      <span class="ob-competitor-logo" v-if="c.domain || c.name">
+                        <img
+                          v-if="c.domain && !c._logoErr"
+                          :src="`https://logo.clearbit.com/${c.domain}`"
+                          :alt="`${c.name} logo`"
+                          loading="lazy"
+                          width="24"
+                          height="24"
+                          @error="onLogoError(c)"
+                        />
+                        <img
+                          v-else-if="c.domain && c._logoErr === 'clearbit'"
+                          :src="`https://www.google.com/s2/favicons?domain=${c.domain}&sz=64`"
+                          :alt="`${c.name} favicon`"
+                          loading="lazy"
+                          width="24"
+                          height="24"
+                          @error="onLogoError(c)"
+                        />
+                        <span v-else class="ob-competitor-logo-fallback">
+                          {{ (c.name || '?').trim().charAt(0).toUpperCase() }}
+                        </span>
+                      </span>
                       <div class="ob-competitor-body">
                         <div class="ob-competitor-name">{{ c.name }}</div>
                         <div v-if="c.domain" class="ob-competitor-domain">{{ c.domain }}</div>
@@ -408,6 +435,16 @@ function addCustomCompetitor() {
 function removeCompetitor(index) {
   if (index < 0 || index >= form.value.competitors.length) return
   form.value.competitors.splice(index, 1)
+}
+
+// Two-tier logo fallback: Clearbit -> Google favicon -> initial.
+// State machine driven by an internal `_logoErr` field on the row.
+function onLogoError(competitor) {
+  if (!competitor._logoErr) {
+    competitor._logoErr = 'clearbit'
+  } else {
+    competitor._logoErr = 'fallback'
+  }
 }
 
 function removeKeyword(k) {
@@ -773,6 +810,33 @@ onBeforeUnmount(() => {
 .ob-competitor:hover { border-color: var(--ob-accent); }
 .ob-competitor.is-selected { background: var(--ob-accent-soft); border-color: var(--ob-accent); }
 .ob-competitor-check { width: 16px; height: 16px; accent-color: var(--ob-accent); }
+
+/* Logo block: fixed 24x24 round container. img fills; if both
+   external sources fail we render a circled initial via the fallback
+   span. */
+.ob-competitor-logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--ob-surface);
+  border: 1px solid var(--ob-border);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.ob-competitor-logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #fff;
+}
+.ob-competitor-logo-fallback {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ob-fg);
+}
 .ob-competitor-body { display: flex; flex-direction: column; line-height: 1.2; }
 .ob-competitor-name { font-size: 14px; font-weight: 500; }
 .ob-competitor-domain { font-size: 12px; color: var(--ob-muted); }
