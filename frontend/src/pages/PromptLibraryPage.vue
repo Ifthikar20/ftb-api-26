@@ -1,14 +1,14 @@
 <template>
   <div class="pl-page">
     <!-- Header -->
-    <header id="pl-header" class="page-header">
-      <div>
-        <h1 class="page-title">Prompt Library</h1>
-        <p class="page-subtitle">
-          Describe a scenario. We'll find the prompts AI assistants are likely
-          being asked about you.
-        </p>
-      </div>
+    <header id="pl-header" class="page-header pl-hero">
+      <span class="pl-hero-eyebrow">Prompt library</span>
+      <h1 class="pl-hero-title">What are AI assistants saying about you?</h1>
+      <p class="pl-hero-sub">
+        Describe a scenario. We'll surface the prompts buyers are likely typing
+        into ChatGPT, Claude, and Perplexity right now — and benchmark you
+        against the brands they hear back.
+      </p>
     </header>
 
     <!-- Tab toggle: Search vs Saved -->
@@ -228,8 +228,9 @@
             <tbody>
               <template v-for="(p, idx) in pagedGeneratedPrompts" :key="p._uid">
                 <tr
-                  class="pl-row"
+                  class="pl-row pl-row-stagger"
                   :class="{ 'is-expanded': expandedResult === p._uid }"
+                  :style="{ animationDelay: Math.min(idx, 12) * 28 + 'ms' }"
                   @click="toggleExpand(p._uid)"
                 >
                   <td class="pl-td">
@@ -1149,18 +1150,85 @@ watch(websiteId, loadVariables)
 <style scoped>
 /* ── Full-width dashboard layout ──────────────────────────── */
 .pl-page {
+  --pl-accent: #ff6a2c;
+  --pl-accent-soft: rgba(255, 106, 44, 0.10);
+  --pl-spring: cubic-bezier(0.22, 1, 0.36, 1);
+  --pl-spring-strong: cubic-bezier(0.16, 1, 0.3, 1);
+
+  position: relative;
   width: 100%;
   max-width: none;
   padding: 32px 40px 48px;
   margin: 0;
   background: var(--bg-root, var(--bg-page, #fafafa));
   min-height: 100%;
+  overflow-x: hidden;
 }
+/* Ambient hero glow behind the header — same trick used in the
+   onboarding modal and paywall so the search bar feels like the
+   focal point of a real library/search app. */
+.pl-page::before {
+  content: '';
+  position: absolute;
+  top: -120px;
+  left: 50%;
+  width: 820px;
+  height: 480px;
+  transform: translateX(-50%);
+  background: radial-gradient(ellipse at center, var(--pl-accent-soft) 0%, transparent 65%);
+  filter: blur(48px);
+  pointer-events: none;
+  opacity: 0.7;
+  z-index: 0;
+}
+.pl-page > * { position: relative; z-index: 1; }
+
 .pl-page-header {
-  margin-bottom: 24px;
+  margin-bottom: 28px;
   text-align: left;
   max-width: 720px;
+  animation: pl-rise 0.55s var(--pl-spring-strong) both;
 }
+@keyframes pl-rise {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Library-style hero ───────────────────────────────────── */
+.pl-hero {
+  display: flex;
+  flex-direction: column;
+  text-align: center;
+  align-items: center;
+  margin: 0 auto 32px;
+  max-width: 720px;
+}
+.pl-hero-eyebrow {
+  display: inline-block;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 14px;
+  font-weight: 600;
+}
+.pl-hero-title {
+  font-size: clamp(28px, 3.4vw, 40px);
+  line-height: 1.08;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  color: var(--text-primary);
+  margin: 0 0 12px;
+}
+.pl-hero-sub {
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--text-muted);
+  margin: 0;
+  max-width: 560px;
+}
+/* Centre the tabs row under the centred hero. */
+.pl-tabs { margin-left: auto; margin-right: auto; }
 
 /* ── Tabs (Search / Saved) ──────────────────────────────────── */
 .pl-tabs {
@@ -1184,9 +1252,32 @@ watch(websiteId, loadVariables)
   box-shadow:
     0 1px 2px rgba(15, 23, 42, 0.06),
     0 4px 12px rgba(15, 23, 42, 0.06);
-  transition: transform 0.32s cubic-bezier(0.32, 0.72, 0, 1);
+  transition: transform 0.45s var(--pl-spring-strong, cubic-bezier(0.32, 0.72, 0, 1));
   z-index: 0;
 }
+
+/* ── Framer-style staggered entry on result rows ────────────
+   Each row fades up with a small delay set inline (Math.min(idx,12)
+   * 28ms) so the table feels like it's populating itself instead
+   of slamming in all at once. */
+.pl-row-stagger {
+  animation: pl-row-in 0.42s var(--pl-spring-strong) both;
+}
+@keyframes pl-row-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.pl-row {
+  transition: background-color 0.22s var(--pl-spring),
+              transform 0.22s var(--pl-spring),
+              box-shadow 0.28s var(--pl-spring);
+}
+.pl-row:hover:not(.is-expanded) {
+  transform: translateY(-1px);
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.04),
+              0 10px 22px rgba(15, 23, 42, 0.05);
+}
+
 .pl-tab {
   position: relative;
   z-index: 1;
