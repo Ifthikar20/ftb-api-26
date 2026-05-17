@@ -1,211 +1,180 @@
 <template>
-  <div class="billing-page fade-in">
-    <div class="page-header">
-      <div>
-        <h1 class="page-title">Plans & Billing</h1>
-        <p class="page-subtitle">Simple pricing. Powerful growth tools.</p>
-      </div>
-    </div>
+  <div class="bp fade-in">
+    <header class="bp-header">
+      <h1 class="bp-title">Plans &amp; Billing</h1>
+      <p class="bp-sub">Manage your plan, billing cycle, and payment history.</p>
+    </header>
 
-    <div v-if="loading" class="loading-state">Loading billing...</div>
+    <div v-if="loading" class="bp-loading">Loading…</div>
+
     <template v-else>
-
-      <!-- Pricing Cards — 2 Tiers -->
-      <div class="pricing-hero">
-        <div class="pricing-pair">
-
-          <!-- Starter -->
-          <div class="tier-card" :class="{ active: currentSegment === 'individual' || currentSegment === 'starter' }">
-            <div v-if="currentSegment === 'individual' || currentSegment === 'starter'" class="current-badge">Your Plan</div>
-            <div class="tier-icon" style="background: linear-gradient(135deg, #8b5cf6, #6366f1)">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-            </div>
-            <h2 class="tier-name">Starter</h2>
-            <p class="tier-tagline">For small companies, freelancers, and individuals</p>
-
-            <div class="tier-price">
-              <span class="price-amount">$39</span>
-              <span class="price-period">/month</span>
-            </div>
-            <div class="price-annual-note" v-if="annual">Billed $390/year (save 17%)</div>
-            <div class="price-annual-note" v-else>5-day free trial, then $39/mo</div>
-
-            <div class="tier-limits">
-              <div class="limit-pill"><span class="lp-val">5</span><span class="lp-label">Projects</span></div>
-              <div class="limit-pill"><span class="lp-val">100K</span><span class="lp-label">Pageviews</span></div>
-              <div class="limit-pill"><span class="lp-val">200</span><span class="lp-label">AI Credits</span></div>
-            </div>
-
-            <ul class="tier-features">
-              <li><span class="feat-check">✓</span> Full analytics dashboard</li>
-              <li><span class="feat-check">✓</span> Lead scoring & hot alerts</li>
-              <li><span class="feat-check">✓</span> 10 competitor tracking</li>
-              <li><span class="feat-check">✓</span> Heatmaps & funnels</li>
-              <li><span class="feat-check">✓</span> Keyword tracking & SEO</li>
-              <li><span class="feat-check">✓</span> Pipeline builder</li>
-              <li><span class="feat-check">✓</span> 3 integrations (Slack/Discord/Telegram)</li>
-              <li><span class="feat-check">✓</span> Trend intelligence</li>
-              <li class="feat-disabled"><span class="feat-dash">—</span> SSO / SAML</li>
-              <li class="feat-disabled"><span class="feat-dash">—</span> API access</li>
-              <li class="feat-disabled"><span class="feat-dash">—</span> White-label</li>
-            </ul>
-
-            <button v-if="currentSegment !== 'individual' && currentSegment !== 'starter'" class="btn btn-primary btn-lg w-full" @click="handlePlanSelect('starter')" :disabled="checkingOut">
-              {{ checkingOut === 'starter' ? 'Redirecting...' : 'Start Free Trial' }}
-            </button>
-            <button v-else class="btn btn-secondary btn-lg w-full" disabled>Active Plan</button>
-          </div>
-
-          <!-- Enterprise -->
-          <div class="tier-card enterprise" :class="{ active: currentSegment === 'enterprise' }">
-            <div v-if="currentSegment === 'enterprise'" class="current-badge enterprise-badge">Your Plan</div>
-            <div class="enterprise-glow"></div>
-            <div class="tier-icon" style="background: linear-gradient(135deg, #f59e0b, #d97706)">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
-            </div>
-            <h2 class="tier-name">Enterprise</h2>
-            <p class="tier-tagline">For teams, agencies, and organizations</p>
-
-            <div class="tier-price">
-              <span class="price-amount">Custom</span>
-              <span class="price-period">/user</span>
-            </div>
-            <div class="price-annual-note">Based on team size & requirements</div>
-
-            <div class="tier-limits">
-              <div class="limit-pill"><span class="lp-val">∞</span><span class="lp-label">Projects</span></div>
-              <div class="limit-pill"><span class="lp-val">∞</span><span class="lp-label">Pageviews</span></div>
-              <div class="limit-pill"><span class="lp-val">∞</span><span class="lp-label">AI Credits</span></div>
-            </div>
-
-            <ul class="tier-features">
-              <li><span class="feat-check ent">✓</span> Everything in Individual</li>
-              <li><span class="feat-check ent">✓</span> Unlimited team members</li>
-              <li><span class="feat-check ent">✓</span> Unlimited integrations</li>
-              <li><span class="feat-check ent">✓</span> Unlimited competitors</li>
-              <li><span class="feat-check ent">✓</span> SSO / SAML authentication</li>
-              <li><span class="feat-check ent">✓</span> Full API access</li>
-              <li><span class="feat-check ent">✓</span> White-label reports</li>
-              <li><span class="feat-check ent">✓</span> Agents & LLM Ranking</li>
-              <li><span class="feat-check ent">✓</span> Organization-level billing</li>
-              <li><span class="feat-check ent">✓</span> Dedicated support & SLA</li>
-              <li><span class="feat-check ent">✓</span> Custom onboarding</li>
-            </ul>
-
-            <button v-if="currentSegment !== 'enterprise'" class="btn btn-enterprise btn-lg w-full" @click="contactEnterprise">
-              Contact Sales
-            </button>
-            <button v-else class="btn btn-secondary btn-lg w-full" disabled>Active Plan</button>
-          </div>
+      <!-- ── Current plan banner ─────────────────────────────────── -->
+      <section v-if="currentPlanCode" class="bp-current">
+        <div>
+          <span class="bp-eyebrow">Current plan</span>
+          <h2 class="bp-current-name">{{ currentTier?.name || currentPlanCode }}</h2>
+          <p class="bp-current-meta">
+            <span class="bp-pill" :class="statusClass">{{ subscription?.subscription_status || 'inactive' }}</span>
+            <span v-if="subscription?.current_period_end" class="bp-current-note">
+              {{ subscription.cancel_at_period_end ? 'Cancels' : 'Renews' }}
+              {{ formatDate(subscription.current_period_end) }}
+            </span>
+          </p>
         </div>
-
-        <!-- Annual toggle -->
-        <div class="billing-toggle">
-          <span :class="{ active: !annual }">Monthly</span>
-          <button class="toggle-switch" :class="{ on: annual }" @click="annual = !annual">
-            <span class="toggle-knob"></span>
-          </button>
-          <span :class="{ active: annual }">Annual <span class="save-badge">Save 17%</span></span>
+        <button
+          v-if="hasStripeSub"
+          class="bp-btn bp-btn--ghost"
+          :disabled="portalLoading"
+          @click="openPortal"
+        >
+          {{ portalLoading ? 'Opening…' : 'Manage subscription' }}
+        </button>
+      </section>
+      <section v-else class="bp-current bp-current--empty">
+        <div>
+          <span class="bp-eyebrow">No active plan</span>
+          <h2 class="bp-current-name">You're not subscribed yet</h2>
+          <p class="bp-current-note">Pick a plan below to unlock the full app.</p>
         </div>
+      </section>
+
+      <!-- ── Pricing tiers (same shape as the paywall) ────────────── -->
+      <div class="bp-toggle" role="tablist" aria-label="Billing cycle">
+        <button
+          type="button"
+          class="bp-toggle-opt"
+          :class="{ 'is-active': !annual }"
+          @click="annual = false"
+        >Monthly</button>
+        <button
+          type="button"
+          class="bp-toggle-opt"
+          :class="{ 'is-active': annual }"
+          @click="annual = true"
+        >
+          Annual
+          <span class="bp-toggle-save">Save 17%</span>
+        </button>
       </div>
 
-      <!-- What's Included -->
-      <div class="card" style="margin-top:32px">
-        <div class="card-header">
-          <h3 class="card-title">Feature Comparison</h3>
-        </div>
-        <table class="feature-table">
+      <section class="bp-tiers">
+        <article
+          v-for="tier in mainTiers"
+          :key="tier.id"
+          class="bp-tier"
+          :class="{
+            'is-featured': tier.highlight,
+            'is-current': isCurrent(tier),
+          }"
+        >
+          <div v-if="isCurrent(tier)" class="bp-tier-pill">Active plan</div>
+          <div v-else-if="tier.highlight" class="bp-tier-pill">Most popular</div>
+
+          <div class="bp-tier-head">
+            <h3 class="bp-tier-name">{{ tier.name }}</h3>
+            <p class="bp-tier-desc">{{ tier.description }}</p>
+          </div>
+
+          <div class="bp-tier-price">
+            <span class="bp-tier-amount">{{ priceLabel(tier) }}</span>
+            <span class="bp-tier-period" v-if="tier.price !== null">
+              {{ annual ? '/year' : tier.period }}
+            </span>
+          </div>
+          <p class="bp-tier-note" v-if="tier.price !== null">
+            {{ annual ? 'Two months free' : 'Cancel anytime' }}
+          </p>
+
+          <ul class="bp-tier-features">
+            <li v-for="f in tier.features" :key="f">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 8.5l3.2 3 6.3-6.5"/>
+              </svg>
+              <span>{{ f }}</span>
+            </li>
+          </ul>
+
+          <button
+            v-if="isCurrent(tier)"
+            class="bp-btn bp-btn--ghost"
+            disabled
+          >You're on this plan</button>
+          <button
+            v-else
+            type="button"
+            class="bp-btn"
+            :class="{ 'bp-btn--primary': tier.highlight || !currentPlanCode }"
+            :disabled="checkingOut === tier.id"
+            @click="changePlan(tier)"
+          >
+            <span v-if="checkingOut === tier.id" class="bp-spinner" aria-hidden="true"></span>
+            <span v-else>{{ currentPlanCode ? 'Switch to ' + tier.name : 'Choose ' + tier.name }}</span>
+          </button>
+        </article>
+      </section>
+
+      <p v-if="enterpriseTier" class="bp-enterprise">
+        Need more? <a href="#" @click.prevent="contactEnterprise">Talk to us about {{ enterpriseTier.name }}</a>
+      </p>
+
+      <p v-if="error" class="bp-error">{{ error }}</p>
+
+      <!-- ── Invoices ─────────────────────────────────────────────── -->
+      <section v-if="invoices.length" class="bp-card">
+        <header class="bp-card-head">
+          <h3 class="bp-card-title">Invoices</h3>
+        </header>
+        <table class="bp-table">
           <thead>
-            <tr>
-              <th>Feature</th>
-              <th class="text-center">Starter — $39/mo</th>
-              <th class="text-center highlight-col">Enterprise — Custom</th>
-            </tr>
+            <tr><th>Date</th><th>Amount</th><th>Status</th></tr>
           </thead>
           <tbody>
-            <tr v-for="f in featureRows" :key="f.name" :class="{ 'section-row': f.section }">
-              <td :colspan="f.section ? 3 : 1">{{ f.name }}</td>
-              <template v-if="!f.section">
-                <td class="text-center">
-                  <span v-if="f.individual === true" class="check-icon">✓</span>
-                  <span v-else-if="f.individual === false" class="dash-icon">—</span>
-                  <span v-else>{{ f.individual }}</span>
-                </td>
-                <td class="text-center highlight-col">
-                  <span v-if="f.enterprise === true" class="check-icon">✓</span>
-                  <span v-else-if="f.enterprise === false" class="dash-icon">—</span>
-                  <span v-else>{{ f.enterprise }}</span>
-                </td>
-              </template>
+            <tr v-for="inv in invoices" :key="inv.id || inv.stripe_invoice_id">
+              <td>{{ formatDate(inv.period_start || inv.created_at) }}</td>
+              <td class="bp-amount">${{ (inv.amount_paid / 100).toFixed(2) }}</td>
+              <td>
+                <span class="bp-pill" :class="inv.status === 'paid' ? 'bp-pill--success' : 'bp-pill--warn'">
+                  {{ inv.status }}
+                </span>
+              </td>
             </tr>
           </tbody>
         </table>
-      </div>
+      </section>
 
-      <!-- Subscription Management -->
-      <div class="card" style="margin-top:24px" v-if="subscription">
-        <div class="card-header">
-          <h3 class="card-title">Your Subscription</h3>
-        </div>
-        <div class="subscription-info">
-          <div class="sub-row">
-            <span class="text-sm text-muted">Plan</span>
-            <span class="font-semibold">{{ subscription.plan_details?.name || currentSegment }}</span>
-          </div>
-          <div class="sub-row">
-            <span class="text-sm text-muted">Status</span>
-            <span class="badge" :class="subStatusClass">{{ subscription.subscription_status }}</span>
-          </div>
-          <div class="sub-row" v-if="subscription.current_period_end">
-            <span class="text-sm text-muted">{{ subscription.cancel_at_period_end ? 'Cancels on' : 'Renews on' }}</span>
-            <span class="text-sm">{{ formatDate(subscription.current_period_end) }}</span>
-          </div>
-          <button class="btn btn-secondary btn-sm" @click="openPortal" :disabled="portalLoading" style="margin-top:16px">
-            {{ portalLoading ? 'Opening...' : 'Manage Subscription' }}
-          </button>
-        </div>
-      </div>
-
-      <!-- Usage + Invoices -->
-      <div class="billing-row" style="margin-top:24px">
-        <div class="card" v-if="usage.length">
-          <div class="card-header"><h3 class="card-title">Usage This Period</h3></div>
-          <div class="usage-grid">
-            <div v-for="u in usage" :key="u.metric" class="usage-item">
-              <div class="usage-label">{{ formatMetric(u.metric) }}</div>
-              <div class="usage-value">{{ u.count.toLocaleString() }}</div>
-              <div class="usage-bar"><div class="usage-fill" :style="{ width: Math.min((u.count / u.limit) * 100, 100) + '%' }"></div></div>
+      <!-- ── Usage ────────────────────────────────────────────────── -->
+      <section v-if="usage.length" class="bp-card">
+        <header class="bp-card-head">
+          <h3 class="bp-card-title">Usage this period</h3>
+        </header>
+        <div class="bp-usage">
+          <div v-for="u in usage" :key="u.metric" class="bp-usage-item">
+            <div class="bp-usage-label">{{ formatMetric(u.metric) }}</div>
+            <div class="bp-usage-value">{{ Number(u.count).toLocaleString() }}</div>
+            <div class="bp-usage-bar">
+              <div
+                class="bp-usage-fill"
+                :style="{ width: Math.min((u.count / (u.limit || 1)) * 100, 100) + '%' }"
+              ></div>
             </div>
           </div>
         </div>
-        <div class="card">
-          <div class="card-header"><h3 class="card-title">Invoices</h3></div>
-          <table class="data-table" v-if="invoices.length">
-            <thead><tr><th>Date</th><th>Amount</th><th>Status</th></tr></thead>
-            <tbody>
-              <tr v-for="inv in invoices" :key="inv.id || inv.stripe_invoice_id">
-                <td>{{ formatDate(inv.period_start || inv.created_at) }}</td>
-                <td class="font-semibold">${{ (inv.amount_paid / 100).toFixed(2) }}</td>
-                <td><span class="badge" :class="inv.status === 'paid' ? 'badge-success' : 'badge-warning'">{{ inv.status }}</span></td>
-              </tr>
-            </tbody>
-          </table>
-          <div v-else class="empty-state">No invoices yet.</div>
-        </div>
-      </div>
-
+      </section>
     </template>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { useToast } from '@/composables/useToast'
 import billingApi from '@/api/billing'
+import { useAuthStore } from '@/stores/auth'
+import { useToast } from '@/composables/useToast'
+import { TIERS } from '@/constants/pricing'
 
 const route = useRoute()
 const toast = useToast()
+const authStore = useAuthStore()
 
 const loading = ref(true)
 const subscription = ref(null)
@@ -214,100 +183,111 @@ const usage = ref([])
 const annual = ref(false)
 const checkingOut = ref(null)
 const portalLoading = ref(false)
+const error = ref('')
 
-const limits = { pageviews: 100000, ai_credits: 200, leads: 500 }
+const mainTiers = computed(() => TIERS.filter(t => t.price !== null))
+const enterpriseTier = computed(() => TIERS.find(t => t.price === null))
 
-const currentSegment = computed(() => subscription.value?.segment || subscription.value?.plan || 'individual')
-
-const featureRows = [
-  { name: 'Analytics & Reporting', section: true },
-  { name: 'Real-time analytics dashboard', individual: true, enterprise: true },
-  { name: 'Traffic & geo breakdown', individual: true, enterprise: true },
-  { name: 'Event tracking', individual: true, enterprise: true },
-  { name: 'Funnel visualization', individual: true, enterprise: true },
-  { name: 'API data export', individual: false, enterprise: true },
-  { name: 'Lead Intelligence', section: true },
-  { name: 'Behavioral lead scoring', individual: true, enterprise: true },
-  { name: 'Hot lead alerts', individual: true, enterprise: true },
-  { name: 'Pipeline builder', individual: true, enterprise: true },
-  { name: 'Custom scoring rules', individual: false, enterprise: true },
-  { name: 'Integrations', section: true },
-  { name: 'Slack / Discord / Telegram', individual: '3 connections', enterprise: 'Unlimited' },
-  { name: 'Daily growth reports', individual: true, enterprise: true },
-  { name: 'Real-time alerts', individual: true, enterprise: true },
-  { name: 'SEO', section: true },
-  { name: 'Keyword tracking & SEO tools', individual: true, enterprise: true },
-  { name: 'White-label PDF reports', individual: false, enterprise: true },
-  { name: 'Trend intelligence', individual: true, enterprise: true },
-  { name: 'Niche analysis', individual: false, enterprise: true },
-  { name: 'Platform', section: true },
-  { name: 'Projects', individual: '5', enterprise: 'Unlimited' },
-  { name: 'Team members', individual: '1', enterprise: 'Unlimited' },
-  { name: 'AI credits / month', individual: '200', enterprise: 'Unlimited' },
-  { name: 'SSO / SAML', individual: false, enterprise: true },
-  { name: 'API access', individual: false, enterprise: true },
-  { name: 'White label', individual: false, enterprise: true },
-  { name: 'Agents & LLM Ranking', individual: false, enterprise: true },
-  { name: 'Organization billing', individual: false, enterprise: true },
-  { name: 'Dedicated support', individual: false, enterprise: true },
-]
-
-function formatDate(d) {
-  if (!d) return '--'
-  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-}
-
-function formatMetric(m) { return (m || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) }
-
-const subStatusClass = computed(() => {
-  const s = subscription.value?.subscription_status
-  if (s === 'active') return 'badge-success'
-  if (s === 'trialing') return 'badge-neutral'
-  if (s === 'past_due') return 'badge-danger'
-  if (s === 'canceled') return 'badge-danger'
-  return 'badge-neutral'
+const currentPlanCode = computed(() => {
+  const s = subscription.value
+  const active = s?.subscription_status === 'active' || s?.subscription_status === 'trialing'
+  if (!active) return null
+  return s?.plan || s?.plan_code || null
 })
 
-async function handlePlanSelect(planId) {
-  checkingOut.value = planId
+const currentTier = computed(() =>
+  TIERS.find(t => t.planCode === currentPlanCode.value) || null,
+)
+
+const statusClass = computed(() => {
+  const s = subscription.value?.subscription_status
+  if (s === 'active') return 'bp-pill--success'
+  if (s === 'trialing') return 'bp-pill--neutral'
+  if (s === 'past_due' || s === 'canceled') return 'bp-pill--danger'
+  return 'bp-pill--neutral'
+})
+
+const hasStripeSub = computed(
+  () => !!subscription.value?.stripe_subscription_id &&
+        !String(subscription.value.stripe_subscription_id).startsWith('dev_'),
+)
+
+function isCurrent(tier) { return currentPlanCode.value === tier.planCode }
+
+function priceLabel(tier) {
+  if (!tier) return ''
+  if (tier.price === null) return tier.priceLabel
+  if (annual.value) return `$${tier.price * 10}`
+  return tier.priceLabel
+}
+
+function formatDate(d) {
+  if (!d) return '—'
+  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+}
+function formatMetric(m) {
+  return (m || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+}
+
+async function changePlan(tier) {
+  error.value = ''
+  checkingOut.value = tier.id
   try {
-    const res = await billingApi.checkout({ plan: planId, annual: annual.value })
-    const url = res.data?.checkout_url || res.checkout_url
-    if (url) {
-      window.location.href = url
-    } else {
-      toast.error("We couldn't start the checkout. Please try again.")
+    // Dev path: instant subscription switch via the mock endpoint.
+    // Falls back to real Stripe Checkout on 404 (prod).
+    const res = await billingApi.devSubscribe({
+      plan: tier.planCode,
+      annual: annual.value,
+    })
+    if (res?.data?.success || res?.data?.data?.dev_mode) {
+      toast.success(`Switched to ${tier.name}.`)
+      await refresh()
+      try { await authStore.fetchSession() } catch (_) {}
+      return
     }
-  } catch (e) { /* Toast auto-triggered */ } finally {
+    error.value = "We couldn't switch plans. Please try again."
+  } catch (e) {
+    if (e?.response?.status === 404) {
+      try {
+        const res = await billingApi.checkout({
+          plan: tier.planCode,
+          annual: annual.value,
+        })
+        const url = res.data?.data?.checkout_url || res.data?.checkout_url
+        if (url) {
+          window.location.href = url
+          return
+        }
+      } catch (e2) {
+        error.value = e2?.response?.data?.error?.message || "We couldn't start checkout."
+      }
+    } else {
+      error.value = e?.response?.data?.error?.message || "We couldn't switch plans."
+    }
+  } finally {
     checkingOut.value = null
   }
 }
 
 function contactEnterprise() {
-  window.open('mailto:sales@fetchbot.ai?subject=Enterprise%20Plan%20Inquiry', '_blank')
-  toast.info("Opening email to sales@fetchbot.ai — we'll get back to you within 24 hours.")
+  window.location.href = enterpriseTier.value?.contactTarget || 'mailto:sales@fetchbot.ai'
 }
 
 async function openPortal() {
   portalLoading.value = true
   try {
     const res = await billingApi.portal()
-    const url = res.data?.portal_url || res.portal_url
-    if (url) {
-      window.location.href = url
-    } else {
-      toast.error("We couldn't open the billing portal. Please try again.")
-    }
-  } catch (e) { /* Toast auto-triggered */ } finally {
+    const url = res.data?.data?.portal_url || res.data?.portal_url
+    if (url) window.location.href = url
+    else toast.error("We couldn't open the billing portal.")
+  } catch {
+    toast.error("We couldn't open the billing portal.")
+  } finally {
     portalLoading.value = false
   }
 }
 
-onMounted(async () => {
-  const checkoutParam = route.query.checkout
-  if (checkoutParam === 'success') toast.success('Your subscription has been activated! Welcome aboard.')
-  else if (checkoutParam === 'canceled') toast.info('Checkout was canceled. You can upgrade anytime.')
-
+async function refresh() {
   try {
     const [subRes, invRes, usageRes] = await Promise.all([
       billingApi.getCurrent().catch(() => ({ data: null })),
@@ -315,192 +295,407 @@ onMounted(async () => {
       billingApi.usage().catch(() => ({ data: [] })),
     ])
     subscription.value = subRes.data?.data || subRes.data || null
-    invoices.value = invRes.data?.data || invRes.data || []
-    const usageData = usageRes.data?.data || usageRes.data || []
-    usage.value = Array.isArray(usageData) ? usageData.map(u => ({
-      ...u, limit: u.limit || limits[u.metric] || 10000,
-    })) : []
-  } catch (e) { /* Toast auto-triggered */ } finally {
-    loading.value = false
+    const inv = invRes.data?.data || invRes.data || []
+    invoices.value = Array.isArray(inv) ? inv : (inv.results || [])
+    const u = usageRes.data?.data || usageRes.data || []
+    usage.value = Array.isArray(u) ? u : (u.results || [])
+  } catch (_) {
+    // soft-fail; the UI degrades to "no active plan" state
   }
+}
+
+onMounted(async () => {
+  const checkoutParam = route.query.checkout
+  if (checkoutParam === 'success') toast.success('Subscription activated!')
+  else if (checkoutParam === 'canceled') toast.info('Checkout canceled.')
+  await refresh()
+  loading.value = false
 })
 </script>
 
 <style scoped>
-.loading-state { text-align: center; padding: 80px 20px; font-size: var(--font-md); color: var(--text-muted); }
-.empty-state { text-align: center; padding: 40px; color: var(--text-muted); }
+.bp {
+  --bp-fg: #0a0a0a;
+  --bp-muted: #6b6b6b;
+  --bp-border: rgba(10, 10, 10, 0.10);
+  --bp-surface: #fafafa;
+  --bp-bg: #ffffff;
+  --bp-accent: #ff6a2c;
+  --bp-accent-soft: rgba(255, 106, 44, 0.10);
+  --bp-spring: cubic-bezier(0.22, 1, 0.36, 1);
 
-/* ═══════════════════════════════════════
-   Pricing Hero — Two Cards
-   ═══════════════════════════════════════ */
-.pricing-hero { margin-bottom: 8px; }
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 32px 24px 96px;
+  color: var(--bp-fg);
+  font-feature-settings: 'cv11', 'ss01';
+}
 
-.pricing-pair {
+[data-theme='dark'] .bp {
+  --bp-fg: #f7f7f7;
+  --bp-muted: #888;
+  --bp-border: rgba(255, 255, 255, 0.10);
+  --bp-surface: #0e0e0e;
+  --bp-bg: #060606;
+  --bp-accent-soft: rgba(255, 106, 44, 0.14);
+}
+
+.bp-header { margin-bottom: 24px; }
+.bp-title {
+  font-size: clamp(28px, 3vw, 36px);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin: 0 0 6px;
+}
+.bp-sub {
+  margin: 0;
+  color: var(--bp-muted);
+  font-size: 14px;
+}
+
+.bp-loading {
+  padding: 80px 0;
+  text-align: center;
+  color: var(--bp-muted);
+}
+
+/* ── Current-plan banner ──────────────────────────────────── */
+.bp-current {
+  margin-bottom: 28px;
+  padding: 22px 26px;
+  border-radius: 18px;
+  background: var(--bp-surface);
+  border: 1px solid var(--bp-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.bp-current--empty {
+  border-style: dashed;
+}
+.bp-eyebrow {
+  display: inline-block;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--bp-muted);
+  margin-bottom: 6px;
+}
+.bp-current-name {
+  margin: 0 0 6px;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+.bp-current-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+  font-size: 13px;
+  color: var(--bp-muted);
+}
+.bp-current-note {
+  font-size: 13px;
+  color: var(--bp-muted);
+  margin: 0;
+}
+
+.bp-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: capitalize;
+  background: var(--bp-surface);
+  border: 1px solid var(--bp-border);
+}
+.bp-pill--success { background: rgba(34, 197, 94, 0.10); color: #15803d; border-color: rgba(34, 197, 94, 0.30); }
+.bp-pill--warn    { background: rgba(234, 179, 8, 0.12); color: #a16207; border-color: rgba(234, 179, 8, 0.30); }
+.bp-pill--danger  { background: rgba(239, 68, 68, 0.10); color: #b91c1c; border-color: rgba(239, 68, 68, 0.30); }
+.bp-pill--neutral { background: var(--bp-surface); color: var(--bp-muted); }
+
+/* ── Pill toggle (mirrors paywall) ────────────────────────── */
+.bp-toggle {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px;
+  border-radius: 999px;
+  background: var(--bp-surface);
+  border: 1px solid var(--bp-border);
+  margin: 0 0 20px;
+  gap: 2px;
+}
+.bp-toggle-opt {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 18px;
+  border: none;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--bp-muted);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: color 0.25s var(--bp-spring), background 0.25s var(--bp-spring);
+}
+.bp-toggle-opt.is-active {
+  background: var(--bp-bg);
+  color: var(--bp-fg);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+.bp-toggle-save {
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--bp-accent-soft);
+  color: var(--bp-accent);
+  font-weight: 600;
+}
+
+/* ── Tier cards ───────────────────────────────────────────── */
+.bp-tiers {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 20px;
-  margin-bottom: 20px;
+  gap: 18px;
+  margin-bottom: 24px;
 }
-
-.tier-card {
+.bp-tier {
   position: relative;
-  background: var(--bg-card);
-  border: 2px solid var(--border-color);
-  border-radius: var(--radius-lg);
-  padding: 32px 28px;
+  padding: 26px;
+  background: var(--bp-bg);
+  border: 1px solid var(--bp-border);
+  border-radius: 22px;
   display: flex;
   flex-direction: column;
-  transition: all 0.3s cubic-bezier(0.22, 1, 0.36, 1);
-  overflow: hidden;
+  transition: transform 0.25s var(--bp-spring), box-shadow 0.25s var(--bp-spring), border-color 0.25s var(--bp-spring);
 }
-
-.tier-card:hover { transform: translateY(-3px); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.06); }
-.tier-card.active { border-color: #8b5cf6; box-shadow: 0 0 0 1px #8b5cf6; }
-.tier-card.enterprise.active { border-color: #f59e0b; box-shadow: 0 0 0 1px #f59e0b; }
-
-.enterprise-glow {
+.bp-tier:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.06), 0 4px 12px rgba(0, 0, 0, 0.04);
+}
+.bp-tier.is-featured {
+  border-color: var(--bp-fg);
+}
+.bp-tier.is-current {
+  border-color: var(--bp-accent);
+  box-shadow: 0 0 0 1px var(--bp-accent), 0 18px 40px rgba(255, 106, 44, 0.08);
+}
+.bp-tier-pill {
   position: absolute;
-  top: -60px; right: -60px;
-  width: 160px; height: 160px;
-  background: radial-gradient(circle, rgba(245, 158, 11, 0.08), transparent);
-  border-radius: 50%;
-  pointer-events: none;
+  top: -10px;
+  right: 20px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  border-radius: 999px;
+  background: var(--bp-fg);
+  color: var(--bp-bg);
 }
-
-.current-badge {
-  position: absolute;
-  top: 16px; right: 16px;
-  background: #8b5cf6;
-  color: white;
-  font-size: 0.65rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  padding: 3px 10px;
-  border-radius: var(--radius-full);
+.bp-tier.is-current .bp-tier-pill {
+  background: var(--bp-accent);
+  color: var(--bp-bg);
 }
-.enterprise-badge { background: #f59e0b !important; }
-
-.tier-icon {
-  width: 52px; height: 52px;
-  border-radius: var(--radius-md);
-  display: flex; align-items: center; justify-content: center;
-  margin-bottom: 16px;
+.bp-tier-head { margin-bottom: 18px; }
+.bp-tier-name {
+  margin: 0 0 4px;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
 }
-
-.tier-name { font-family: var(--font-display); font-size: var(--font-2xl); font-weight: 800; color: var(--text-primary); margin: 0 0 4px; }
-.tier-tagline { font-size: var(--font-xs); color: var(--text-muted); margin-bottom: 16px; }
-
-.tier-price {
+.bp-tier-desc {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--bp-muted);
+}
+.bp-tier-price {
   display: flex;
   align-items: baseline;
-  gap: 4px;
+  gap: 6px;
   margin-bottom: 4px;
 }
-.price-amount { font-family: var(--font-display); font-size: 2.5rem; font-weight: 800; color: var(--text-primary); }
-.price-period { font-size: var(--font-sm); color: var(--text-muted); }
-.price-annual-note { font-size: var(--font-xs); color: var(--color-success); margin-bottom: 16px; }
-
-.tier-limits {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 20px;
-  padding-bottom: 20px;
-  border-bottom: 1px solid var(--border-color);
+.bp-tier-amount {
+  font-size: 34px;
+  font-weight: 600;
+  letter-spacing: -0.025em;
 }
-.limit-pill {
-  flex: 1;
-  text-align: center;
-  padding: 10px 8px;
-  background: var(--bg-surface);
-  border-radius: var(--radius-sm);
+.bp-tier-period {
+  font-size: 13px;
+  color: var(--bp-muted);
+  font-weight: 500;
 }
-.lp-val { display: block; font-size: var(--font-lg); font-weight: 800; color: var(--text-primary); }
-.lp-label { display: block; font-size: 0.6rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
-
-.tier-features {
+.bp-tier-note {
+  margin: 0 0 20px;
+  font-size: 12px;
+  color: var(--bp-muted);
+}
+.bp-tier-features {
   list-style: none;
   padding: 0;
   margin: 0 0 24px;
-  flex: 1;
-}
-.tier-features li {
   display: flex;
+  flex-direction: column;
+  gap: 9px;
+  flex-grow: 1;
+}
+.bp-tier-features li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+.bp-tier-features svg {
+  flex-shrink: 0;
+  margin-top: 3px;
+  color: var(--bp-accent);
+}
+
+.bp-btn {
+  display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
-  font-size: var(--font-sm);
-  color: var(--text-secondary);
-  padding: 4px 0;
+  padding: 12px 18px;
+  border-radius: 12px;
+  border: 1px solid var(--bp-border);
+  background: var(--bp-bg);
+  color: var(--bp-fg);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  cursor: pointer;
+  transition: transform 0.2s var(--bp-spring), background 0.25s var(--bp-spring), color 0.25s, border-color 0.25s;
 }
-.feat-check { color: #22c55e; font-weight: 700; font-size: 0.75rem; width: 16px; text-align: center; flex-shrink: 0; }
-.feat-check.ent { color: #f59e0b; }
-.feat-disabled { opacity: 0.4; }
-.feat-dash { color: var(--text-muted); font-size: 0.75rem; width: 16px; text-align: center; flex-shrink: 0; }
-
-.btn-enterprise {
-  background: linear-gradient(135deg, #f59e0b, #d97706);
-  color: white;
-  border: none;
-  font-weight: 700;
+.bp-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: var(--bp-fg);
 }
-.btn-enterprise:hover { box-shadow: 0 4px 16px rgba(245, 158, 11, 0.3); transform: translateY(-1px); }
-
-/* ── Annual Toggle ── */
-.billing-toggle {
-  display: flex; align-items: center; justify-content: center;
-  gap: 12px; font-size: var(--font-sm); color: var(--text-muted);
+.bp-btn--primary {
+  background: var(--bp-fg);
+  color: var(--bp-bg);
+  border-color: var(--bp-fg);
 }
-.billing-toggle .active { color: var(--text-primary); font-weight: 600; }
-.toggle-switch {
-  width: 44px; height: 24px;
-  background: var(--bg-input);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-full);
-  position: relative; cursor: pointer;
-  transition: all var(--transition-fast);
+.bp-btn--primary:hover:not(:disabled) {
+  background: var(--bp-accent);
+  border-color: var(--bp-accent);
 }
-.toggle-switch.on { background: var(--text-primary); border-color: var(--text-primary); }
-.toggle-knob {
-  position: absolute; top: 2px; left: 2px;
-  width: 18px; height: 18px;
-  background: #fff; border-radius: 50%;
-  transition: all var(--transition-fast);
+.bp-btn--ghost {
+  background: transparent;
 }
-.toggle-switch.on .toggle-knob { left: 22px; }
-.save-badge {
-  background: var(--color-success-bg); color: var(--color-success);
-  font-size: var(--font-xs); font-weight: 700;
-  padding: 2px 8px; border-radius: var(--radius-full); margin-left: 4px;
+.bp-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+
+.bp-spinner {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  animation: bp-spin 0.7s linear infinite;
+}
+@keyframes bp-spin { to { transform: rotate(360deg); } }
+
+.bp-enterprise {
+  margin: 0 0 28px;
+  font-size: 14px;
+  color: var(--bp-muted);
+}
+.bp-enterprise a {
+  color: var(--bp-fg);
+  font-weight: 500;
+  text-decoration: none;
+  border-bottom: 1px solid var(--bp-border);
+  transition: border-color 0.2s;
+}
+.bp-enterprise a:hover { border-color: var(--bp-accent); }
+.bp-error { margin: 0 0 16px; color: var(--bp-accent); font-size: 13px; }
+
+/* ── Invoices / usage cards ───────────────────────────────── */
+.bp-card {
+  margin-top: 16px;
+  padding: 22px 26px;
+  background: var(--bp-bg);
+  border: 1px solid var(--bp-border);
+  border-radius: 18px;
+}
+.bp-card-head { margin-bottom: 14px; }
+.bp-card-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
 }
 
-/* ═══════════════════════════════════════
-   Feature Table
-   ═══════════════════════════════════════ */
-.feature-table { width: 100%; border-collapse: collapse; font-size: var(--font-sm); }
-.feature-table th, .feature-table td { padding: 10px 16px; border-bottom: 1px solid var(--border-color); text-align: left; }
-.feature-table th { font-size: var(--font-xs); font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
-.feature-table .text-center { text-align: center; }
-.section-row td { font-weight: 700; font-size: var(--font-sm); color: var(--text-primary); padding-top: 20px; border-bottom: 2px solid var(--border-color); }
-.highlight-col { background: rgba(245, 158, 11, 0.04); }
-.check-icon { color: var(--color-success); font-weight: 700; }
-.dash-icon { color: var(--text-muted); opacity: 0.3; }
+.bp-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.bp-table th,
+.bp-table td {
+  text-align: left;
+  padding: 12px 8px;
+  border-bottom: 1px solid var(--bp-border);
+}
+.bp-table th {
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--bp-muted);
+  border-bottom: 1px solid var(--bp-border);
+}
+.bp-table tbody tr:last-child td { border-bottom: none; }
+.bp-amount { font-variant-numeric: tabular-nums; font-weight: 600; }
 
-/* ── Usage & Invoices ── */
-.billing-row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-.usage-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
-.usage-item { padding: 14px; background: var(--bg-surface); border-radius: var(--radius-md); }
-.usage-label { font-size: var(--font-xs); color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
-.usage-value { font-size: var(--font-lg); font-weight: 700; color: var(--text-primary); margin-bottom: 8px; }
-.usage-bar { width: 100%; height: 4px; background: var(--bg-input); border-radius: var(--radius-full); overflow: hidden; }
-.usage-fill { height: 100%; background: var(--color-success); border-radius: var(--radius-full); }
+.bp-usage {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 18px;
+}
+.bp-usage-item { display: flex; flex-direction: column; gap: 6px; }
+.bp-usage-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--bp-muted);
+  font-weight: 600;
+}
+.bp-usage-value {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  font-variant-numeric: tabular-nums;
+}
+.bp-usage-bar {
+  width: 100%;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--bp-surface);
+  border: 1px solid var(--bp-border);
+  overflow: hidden;
+}
+.bp-usage-fill {
+  height: 100%;
+  background: var(--bp-accent);
+  transition: width 0.4s var(--bp-spring);
+}
 
-/* ── Subscription ── */
-.subscription-info { padding: 4px 0; }
-.sub-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border-color); }
-.sub-row:last-of-type { border-bottom: none; }
-
-@media (max-width: 768px) {
-  .pricing-pair { grid-template-columns: 1fr; }
-  .billing-row { grid-template-columns: 1fr; }
+@media (max-width: 720px) {
+  .bp { padding: 18px 16px 64px; }
+  .bp-current {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .bp-tiers { grid-template-columns: 1fr; }
 }
 </style>

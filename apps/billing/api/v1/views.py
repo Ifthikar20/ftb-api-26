@@ -37,8 +37,14 @@ class BillingOverviewView(APIView):
         # Usage — never fails, returns {} if no subscription
         usage = UsageService.get_current_usage(user=request.user)
 
+        # Plan should mirror the actual subscription where one exists
+        # (user.plan can drift from subscription.plan when the user
+        # upgrades or downgrades). Falls back to the user's profile
+        # plan only when there's no subscription row.
+        active_plan = subscription.plan if subscription else getattr(request.user, "plan", "starter")
+
         return Response({
-            "plan": getattr(request.user, "plan", "starter"),
+            "plan": active_plan,
             "segment": segment,
             "plan_details": plan_data,
             "subscription_status": subscription.status if subscription else "none",
@@ -48,6 +54,12 @@ class BillingOverviewView(APIView):
             ),
             "cancel_at_period_end": subscription.cancel_at_period_end if subscription else False,
             "stripe_customer_id": bool(subscription.stripe_customer_id) if subscription else False,
+            # Surface the Subscription ID so the frontend can tell a
+            # dev_sub_* (mock) row from a real Stripe one and decide
+            # whether to show the "Manage subscription" portal button.
+            "stripe_subscription_id": (
+                subscription.stripe_subscription_id if subscription else None
+            ),
             "usage": usage,
         })
 
