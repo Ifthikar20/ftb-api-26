@@ -19,7 +19,7 @@
 
       <h1>Privacy Policy</h1>
       <p class="legal-intro">
-        FetchBot Inc. ("FetchBot", "we", "us", or "our") respects your privacy. This Privacy
+        Alicorr LLC ("FetchBot", "we", "us", or "our"), operator of the FetchBot service, respects your privacy. This Privacy
         Policy explains how we collect, use, and protect your information when you use our
         website, dashboard, applications, and APIs (the "Services").
       </p>
@@ -304,13 +304,13 @@
           issues, email <a href="mailto:security@fetchbot.ai">security@fetchbot.ai</a>.
         </p>
         <p>
-          FetchBot Inc.
+          Alicorr LLC (operator of FetchBot).
         </p>
       </section>
     </main>
 
     <footer class="legal-footer">
-      <p>&copy; 2026 FetchBot Inc. All rights reserved.</p>
+      <p>&copy; 2026 Alicorr LLC. All rights reserved.</p>
       <div class="legal-footer-links">
         <router-link to="/terms">Terms of Service</router-link>
         <router-link to="/privacy">Privacy Policy</router-link>

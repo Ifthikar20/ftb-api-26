@@ -21,7 +21,7 @@
       <p class="legal-intro">
         Welcome to FetchBot. These Terms of Service ("Terms") govern your use of the FetchBot
         platform, website, APIs, and related services (collectively, the "Service") operated by
-        FetchBot Inc. ("Company", "we", "us", or "our").
+        Alicorr LLC ("Company", "we", "us", or "our"), operator of the FetchBot service.
       </p>
       <p class="legal-intro">
         By accessing or using the Service, you agree to be bound by these Terms. If you do not
@@ -234,7 +234,7 @@
       <!-- ── 13. Indemnification ── -->
       <section id="indemnification">
         <h2>13. Indemnification</h2>
-        <p>You agree to indemnify, defend, and hold harmless FetchBot Inc. and its officers, directors, employees, and agents from any claims, damages, losses, liabilities, and expenses (including reasonable attorneys' fees) arising out of:</p>
+        <p>You agree to indemnify, defend, and hold harmless Alicorr LLC and its officers, directors, employees, and agents from any claims, damages, losses, liabilities, and expenses (including reasonable attorneys' fees) arising out of:</p>
         <ul>
           <li>Your use of the Service.</li>
           <li>Your violation of these Terms.</li>
@@ -267,7 +267,7 @@
         <h2>16. Contact Information</h2>
         <p>If you have any questions about these Terms, you can reach us at:</p>
         <div class="contact-card">
-          <p><strong>FetchBot Inc.</strong></p>
+          <p><strong>Alicorr LLC</strong> (operator of FetchBot)</p>
           <p>Email: <a href="mailto:legal@fetchbot.ai">legal@fetchbot.ai</a></p>
           <p>Support: <a href="mailto:support@fetchbot.ai">support@fetchbot.ai</a></p>
           <p>Website: <a href="https://fetchbot.ai" target="_blank" rel="noopener">https://fetchbot.ai</a></p>
@@ -276,7 +276,7 @@
     </main>
 
     <footer class="legal-footer">
-      <p>&copy; 2026 FetchBot Inc. All rights reserved.</p>
+      <p>&copy; 2026 Alicorr LLC. All rights reserved.</p>
       <div class="legal-footer-links">
         <router-link to="/terms">Terms of Service</router-link>
         <router-link to="/privacy">Privacy Policy</router-link>
