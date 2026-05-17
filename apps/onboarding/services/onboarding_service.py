@@ -297,12 +297,143 @@ def _llm_topics(
         return []
 
 
+def _llm_competitors(
+    *,
+    business_name: str,
+    industry: str,
+    domain: str,
+    description: str,
+) -> list[dict]:
+    """
+    Ask Claude Haiku to name 8 real competitors of the business.
+
+    Replaces (or precedes, depending on availability) the Google
+    Custom Search competitor discoverer. Google closed Custom Search
+    JSON API to new customers in early 2026, so this path is the
+    primary source for newly-provisioned tenants; Google is used as
+    an optional fallback when an existing tenant still has a working
+    key.
+
+    The LLM is well-suited to this task — it doesn't need to "search"
+    for Stripe's competitors; it already knows them. Returns
+    [{"name", "domain"}, ...] in the same shape the wizard expects.
+    """
+    if not (business_name or description):
+        return []
+    try:
+        from django.conf import settings as dj_settings
+        api_key = getattr(dj_settings, "ANTHROPIC_API_KEY", "") or ""
+        if not api_key:
+            return []
+
+        import anthropic
+        import json
+        import re
+
+        client = anthropic.Anthropic(api_key=api_key)
+
+        prompt = (
+            "Name real, currently-operating companies that directly "
+            "compete with the business below. Only include companies "
+            "you are reasonably sure exist — do not invent names.\n\n"
+            f"Business: {business_name}\n"
+            f"Industry: {industry or 'unspecified'}\n"
+            f"Website: {domain or 'unknown'}\n"
+            f"Description: {description}\n\n"
+            "Return 6-8 competitors. For each, give the public-facing "
+            "company name and the primary website domain (e.g. "
+            "'stripe.com', not 'https://stripe.com/'). Exclude the "
+            "subject company itself from the list.\n\n"
+            "Return ONLY a JSON array of objects, no prose, no code "
+            "fences. Example:\n"
+            '[{"name": "Stripe", "domain": "stripe.com"}, '
+            '{"name": "Adyen", "domain": "adyen.com"}]'
+        )
+
+        resp = client.messages.create(
+            model="claude-haiku-4-5",
+            max_tokens=600,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        text = (resp.content[0].text or "").strip()
+
+        try:
+            from core.ai_tracking import record_usage
+            record_usage(
+                module="onboarding",
+                model_name="claude-haiku-4-5",
+                input_tokens=resp.usage.input_tokens,
+                output_tokens=resp.usage.output_tokens,
+                metadata={"role": "competitor_discovery"},
+            )
+        except Exception:
+            pass
+
+        match = re.search(r"\[.*\]", text, re.DOTALL)
+        if not match:
+            return []
+        data = json.loads(match.group())
+        if not isinstance(data, list):
+            return []
+
+        # Normalise + dedupe. Drop entries that don't at least have a
+        # name; strip protocol from domain just in case.
+        own = (domain or "").lower().lstrip("www.")
+        seen: set[str] = set()
+        out: list[dict] = []
+        for row in data:
+            if not isinstance(row, dict):
+                continue
+            name = (row.get("name") or "").strip()
+            if not name:
+                continue
+            comp_domain = (row.get("domain") or "").strip().lower()
+            comp_domain = re.sub(r"^https?://", "", comp_domain).rstrip("/")
+            comp_domain = comp_domain.lstrip("www.")
+            if comp_domain and comp_domain == own:
+                continue  # skip self
+            key = comp_domain or name.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append({"name": name, "domain": comp_domain})
+            if len(out) >= 8:
+                break
+        return out
+    except Exception as exc:
+        logger.debug("LLM competitor discovery skipped: %s", exc)
+        return []
+
+
 def _safe_discover_competitors(
     *, business_name: str, industry: str, domain: str, description: str,
 ) -> list[dict]:
-    """Wrap the LLM-ranking discoverer so a failure doesn't abort onboarding."""
+    """
+    Find competitors for the onboarded website.
+
+    Order:
+        1. LLM (Claude Haiku) — primary path, works without third-party APIs.
+        2. Google Custom Search — optional fallback for legacy tenants that
+           still have a working key (Google closed it to new customers).
+
+    Returns [] if everything fails so the wizard renders the empty
+    state rather than aborting.
+    """
     if not (business_name or industry):
         return []
+
+    # Primary: LLM
+    competitors = _llm_competitors(
+        business_name=business_name,
+        industry=industry,
+        domain=domain,
+        description=description,
+    )
+    if competitors:
+        return competitors
+
+    # Fallback: Google Custom Search (only useful for tenants still
+    # within the legacy CSE window).
     try:
         from apps.llm_ranking.services.competitor_discovery import discover_competitors
         return discover_competitors(
@@ -313,7 +444,7 @@ def _safe_discover_competitors(
             max_results=8,
         ) or []
     except Exception as exc:
-        logger.debug("Competitor discovery skipped: %s", exc)
+        logger.debug("Google competitor discovery skipped: %s", exc)
         return []
 
 
