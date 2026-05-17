@@ -115,9 +115,9 @@
                   <span class="ob-counter">{{ form.description.length }}/600</span>
                 </label>
 
-                <div v-if="form.keywords.length" class="ob-field">
+                <div class="ob-field">
                   <span class="ob-label">Topics we'll measure</span>
-                  <div class="ob-topics">
+                  <div v-if="form.keywords.length" class="ob-topics">
                     <div
                       v-for="(k, i) in form.keywords"
                       :key="k + i"
@@ -132,6 +132,23 @@
                         class="ob-topic-vs"
                       >vs {{ form.topic_brands[i].join(', ') }}</span>
                     </div>
+                  </div>
+
+                  <!-- Add your own topic. Stays alongside the LLM picks so
+                       the audit measures both. -->
+                  <div class="ob-add-topic">
+                    <input
+                      v-model="newTopic"
+                      placeholder='Add a topic, e.g. "best payer credentialing in California"'
+                      class="ob-text-input ob-add-input"
+                      @keydown.enter.prevent="addCustomTopic"
+                    />
+                    <button
+                      type="button"
+                      class="ob-add-btn"
+                      :disabled="!newTopic.trim()"
+                      @click="addCustomTopic"
+                    >Add</button>
                   </div>
                 </div>
               </div>
@@ -268,6 +285,9 @@ const form = ref({
 
 const urlInputRef = ref(null)
 
+// "Add your own topic" input on step 2.
+const newTopic = ref('')
+
 // "Add your own competitor" inputs on step 3.
 const newCompetitorName = ref('')
 const newCompetitorDomain = ref('')
@@ -399,6 +419,24 @@ function removeKeyword(k) {
   if (idx < form.value.topic_brands.length) {
     form.value.topic_brands.splice(idx, 1)
   }
+}
+
+function addCustomTopic() {
+  const t = newTopic.value.trim().replace(/[.,]+$/, '')
+  if (!t) return
+  // Dedupe against the existing list, case-insensitive.
+  const exists = form.value.keywords.some(
+    k => k.toLowerCase() === t.toLowerCase(),
+  )
+  if (exists) {
+    newTopic.value = ''
+    return
+  }
+  form.value.keywords.push(t)
+  // Push an empty brand slot so the parallel arrays stay aligned.
+  // User-added topics show no "vs ..." sub-label.
+  form.value.topic_brands.push([])
+  newTopic.value = ''
 }
 
 async function finish() {
@@ -769,7 +807,8 @@ onBeforeUnmount(() => {
 .ob-competitor-remove:hover { background: var(--ob-accent-soft); color: var(--ob-accent); }
 
 /* "Add your own" row sits below the discovered list. */
-.ob-add-competitor {
+.ob-add-competitor,
+.ob-add-topic {
   margin-top: 12px;
   display: flex;
   gap: 8px;
