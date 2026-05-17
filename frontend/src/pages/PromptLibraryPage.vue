@@ -3,12 +3,12 @@
     <!-- Header -->
     <header id="pl-header" class="page-header pl-hero">
       <span class="pl-hero-eyebrow">Prompt library</span>
-      <h1 class="pl-hero-title">What are AI assistants saying about you?</h1>
-      <p class="pl-hero-sub">
-        Describe a scenario. We'll surface the prompts buyers are likely typing
-        into ChatGPT, Claude, and Perplexity right now — and benchmark you
-        against the brands they hear back.
-      </p>
+      <Transition name="pl-hero-fade" mode="out-in">
+        <h1 :key="heroIndex" class="pl-hero-title">{{ heroLine.title }}</h1>
+      </Transition>
+      <Transition name="pl-hero-fade" mode="out-in">
+        <p :key="`s-${heroIndex}`" class="pl-hero-sub">{{ heroLine.sub }}</p>
+      </Transition>
     </header>
 
     <!-- Tab toggle: Search vs Saved -->
@@ -452,7 +452,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch, h } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch, h } from 'vue'
 import { useRoute } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useToast } from '@/composables/useToast'
@@ -523,6 +523,46 @@ const contextInput = ref('')
 // just want a quick sample.
 const promptCount = ref(20)
 const generating = ref(false)
+
+// Rotating hero. Cycles through a few angles on the same theme so
+// the landing copy doesn't feel static on repeat visits. Picks the
+// starting line randomly so two users hitting the page at the same
+// moment don't see the same headline, and advances every 6s with a
+// soft cross-fade.
+const HERO_LINES = [
+  {
+    title: 'What are AI assistants saying about you?',
+    sub: "Describe a scenario. We'll surface the prompts buyers are typing into ChatGPT, Claude, and Perplexity right now — and benchmark you against the brands they hear back.",
+  },
+  {
+    title: 'Find out where you rank inside the LLMs.',
+    sub: "When a buyer asks Claude or ChatGPT for the best in your category, who comes up? Search the prompts they're actually asking — and see exactly which competitors show up alongside you.",
+  },
+  {
+    title: 'See the questions your future customers are asking.',
+    sub: "Real buyer-intent prompts, generated from a one-line scenario. Each prompt is benchmarked against the brands an LLM is most likely to mention back.",
+  },
+  {
+    title: "Audit your visibility in the answer engines.",
+    sub: "Google indexes pages. Claude, ChatGPT, and Perplexity recommend brands. Use the library to discover the prompts that put your competitors in front of buyers — and yours.",
+  },
+  {
+    title: 'Reverse-engineer the conversations buyers have with AI.',
+    sub: "Type a scenario like 'fresh bagels in Dallas' or 'family dentist in Austin'. We'll generate the prompts an actual buyer would type, and surface the brands that win those answers.",
+  },
+]
+const heroIndex = ref(Math.floor(Math.random() * HERO_LINES.length))
+const heroLine = computed(() => HERO_LINES[heroIndex.value % HERO_LINES.length])
+let heroTimer = null
+onMounted(() => {
+  heroTimer = setInterval(() => {
+    heroIndex.value = (heroIndex.value + 1) % HERO_LINES.length
+  }, 6000)
+})
+onBeforeUnmount(() => {
+  if (heroTimer) clearInterval(heroTimer)
+  heroTimer = null
+})
 const generatedPrompts = ref([]) // { _uid, _saved, _saving, template_text, ... }
 const generationProvider = ref('')
 const generationError = ref(false)
@@ -1239,6 +1279,18 @@ watch(websiteId, loadVariables)
 }
 /* Centre the tabs row under the centred hero. */
 .pl-tabs { margin-left: auto; margin-right: auto; }
+
+/* Hero rotation: 6s cycle with a soft cross-fade so the headline
+   never feels static. mode='out-in' on the wrapping <Transition>
+   guarantees the old line finishes leaving before the new one enters
+   — important because the title height changes between lines. */
+.pl-hero-fade-enter-active,
+.pl-hero-fade-leave-active {
+  transition: opacity 0.45s var(--pl-spring),
+              transform 0.55s var(--pl-spring);
+}
+.pl-hero-fade-enter-from { opacity: 0; transform: translateY(8px); }
+.pl-hero-fade-leave-to   { opacity: 0; transform: translateY(-8px); }
 
 /* ── Tabs (Search / Saved) ──────────────────────────────────── */
 .pl-tabs {
