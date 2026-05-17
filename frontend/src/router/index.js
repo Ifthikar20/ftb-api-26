@@ -186,25 +186,25 @@ router.beforeEach(async (to, from, next) => {
             try { await auth.fetchSession() } catch (_) {}
         }
         const route = auth.session?.next_route
+        if (route === 'onboarding') return next({ name: 'dashboard' })
         if (route === 'paywall') return next({ name: 'paywall' })
         return next({ name: 'dashboard' })
     }
 
-    // Paywall takes precedence over everything except auth pages and
-    // /paywall itself. An unpaid user shouldn't be able to load
-    // /dashboard, /llm-ranking/*, /settings, etc. — only the paywall.
+    // Funnel gate: onboarding first (modal on /dashboard), then paywall
+    // (its own route), then the app. The user has to walk through each
+    // gate in order — they cannot reach /llm-ranking/* until they have
+    // a website AND a paid subscription.
     if (auth.isAuthenticated) {
         if (!auth.session) {
             try { await auth.fetchSession() } catch (_) {}
         }
         const route = auth.session?.next_route
-        if (route === 'paywall' && to.name !== 'paywall') {
-            return next({ name: 'paywall' })
-        }
-        // Once they're paying, the second gate kicks in: route them to
-        // onboarding (modal on dashboard) until they have a website.
         if (route === 'onboarding' && !GATE_EXEMPT.has(to.name)) {
             return next({ name: 'dashboard' })
+        }
+        if (route === 'paywall' && to.name !== 'paywall') {
+            return next({ name: 'paywall' })
         }
     }
 
