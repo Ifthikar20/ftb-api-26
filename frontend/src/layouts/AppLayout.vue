@@ -147,8 +147,14 @@
 
     <!-- Toast Notifications (global) -->
     <ToastContainer />
-    <!-- Onboarding Tooltips (first-time users) -->
-    <OnboardingTooltip :steps="onboardingSteps" :storage-key="onboardingStorageKey" />
+    <!-- Product tour tooltips for first-time visitors. Hidden while the
+         account-onboarding modal is open so the two flows don't
+         visually overlap. -->
+    <OnboardingTooltip
+      v-if="!sessionNeedsOnboarding"
+      :steps="onboardingSteps"
+      :storage-key="onboardingStorageKey"
+    />
     <!-- Add Project Modal -->
     <div v-if="showAddProject" class="modal-overlay" @click.self="showAddProject = false">
       <div class="modal-card">
@@ -409,6 +415,13 @@ const onboardingStorageKey = computed(() => {
   const uid = authStore.user?.id
   return uid ? `fb_onboarding_done_${uid}` : 'fb_onboarding_done'
 })
+
+// Suppress the product tour while the first-run onboarding modal is
+// open on the dashboard — the two overlap visually and conflate two
+// different flows (account setup vs. UI introduction).
+const sessionNeedsOnboarding = computed(
+  () => authStore.session?.onboarding?.needs_onboarding === true,
+)
 
 const websiteId = computed(() => appStore.activeWebsite?.id)
 
