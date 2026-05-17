@@ -49,10 +49,13 @@ const routes = [
         meta: { layout: 'auth', guest: true }
     },
     {
+        // Public sign-up is closed — the only path to a real account
+        // is admin-driven (scripts/create_test_user.py). Keep the route
+        // alive so cached marketing links don't 404, but bounce to
+        // /login.
         path: '/register',
         name: 'register',
-        component: () => import('@/pages/auth/RegisterPage.vue'),
-        meta: { layout: 'auth', guest: true }
+        redirect: { name: 'login' },
     },
     {
         path: '/forgot-password',

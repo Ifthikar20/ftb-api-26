@@ -31,10 +31,6 @@
         Continue with Google
       </button>
 
-      <p class="auth-switch">
-        Don't have an account?
-        <router-link to="/register" style="font-weight: 600;">Create one</router-link>
-      </p>
       <p class="auth-switch" style="margin-top: -8px">
         <router-link to="/" style="font-weight: 500;">← Back to Home</router-link>
       </p>

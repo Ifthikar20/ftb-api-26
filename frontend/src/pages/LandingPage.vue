@@ -15,7 +15,7 @@
         </div>
         <div class="nav-right">
           <router-link to="/login" class="nav-link-text">Log In</router-link>
-          <router-link to="/register" class="nav-cta">Get Started</router-link>
+          <router-link to="/login" class="nav-cta">Get Started</router-link>
         </div>
       </div>
     </nav>
@@ -236,7 +236,7 @@
 
         <div class="why-cta anim" data-anim="fade-up" data-delay="300">
           <span class="why-cta-line">The brands winning AI search are the ones <strong>measuring it</strong>.</span>
-          <router-link to="/register" class="why-cta-btn">
+          <router-link to="/login" class="why-cta-btn">
             See where you stand
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
           </router-link>
@@ -417,7 +417,7 @@
             <ul>
               <li v-for="f in plan.features" :key="f">{{ f }}</li>
             </ul>
-            <router-link to="/register" class="price-btn" :class="{ dark: plan.featured }">{{ plan.cta }}</router-link>
+            <router-link to="/login" class="price-btn" :class="{ dark: plan.featured }">{{ plan.cta }}</router-link>
           </div>
         </div>
       </div>
@@ -449,7 +449,7 @@
       <div class="wrap cta-inner">
         <h2>Ready to grow <em>smarter?</em></h2>
         <p>Start your AI visibility audit in minutes.</p>
-        <router-link to="/register" class="btn-primary">Get Started</router-link>
+        <router-link to="/login" class="btn-primary">Get Started</router-link>
       </div>
     </section>
 
@@ -457,7 +457,7 @@
     <transition name="sticky-cta">
       <router-link
         v-if="showStickyCta"
-        to="/register"
+        to="/login"
         class="sticky-cta"
       >
         Run a free audit
