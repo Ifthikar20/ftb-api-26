@@ -85,6 +85,21 @@ def run_onboarding_scan(url: str) -> OnboardingPayload:
         products=payload.products,
     )
 
+    # Replace the heuristic topic list with an LLM-generated one. The
+    # heuristic generator hardcodes the word "tools" and regex-matches
+    # fragments around "for", producing nonsense topics for non-product
+    # businesses (services, agencies, healthcare, finance). The LLM
+    # picks the right category noun on its own.
+    llm_topics = _llm_topics(
+        business_name=payload.business_name,
+        industry=payload.industry,
+        description=payload.description_short or payload.description_raw,
+        selling_points=payload.selling_points,
+        products=payload.products,
+    )
+    if llm_topics:
+        payload.topics = llm_topics
+
     payload.competitors = _safe_discover_competitors(
         business_name=payload.business_name,
         industry=payload.industry,
@@ -165,6 +180,121 @@ def _polish_description(
     except Exception as exc:
         logger.debug("Description polish skipped: %s", exc)
         return fallback
+
+
+def _llm_topics(
+    *,
+    business_name: str,
+    industry: str,
+    description: str,
+    selling_points: list[str],
+    products: list[str],
+) -> list[str]:
+    """
+    Ask Claude Haiku for 8 buyer-intent search queries that actually
+    match the business.
+
+    Key requirement: the LLM picks the right category noun based on what
+    this business is — "service" / "provider" / "platform" / "solution"
+    / "agency" / "tools" — instead of the heuristic generator's
+    hardcoded "tools" suffix. The description is the primary input so
+    topics correlate with what the user just confirmed.
+
+    Returns [] on failure so the caller can fall back to the heuristic
+    list rather than ending up with an empty topic field.
+    """
+    if not (business_name or description):
+        return []
+    try:
+        from django.conf import settings as dj_settings
+        api_key = getattr(dj_settings, "ANTHROPIC_API_KEY", "") or ""
+        if not api_key:
+            return []
+
+        import anthropic
+        import json
+        import re
+
+        client = anthropic.Anthropic(api_key=api_key)
+
+        bullets = ""
+        if selling_points:
+            bullets += "\nKey selling points:\n- " + "\n- ".join(selling_points[:5])
+        if products:
+            bullets += "\nProducts / services offered:\n- " + "\n- ".join(products[:5])
+
+        prompt = (
+            "You are generating buyer-intent search queries that real "
+            "people would type into ChatGPT, Claude, or Perplexity when "
+            "looking for a business like this one.\n\n"
+            f"Business: {business_name}\n"
+            f"Industry: {industry or 'unspecified'}\n"
+            f"Description: {description}{bullets}\n\n"
+            "Return 8 queries that satisfy ALL of:\n"
+            "1. Each query reads as a natural sentence a human would "
+            "actually type — no fragment soup, no broken grammar.\n"
+            "2. Pick the right category noun based on what this business "
+            "IS. A SaaS product → 'tool' / 'platform' / 'software'. A "
+            "credentialing service or agency → 'service' / 'provider' / "
+            "'company'. A consultancy → 'firm' / 'consultant'. Match the "
+            "noun to the business; do not blindly say 'tools' for a "
+            "non-software business.\n"
+            "3. Each query must be correlated with the description above "
+            "— if the description mentions 'provider credentialing for "
+            "medical practices', the queries should be about provider "
+            "credentialing for medical practices, not generic.\n"
+            "4. Mix query styles: 'best X for Y', 'how to find Z', "
+            "'top alternatives to ...', 'who handles ...', 'compare ...'.\n"
+            "5. Each query is 4-12 words. No trailing punctuation.\n\n"
+            "Return ONLY a JSON array of 8 strings. No prose, no keys, no "
+            "code fences. Example output:\n"
+            '["best provider credentialing services for small clinics", '
+            '"how to get doctors in-network fast"]'
+        )
+
+        resp = client.messages.create(
+            model="claude-haiku-4-5",
+            max_tokens=512,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        text = (resp.content[0].text or "").strip()
+
+        try:
+            from core.ai_tracking import record_usage
+            record_usage(
+                module="onboarding",
+                model_name="claude-haiku-4-5",
+                input_tokens=resp.usage.input_tokens,
+                output_tokens=resp.usage.output_tokens,
+                metadata={"role": "topic_generation"},
+            )
+        except Exception:
+            pass
+
+        # Extract the first JSON array in the response — robust to the
+        # occasional model preamble or trailing fence.
+        match = re.search(r"\[.*\]", text, re.DOTALL)
+        if not match:
+            return []
+        data = json.loads(match.group())
+        if not isinstance(data, list):
+            return []
+        topics = [t.strip().rstrip(".,") for t in data if isinstance(t, str)]
+        # Light sanity: drop empties, dedupe, cap to 8.
+        seen = set()
+        out: list[str] = []
+        for t in topics:
+            key = t.lower()
+            if len(t) < 6 or key in seen:
+                continue
+            seen.add(key)
+            out.append(t)
+            if len(out) >= 8:
+                break
+        return out
+    except Exception as exc:
+        logger.debug("LLM topic generation skipped: %s", exc)
+        return []
 
 
 def _safe_discover_competitors(
