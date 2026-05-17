@@ -354,9 +354,9 @@ onBeforeUnmount(() => {
 .ob-backdrop {
   position: absolute;
   inset: 0;
-  background: rgba(10, 10, 10, 0.45);
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  /* Solid brand surface — the dashboard is hidden behind us, so there
+     is nothing to peek at. Soft gradient keeps the modal centred. */
+  background: radial-gradient(circle at 50% 30%, #fff5ec 0%, #ffffff 60%);
 }
 
 .ob-panel {

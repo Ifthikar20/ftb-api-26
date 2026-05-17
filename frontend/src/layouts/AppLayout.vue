@@ -1,7 +1,13 @@
 <template>
-  <div class="app-layout" :class="{ 'sidebar-collapsed': appStore.sidebarCollapsed }">
-    <!-- Sidebar -->
-    <aside class="sidebar">
+  <div
+    class="app-layout"
+    :class="{
+      'sidebar-collapsed': appStore.sidebarCollapsed,
+      'is-onboarding': sessionNeedsOnboarding,
+    }"
+  >
+    <!-- Sidebar (hidden while first-run onboarding is required) -->
+    <aside v-if="!sessionNeedsOnboarding" class="sidebar">
       <div class="sidebar-brand">
         <img src="/images/fb-logo.png" alt="FetchBot" class="brand-logo" />
         <span v-if="!appStore.sidebarCollapsed" class="brand-name">FetchBot</span>
@@ -93,7 +99,7 @@
 
     <!-- Main Content -->
     <div class="main-wrapper">
-      <header class="topbar">
+      <header v-if="!sessionNeedsOnboarding" class="topbar">
         <button class="btn-icon sidebar-toggle" @click="appStore.toggleSidebar" :title="appStore.sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'">
           <!-- Collapse: panel + left arrow. Expand: panel + right arrow. -->
           <svg v-if="!appStore.sidebarCollapsed" width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.75">
@@ -510,6 +516,11 @@ onUnmounted(() => {
   display: flex;
   min-height: 100vh;
 }
+
+/* While first-run onboarding is required the sidebar + topbar are
+   removed; expand the main wrapper to fill the viewport so the modal
+   sits on a clean canvas. */
+.app-layout.is-onboarding .main-wrapper { width: 100%; }
 
 /* Sidebar */
 .sidebar {

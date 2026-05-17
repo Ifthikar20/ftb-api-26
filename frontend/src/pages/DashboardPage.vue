@@ -1,24 +1,29 @@
 <template>
   <div class="dashboard-page fade-in">
-    <div v-if="loading" class="loading-state">Loading dashboard...</div>
-    <template v-else>
-      <GreetingHeader :timeOfDay="timeOfDay" :firstName="firstName" />
-      <StatsGrid :stats="stats" class="stagger-enter" />
-
-      <div class="content-grid stagger-enter">
-        <MorningBrief :brief="brief" class="tint-blue" />
-        <QuickActions :actions="quickActions" />
-        <WeeklyTasks :tasks="actions" class="tint-green" />
-        <RecentActivity :activity="activity" />
-        <TrendInsights class="tint-lavender" />
-        <IntegrationStatus :integrations="integrations" />
-      </div>
-    </template>
-
+    <!-- While first-run onboarding is pending the dashboard is gated:
+         render only the modal on a clean surface so the user can't
+         interact with (or even peek at) data they haven't earned yet. -->
     <OnboardingModal
       v-if="showOnboarding"
       @complete="onOnboardingComplete"
     />
+
+    <template v-else>
+      <div v-if="loading" class="loading-state">Loading dashboard...</div>
+      <template v-else>
+        <GreetingHeader :timeOfDay="timeOfDay" :firstName="firstName" />
+        <StatsGrid :stats="stats" class="stagger-enter" />
+
+        <div class="content-grid stagger-enter">
+          <MorningBrief :brief="brief" class="tint-blue" />
+          <QuickActions :actions="quickActions" />
+          <WeeklyTasks :tasks="actions" class="tint-green" />
+          <RecentActivity :activity="activity" />
+          <TrendInsights class="tint-lavender" />
+          <IntegrationStatus :integrations="integrations" />
+        </div>
+      </template>
+    </template>
   </div>
 </template>
 
