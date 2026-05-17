@@ -328,6 +328,12 @@ STRIPE_SCALE_PRICE_ID = env("STRIPE_SCALE_PRICE_ID", default="")
 STRIPE_STARTER_ANNUAL_PRICE_ID = env("STRIPE_STARTER_ANNUAL_PRICE_ID", default="")
 STRIPE_GROWTH_ANNUAL_PRICE_ID = env("STRIPE_GROWTH_ANNUAL_PRICE_ID", default="")
 STRIPE_SCALE_ANNUAL_PRICE_ID = env("STRIPE_SCALE_ANNUAL_PRICE_ID", default="")
+
+# Dev/demo mock checkout. When True, /api/v1/billing/dev-subscribe/
+# accepts any payload and flips the user's Subscription to ACTIVE
+# without calling Stripe. Useful for local dev and demos. Hard-wired
+# off in prod settings; default off here for safety.
+BILLING_DEV_MODE = env.bool("BILLING_DEV_MODE", default=False)
 SENDGRID_API_KEY = env("SENDGRID_API_KEY", default="")
 GOOGLE_OAUTH_CLIENT_ID = env("GOOGLE_OAUTH_CLIENT_ID", default="")
 GOOGLE_OAUTH_CLIENT_SECRET = env("GOOGLE_OAUTH_CLIENT_SECRET", default="")

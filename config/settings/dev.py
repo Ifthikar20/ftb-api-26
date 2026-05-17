@@ -41,3 +41,6 @@ LOGGING["loggers"]["audit"]["level"] = "WARNING"  # noqa: F405
 # Run Celery tasks synchronously in dev (no Redis/worker needed)
 CELERY_TASK_ALWAYS_EAGER = True
 CELERY_TASK_EAGER_PROPAGATES = True
+
+# Mock checkout so the paywall flow is walkable without Stripe keys.
+BILLING_DEV_MODE = True
