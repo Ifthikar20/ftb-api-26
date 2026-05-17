@@ -1,14 +1,12 @@
-"""Content Studio models — Phase 4 backend.
+"""Content Studio models.
 
 Models drive the content authoring loop:
 
 * :class:`ContentBrief` — a ranked content gap pulled from the recommendation
   engine (visibility, accuracy, citation).
 * :class:`ContentDraft` — the LLM-drafted artefact for a brief, with voice
-  and accuracy quality scores attached.
-* :class:`PublishTarget` — a configured publishing destination per tenant.
-* :class:`PublishLog` — append-only audit of publish attempts (dry-run or real).
-* :class:`ROIAttribution` — measured score lift after a draft is published.
+  and accuracy quality scores attached. Terminal state is ``approved`` —
+  the final publish content the customer takes to their own CMS.
 """
 from __future__ import annotations
 
@@ -49,12 +47,6 @@ class DraftStatus(models.TextChoices):
     PUBLISHED = "published", "Published"
     ARCHIVED = "archived", "Archived"
 
-
-class PublishStatus(models.TextChoices):
-    PENDING = "pending", "Pending"
-    QUEUED = "queued", "Queued"
-    PUBLISHED = "published", "Published"
-    FAILED = "failed", "Failed"
 
 
 class ContentBrief(TimestampMixin):
@@ -144,89 +136,3 @@ class ContentDraft(TimestampMixin):
         return f"ContentDraft({self.title[:40]}, rev{self.revision})"
 
 
-class PublishTarget(TimestampMixin):
-    """A configured publish destination per tenant."""
-
-    PROVIDER_CHOICES = [
-        ("wordpress", "WordPress"),
-        ("webflow", "Webflow"),
-        ("shopify", "Shopify"),
-        ("hubspot", "HubSpot"),
-        ("manual", "Manual export"),
-    ]
-
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    website = models.ForeignKey(
-        "websites.Website", related_name="publish_targets",
-        on_delete=models.CASCADE,
-    )
-    provider = models.CharField(max_length=16, choices=PROVIDER_CHOICES)
-    label = models.CharField(max_length=120, blank=True)
-    config = models.JSONField(default=dict)
-    is_default = models.BooleanField(default=False)
-    is_active = models.BooleanField(default=True)
-
-    class Meta:
-        db_table = "content_studio_publishtarget"
-        unique_together = [("website", "provider", "label")]
-
-    def __str__(self):
-        return f"PublishTarget({self.provider}, {self.label or 'default'})"
-
-
-class PublishLog(TimestampMixin):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    draft = models.ForeignKey(
-        ContentDraft, related_name="publish_logs", on_delete=models.CASCADE,
-    )
-    target = models.ForeignKey(PublishTarget, on_delete=models.PROTECT)
-
-    status = models.CharField(
-        max_length=12, choices=PublishStatus.choices,
-        default=PublishStatus.PENDING,
-    )
-    external_id = models.CharField(max_length=200, blank=True)
-    external_url = models.URLField(blank=True, max_length=1000)
-    error_message = models.TextField(blank=True)
-    request_payload = models.JSONField(default=dict)
-    response_payload = models.JSONField(default=dict)
-
-    class Meta:
-        db_table = "content_studio_publishlog"
-        ordering = ["-created_at"]
-
-    def __str__(self):
-        return f"PublishLog({self.status}, draft={self.draft_id})"
-
-
-class ROIAttribution(TimestampMixin):
-    """Tracks score lift attributed to a published draft."""
-
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    draft = models.ForeignKey(
-        ContentDraft, related_name="roi_records", on_delete=models.CASCADE,
-    )
-    website = models.ForeignKey(
-        "websites.Website", related_name="roi_records", on_delete=models.CASCADE,
-    )
-
-    measured_at = models.DateTimeField()
-    days_since_publish = models.IntegerField()
-
-    visibility_before = models.FloatField(null=True, blank=True)
-    visibility_after = models.FloatField(null=True, blank=True)
-    visibility_lift = models.FloatField(null=True, blank=True)
-
-    citation_count_before = models.IntegerField(default=0)
-    citation_count_after = models.IntegerField(default=0)
-
-    accuracy_lift = models.FloatField(null=True, blank=True)
-
-    affected_prompts = models.JSONField(default=list)
-
-    class Meta:
-        db_table = "content_studio_roiattribution"
-        ordering = ["-measured_at"]
-
-    def __str__(self):
-        return f"ROIAttribution(draft={self.draft_id}, lift={self.visibility_lift})"

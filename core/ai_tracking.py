@@ -92,7 +92,7 @@ def record_usage(
 
         response = client.messages.create(...)
         record_usage(
-            module="lead_finder",
+            module="llm_ranking",
             model_name="claude-sonnet-4-20250514",
             input_tokens=response.usage.input_tokens,
             output_tokens=response.usage.output_tokens,

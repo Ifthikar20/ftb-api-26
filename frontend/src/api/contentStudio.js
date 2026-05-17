@@ -10,21 +10,4 @@ export default {
   regenerateDraft: (id) => api.post(`/content-studio/drafts/${id}/regenerate/`),
   updateDraft: (id, payload) => api.patch(`/content-studio/drafts/${id}/`, payload),
   approveDraft: (id) => api.post(`/content-studio/drafts/${id}/approve/`),
-  publishDraft: (id, target_id) =>
-    api.post(`/content-studio/drafts/${id}/publish/`, { target_id }),
-  exportDraft: (id, format = 'md') =>
-    api.get(`/content-studio/drafts/${id}/export/`, {
-      params: { format },
-      responseType: 'blob',
-    }),
-  publishTargets: (websiteId) =>
-    api.get(`/content-studio/websites/${websiteId}/publish-targets/`),
-  createPublishTarget: (websiteId, payload) =>
-    api.post(`/content-studio/websites/${websiteId}/publish-targets/`, payload),
-  updatePublishTarget: (id, payload) =>
-    api.patch(`/content-studio/publish-targets/${id}/`, payload),
-  deletePublishTarget: (id) =>
-    api.delete(`/content-studio/publish-targets/${id}/`),
-  roi: (websiteId, params = {}) =>
-    api.get(`/content-studio/websites/${websiteId}/roi/`, { params }),
 }

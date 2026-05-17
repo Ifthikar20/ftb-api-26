@@ -1,0 +1,71 @@
+name: Deploy to prod
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+# Cancel an in-progress deploy if a newer commit lands. The trailing
+# main wins; we never run two deploys against the same host in parallel.
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+jobs:
+  wait-for-ci:
+    name: Wait for CI lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: lewagon/wait-on-check-action@v1.3.4
+        with:
+          ref: ${{ github.sha }}
+          check-name: Lint
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          wait-interval: 15
+
+  deploy:
+    name: Deploy
+    needs: wait-for-ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        # EC2_SSH_KEY is the contents of fynda-deploy.pem stored as a
+        # repository secret. EC2_HOST defaults to 100.31.135.211 but
+        # can be overridden via the same-name secret if the box moves.
+        env:
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+        run: |
+          if [[ -z "$EC2_SSH_KEY" ]]; then
+            echo "::error::Missing EC2_SSH_KEY repository secret. Add it under Settings > Secrets > Actions."
+            exit 1
+          fi
+          mkdir -p ~/.ssh
+          printf '%s' "$EC2_SSH_KEY" > ~/.ssh/fynda-deploy.pem
+          chmod 600 ~/.ssh/fynda-deploy.pem
+          host="${EC2_HOST:-100.31.135.211}"
+          ssh-keyscan -H "$host" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Run deploy.sh against prod
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST || '100.31.135.211' }}
+          EC2_USER: ${{ secrets.EC2_USER || 'ubuntu' }}
+          PEM_KEY: /home/runner/.ssh/fynda-deploy.pem
+          REMOTE_DIR: ${{ secrets.REMOTE_DIR || '/opt/fetchbot/ftb-api-26' }}
+          BRANCH: main
+          PUBLIC_HOST: https://fetchbot.ai
+        run: bash scripts/deploy.sh
+
+      - name: Smoke test
+        run: |
+          for i in 1 2 3 4 5; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" https://fetchbot.ai/health/ || echo "000")
+            echo "attempt $i: $code"
+            if [[ "$code" == "200" ]]; then exit 0; fi
+            sleep 10
+          done
+          echo "::warning::Health check did not return 200 after retries"

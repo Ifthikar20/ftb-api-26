@@ -1,24 +1,35 @@
 <template>
   <div class="dashboard-page fade-in">
-    <div v-if="loading" class="loading-state">Loading dashboard...</div>
-    <template v-else>
-      <GreetingHeader :timeOfDay="timeOfDay" :firstName="firstName" />
-      <StatsGrid :stats="stats" class="stagger-enter" />
+    <!-- While first-run onboarding is pending the dashboard is gated:
+         render only the modal on a clean surface so the user can't
+         interact with (or even peek at) data they haven't earned yet. -->
+    <OnboardingModal
+      v-if="showOnboarding"
+      @complete="onOnboardingComplete"
+    />
 
-      <div class="content-grid stagger-enter">
-        <MorningBrief :brief="brief" class="tint-blue" />
-        <QuickActions :actions="quickActions" />
-        <WeeklyTasks :tasks="actions" class="tint-green" />
-        <RecentActivity :activity="activity" />
-        <TrendInsights class="tint-lavender" />
-        <IntegrationStatus :integrations="integrations" />
-      </div>
+    <template v-else>
+      <div v-if="loading" class="loading-state">Loading dashboard...</div>
+      <template v-else>
+        <GreetingHeader :timeOfDay="timeOfDay" :firstName="firstName" />
+        <StatsGrid :stats="stats" class="stagger-enter" />
+
+        <div class="content-grid stagger-enter">
+          <MorningBrief :brief="brief" class="tint-blue" />
+          <QuickActions :actions="quickActions" />
+          <WeeklyTasks :tasks="actions" class="tint-green" />
+          <RecentActivity :activity="activity" />
+          <TrendInsights class="tint-lavender" />
+          <IntegrationStatus :integrations="integrations" />
+        </div>
+      </template>
     </template>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import dashboardApi from '@/api/dashboard'
 
@@ -30,9 +41,26 @@ import WeeklyTasks from '@/components/dashboard/WeeklyTasks.vue'
 import RecentActivity from '@/components/dashboard/RecentActivity.vue'
 import IntegrationStatus from '@/components/dashboard/IntegrationStatus.vue'
 import TrendInsights from '@/components/dashboard/TrendInsights.vue'
+import OnboardingModal from '@/components/onboarding/OnboardingModal.vue'
 
+const router = useRouter()
 const authStore = useAuthStore()
 const firstName = computed(() => (authStore.user?.full_name || 'there').split(' ')[0])
+
+// First-run onboarding shows as an overlay over the dashboard rather
+// than its own page. The session view drives this via
+// onboarding.needs_onboarding; the modal refreshes the session and
+// emits 'complete' once the user finishes the flow.
+const showOnboarding = computed(
+  () => authStore.session?.onboarding?.needs_onboarding === true,
+)
+
+function onOnboardingComplete() {
+  // The next_route on the refreshed session decides where we land
+  // next — paywall for unpaid users, otherwise stay on the dashboard.
+  const next = authStore.session?.next_route
+  if (next === 'paywall') router.push('/paywall')
+}
 
 const hour = new Date().getHours()
 const timeOfDay = computed(() => hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening')

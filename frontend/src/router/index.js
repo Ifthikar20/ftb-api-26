@@ -49,10 +49,13 @@ const routes = [
         meta: { layout: 'auth', guest: true }
     },
     {
+        // Public sign-up is closed — the only path to a real account
+        // is admin-driven (scripts/create_test_user.py). Keep the route
+        // alive so cached marketing links don't 404, but bounce to
+        // /login.
         path: '/register',
         name: 'register',
-        component: () => import('@/pages/auth/RegisterPage.vue'),
-        meta: { layout: 'auth', guest: true }
+        redirect: { name: 'login' },
     },
     {
         path: '/forgot-password',
@@ -83,10 +86,11 @@ const routes = [
     protect('/llm-ranking/:websiteId/brand-vault', 'brand-vault', () => import('@/pages/BrandVaultPage.vue'), true),
     protect('/llm-ranking/:websiteId/content', 'content-studio', () => import('@/pages/ContentStudioPage.vue'), true),
     protect('/llm-ranking/:websiteId/content/drafts/:draftId', 'content-studio-draft', () => import('@/pages/DraftEditorPage.vue'), true),
-    protect('/llm-ranking/:websiteId/content/publish-targets', 'content-studio-targets', () => import('@/pages/PublishTargetsPage.vue'), true),
-    protect('/llm-ranking/:websiteId/content/roi', 'content-studio-roi', () => import('@/pages/ROIPage.vue'), true),
-    protect('/onboarding/:websiteId', 'onboarding', () => import('@/pages/OnboardingPage.vue'), true),
-    protect('/app-onboarding', 'app-onboarding', () => import('@/pages/AppOnboardingPage.vue')),
+    // Legacy /app-onboarding redirects to the dashboard. The
+    // onboarding flow is now a modal overlay rendered by
+    // DashboardPage when the session marks the user as needing
+    // onboarding.
+    { path: '/app-onboarding', redirect: { name: 'dashboard' } },
     {
         path: '/paywall',
         name: 'paywall',
@@ -124,10 +128,13 @@ const router = createRouter({
 let sessionRestored = false
 
 // Routes exempt from the onboarding/paywall gate (user is mid-flow fixing their state)
+// Dashboard is intentionally included — the onboarding modal renders
+// on top of the dashboard for first-run users, so the route gate must
+// allow them through.
 const GATE_EXEMPT = new Set([
     'login', 'register', 'forgot-password', 'verify-email',
     'landing', 'terms', 'privacy',
-    'onboarding', 'app-onboarding', 'paywall', 'not-found',
+    'dashboard', 'paywall', 'not-found',
 ])
 
 router.beforeEach(async (to, from, next) => {
@@ -175,30 +182,37 @@ router.beforeEach(async (to, from, next) => {
         return next()
     }
 
-    // If guest visits a guest-only page (login/register) but is already logged in, go to dashboard
+    // If guest visits a guest-only page (login/register) but is already
+    // logged in, send them to the right next step.
     if (to.meta.guest && auth.isAuthenticated) {
+        if (!auth.session) {
+            try { await auth.fetchSession() } catch (_) {}
+        }
+        const route = auth.session?.next_route
+        if (route === 'onboarding') return next({ name: 'dashboard' })
+        if (route === 'paywall') return next({ name: 'paywall' })
         return next({ name: 'dashboard' })
     }
 
-    // Onboarding + paywall gate: authenticated users with incomplete setup
-    // must finish onboarding and subscribe before reaching the app.
-    if (auth.isAuthenticated && !GATE_EXEMPT.has(to.name)) {
-        // Refresh session on transition into a protected route if we don't have one
+    // Funnel gate: onboarding first (modal on /dashboard), then paywall
+    // (its own route), then the app. The user has to walk through each
+    // gate in order — they cannot reach /llm-ranking/* until they have
+    // a website AND a paid subscription.
+    if (auth.isAuthenticated) {
         if (!auth.session) {
-            await auth.fetchSession()
+            try { await auth.fetchSession() } catch (_) {}
         }
         const route = auth.session?.next_route
-        if (route === 'onboarding') {
-            const wid = auth.session?.onboarding?.first_incomplete_website_id
-            return next(wid ? { name: 'onboarding', params: { websiteId: wid } } : { name: 'app-onboarding' })
+        if (route === 'onboarding' && !GATE_EXEMPT.has(to.name)) {
+            return next({ name: 'dashboard' })
         }
-        if (route === 'paywall') {
+        if (route === 'paywall' && to.name !== 'paywall') {
             return next({ name: 'paywall' })
         }
     }
 
     // Guard: project-specific pages require an active project
-    const projectPages = ['analytics', 'llm-ranking', 'website-detail', 'source-influence', 'prompt-library', 'brand-vault', 'content-studio', 'content-studio-draft', 'content-studio-targets', 'content-studio-roi']
+    const projectPages = ['analytics', 'llm-ranking', 'website-detail', 'source-influence', 'prompt-library', 'brand-vault', 'content-studio', 'content-studio-draft']
     if (projectPages.includes(to.name) && auth.isAuthenticated) {
         const app = useAppStore()
         if (!app.activeWebsite) {

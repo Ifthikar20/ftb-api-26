@@ -9,6 +9,7 @@ urlpatterns = [
     path("", views.BillingOverviewView.as_view(), name="billing-overview"),
     path("plans/", views.PlansView.as_view(), name="billing-plans"),
     path("checkout/", views.CheckoutView.as_view(), name="billing-checkout"),
+    path("dev-subscribe/", views.DevSubscribeView.as_view(), name="billing-dev-subscribe"),
     path("portal/", views.PortalView.as_view(), name="billing-portal"),
     path("invoices/", views.InvoiceListView.as_view(), name="billing-invoices"),
     path("usage/", views.UsageView.as_view(), name="billing-usage"),

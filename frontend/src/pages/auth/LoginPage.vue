@@ -31,10 +31,6 @@
         Continue with Google
       </button>
 
-      <p class="auth-switch">
-        Don't have an account?
-        <router-link to="/register" style="font-weight: 600;">Create one</router-link>
-      </p>
       <p class="auth-switch" style="margin-top: -8px">
         <router-link to="/" style="font-weight: 500;">← Back to Home</router-link>
       </p>
@@ -67,8 +63,7 @@ onMounted(async () => {
       const session = await authStore.fetchSession()
       const next = session?.next_route
       if (next === 'onboarding') {
-        const wid = session?.onboarding?.first_incomplete_website_id
-        router.replace(wid ? `/onboarding/${wid}` : '/app-onboarding')
+        router.replace('/dashboard')
       } else if (next === 'paywall') {
         router.replace('/paywall')
       } else {
@@ -90,8 +85,7 @@ async function handleLogin() {
     if (route.query.redirect) {
       router.push(route.query.redirect)
     } else if (next === 'onboarding') {
-      const wid = session?.onboarding?.first_incomplete_website_id
-      router.push(wid ? `/onboarding/${wid}` : '/app-onboarding')
+      router.push('/dashboard')
     } else if (next === 'paywall') {
       router.push('/paywall')
     } else {

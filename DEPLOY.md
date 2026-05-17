@@ -1,9 +1,13 @@
 # Deployment Guide
 
-FetchBot (fetchbot.ai) is deployed manually to a single EC2 host running Docker
-Compose. There is **no automatic deploy**: pushing to `main` only triggers the
-GitHub Actions lint job (`.github/workflows/ci.yml`). Code reaches production
-only when someone SSHes into the server and runs the deploy script.
+FetchBot (fetchbot.ai) is deployed to a single EC2 host running Docker
+Compose. **Pushing or merging to `main` auto-deploys to production**
+via `.github/workflows/deploy.yml`, which waits for the CI lint job to
+pass and then runs `scripts/deploy.sh` against the EC2 box.
+
+If you need to deploy manually (e.g., off-main hotfix, debugging CI),
+the same script is runnable from any machine that has the PEM key —
+see "Manual deploy" below.
 
 ## Architecture
 
@@ -19,39 +23,65 @@ only when someone SSHes into the server and runs the deploy script.
 - **Env file:** `/opt/fetchbot/ftb-api-26/.env.prod` (never committed; created
   from `.env.prod.example` on first deploy).
 
-## Release flow
+## Release flow (automatic)
 
-1. Merge changes into `main` on GitHub. Wait for the CI lint job to pass.
-2. SSH to the production host:
+1. Open a PR against `main`. CI runs the lint job.
+2. Merge to `main` once approved.
+3. `.github/workflows/deploy.yml` triggers automatically:
+   - Waits for the `Lint` check on the same SHA to pass.
+   - SSHes to the EC2 host using the `EC2_SSH_KEY` repository secret.
+   - Runs `bash scripts/deploy.sh` against prod, which performs:
+     - `git pull origin main` in `/opt/fetchbot/ftb-api-26`
+     - Verifies `.env.prod` exists
+     - `docker compose ... up -d --build`
+     - `python manage.py migrate --noinput`
+     - `python manage.py collectstatic --noinput`
+     - Hits `http://localhost/health/` as a smoke check.
+   - Hits `https://fetchbot.ai/health/` from the GitHub runner as a
+     final external smoke test.
 
-   ```bash
-   ssh ubuntu@<fetchbot-ec2-ip>
-   ```
+Watch the deploy in the Actions tab of the GitHub repo. A failed
+deploy leaves prod on the previous image (Docker only swaps containers
+in once the new image builds successfully).
 
-3. Run the deploy script:
+## Required GitHub repository secrets
 
-   ```bash
-   cd /opt/fetchbot/ftb-api-26
-   bash scripts/deploy.sh
-   ```
+Set under **Settings → Secrets and variables → Actions**:
 
-   The script (`scripts/deploy.sh`) performs:
-   - `apt-get update && upgrade`
-   - Ensures swap, Docker are present
-   - `git pull origin main` in `/opt/fetchbot/ftb-api-26`
-   - Verifies `.env.prod` exists
-   - `docker compose -f docker/docker-compose.prod.yml down`
-   - `docker compose -f docker/docker-compose.prod.yml up -d --build`
-   - `python manage.py migrate --noinput`
-   - `python manage.py collectstatic --noinput`
-   - Hits `http://localhost/health/` as a smoke check
+| Secret | Value |
+|---|---|
+| `EC2_SSH_KEY` | The contents of `fynda-deploy.pem` (the full PEM body, including `-----BEGIN` / `-----END` lines). |
+| `EC2_HOST` (optional) | EC2 IP or DNS. Defaults to `100.31.135.211`. |
+| `EC2_USER` (optional) | SSH user. Defaults to `ubuntu`. |
+| `REMOTE_DIR` (optional) | Repo path on host. Defaults to `/opt/fetchbot/ftb-api-26`. |
 
-4. Verify:
+Test the SSH key once with `ssh -i fynda-deploy.pem ubuntu@<host> echo ok`
+before pasting it into the secret.
 
-   ```bash
-   docker compose -f docker/docker-compose.prod.yml ps
-   curl -I https://fetchbot.ai/health/
-   ```
+## Manual deploy (fallback)
+
+Triggers the workflow on demand from the GitHub UI:
+
+> Actions → "Deploy to prod" → Run workflow → branch: `main`
+
+Or run the script locally from your laptop (works from any machine
+that has `fynda-deploy.pem` placed at the repo root):
+
+```bash
+bash scripts/deploy.sh
+```
+
+`scripts/deploy.sh` SSHes into the EC2 host itself; you do not need to
+SSH in first.
+
+## Verify after deploy
+
+```bash
+ssh -i ./fynda-deploy.pem ubuntu@100.31.135.211 \
+  'cd /opt/fetchbot/ftb-api-26 && \
+   docker compose -f docker/docker-compose.prod.yml ps'
+curl -I https://fetchbot.ai/health/
+```
 
 ## First-time server bootstrap
 

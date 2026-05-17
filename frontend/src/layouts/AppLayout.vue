@@ -1,7 +1,13 @@
 <template>
-  <div class="app-layout" :class="{ 'sidebar-collapsed': appStore.sidebarCollapsed }">
-    <!-- Sidebar -->
-    <aside class="sidebar">
+  <div
+    class="app-layout"
+    :class="{
+      'sidebar-collapsed': appStore.sidebarCollapsed,
+      'is-onboarding': sessionNeedsOnboarding,
+    }"
+  >
+    <!-- Sidebar (hidden while first-run onboarding is required) -->
+    <aside v-if="!sessionNeedsOnboarding" class="sidebar">
       <div class="sidebar-brand">
         <img src="/images/fb-logo.png" alt="FetchBot" class="brand-logo" />
         <span v-if="!appStore.sidebarCollapsed" class="brand-name">FetchBot</span>
@@ -59,14 +65,6 @@
           <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 2h7l3 3v9H3z"/><path d="M10 2v3h3"/><path d="M5 8h6M5 11h4"/></svg></span>
           <span v-if="!appStore.sidebarCollapsed" class="nav-text">Content</span>
         </router-link>
-        <router-link :to="publishTargetsRoute" class="nav-link nav-sub" active-class="active" style="--nav-color: #FF385C">
-          <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="5" r="2"/><path d="M11 7v4M5 11l5-3M5 11h6"/><circle cx="5" cy="11" r="2"/></svg></span>
-          <span v-if="!appStore.sidebarCollapsed" class="nav-text">Publish targets</span>
-        </router-link>
-        <router-link :to="roiRoute" class="nav-link nav-sub" active-class="active" style="--nav-color: #FF385C">
-          <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 12l4-4 3 3 5-6"/><path d="M10 5h4v4"/></svg></span>
-          <span v-if="!appStore.sidebarCollapsed" class="nav-text">ROI</span>
-        </router-link>
 
         <router-link to="/app/integrations" class="nav-link" exact-active-class="active" style="--nav-color: #22c55e">
           <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M10 13a5 5 0 007.5.5l3-3a5 5 0 00-7-7l-1.5 1.5"/><path d="M14 11a5 5 0 00-7.5-.5l-3 3a5 5 0 007 7l1.5-1.5"/></svg></span>
@@ -101,7 +99,7 @@
 
     <!-- Main Content -->
     <div class="main-wrapper">
-      <header class="topbar">
+      <header v-if="!sessionNeedsOnboarding" class="topbar">
         <button class="btn-icon sidebar-toggle" @click="appStore.toggleSidebar" :title="appStore.sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'">
           <!-- Collapse: panel + left arrow. Expand: panel + right arrow. -->
           <svg v-if="!appStore.sidebarCollapsed" width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.75">
@@ -155,8 +153,14 @@
 
     <!-- Toast Notifications (global) -->
     <ToastContainer />
-    <!-- Onboarding Tooltips (first-time users) -->
-    <OnboardingTooltip :steps="onboardingSteps" :storage-key="onboardingStorageKey" />
+    <!-- Product tour tooltips for first-time visitors. Hidden while the
+         account-onboarding modal is open so the two flows don't
+         visually overlap. -->
+    <OnboardingTooltip
+      v-if="!sessionNeedsOnboarding"
+      :steps="onboardingSteps"
+      :storage-key="onboardingStorageKey"
+    />
     <!-- Add Project Modal -->
     <div v-if="showAddProject" class="modal-overlay" @click.self="showAddProject = false">
       <div class="modal-card">
@@ -418,6 +422,13 @@ const onboardingStorageKey = computed(() => {
   return uid ? `fb_onboarding_done_${uid}` : 'fb_onboarding_done'
 })
 
+// Suppress the product tour while the first-run onboarding modal is
+// open on the dashboard — the two overlap visually and conflate two
+// different flows (account setup vs. UI introduction).
+const sessionNeedsOnboarding = computed(
+  () => authStore.session?.onboarding?.needs_onboarding === true,
+)
+
 const websiteId = computed(() => appStore.activeWebsite?.id)
 
 // Cache key: one keep-alive instance per page type + website.
@@ -429,8 +440,6 @@ const promptLibraryRoute = computed(() => websiteId.value ? `/llm-ranking/${webs
 const sourceInfluenceRoute = computed(() => websiteId.value ? `/llm-ranking/${websiteId.value}/source-influence` : '/websites')
 const brandVaultRoute = computed(() => websiteId.value ? `/llm-ranking/${websiteId.value}/brand-vault` : '/websites')
 const contentStudioRoute = computed(() => websiteId.value ? `/llm-ranking/${websiteId.value}/content` : '/websites')
-const publishTargetsRoute = computed(() => websiteId.value ? `/llm-ranking/${websiteId.value}/content/publish-targets` : '/websites')
-const roiRoute = computed(() => websiteId.value ? `/llm-ranking/${websiteId.value}/content/roi` : '/websites')
 
 
 
@@ -464,7 +473,6 @@ async function createProject() {
     newProject.value = { name: '', url: '', industry: '' }
     showAddProject.value = false
     toast.success('Project created successfully!')
-    router.push(`/onboarding/${project.id}`)
   } catch (err) {
     const msg = err.displayMessage || 'We couldn\'t create the project. Please check the URL and try again.'
     createError.value = msg
@@ -508,6 +516,11 @@ onUnmounted(() => {
   display: flex;
   min-height: 100vh;
 }
+
+/* While first-run onboarding is required the sidebar + topbar are
+   removed; expand the main wrapper to fill the viewport so the modal
+   sits on a clean canvas. */
+.app-layout.is-onboarding .main-wrapper { width: 100%; }
 
 /* Sidebar */
 .sidebar {

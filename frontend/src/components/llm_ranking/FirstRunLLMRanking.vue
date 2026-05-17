@@ -31,11 +31,6 @@
           <div class="field-value">{{ website.description }}</div>
         </div>
       </div>
-      <router-link
-        v-if="website?.id"
-        :to="`/onboarding/${website.id}`"
-        class="edit-link"
-      >Edit business info</router-link>
     </section>
 
     <section class="step-card">

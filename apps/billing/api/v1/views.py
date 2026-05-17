@@ -60,6 +60,71 @@ class PlansView(APIView):
         return Response(PlanService.get_all_plans())
 
 
+class DevSubscribeView(APIView):
+    """
+    Mock checkout for dev / demo environments. Accepts any "card"
+    payload and immediately flips the user's Subscription to ACTIVE
+    so the funnel (onboarding -> paywall -> dashboard) is walkable
+    without standing up Stripe.
+
+    Gated behind ``settings.BILLING_DEV_MODE`` so it can never be
+    accidentally enabled in prod. Returns 404 when disabled to avoid
+    advertising the endpoint.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        from django.conf import settings as dj_settings
+        from django.utils import timezone
+        from datetime import timedelta
+
+        if not getattr(dj_settings, "BILLING_DEV_MODE", False):
+            return Response(
+                {"success": False, "error": {"code": "not_found", "message": "Not available."}},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        plan = request.data.get("plan", "individual")
+        annual = bool(request.data.get("annual", False))
+
+        from core.utils.constants import Plan, SubscriptionStatus
+
+        # Map our pricing-tier codes to the canonical Plan enum.
+        plan_map = {
+            "individual": Plan.INDIVIDUAL,
+            "starter": Plan.INDIVIDUAL,
+            "pro": Plan.PRO,
+            "enterprise": Plan.ENTERPRISE,
+        }
+        canonical_plan = plan_map.get(plan, Plan.INDIVIDUAL)
+
+        now = timezone.now()
+        period_end = now + timedelta(days=365 if annual else 30)
+
+        sub, _ = Subscription.objects.update_or_create(
+            user=request.user,
+            defaults={
+                "plan": canonical_plan,
+                "status": SubscriptionStatus.ACTIVE,
+                "stripe_subscription_id": f"dev_sub_{request.user.id}",
+                "stripe_customer_id": f"dev_cus_{request.user.id}",
+                "current_period_start": now,
+                "current_period_end": period_end,
+                "cancel_at_period_end": False,
+            },
+        )
+
+        return Response({
+            "success": True,
+            "data": {
+                "plan": sub.plan,
+                "status": sub.status,
+                "current_period_end": sub.current_period_end.isoformat(),
+                "dev_mode": True,
+            },
+        })
+
+
 class CheckoutView(APIView):
     """Create a Stripe checkout session for subscribing."""
     permission_classes = [IsAuthenticated]

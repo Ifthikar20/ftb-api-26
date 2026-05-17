@@ -14,7 +14,6 @@ from apps.content_studio.models import (
     ContentFormat,
     DraftStatus,
     GapType,
-    PublishTarget,
 )
 from apps.websites.tests.factories import WebsiteFactory
 
@@ -26,7 +25,6 @@ pytestmark = [
         CLAIM_VERIFICATION_ENABLED=False,
         CITATION_EXTRACTION_ENABLED=False,
         CONTENT_STUDIO_BRIEF_GENERATION_ENABLED=False,
-        CONTENT_STUDIO_PUBLISH_LIVE=False,
     ),
 ]
 
@@ -143,43 +141,3 @@ def test_draft_approve(auth_client):
     assert draft.status == DraftStatus.APPROVED.value
 
 
-def test_draft_export_returns_markdown(auth_client):
-    client, user = auth_client
-    website, brief = _seed_brief(user)
-    draft = ContentDraft.objects.create(
-        brief=brief, website=website, title="hello",
-        body_markdown="# Hello\n\nworld", status=DraftStatus.READY.value,
-    )
-    url = reverse("content-studio-draft-export", args=[draft.id])
-    resp = client.get(url + "?format=md")
-    assert resp.status_code == 200
-    assert b"Hello" in resp.content
-
-
-def test_publish_targets_create_and_list(auth_client):
-    client, user = auth_client
-    website = WebsiteFactory(user=user)
-    url = reverse("content-studio-website-publish-targets", args=[website.id])
-    resp = client.post(url, {
-        "provider": "manual", "label": "default", "config": {},
-        "is_default": True, "is_active": True,
-    }, format="json")
-    assert resp.status_code == 201
-    resp2 = client.get(url)
-    assert resp2.status_code == 200
-    body = resp2.json()
-    items = body.get("results") if isinstance(body, dict) and "results" in body else body
-    assert any(t["provider"] == "manual" for t in items)
-
-
-def test_publish_target_delete_disables(auth_client):
-    client, user = auth_client
-    website = WebsiteFactory(user=user)
-    target = PublishTarget.objects.create(
-        website=website, provider="manual", label="x", config={},
-    )
-    url = reverse("content-studio-publish-target-detail", args=[target.id])
-    resp = client.delete(url)
-    assert resp.status_code == 204
-    target.refresh_from_db()
-    assert target.is_active is False

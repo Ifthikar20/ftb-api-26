@@ -179,11 +179,9 @@ class AITokenUsage(TimestampMixin):
     """A single AI API call — records model, tokens, cost, and which module made the call."""
 
     MODULE_CHOICES = [
-        ("lead_finder", "AI Lead Finder"),
-        ("messaging", "AI Messaging"),
         ("llm_ranking", "LLM Ranking"),
-        ("seo_keywords", "SEO Keywords"),
-        ("analytics", "AI Insights"),
+        ("rag", "RAG / Embeddings"),
+        ("onboarding", "Onboarding scan"),
     ]
 
     PROVIDER_CHOICES = [
@@ -191,6 +189,12 @@ class AITokenUsage(TimestampMixin):
         ("openai", "OpenAI (GPT)"),
         ("google", "Google (Gemini)"),
         ("perplexity", "Perplexity"),
+        ("meta", "Meta (Llama)"),
+        ("mistral", "Mistral AI"),
+        ("cohere", "Cohere"),
+        ("deepseek", "DeepSeek"),
+        ("xai", "xAI (Grok)"),
+        ("amazon", "Amazon (Nova / Bedrock)"),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

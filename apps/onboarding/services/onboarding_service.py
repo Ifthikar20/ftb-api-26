@@ -51,6 +51,11 @@ class OnboardingPayload:
     features: list[str] = field(default_factory=list)
     selling_points: list[str] = field(default_factory=list)
     topics: list[str] = field(default_factory=list)
+    # Parallel array (same length as `topics`): for each topic, the
+    # competitor brand names the audit will look for in LLM responses
+    # to that query. Shown under each chip on step 2 so the user knows
+    # what they're being benchmarked against.
+    topic_brands: list[list[str]] = field(default_factory=list)
 
     # Discovered competitors {name, domain}
     competitors: list[dict] = field(default_factory=list)
@@ -84,6 +89,23 @@ def run_onboarding_scan(url: str) -> OnboardingPayload:
         selling_points=payload.selling_points,
         products=payload.products,
     )
+
+    # Replace the heuristic topic list with an LLM-generated one. The
+    # heuristic generator hardcodes the word "tools" and regex-matches
+    # fragments around "for", producing nonsense topics for non-product
+    # businesses (services, agencies, healthcare, finance). The LLM
+    # picks the right category noun on its own AND names the brands the
+    # audit will measure against per topic.
+    llm_topic_rows = _llm_topics(
+        business_name=payload.business_name,
+        industry=payload.industry,
+        description=payload.description_short or payload.description_raw,
+        selling_points=payload.selling_points,
+        products=payload.products,
+    )
+    if llm_topic_rows:
+        payload.topics = [row["topic"] for row in llm_topic_rows]
+        payload.topic_brands = [row.get("brands", []) for row in llm_topic_rows]
 
     payload.competitors = _safe_discover_competitors(
         business_name=payload.business_name,
@@ -167,12 +189,276 @@ def _polish_description(
         return fallback
 
 
+def _llm_topics(
+    *,
+    business_name: str,
+    industry: str,
+    description: str,
+    selling_points: list[str],
+    products: list[str],
+) -> list[dict]:
+    """
+    Ask Claude Haiku for 8 buyer-intent search queries + the brand
+    names the audit will measure against for each query.
+
+    Returns a list of dicts:
+        [{"topic": "best provider credentialing services for clinics",
+          "brands": ["Verifiable", "Medallion", "Andros"]}, ...]
+
+    Returns [] on failure so the caller falls back to the heuristic
+    topic list (with no per-topic brands).
+    """
+    if not (business_name or description):
+        return []
+    try:
+        from django.conf import settings as dj_settings
+        api_key = getattr(dj_settings, "ANTHROPIC_API_KEY", "") or ""
+        if not api_key:
+            return []
+
+        import anthropic
+        import json
+        import re
+
+        client = anthropic.Anthropic(api_key=api_key)
+
+        bullets = ""
+        if selling_points:
+            bullets += "\nKey selling points:\n- " + "\n- ".join(selling_points[:5])
+        if products:
+            bullets += "\nProducts / services offered:\n- " + "\n- ".join(products[:5])
+
+        prompt = (
+            "You are generating buyer-intent search queries that real "
+            "people would type into ChatGPT, Claude, or Perplexity when "
+            "looking for a business like this one. For each query you "
+            "also name the competitor brands the audit will track in "
+            "the LLM's answer to that query.\n\n"
+            f"Business: {business_name}\n"
+            f"Industry: {industry or 'unspecified'}\n"
+            f"Description: {description}{bullets}\n\n"
+            "Return 8 entries that satisfy ALL of:\n"
+            "1. Each query reads as a natural sentence a human would "
+            "actually type — no fragment soup, no broken grammar.\n"
+            "2. Pick the right category noun based on what this "
+            "business IS. A SaaS product → 'tool' / 'platform' / "
+            "'software'. A credentialing service or agency → "
+            "'service' / 'provider' / 'company'. A consultancy → "
+            "'firm' / 'consultant'. Match the noun to the business; "
+            "do not blindly say 'tools' for a non-software business.\n"
+            "3. Each query is highly correlated with the description.\n"
+            "4. Mix query styles: 'best X for Y', 'how to find Z', "
+            "'top alternatives to ...', 'who handles ...', 'compare ...'.\n"
+            "5. Each query is 4-12 words. No trailing punctuation.\n\n"
+            "6. For 'brands', list 3-5 real, currently-operating "
+            "competitor companies most likely to appear in a top-tier "
+            "LLM's answer to that query. Use the public-facing brand "
+            "name only (e.g. 'Verifiable', not 'verifiable.com'). "
+            "Exclude the subject company. Do NOT invent names.\n\n"
+            "Return ONLY a JSON array of objects, no prose, no code "
+            "fences. Example:\n"
+            '[{"topic": "best provider credentialing services for clinics",'
+            ' "brands": ["Verifiable", "Medallion", "Andros"]},'
+            ' {"topic": "how to get doctors in-network fast",'
+            ' "brands": ["CredSimple", "Medallion", "Andros"]}]'
+        )
+
+        resp = client.messages.create(
+            model="claude-haiku-4-5",
+            max_tokens=1024,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        text = (resp.content[0].text or "").strip()
+
+        try:
+            from core.ai_tracking import record_usage
+            record_usage(
+                module="onboarding",
+                model_name="claude-haiku-4-5",
+                input_tokens=resp.usage.input_tokens,
+                output_tokens=resp.usage.output_tokens,
+                metadata={"role": "topic_generation"},
+            )
+        except Exception:
+            pass
+
+        match = re.search(r"\[.*\]", text, re.DOTALL)
+        if not match:
+            return []
+        data = json.loads(match.group())
+        if not isinstance(data, list):
+            return []
+
+        own_brand = (business_name or "").strip().lower()
+        seen: set[str] = set()
+        out: list[dict] = []
+        for row in data:
+            # Backward-compat: tolerate plain strings as topics with
+            # no brand info, in case the model regresses on format.
+            if isinstance(row, str):
+                topic = row.strip().rstrip(".,")
+                brands: list[str] = []
+            elif isinstance(row, dict):
+                topic = (row.get("topic") or "").strip().rstrip(".,")
+                raw_brands = row.get("brands") or []
+                brands = [
+                    b.strip() for b in raw_brands
+                    if isinstance(b, str) and b.strip()
+                    and b.strip().lower() != own_brand
+                ][:5]
+            else:
+                continue
+
+            key = topic.lower()
+            if len(topic) < 6 or key in seen:
+                continue
+            seen.add(key)
+            out.append({"topic": topic, "brands": brands})
+            if len(out) >= 8:
+                break
+        return out
+    except Exception as exc:
+        logger.debug("LLM topic generation skipped: %s", exc)
+        return []
+
+
+def _llm_competitors(
+    *,
+    business_name: str,
+    industry: str,
+    domain: str,
+    description: str,
+) -> list[dict]:
+    """
+    Ask Claude Haiku to name 8 real competitors of the business.
+
+    Replaces (or precedes, depending on availability) the Google
+    Custom Search competitor discoverer. Google closed Custom Search
+    JSON API to new customers in early 2026, so this path is the
+    primary source for newly-provisioned tenants; Google is used as
+    an optional fallback when an existing tenant still has a working
+    key.
+
+    The LLM is well-suited to this task — it doesn't need to "search"
+    for Stripe's competitors; it already knows them. Returns
+    [{"name", "domain"}, ...] in the same shape the wizard expects.
+    """
+    if not (business_name or description):
+        return []
+    try:
+        from django.conf import settings as dj_settings
+        api_key = getattr(dj_settings, "ANTHROPIC_API_KEY", "") or ""
+        if not api_key:
+            return []
+
+        import anthropic
+        import json
+        import re
+
+        client = anthropic.Anthropic(api_key=api_key)
+
+        prompt = (
+            "Name real, currently-operating companies that directly "
+            "compete with the business below. Only include companies "
+            "you are reasonably sure exist — do not invent names.\n\n"
+            f"Business: {business_name}\n"
+            f"Industry: {industry or 'unspecified'}\n"
+            f"Website: {domain or 'unknown'}\n"
+            f"Description: {description}\n\n"
+            "Return 6-8 competitors. For each, give the public-facing "
+            "company name and the primary website domain (e.g. "
+            "'stripe.com', not 'https://stripe.com/'). Exclude the "
+            "subject company itself from the list.\n\n"
+            "Return ONLY a JSON array of objects, no prose, no code "
+            "fences. Example:\n"
+            '[{"name": "Stripe", "domain": "stripe.com"}, '
+            '{"name": "Adyen", "domain": "adyen.com"}]'
+        )
+
+        resp = client.messages.create(
+            model="claude-haiku-4-5",
+            max_tokens=600,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        text = (resp.content[0].text or "").strip()
+
+        try:
+            from core.ai_tracking import record_usage
+            record_usage(
+                module="onboarding",
+                model_name="claude-haiku-4-5",
+                input_tokens=resp.usage.input_tokens,
+                output_tokens=resp.usage.output_tokens,
+                metadata={"role": "competitor_discovery"},
+            )
+        except Exception:
+            pass
+
+        match = re.search(r"\[.*\]", text, re.DOTALL)
+        if not match:
+            return []
+        data = json.loads(match.group())
+        if not isinstance(data, list):
+            return []
+
+        # Normalise + dedupe. Drop entries that don't at least have a
+        # name; strip protocol from domain just in case.
+        own = (domain or "").lower().lstrip("www.")
+        seen: set[str] = set()
+        out: list[dict] = []
+        for row in data:
+            if not isinstance(row, dict):
+                continue
+            name = (row.get("name") or "").strip()
+            if not name:
+                continue
+            comp_domain = (row.get("domain") or "").strip().lower()
+            comp_domain = re.sub(r"^https?://", "", comp_domain).rstrip("/")
+            comp_domain = comp_domain.lstrip("www.")
+            if comp_domain and comp_domain == own:
+                continue  # skip self
+            key = comp_domain or name.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append({"name": name, "domain": comp_domain})
+            if len(out) >= 8:
+                break
+        return out
+    except Exception as exc:
+        logger.debug("LLM competitor discovery skipped: %s", exc)
+        return []
+
+
 def _safe_discover_competitors(
     *, business_name: str, industry: str, domain: str, description: str,
 ) -> list[dict]:
-    """Wrap the LLM-ranking discoverer so a failure doesn't abort onboarding."""
+    """
+    Find competitors for the onboarded website.
+
+    Order:
+        1. LLM (Claude Haiku) — primary path, works without third-party APIs.
+        2. Google Custom Search — optional fallback for legacy tenants that
+           still have a working key (Google closed it to new customers).
+
+    Returns [] if everything fails so the wizard renders the empty
+    state rather than aborting.
+    """
     if not (business_name or industry):
         return []
+
+    # Primary: LLM
+    competitors = _llm_competitors(
+        business_name=business_name,
+        industry=industry,
+        domain=domain,
+        description=description,
+    )
+    if competitors:
+        return competitors
+
+    # Fallback: Google Custom Search (only useful for tenants still
+    # within the legacy CSE window).
     try:
         from apps.llm_ranking.services.competitor_discovery import discover_competitors
         return discover_competitors(
@@ -183,7 +469,7 @@ def _safe_discover_competitors(
             max_results=8,
         ) or []
     except Exception as exc:
-        logger.debug("Competitor discovery skipped: %s", exc)
+        logger.debug("Google competitor discovery skipped: %s", exc)
         return []
 
 
