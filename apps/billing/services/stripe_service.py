@@ -275,6 +275,26 @@ class StripeService:
     @staticmethod
     @_retry_on_transient(max_retries=2)
     @with_circuit_breaker()
+    def set_cancel_at_period_end(*, subscription, cancel: bool) -> None:
+        """
+        Toggle ``cancel_at_period_end`` on the real Stripe subscription.
+
+        Caller is expected to mirror the flag locally — this only talks
+        to Stripe. Raises on transient errors so the retry decorator
+        can replay; circuit-breaker trips after repeated failures so a
+        downed Stripe API doesn't pin the request thread.
+        """
+        if not subscription or not subscription.stripe_subscription_id:
+            return
+        _init_stripe()
+        stripe.Subscription.modify(
+            subscription.stripe_subscription_id,
+            cancel_at_period_end=bool(cancel),
+        )
+
+    @staticmethod
+    @_retry_on_transient(max_retries=2)
+    @with_circuit_breaker()
     def create_portal_session(*, user, return_url: str) -> str:
         """Create a Stripe customer portal URL for managing subscription."""
         _init_stripe()

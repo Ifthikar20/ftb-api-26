@@ -10,33 +10,98 @@
     <template v-else>
       <!-- ── Current plan banner ─────────────────────────────────── -->
       <section v-if="currentPlanCode" class="bp-current">
-        <div>
+        <div class="bp-current-info">
           <span class="bp-eyebrow">Current plan</span>
-          <h2 class="bp-current-name">{{ currentTier?.name || currentPlanCode }}</h2>
-          <p class="bp-current-meta">
-            <span class="bp-pill" :class="statusClass">{{ subscription?.subscription_status || 'inactive' }}</span>
-            <span v-if="subscription?.current_period_end" class="bp-current-note">
+          <h2 class="bp-current-name">
+            {{ currentTier?.name || currentPlanCode }}
+            <span class="bp-current-price">
+              · {{ currentPriceLabel }}<span class="bp-current-period">{{ currentPeriodLabel }}</span>
+            </span>
+          </h2>
+          <div class="bp-current-meta">
+            <span class="bp-pill" :class="statusClass">{{ statusLabel }}</span>
+            <span
+              v-if="subscription?.current_period_end"
+              class="bp-current-note"
+              :class="{ 'is-warn': subscription.cancel_at_period_end }"
+            >
               {{ subscription.cancel_at_period_end ? 'Cancels' : 'Renews' }}
               {{ formatDate(subscription.current_period_end) }}
             </span>
-          </p>
+            <span v-if="isMockSub" class="bp-pill bp-pill--neutral">Test mode</span>
+          </div>
         </div>
-        <button
-          v-if="hasStripeSub"
-          class="bp-btn bp-btn--ghost"
-          :disabled="portalLoading"
-          @click="openPortal"
-        >
-          {{ portalLoading ? 'Opening…' : 'Manage subscription' }}
-        </button>
+        <div class="bp-current-actions">
+          <button
+            v-if="hasStripeSub"
+            class="bp-btn bp-btn--ghost"
+            :disabled="portalLoading"
+            @click="openPortal"
+          >{{ portalLoading ? 'Opening…' : 'Manage in Stripe' }}</button>
+          <button
+            v-if="subscription?.cancel_at_period_end"
+            class="bp-btn bp-btn--primary"
+            :disabled="cancelling"
+            @click="resume"
+          >{{ cancelling ? 'Working…' : 'Resume subscription' }}</button>
+          <button
+            v-else
+            class="bp-btn bp-btn--ghost-danger"
+            :disabled="cancelling"
+            @click="confirmCancel"
+          >{{ cancelling ? 'Working…' : 'Cancel subscription' }}</button>
+        </div>
       </section>
       <section v-else class="bp-current bp-current--empty">
-        <div>
+        <div class="bp-current-info">
           <span class="bp-eyebrow">No active plan</span>
           <h2 class="bp-current-name">You're not subscribed yet</h2>
           <p class="bp-current-note">Pick a plan below to unlock the full app.</p>
         </div>
       </section>
+
+      <!-- ── At-a-glance row: next charge + payment method ────────── -->
+      <div v-if="currentPlanCode" class="bp-glance">
+        <div class="bp-glance-card">
+          <span class="bp-eyebrow">Next charge</span>
+          <div v-if="subscription?.cancel_at_period_end" class="bp-glance-value">—</div>
+          <div v-else class="bp-glance-value">
+            {{ currentPriceLabel }}
+            <span class="bp-glance-period">{{ currentPeriodLabel }}</span>
+          </div>
+          <p class="bp-glance-note">
+            <template v-if="subscription?.cancel_at_period_end">
+              Access ends {{ formatDate(subscription.current_period_end) }}. No future charges.
+            </template>
+            <template v-else-if="subscription?.current_period_end">
+              On {{ formatDate(subscription.current_period_end) }} · {{ daysUntilRenewal }} days from today
+            </template>
+            <template v-else>
+              Renewal date will appear after the first invoice.
+            </template>
+          </p>
+        </div>
+
+        <div class="bp-glance-card">
+          <span class="bp-eyebrow">Payment method</span>
+          <div class="bp-glance-value">
+            <template v-if="isMockSub">Test mode</template>
+            <template v-else-if="hasStripeSub">On file with Stripe</template>
+            <template v-else>—</template>
+          </div>
+          <p class="bp-glance-note">
+            <template v-if="isMockSub">
+              No real card is stored. This subscription was created in dev mode.
+            </template>
+            <template v-else-if="hasStripeSub">
+              Card details live in Stripe. Use "Manage in Stripe" above to update.
+            </template>
+            <template v-else>
+              Add a payment method by choosing a plan below.
+            </template>
+          </p>
+        </div>
+      </div>
 
       <!-- ── Pricing tiers (same shape as the paywall) ────────────── -->
       <div class="bp-toggle" role="tablist" aria-label="Billing cycle">
@@ -183,6 +248,7 @@ const usage = ref([])
 const annual = ref(false)
 const checkingOut = ref(null)
 const portalLoading = ref(false)
+const cancelling = ref(false)
 const error = ref('')
 
 const mainTiers = computed(() => TIERS.filter(t => t.price !== null))
@@ -211,6 +277,55 @@ const hasStripeSub = computed(
   () => !!subscription.value?.stripe_subscription_id &&
         !String(subscription.value.stripe_subscription_id).startsWith('dev_'),
 )
+
+const isMockSub = computed(
+  () => String(subscription.value?.stripe_subscription_id || '').startsWith('dev_sub_'),
+)
+
+// Infer whether the active subscription is annual from the period
+// length. Stripe annual subs have a ~365d gap; monthly is ~30d. Used
+// to render the right /year vs /month suffix without forcing the
+// user to toggle the pill first.
+const isAnnualSub = computed(() => {
+  const sub = subscription.value
+  if (!sub?.current_period_start || !sub?.current_period_end) return annual.value
+  const ms = new Date(sub.current_period_end) - new Date(sub.current_period_start)
+  return ms > 1000 * 60 * 60 * 24 * 60   // > 60 days  →  annual
+})
+
+const currentPriceLabel = computed(() => {
+  const t = currentTier.value
+  if (!t || t.price === null) return t?.priceLabel || '—'
+  return isAnnualSub.value ? `$${t.price * 10}` : t.priceLabel
+})
+
+const currentPeriodLabel = computed(() => {
+  const t = currentTier.value
+  if (!t || t.price === null) return ''
+  return isAnnualSub.value ? '/year' : t.period || '/month'
+})
+
+const statusLabel = computed(() => {
+  const s = subscription.value?.subscription_status
+  if (!s || s === 'none') return 'Inactive'
+  const map = {
+    active: 'Active',
+    trialing: 'Trialing',
+    past_due: 'Past due',
+    canceled: 'Canceled',
+    incomplete: 'Incomplete',
+    incomplete_expired: 'Expired',
+    unpaid: 'Unpaid',
+  }
+  return map[s] || s.replace(/_/g, ' ')
+})
+
+const daysUntilRenewal = computed(() => {
+  const end = subscription.value?.current_period_end
+  if (!end) return 0
+  const diff = new Date(end) - new Date()
+  return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)))
+})
 
 function isCurrent(tier) { return currentPlanCode.value === tier.planCode }
 
@@ -284,6 +399,35 @@ async function openPortal() {
     toast.error("We couldn't open the billing portal.")
   } finally {
     portalLoading.value = false
+  }
+}
+
+async function confirmCancel() {
+  const end = subscription.value?.current_period_end
+  const tail = end ? ` Access continues until ${formatDate(end)}.` : ''
+  if (!window.confirm(`Cancel your ${currentTier.value?.name || 'subscription'}?${tail}`)) return
+  cancelling.value = true
+  try {
+    await billingApi.cancel()
+    toast.success('Subscription will end at the period end.')
+    await refresh()
+  } catch (e) {
+    toast.error(e?.response?.data?.error?.message || "We couldn't cancel.")
+  } finally {
+    cancelling.value = false
+  }
+}
+
+async function resume() {
+  cancelling.value = true
+  try {
+    await billingApi.resume()
+    toast.success('Subscription resumed.')
+    await refresh()
+  } catch (e) {
+    toast.error(e?.response?.data?.error?.message || "We couldn't resume.")
+  } finally {
+    cancelling.value = false
   }
 }
 
@@ -388,10 +532,24 @@ onMounted(async () => {
   font-weight: 600;
   letter-spacing: -0.015em;
 }
+.bp-current-info { display: flex; flex-direction: column; min-width: 0; }
+.bp-current-actions { display: flex; gap: 8px; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; }
+.bp-current-price {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--bp-muted);
+  letter-spacing: 0;
+}
+.bp-current-period {
+  font-size: 13px;
+  color: var(--bp-muted);
+  font-weight: 500;
+}
 .bp-current-meta {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
+  flex-wrap: wrap;
   margin: 0;
   font-size: 13px;
   color: var(--bp-muted);
@@ -400,6 +558,42 @@ onMounted(async () => {
   font-size: 13px;
   color: var(--bp-muted);
   margin: 0;
+}
+.bp-current-note.is-warn {
+  color: #b45309;
+  font-weight: 500;
+}
+
+/* At-a-glance row: next charge + payment method. */
+.bp-glance {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-bottom: 28px;
+}
+.bp-glance-card {
+  padding: 20px 22px;
+  background: var(--bp-bg);
+  border: 1px solid var(--bp-border);
+  border-radius: 16px;
+}
+.bp-glance-value {
+  margin: 4px 0 6px;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  font-variant-numeric: tabular-nums;
+}
+.bp-glance-period {
+  font-size: 13px;
+  color: var(--bp-muted);
+  font-weight: 500;
+}
+.bp-glance-note {
+  margin: 0;
+  font-size: 12px;
+  color: var(--bp-muted);
+  line-height: 1.5;
 }
 
 .bp-pill {
@@ -592,6 +786,16 @@ onMounted(async () => {
 .bp-btn--ghost {
   background: transparent;
 }
+.bp-btn--ghost-danger {
+  background: transparent;
+  color: #b91c1c;
+  border-color: rgba(239, 68, 68, 0.25);
+}
+.bp-btn--ghost-danger:hover:not(:disabled) {
+  border-color: #b91c1c;
+  background: rgba(239, 68, 68, 0.06);
+  transform: translateY(-1px);
+}
 .bp-btn:disabled { opacity: 0.55; cursor: not-allowed; }
 
 .bp-spinner {
@@ -696,6 +900,8 @@ onMounted(async () => {
     flex-direction: column;
     align-items: flex-start;
   }
+  .bp-current-actions { width: 100%; justify-content: flex-start; }
+  .bp-glance { grid-template-columns: 1fr; }
   .bp-tiers { grid-template-columns: 1fr; }
 }
 </style>
