@@ -1,19 +1,35 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 const props = defineProps({
   modelValue: { type: String, default: '' },
   loading: { type: Boolean, default: false },
   minWords: { type: Number, default: 5 },
+  count: { type: Number, default: 20 },
+  minCount: { type: Number, default: 5 },
+  maxCount: { type: Number, default: 50 },
 })
 
-const emit = defineEmits(['update:modelValue', 'generate'])
+const emit = defineEmits(['update:modelValue', 'update:count', 'generate'])
 
 const internal = ref(props.modelValue || '')
+const internalCount = ref(Math.min(props.maxCount, Math.max(props.minCount, props.count)))
+
+watch(() => props.count, (v) => {
+  const clamped = Math.min(props.maxCount, Math.max(props.minCount, Number(v) || 20))
+  if (clamped !== internalCount.value) internalCount.value = clamped
+})
 
 function sync(v) {
   internal.value = v
   emit('update:modelValue', v)
+}
+
+function syncCount(v) {
+  // Slider gives us a number; clamp + propagate.
+  const n = Math.min(props.maxCount, Math.max(props.minCount, Number(v) || props.minCount))
+  internalCount.value = n
+  emit('update:count', n)
 }
 
 const wordCount = computed(() => {
@@ -23,9 +39,15 @@ const wordCount = computed(() => {
 
 const valid = computed(() => wordCount.value >= props.minWords)
 
+const rangeFill = computed(() => {
+  const span = (props.maxCount - props.minCount) || 1
+  const pct = ((internalCount.value - props.minCount) / span) * 100
+  return `${Math.max(0, Math.min(100, pct))}%`
+})
+
 function onSubmit() {
   if (!valid.value || props.loading) return
-  emit('generate', internal.value.trim())
+  emit('generate', internal.value.trim(), internalCount.value)
 }
 
 function clear() {
@@ -66,6 +88,23 @@ function clear() {
           <span class="cic-sep cic-sep-light" aria-hidden="true">·</span>
           <kbd class="cic-kbd">⌘</kbd><kbd class="cic-kbd">↵</kbd>
           <span class="cic-kbd-hint">to search</span>
+        </div>
+        <div class="cic-count-picker" :title="`Generate ${internalCount} prompts`">
+          <label for="cic-count-range" class="cic-count-label">Prompts</label>
+          <input
+            id="cic-count-range"
+            type="range"
+            class="cic-range"
+            :min="minCount"
+            :max="maxCount"
+            step="1"
+            :value="internalCount"
+            :disabled="loading"
+            :style="{ '--cic-range-fill': rangeFill }"
+            @input="syncCount($event.target.value)"
+          />
+          <span class="cic-count-val">{{ internalCount }}</span>
+          <span class="cic-count-max">/ {{ maxCount }}</span>
         </div>
         <div class="cic-footer-actions">
           <button
@@ -239,6 +278,80 @@ function clear() {
 .cic-kbd-hint { margin-left: 2px; }
 
 .cic-footer-actions { display: inline-flex; align-items: center; gap: 8px; }
+
+/* ── Count picker (slider) ─────────────────────────────────
+   Sits in the middle of the footer between the word-count meta
+   and the action buttons. The track flows orange up to the
+   thumb so the size of the request feels visible. */
+.cic-count-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-left: auto;
+}
+.cic-count-label {
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.cic-count-val {
+  min-width: 22px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.cic-count-max {
+  color: var(--text-muted);
+  opacity: 0.65;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Native <input type=range> with custom track/thumb. The %-fill
+   trick uses a CSS gradient that hits a transparent stop where the
+   thumb sits; JS sets a custom property if we ever want to be
+   precise, but the gradient + accent-color combo looks great in
+   modern browsers as-is. */
+.cic-range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 110px;
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(to right,
+    var(--cic-accent) 0%,
+    var(--cic-accent) var(--cic-range-fill, 30%),
+    rgba(15, 23, 42, 0.08) var(--cic-range-fill, 30%),
+    rgba(15, 23, 42, 0.08) 100%);
+  outline: none;
+  cursor: pointer;
+  transition: opacity 0.2s var(--cic-spring);
+  accent-color: var(--cic-accent);
+}
+.cic-range:disabled { opacity: 0.4; cursor: not-allowed; }
+.cic-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--cic-accent);
+  border: 2px solid #fff;
+  box-shadow: 0 2px 6px rgba(255, 106, 44, 0.35);
+  cursor: pointer;
+  transition: transform 0.2s var(--cic-spring), box-shadow 0.2s var(--cic-spring);
+}
+.cic-range:hover:not(:disabled)::-webkit-slider-thumb { transform: scale(1.12); box-shadow: 0 4px 10px rgba(255, 106, 44, 0.45); }
+.cic-range::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--cic-accent);
+  border: 2px solid #fff;
+  box-shadow: 0 2px 6px rgba(255, 106, 44, 0.35);
+  cursor: pointer;
+}
 
 .cic-clear {
   border: 0;

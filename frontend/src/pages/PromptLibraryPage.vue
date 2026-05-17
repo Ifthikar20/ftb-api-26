@@ -62,6 +62,7 @@
     <section class="pl-section pl-section-search">
       <ContextInputCard
         v-model="contextInput"
+        v-model:count="promptCount"
         :loading="generating"
         @generate="onGenerate"
       />
@@ -517,6 +518,10 @@ const synthesizing = ref(false)
 
 // ── Context-driven generation state ──
 const contextInput = ref('')
+// How many prompts to ask the LLM to generate. Capped at 50 by the
+// backend serializer; the slider lets users dial it back when they
+// just want a quick sample.
+const promptCount = ref(20)
 const generating = ref(false)
 const generatedPrompts = ref([]) // { _uid, _saved, _saving, template_text, ... }
 const generationProvider = ref('')
@@ -819,13 +824,18 @@ function _wrap(item) {
   }
 }
 
-async function onGenerate(text) {
+async function onGenerate(text, count) {
   generating.value = true
   generationError.value = false
+  // Honour the slider when present; fall back to whatever the parent
+  // last persisted into promptCount.
+  const requested = Number(count) || promptCount.value || 20
+  const clamped = Math.max(1, Math.min(50, requested))
+  promptCount.value = clamped
   try {
     const { data } = await promptLibrary.generateFromContext({
       context: text,
-      count: 20,
+      count: clamped,
       persist: false,
     })
     const payload = data?.data || data || {}
