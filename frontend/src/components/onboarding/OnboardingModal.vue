@@ -117,15 +117,21 @@
 
                 <div v-if="form.keywords.length" class="ob-field">
                   <span class="ob-label">Topics we'll measure</span>
-                  <div class="ob-chips">
-                    <span
+                  <div class="ob-topics">
+                    <div
                       v-for="(k, i) in form.keywords"
                       :key="k + i"
-                      class="ob-chip"
+                      class="ob-topic-row"
                     >
-                      {{ k }}
-                      <button class="ob-chip-x" @click="removeKeyword(k)">×</button>
-                    </span>
+                      <span class="ob-chip">
+                        {{ k }}
+                        <button class="ob-chip-x" @click="removeKeyword(k)">×</button>
+                      </span>
+                      <span
+                        v-if="form.topic_brands[i] && form.topic_brands[i].length"
+                        class="ob-topic-vs"
+                      >vs {{ form.topic_brands[i].join(', ') }}</span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -217,6 +223,10 @@ const form = ref({
   industry: '',
   description: '',
   keywords: [],
+  // Parallel to `keywords`: brand names that show up alongside the
+  // topic in well-ranked LLM answers. Rendered under each chip on
+  // step 2 so the user can see what they're benchmarked against.
+  topic_brands: [],
   competitors: [],
 })
 
@@ -275,6 +285,7 @@ async function startScan() {
       industry: payload.industry || '',
       description: payload.description_short || payload.description_raw || '',
       keywords: (payload.topics || []).slice(0, 8),
+      topic_brands: (payload.topic_brands || []).slice(0, 8),
       competitors: (payload.competitors || []).slice(0, 12).map(c => ({
         name: c.name || c.domain || '',
         domain: c.domain || '',
@@ -303,7 +314,14 @@ function goToCompetitors() {
 }
 
 function removeKeyword(k) {
-  form.value.keywords = form.value.keywords.filter(x => x !== k)
+  // Drop the matching brand list at the same index to keep the two
+  // arrays aligned for the "vs Brand1, Brand2" sub-label.
+  const idx = form.value.keywords.indexOf(k)
+  if (idx === -1) return
+  form.value.keywords.splice(idx, 1)
+  if (idx < form.value.topic_brands.length) {
+    form.value.topic_brands.splice(idx, 1)
+  }
 }
 
 async function finish() {
@@ -616,6 +634,18 @@ onBeforeUnmount(() => {
   transition: background 0.15s, color 0.15s;
 }
 .ob-chip-x:hover { background: var(--ob-accent-soft); color: var(--ob-accent); }
+
+/* Each topic row stacks the chip with a small "vs Brand1, Brand2"
+   sub-label so the user can see who they're being benchmarked against
+   per topic. */
+.ob-topics { display: flex; flex-direction: column; gap: 8px; }
+.ob-topic-row { display: flex; flex-direction: column; gap: 2px; align-items: flex-start; }
+.ob-topic-vs {
+  font-size: 11px;
+  color: var(--ob-muted);
+  letter-spacing: 0.01em;
+  padding-left: 10px;
+}
 
 .ob-competitors { display: grid; grid-template-columns: 1fr; gap: 8px; }
 .ob-competitor {

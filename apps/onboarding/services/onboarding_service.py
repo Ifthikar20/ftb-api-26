@@ -51,6 +51,11 @@ class OnboardingPayload:
     features: list[str] = field(default_factory=list)
     selling_points: list[str] = field(default_factory=list)
     topics: list[str] = field(default_factory=list)
+    # Parallel array (same length as `topics`): for each topic, the
+    # competitor brand names the audit will look for in LLM responses
+    # to that query. Shown under each chip on step 2 so the user knows
+    # what they're being benchmarked against.
+    topic_brands: list[list[str]] = field(default_factory=list)
 
     # Discovered competitors {name, domain}
     competitors: list[dict] = field(default_factory=list)
@@ -89,16 +94,18 @@ def run_onboarding_scan(url: str) -> OnboardingPayload:
     # heuristic generator hardcodes the word "tools" and regex-matches
     # fragments around "for", producing nonsense topics for non-product
     # businesses (services, agencies, healthcare, finance). The LLM
-    # picks the right category noun on its own.
-    llm_topics = _llm_topics(
+    # picks the right category noun on its own AND names the brands the
+    # audit will measure against per topic.
+    llm_topic_rows = _llm_topics(
         business_name=payload.business_name,
         industry=payload.industry,
         description=payload.description_short or payload.description_raw,
         selling_points=payload.selling_points,
         products=payload.products,
     )
-    if llm_topics:
-        payload.topics = llm_topics
+    if llm_topic_rows:
+        payload.topics = [row["topic"] for row in llm_topic_rows]
+        payload.topic_brands = [row.get("brands", []) for row in llm_topic_rows]
 
     payload.competitors = _safe_discover_competitors(
         business_name=payload.business_name,
@@ -189,19 +196,17 @@ def _llm_topics(
     description: str,
     selling_points: list[str],
     products: list[str],
-) -> list[str]:
+) -> list[dict]:
     """
-    Ask Claude Haiku for 8 buyer-intent search queries that actually
-    match the business.
+    Ask Claude Haiku for 8 buyer-intent search queries + the brand
+    names the audit will measure against for each query.
 
-    Key requirement: the LLM picks the right category noun based on what
-    this business is — "service" / "provider" / "platform" / "solution"
-    / "agency" / "tools" — instead of the heuristic generator's
-    hardcoded "tools" suffix. The description is the primary input so
-    topics correlate with what the user just confirmed.
+    Returns a list of dicts:
+        [{"topic": "best provider credentialing services for clinics",
+          "brands": ["Verifiable", "Medallion", "Andros"]}, ...]
 
-    Returns [] on failure so the caller can fall back to the heuristic
-    list rather than ending up with an empty topic field.
+    Returns [] on failure so the caller falls back to the heuristic
+    topic list (with no per-topic brands).
     """
     if not (business_name or description):
         return []
@@ -226,35 +231,41 @@ def _llm_topics(
         prompt = (
             "You are generating buyer-intent search queries that real "
             "people would type into ChatGPT, Claude, or Perplexity when "
-            "looking for a business like this one.\n\n"
+            "looking for a business like this one. For each query you "
+            "also name the competitor brands the audit will track in "
+            "the LLM's answer to that query.\n\n"
             f"Business: {business_name}\n"
             f"Industry: {industry or 'unspecified'}\n"
             f"Description: {description}{bullets}\n\n"
-            "Return 8 queries that satisfy ALL of:\n"
+            "Return 8 entries that satisfy ALL of:\n"
             "1. Each query reads as a natural sentence a human would "
             "actually type — no fragment soup, no broken grammar.\n"
-            "2. Pick the right category noun based on what this business "
-            "IS. A SaaS product → 'tool' / 'platform' / 'software'. A "
-            "credentialing service or agency → 'service' / 'provider' / "
-            "'company'. A consultancy → 'firm' / 'consultant'. Match the "
-            "noun to the business; do not blindly say 'tools' for a "
-            "non-software business.\n"
-            "3. Each query must be correlated with the description above "
-            "— if the description mentions 'provider credentialing for "
-            "medical practices', the queries should be about provider "
-            "credentialing for medical practices, not generic.\n"
+            "2. Pick the right category noun based on what this "
+            "business IS. A SaaS product → 'tool' / 'platform' / "
+            "'software'. A credentialing service or agency → "
+            "'service' / 'provider' / 'company'. A consultancy → "
+            "'firm' / 'consultant'. Match the noun to the business; "
+            "do not blindly say 'tools' for a non-software business.\n"
+            "3. Each query is highly correlated with the description.\n"
             "4. Mix query styles: 'best X for Y', 'how to find Z', "
             "'top alternatives to ...', 'who handles ...', 'compare ...'.\n"
             "5. Each query is 4-12 words. No trailing punctuation.\n\n"
-            "Return ONLY a JSON array of 8 strings. No prose, no keys, no "
-            "code fences. Example output:\n"
-            '["best provider credentialing services for small clinics", '
-            '"how to get doctors in-network fast"]'
+            "6. For 'brands', list 3-5 real, currently-operating "
+            "competitor companies most likely to appear in a top-tier "
+            "LLM's answer to that query. Use the public-facing brand "
+            "name only (e.g. 'Verifiable', not 'verifiable.com'). "
+            "Exclude the subject company. Do NOT invent names.\n\n"
+            "Return ONLY a JSON array of objects, no prose, no code "
+            "fences. Example:\n"
+            '[{"topic": "best provider credentialing services for clinics",'
+            ' "brands": ["Verifiable", "Medallion", "Andros"]},'
+            ' {"topic": "how to get doctors in-network fast",'
+            ' "brands": ["CredSimple", "Medallion", "Andros"]}]'
         )
 
         resp = client.messages.create(
             model="claude-haiku-4-5",
-            max_tokens=512,
+            max_tokens=1024,
             messages=[{"role": "user", "content": prompt}],
         )
         text = (resp.content[0].text or "").strip()
@@ -271,24 +282,38 @@ def _llm_topics(
         except Exception:
             pass
 
-        # Extract the first JSON array in the response — robust to the
-        # occasional model preamble or trailing fence.
         match = re.search(r"\[.*\]", text, re.DOTALL)
         if not match:
             return []
         data = json.loads(match.group())
         if not isinstance(data, list):
             return []
-        topics = [t.strip().rstrip(".,") for t in data if isinstance(t, str)]
-        # Light sanity: drop empties, dedupe, cap to 8.
-        seen = set()
-        out: list[str] = []
-        for t in topics:
-            key = t.lower()
-            if len(t) < 6 or key in seen:
+
+        own_brand = (business_name or "").strip().lower()
+        seen: set[str] = set()
+        out: list[dict] = []
+        for row in data:
+            # Backward-compat: tolerate plain strings as topics with
+            # no brand info, in case the model regresses on format.
+            if isinstance(row, str):
+                topic = row.strip().rstrip(".,")
+                brands: list[str] = []
+            elif isinstance(row, dict):
+                topic = (row.get("topic") or "").strip().rstrip(".,")
+                raw_brands = row.get("brands") or []
+                brands = [
+                    b.strip() for b in raw_brands
+                    if isinstance(b, str) and b.strip()
+                    and b.strip().lower() != own_brand
+                ][:5]
+            else:
+                continue
+
+            key = topic.lower()
+            if len(topic) < 6 or key in seen:
                 continue
             seen.add(key)
-            out.append(t)
+            out.append({"topic": topic, "brands": brands})
             if len(out) >= 8:
                 break
         return out
