@@ -42,18 +42,11 @@
       <AirCard size="md">
         <AirCardHeader>
           <AirCardSubtitle class="text-xs font-semibold uppercase tracking-wider">
-            Published this month
+            Approved as publish content
           </AirCardSubtitle>
         </AirCardHeader>
         <div class="flex items-baseline gap-2">
           <span class="text-3xl font-semibold tabular-nums text-zinc-900">{{ stats.published }}</span>
-          <span
-            v-if="stats.liftPct !== null"
-            class="text-sm font-medium"
-            :class="stats.liftPct >= 0 ? 'text-emerald-600' : 'text-rose-600'"
-          >
-            {{ stats.liftPct >= 0 ? '+' : '' }}{{ stats.liftPct.toFixed(1) }}% visibility
-          </span>
         </div>
       </AirCard>
     </section>
@@ -166,7 +159,7 @@ const loading = ref(false)
 const briefs = ref([])
 const drafting = ref(new Set())
 
-const stats = ref({ open: 0, drafting: 0, published: 0, liftPct: null })
+const stats = ref({ open: 0, drafting: 0, published: 0 })
 
 const filters = reactive({
   gap: 'all',
@@ -230,45 +223,18 @@ async function loadBriefs() {
   }
 }
 
-async function loadAuxStats() {
-  if (!websiteId.value) return
-  try {
-    const { data } = await contentStudioApi.roi(websiteId.value, { _silentError: true })
-    const body = data?.data || data || {}
-    const rows = body.results || body || []
-    const now = new Date()
-    const month = now.getMonth()
-    const year = now.getFullYear()
-    let pubCount = 0
-    let totalLift = 0
-    let liftN = 0
-    for (const r of rows) {
-      const t = r.measured_at ? new Date(r.measured_at) : null
-      if (t && t.getMonth() === month && t.getFullYear() === year) {
-        pubCount += 1
-        const v = Number(r.visibility_lift)
-        if (!Number.isNaN(v)) {
-          totalLift += v
-          liftN += 1
-        }
-      }
-    }
-    stats.value.published = pubCount
-    stats.value.liftPct = liftN ? totalLift / liftN : null
-  } catch {
-    // soft fail
-  }
-}
-
 function computeStats() {
   let open = 0
   let drafted = 0
+  let approved = 0
   for (const b of briefs.value) {
     if (b.status === 'pending') open += 1
     if (b.status === 'drafting' || b.status === 'drafted') drafted += 1
+    if (b.status === 'approved') approved += 1
   }
   stats.value.open = open
   stats.value.drafting = drafted
+  stats.value.published = approved
 }
 
 async function onSelect(brief) {
@@ -304,6 +270,5 @@ async function onSkip(brief) {
 
 onMounted(() => {
   loadBriefs()
-  loadAuxStats()
 })
 </script>

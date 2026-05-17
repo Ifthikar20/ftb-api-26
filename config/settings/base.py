@@ -76,10 +76,7 @@ CLAIM_VERIFICATION_ENABLED = True
 BRAND_VAULT_EXTRACTION_ENABLED = True
 
 # Phase 4: Content Studio. Brief generation runs after each audit by default.
-# Live publishing (real HTTP calls to WP/Webflow/Shopify/HubSpot) is gated
-# off until a tenant is wired up.
 CONTENT_STUDIO_BRIEF_GENERATION_ENABLED = True
-CONTENT_STUDIO_PUBLISH_LIVE = env.bool("CONTENT_STUDIO_PUBLISH_LIVE", default=False)
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 

@@ -1,8 +1,6 @@
 """REST endpoints for Content Studio."""
 from __future__ import annotations
 
-from django.http import HttpResponse
-from django.shortcuts import get_object_or_404
 from rest_framework import status as drf_status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -11,21 +9,15 @@ from rest_framework.views import APIView
 from apps.content_studio.api.v1.serializers import (
     ContentBriefSerializer,
     ContentDraftSerializer,
-    PublishLogSerializer,
-    PublishTargetSerializer,
-    ROIAttributionSerializer,
 )
 from apps.content_studio.models import (
     BriefStatus,
     ContentBrief,
     ContentDraft,
     DraftStatus,
-    PublishTarget,
-    ROIAttribution,
 )
-from apps.content_studio.services.publish_adapters.export import serialize_draft
 from core.exceptions import ResourceNotFound
-from core.views import TenantScopedAPIView, TenantScopedListAPIView
+from core.views import TenantScopedListAPIView
 
 
 def _brief_for_user(user, brief_id):
@@ -46,16 +38,6 @@ def _draft_for_user(user, draft_id):
         raise ResourceNotFound("ContentDraft not found.") from exc
     WebsiteService.get_for_user(user=user, website_id=draft.website_id)
     return draft
-
-
-def _target_for_user(user, target_id):
-    from apps.websites.services.website_service import WebsiteService
-    try:
-        target = PublishTarget.objects.select_related("website").get(id=target_id)
-    except PublishTarget.DoesNotExist as exc:
-        raise ResourceNotFound("PublishTarget not found.") from exc
-    WebsiteService.get_for_user(user=user, website_id=target.website_id)
-    return target
 
 
 class WebsiteBriefsView(TenantScopedListAPIView):
@@ -159,83 +141,3 @@ class DraftApproveView(APIView):
         draft.status = DraftStatus.APPROVED.value
         draft.save(update_fields=["status", "updated_at"])
         return Response(ContentDraftSerializer(draft).data)
-
-
-class DraftPublishView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def post(self, request, draft_id):
-        draft = _draft_for_user(request.user, draft_id)
-        target_id = request.data.get("target_id")
-        if not target_id:
-            return Response({"detail": "target_id required."}, status=400)
-        target = _target_for_user(request.user, target_id)
-        if target.website_id != draft.website_id:
-            return Response({"detail": "target/draft mismatch."}, status=400)
-        from apps.content_studio.tasks import publish_draft as publish_task
-        try:
-            publish_task.delay(str(draft.id), str(target.id))
-            return Response({"status": "queued"}, status=drf_status.HTTP_202_ACCEPTED)
-        except Exception:
-            log_id = publish_task.run(str(draft.id), str(target.id))
-            return Response({"status": "submitted", "log_id": log_id})
-
-
-class DraftExportView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def get(self, request, draft_id):
-        draft = _draft_for_user(request.user, draft_id)
-        fmt = request.query_params.get("format", "md")
-        payload = serialize_draft(draft, fmt=fmt)
-        resp = HttpResponse(payload["body"], content_type=payload["content_type"])
-        resp["Content-Disposition"] = f"attachment; filename={payload['filename']}"
-        return resp
-
-
-class WebsitePublishTargetsView(TenantScopedListAPIView):
-    def get(self, request, website_id):
-        website = self.get_website(website_id)
-        qs = PublishTarget.objects.filter(website=website).order_by("-is_default", "provider")
-        return self.paginated_response(qs, PublishTargetSerializer)
-
-    def post(self, request, website_id):
-        website = self.get_website(website_id)
-        ser = PublishTargetSerializer(data=request.data)
-        ser.is_valid(raise_exception=True)
-        target = PublishTarget.objects.create(
-            website=website,
-            provider=ser.validated_data["provider"],
-            label=ser.validated_data.get("label", "") or "",
-            config=ser.validated_data.get("config", {}) or {},
-            is_default=ser.validated_data.get("is_default", False),
-            is_active=ser.validated_data.get("is_active", True),
-        )
-        return Response(PublishTargetSerializer(target).data, status=drf_status.HTTP_201_CREATED)
-
-
-class PublishTargetDetailView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def patch(self, request, target_id):
-        target = _target_for_user(request.user, target_id)
-        ser = PublishTargetSerializer(target, data=request.data, partial=True)
-        ser.is_valid(raise_exception=True)
-        for f in ("provider", "label", "config", "is_default", "is_active"):
-            if f in ser.validated_data:
-                setattr(target, f, ser.validated_data[f])
-        target.save()
-        return Response(PublishTargetSerializer(target).data)
-
-    def delete(self, request, target_id):
-        target = _target_for_user(request.user, target_id)
-        target.is_active = False
-        target.save(update_fields=["is_active", "updated_at"])
-        return Response(status=drf_status.HTTP_204_NO_CONTENT)
-
-
-class WebsiteROIView(TenantScopedListAPIView):
-    def get(self, request, website_id):
-        website = self.get_website(website_id)
-        qs = ROIAttribution.objects.filter(website=website).order_by("-measured_at")
-        return self.paginated_response(qs, ROIAttributionSerializer)
