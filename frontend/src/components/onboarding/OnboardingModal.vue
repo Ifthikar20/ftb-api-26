@@ -155,27 +155,63 @@
               <h1 class="ob-title">Who should we benchmark you against?</h1>
               <p class="ob-sub">
                 We found these from your space. Uncheck any that aren't real
-                competitors — they shape which brands the audit tracks.
+                competitors, or add your own below — they shape which brands
+                the audit tracks.
               </p>
 
               <div class="ob-card">
                 <div v-if="form.competitors.length" class="ob-competitors">
-                  <label
+                  <div
                     v-for="(c, i) in form.competitors"
                     :key="(c.domain || c.name) + i"
                     class="ob-competitor"
-                    :class="{ 'is-selected': c.selected }"
+                    :class="{ 'is-selected': c.selected, 'is-custom': c.custom }"
                   >
-                    <input type="checkbox" v-model="c.selected" class="ob-competitor-check" />
-                    <div class="ob-competitor-body">
-                      <div class="ob-competitor-name">{{ c.name }}</div>
-                      <div v-if="c.domain" class="ob-competitor-domain">{{ c.domain }}</div>
-                    </div>
-                  </label>
+                    <label class="ob-competitor-label">
+                      <input
+                        type="checkbox"
+                        v-model="c.selected"
+                        class="ob-competitor-check"
+                      />
+                      <div class="ob-competitor-body">
+                        <div class="ob-competitor-name">{{ c.name }}</div>
+                        <div v-if="c.domain" class="ob-competitor-domain">{{ c.domain }}</div>
+                      </div>
+                    </label>
+                    <button
+                      v-if="c.custom"
+                      type="button"
+                      class="ob-competitor-remove"
+                      @click="removeCompetitor(i)"
+                      aria-label="Remove competitor"
+                    >×</button>
+                  </div>
                 </div>
                 <p v-else class="ob-sub" style="margin: 0;">
-                  We didn't find any competitors automatically. You can add them later in settings.
+                  We didn't find any competitors automatically. Add your own below.
                 </p>
+
+                <!-- Add-your-own row -->
+                <div class="ob-add-competitor">
+                  <input
+                    v-model="newCompetitorName"
+                    placeholder="Competitor name (e.g. Stripe)"
+                    class="ob-text-input ob-add-input"
+                    @keydown.enter.prevent="addCustomCompetitor"
+                  />
+                  <input
+                    v-model="newCompetitorDomain"
+                    placeholder="domain.com (optional)"
+                    class="ob-text-input ob-add-input ob-add-input--narrow"
+                    @keydown.enter.prevent="addCustomCompetitor"
+                  />
+                  <button
+                    type="button"
+                    class="ob-add-btn"
+                    :disabled="!newCompetitorName.trim()"
+                    @click="addCustomCompetitor"
+                  >Add</button>
+                </div>
               </div>
 
               <div class="ob-step-actions">
@@ -231,6 +267,10 @@ const form = ref({
 })
 
 const urlInputRef = ref(null)
+
+// "Add your own competitor" inputs on step 3.
+const newCompetitorName = ref('')
+const newCompetitorDomain = ref('')
 
 const urlHostname = computed(() => {
   try {
@@ -311,6 +351,43 @@ function back() {
 
 function goToCompetitors() {
   step.value = 3
+}
+
+function _normalizeDomain(d) {
+  return (d || '').trim().toLowerCase()
+    .replace(/^https?:\/\//, '')
+    .replace(/^www\./, '')
+    .replace(/\/$/, '')
+}
+
+function addCustomCompetitor() {
+  const name = newCompetitorName.value.trim()
+  if (!name) return
+  const domain = _normalizeDomain(newCompetitorDomain.value)
+  // Dedupe against existing rows by domain (preferred) or name (fallback).
+  const exists = form.value.competitors.some(c => {
+    const cDom = _normalizeDomain(c.domain)
+    if (domain && cDom) return cDom === domain
+    return c.name.toLowerCase() === name.toLowerCase()
+  })
+  if (exists) {
+    newCompetitorName.value = ''
+    newCompetitorDomain.value = ''
+    return
+  }
+  form.value.competitors.push({
+    name,
+    domain,
+    selected: true,
+    custom: true,
+  })
+  newCompetitorName.value = ''
+  newCompetitorDomain.value = ''
+}
+
+function removeCompetitor(index) {
+  if (index < 0 || index >= form.value.competitors.length) return
+  form.value.competitors.splice(index, 1)
 }
 
 function removeKeyword(k) {
@@ -661,6 +738,66 @@ onBeforeUnmount(() => {
 .ob-competitor-body { display: flex; flex-direction: column; line-height: 1.2; }
 .ob-competitor-name { font-size: 14px; font-weight: 500; }
 .ob-competitor-domain { font-size: 12px; color: var(--ob-muted); }
+
+/* Wrap label so the row can host a remove × on the right for custom
+   entries. */
+.ob-competitor {
+  /* keep existing rules, add justify so the label fills and × sits
+     on the far right. */
+  justify-content: space-between;
+}
+.ob-competitor-label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  cursor: pointer;
+  min-width: 0;
+}
+.ob-competitor.is-custom { border-style: dashed; }
+.ob-competitor-remove {
+  background: transparent;
+  border: none;
+  color: var(--ob-muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: background 0.15s, color 0.15s;
+}
+.ob-competitor-remove:hover { background: var(--ob-accent-soft); color: var(--ob-accent); }
+
+/* "Add your own" row sits below the discovered list. */
+.ob-add-competitor {
+  margin-top: 12px;
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+  flex-wrap: wrap;
+}
+.ob-add-input { flex: 1; min-width: 0; }
+.ob-add-input--narrow { max-width: 200px; }
+.ob-add-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 18px;
+  border-radius: 10px;
+  border: 1px solid var(--ob-border);
+  background: var(--ob-bg);
+  color: var(--ob-fg);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.2s var(--ob-spring), background 0.2s var(--ob-spring), color 0.2s;
+}
+.ob-add-btn:hover:not(:disabled) {
+  border-color: var(--ob-accent);
+  background: var(--ob-accent);
+  color: var(--ob-bg);
+}
+.ob-add-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
 .ob-step-actions {
   display: flex; justify-content: space-between; align-items: center;
