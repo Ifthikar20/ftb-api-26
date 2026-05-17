@@ -186,19 +186,18 @@ class Command(BaseCommand):
         # ── Billing ──
         from apps.billing.models import Invoice, Subscription, UsageRecord
 
-        sub, _ = Subscription.objects.get_or_create(
-            user=demo,
-            defaults={
-                "stripe_customer_id": f"cus_demo_{uuid.uuid4().hex[:8]}",
-                "stripe_subscription_id": f"sub_demo_{uuid.uuid4().hex[:8]}",
-                "plan": "growth",
-                "status": "active",
-                "current_period_start": now - timedelta(days=15),
-                "current_period_end": now + timedelta(days=15),
-            },
-        )
+        # The demo user is created WITHOUT a subscription so the
+        # post-login funnel (onboarding modal -> paywall -> dashboard)
+        # is walkable end-to-end. Manually subscribe via
+        # scripts/dev-subscribe or the paywall form when you want to
+        # see the "paying" state.
+        # Subscription.objects.get_or_create(... was removed here.
+        sub = Subscription.objects.filter(user=demo).first()
 
-        for i in range(3):
+        # Invoices and usage records are subscription-scoped, so they
+        # only get seeded once a subscription exists (i.e., after the
+        # paywall has been walked).
+        for i in range(3) if sub else []:
             Invoice.objects.get_or_create(
                 subscription=sub,
                 stripe_invoice_id=f"inv_demo_{i}_{uuid.uuid4().hex[:6]}",
@@ -217,7 +216,7 @@ class Command(BaseCommand):
             {"metric": "ai_calls", "count": 45},
             {"metric": "leads", "count": 127},
         ]
-        for um in usage_metrics:
+        for um in (usage_metrics if sub else []):
             UsageRecord.objects.get_or_create(
                 subscription=sub,
                 metric=um["metric"],
