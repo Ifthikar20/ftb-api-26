@@ -14,306 +14,298 @@
     <main class="legal-content">
       <div class="legal-meta">
         <span class="legal-badge">Legal</span>
-        <span class="legal-date">Last updated: March 26, 2026</span>
+        <span class="legal-date">Effective Date: May 17, 2026</span>
       </div>
 
       <h1>Privacy Policy</h1>
       <p class="legal-intro">
-        FetchBot Inc. ("FetchBot", "Company", "we", "us", or "our") is committed to protecting your
-        privacy. This Privacy Policy describes how we collect, use, disclose, and safeguard your
-        information when you use the FetchBot platform, website, and APIs (the "Service").
+        FetchBot Inc. ("FetchBot", "we", "us", or "our") respects your privacy. This Privacy
+        Policy explains how we collect, use, and protect your information when you use our
+        website, dashboard, applications, and APIs (the "Services").
       </p>
       <p class="legal-intro">
-        By using the Service, you consent to the data practices described in this Privacy Policy.
-        If you do not agree to the terms of this Privacy Policy, please do not access or use the Service.
+        This Policy applies to all FetchBot surfaces, including the fetchbot.ai marketing site,
+        the dashboard at fetchbot.ai/app, the api.fetchbot.ai API, the FetchBot analytics pixel
+        embedded on customer websites, and any third-party integrations you connect to your
+        FetchBot workspace (Google Analytics, Google Search Console, WordPress, Webflow,
+        Shopify, HubSpot, Slack, Discord, and Telegram).
+      </p>
+      <p class="legal-intro">
+        By using FetchBot, you agree to the practices described in this Privacy Policy.
       </p>
 
       <div class="legal-toc">
         <h3>Table of Contents</h3>
         <ol>
           <li><a href="#info-collected">Information We Collect</a></li>
-          <li><a href="#how-we-use">How We Use Your Information</a></li>
-          <li><a href="#legal-basis">Legal Basis for Processing (GDPR)</a></li>
-          <li><a href="#data-sharing">Data Sharing & Disclosure</a></li>
-          <li><a href="#data-retention">Data Retention</a></li>
-          <li><a href="#data-security">Data Security</a></li>
-          <li><a href="#cookies">Cookies & Tracking Technologies</a></li>
-          <li><a href="#analytics">Website Analytics & Tracking Scripts</a></li>
-          <li><a href="#ai-data">AI & Machine Learning</a></li>
-          <li><a href="#third-party">Third-Party Services</a></li>
-          <li><a href="#your-rights">Your Rights</a></li>
+          <li><a href="#how-we-use">How We Use Information</a></li>
+          <li><a href="#sharing">Sharing of Information</a></li>
+          <li><a href="#subprocessors">Service Providers and Subprocessors</a></li>
+          <li><a href="#ai-usage">AI Usage and LLM Providers</a></li>
+          <li><a href="#pixel">The FetchBot Analytics Pixel</a></li>
+          <li><a href="#retention">Data Retention</a></li>
+          <li><a href="#security">Security</a></li>
+          <li><a href="#rights">Your Rights</a></li>
+          <li><a href="#cookies">Cookies and Tracking</a></li>
           <li><a href="#international">International Data Transfers</a></li>
           <li><a href="#children">Children's Privacy</a></li>
-          <li><a href="#california">California Privacy Rights (CCPA)</a></li>
           <li><a href="#changes">Changes to This Policy</a></li>
-          <li><a href="#contact">Contact Us</a></li>
+          <li><a href="#contact">Contact</a></li>
         </ol>
       </div>
 
-      <!-- ── 1. Information We Collect ── -->
       <section id="info-collected">
         <h2>1. Information We Collect</h2>
 
-        <h3>1.1 Information You Provide</h3>
+        <h3>(a) Information You Provide</h3>
         <ul>
-          <li><strong>Account Information</strong> — Full name, email address, and password when you register.</li>
-          <li><strong>Profile Information</strong> — Company name, job title, profile picture, and timezone preferences.</li>
-          <li><strong>Payment Information</strong> — Billing details processed through Stripe. We never store credit card numbers on our servers.</li>
-          <li><strong>Support Communications</strong> — Content of emails, support tickets, and feedback you send us.</li>
-          <li><strong>Website Configuration</strong> — Domain names, tracking snippet placement, and project settings you configure.</li>
+          <li>Account details (name, email address, password, company name).</li>
+          <li>Billing information collected by our payment processor (Stripe).</li>
+          <li>The URL of the website you want to analyze and any descriptive content you submit during onboarding (business name, industry, description, topics, competitor list).</li>
+          <li>Communications you send to us (support requests, bug reports, feedback).</li>
         </ul>
 
-        <h3>1.2 Information Collected Automatically</h3>
+        <h3>(b) Automatically Collected Information</h3>
         <ul>
-          <li><strong>Usage Data</strong> — Pages visited within FetchBot, features used, buttons clicked, and session duration.</li>
-          <li><strong>Device Information</strong> — Browser type, operating system, device type, screen resolution, and language preferences.</li>
-          <li><strong>Network Information</strong> — IP address, approximate geographic location (city-level), referring URL, and ISP.</li>
-          <li><strong>Log Data</strong> — Server logs including timestamps, API endpoints accessed, request/response metadata, and error logs.</li>
+          <li>Device information (operating system, browser, IP address, approximate region derived from IP).</li>
+          <li>Usage data (pages visited, features accessed, clicks, API requests).</li>
+          <li>Log data and error reports captured for security, debugging, and reliability.</li>
         </ul>
 
-        <h3>1.3 Information Collected on Your Behalf</h3>
-        <p>When you install the FetchBot analytics tracking script on your website, we collect data about your website visitors on your behalf. This includes:</p>
-        <ul>
-          <li>Page views, sessions, and navigation paths</li>
-          <li>Referral sources and UTM parameters</li>
-          <li>Device and browser information</li>
-          <li>IP addresses (anonymized for EU visitors)</li>
-          <li>Interaction events (clicks, form submissions, scroll depth)</li>
-        </ul>
-        <p><strong>Important:</strong> You are the data controller for your website visitors' data. You are responsible for ensuring you have appropriate consent mechanisms (cookie banners, privacy policies) on your own website.</p>
+        <h3>(c) Website Content We Analyze on Your Request</h3>
+        <p>
+          When you onboard a website, we fetch its publicly accessible pages and supply
+          excerpts to the LLM providers listed in Section 4 so we can describe the site,
+          extract competitors, and run audits. We do not log into private areas of your
+          site or bypass authentication. We may periodically refresh this content while
+          your subscription is active.
+        </p>
+
+        <h3>(d) AI-Generated Content</h3>
+        <p>
+          When you request AI-assisted features (Content Studio briefs, LLM ranking audits,
+          competitor extraction, prompt generation), we send the relevant inputs to one or
+          more LLM providers and return their outputs to you. Inputs and outputs are stored
+          in your account so you can review historical audits.
+        </p>
       </section>
 
-      <!-- ── 2. How We Use Your Information ── -->
       <section id="how-we-use">
-        <h2>2. How We Use Your Information</h2>
-        <p>We use the information we collect for the following purposes:</p>
+        <h2>2. How We Use Information</h2>
         <ul>
-          <li><strong>Providing the Service</strong> — To operate, maintain, and deliver the features and functionality of FetchBot.</li>
-          <li><strong>Analytics & Insights</strong> — To generate reports, dashboards, lead scores, and AI-powered recommendations for your account.</li>
-          <li><strong>Communication</strong> — To send you account notifications, security alerts, billing receipts, and product updates.</li>
-          <li><strong>Customer Support</strong> — To respond to inquiries, troubleshoot issues, and provide technical assistance.</li>
-          <li><strong>Improvement</strong> — To understand usage patterns, improve our algorithms, and develop new features.</li>
-          <li><strong>Security</strong> — To detect, prevent, and address fraud, abuse, and security threats.</li>
-          <li><strong>Compliance</strong> — To comply with legal obligations, enforce our Terms of Service, and protect our legal rights.</li>
-          <li><strong>Billing</strong> — To process payments, manage subscriptions, and enforce usage limits.</li>
+          <li>Operate, secure, and improve the Services.</li>
+          <li>Run LLM-visibility audits on your behalf and surface the results in your dashboard.</li>
+          <li>Generate content drafts, prompts, and competitor lists at your request.</li>
+          <li>Collect website analytics on your behalf through the FetchBot pixel (see Section 6).</li>
+          <li>Process payments, manage your subscription, and detect fraud.</li>
+          <li>Send transactional email (email verification, password reset, security alerts, billing notices).</li>
+          <li>Send service email you have opted into (weekly reports, product announcements). Every such email contains a one-click unsubscribe link.</li>
+          <li>Comply with legal obligations and enforce our Terms of Service.</li>
         </ul>
-        <p>We do NOT use your data for:</p>
+        <p><strong>We do not sell your personal information.</strong></p>
+      </section>
+
+      <section id="sharing">
+        <h2>3. Sharing of Information</h2>
+        <p>We share information only as described below:</p>
         <ul>
-          <li>Selling personal information to third parties</li>
-          <li>Targeted advertising or ad network profiling</li>
-          <li>Building consumer profiles for resale or marketing purposes</li>
+          <li><strong>Service providers and subprocessors</strong> that operate the platform on our behalf (listed in Section 4). Each receives only the data necessary for its function and is contractually required to process it on our behalf in accordance with applicable law.</li>
+          <li><strong>Third-party integrations you choose to connect</strong> (e.g., Google Analytics, Search Console, WordPress, Webflow, Shopify, HubSpot, Slack, Discord, Telegram). Data flows are governed by each provider's own terms.</li>
+          <li><strong>Legal disclosures</strong> when required by law, court order, or to protect our rights, users, or the public.</li>
+          <li><strong>Corporate transactions</strong>: if FetchBot is involved in a merger, acquisition, or asset sale, your information may be transferred subject to this Policy.</li>
         </ul>
+        <p>
+          We do not share LLM audit data, content briefs, brand vault data, or website
+          analytics with advertisers or data brokers.
+        </p>
       </section>
 
-      <!-- ── 3. Legal Basis (GDPR) ── -->
-      <section id="legal-basis">
-        <h2>3. Legal Basis for Processing (GDPR)</h2>
-        <p>For users in the European Economic Area (EEA), United Kingdom, and Switzerland, we process your personal data under the following legal bases:</p>
-        <table class="legal-table">
-          <thead>
-            <tr><th>Purpose</th><th>Legal Basis</th></tr>
-          </thead>
-          <tbody>
-            <tr><td>Account management & service delivery</td><td>Contract performance</td></tr>
-            <tr><td>Payment processing</td><td>Contract performance</td></tr>
-            <tr><td>Security monitoring & fraud prevention</td><td>Legitimate interest</td></tr>
-            <tr><td>Service improvement & analytics</td><td>Legitimate interest</td></tr>
-            <tr><td>Email communications</td><td>Consent / legitimate interest</td></tr>
-            <tr><td>Legal compliance & audit logging</td><td>Legal obligation</td></tr>
-            <tr><td>AI model training (aggregated data only)</td><td>Legitimate interest</td></tr>
-          </tbody>
-        </table>
-      </section>
-
-      <!-- ── 4. Data Sharing ── -->
-      <section id="data-sharing">
-        <h2>4. Data Sharing & Disclosure</h2>
-        <p>We do not sell your personal information. We share data only in the following limited circumstances:</p>
+      <section id="subprocessors">
+        <h2>4. Service Providers and Subprocessors</h2>
+        <p>
+          We rely on the following categories of third-party providers to deliver the
+          Services. Each provider receives only the data necessary for its function and is
+          contractually required to process it on our behalf.
+        </p>
         <ul>
-          <li><strong>Service Providers</strong> — Trusted third parties who assist us in operating the Service (hosting, payment processing, email delivery). These providers are contractually obligated to protect your data.</li>
-          <li><strong>Integrations</strong> — When you connect Slack, Discord, Telegram, or other platforms, we share configured notification data with those services at your direction.</li>
-          <li><strong>Legal Requirements</strong> — When required by law, subpoena, court order, or governmental regulation.</li>
-          <li><strong>Business Transfers</strong> — In connection with a merger, acquisition, bankruptcy, or sale of assets, your data may be transferred. We will notify you before your data is transferred and becomes subject to a different privacy policy.</li>
-          <li><strong>Safety</strong> — When we believe disclosure is necessary to protect the safety of our users, the public, or FetchBot.</li>
+          <li><strong>Hosting and infrastructure</strong>: Amazon Web Services (EC2 compute, S3 object storage), Cloudflare (CDN, DDoS protection, edge TLS).</li>
+          <li><strong>Database and queue</strong>: self-managed PostgreSQL and Redis running on AWS.</li>
+          <li><strong>LLM providers</strong>: Anthropic (Claude), OpenAI (GPT), Google (Gemini), Perplexity, Meta (Llama), Mistral AI, Cohere, DeepSeek, xAI (Grok), and Amazon (Nova via Bedrock). Each provider receives only the inputs required for the requested audit or content generation. See Section 5.</li>
+          <li><strong>Payments</strong>: Stripe (subscription billing and payment method storage). FetchBot never stores full card numbers.</li>
+          <li><strong>Email delivery</strong>: Amazon Simple Email Service (SES) for transactional and service email.</li>
+          <li><strong>Error monitoring</strong>: Sentry, used only when SENTRY_DSN is configured in production, to correlate client and server errors.</li>
         </ul>
-
-        <h3>Key Service Providers</h3>
-        <table class="legal-table">
-          <thead>
-            <tr><th>Provider</th><th>Purpose</th><th>Data Shared</th></tr>
-          </thead>
-          <tbody>
-            <tr><td>Stripe</td><td>Payment processing</td><td>Billing details, transaction history</td></tr>
-            <tr><td>AWS / Cloud Provider</td><td>Infrastructure hosting</td><td>All service data (encrypted at rest)</td></tr>
-            <tr><td>SendGrid / Resend</td><td>Transactional email</td><td>Email address, name</td></tr>
-            <tr><td>Sentry</td><td>Error monitoring</td><td>Error context (no PII)</td></tr>
-          </tbody>
-        </table>
+        <p>
+          We may add or change subprocessors as the Services evolve. A current list is
+          available on request by emailing
+          <a href="mailto:privacy@fetchbot.ai">privacy@fetchbot.ai</a>.
+        </p>
       </section>
 
-      <!-- ── 5. Data Retention ── -->
-      <section id="data-retention">
-        <h2>5. Data Retention</h2>
-        <table class="legal-table">
-          <thead>
-            <tr><th>Data Type</th><th>Retention Period</th></tr>
-          </thead>
-          <tbody>
-            <tr><td>Account information</td><td>Duration of account + 30 days</td></tr>
-            <tr><td>Website analytics data</td><td>24 months, then auto-archived</td></tr>
-            <tr><td>Lead & pipeline data</td><td>Duration of account + 30 days</td></tr>
-            <tr><td>Audit logs</td><td>24 months (compliance requirement)</td></tr>
-            <tr><td>Payment records</td><td>7 years (tax & legal requirement)</td></tr>
-            <tr><td>Support communications</td><td>36 months</td></tr>
-            <tr><td>Aggregated analytics</td><td>Indefinitely (non-identifiable)</td></tr>
-          </tbody>
-        </table>
-        <p>You can request data deletion at any time by contacting <a href="mailto:privacy@fetchbot.ai">privacy@fetchbot.ai</a> or through your account settings.</p>
-      </section>
-
-      <!-- ── 6. Data Security ── -->
-      <section id="data-security">
-        <h2>6. Data Security</h2>
-        <p>We implement industry-standard security measures to protect your data:</p>
+      <section id="ai-usage">
+        <h2>5. AI Usage and LLM Providers</h2>
+        <p>
+          FetchBot's core feature is querying large language models on your behalf to
+          measure how your brand appears in their responses. To do this we send prompts
+          containing your business name, industry, topics, and competitor list to the LLM
+          providers listed in Section 4. The responses we receive may contain mentions of
+          your brand, competitors, and third-party content that we then parse and store in
+          your account.
+        </p>
         <ul>
-          <li><strong>Encryption in Transit</strong> — All data transmitted between your browser and our servers is encrypted using TLS 1.3.</li>
-          <li><strong>Encryption at Rest</strong> — All stored data is encrypted using AES-256 encryption.</li>
-          <li><strong>Access Controls</strong> — Role-based access control (RBAC) ensures employees access only the data necessary for their role.</li>
-          <li><strong>Audit Logging</strong> — All access to user data is logged with timestamp, user identity, action performed, and IP address. Logs are retained for 24 months.</li>
-          <li><strong>Vulnerability Management</strong> — Regular security assessments, penetration testing, and dependency scanning.</li>
-          <li><strong>Incident Response</strong> — Documented incident response procedures with notification within 72 hours of a confirmed breach (per GDPR requirements).</li>
-          <li><strong>Password Security</strong> — Passwords are hashed using Argon2 with salting. We never store passwords in plaintext.</li>
-          <li><strong>2FA Support</strong> — Two-factor authentication is available and recommended for all accounts.</li>
+          <li>LLM provider APIs we call are governed by each provider's privacy and data-processing terms in addition to this Policy.</li>
+          <li>We use API endpoints that, per each provider's published terms, do not use your inputs to train their models. We do not opt in to any provider's training programs.</li>
+          <li>AI-generated outputs may be inaccurate or out of date. You are responsible for reviewing AI-generated content before publishing it or relying on it for decisions.</li>
+          <li>We may use anonymized or aggregated usage data internally to improve prompts, ranking algorithms, and quality.</li>
         </ul>
       </section>
 
-      <!-- ── 7. Cookies ── -->
+      <section id="pixel">
+        <h2>6. The FetchBot Analytics Pixel</h2>
+        <p>
+          When you install our analytics pixel on a website you own, we collect anonymized
+          visitor analytics for that site on your behalf:
+        </p>
+        <ul>
+          <li>Visitor IP addresses (hashed before storage), browser user-agent strings, referrer URLs, and event timestamps.</li>
+          <li>Page-view and click events fired by the pixel script.</li>
+          <li>UTM and campaign parameters present on the inbound URL.</li>
+        </ul>
+        <p>
+          For pixel data, you (the website operator) are the controller and FetchBot is the
+          processor. You are responsible for obtaining the consents required by applicable
+          law (e.g., GDPR / ePrivacy in the EU, the UK PECR, and CCPA / CPRA in California)
+          before activating the pixel on your site, and for surfacing this collection in
+          your own privacy policy. A Data Processing Addendum is available on request.
+        </p>
+      </section>
+
+      <section id="retention">
+        <h2>7. Data Retention</h2>
+        <ul>
+          <li><strong>Active accounts</strong>: we retain account data, audit history, and dashboards for as long as your account is active.</li>
+          <li><strong>Account deletion</strong>: you may delete your account at any time. We remove your personal data from our active systems within 30 days. Some data may be retained longer where required by law (e.g., tax records for billing) or for fraud prevention and dispute resolution.</li>
+          <li><strong>Server logs</strong>: typically retained for 90 days.</li>
+          <li><strong>Backups</strong>: encrypted database backups roll off on a 30-day cycle.</li>
+        </ul>
+      </section>
+
+      <section id="security">
+        <h2>8. Security</h2>
+        <p>
+          We use reasonable administrative, technical, and physical safeguards to protect
+          your information:
+        </p>
+        <ul>
+          <li>TLS 1.2+ for all traffic, enforced by HSTS preload.</li>
+          <li>Passwords stored only as salted hashes (Django's default hasher; never plaintext).</li>
+          <li>JWT-based session tokens; refresh tokens are HTTP-only cookies blacklisted on logout.</li>
+          <li>Brute-force protection on authentication endpoints via rate limiting and account lockout (django-axes).</li>
+          <li>Principle-of-least-privilege access to production systems; access is logged and audited.</li>
+          <li>Documented incident response. We notify affected users and regulators within 72 hours of confirming a personal-data breach where required by law (GDPR Art. 33).</li>
+        </ul>
+        <p>
+          To report a security issue, email
+          <a href="mailto:security@fetchbot.ai">security@fetchbot.ai</a>. We investigate every
+          report in good faith and ask that you give us a reasonable opportunity to remediate
+          before public disclosure.
+        </p>
+      </section>
+
+      <section id="rights">
+        <h2>9. Your Rights</h2>
+
+        <h3>(a) General Rights</h3>
+        <ul>
+          <li>Access, edit, or delete your account information from your account settings.</li>
+          <li>Export your audit history and dashboard data on request.</li>
+          <li>Opt out of non-essential email at any time using the unsubscribe link in any such message or by emailing <a href="mailto:privacy@fetchbot.ai">privacy@fetchbot.ai</a>.</li>
+          <li>Delete your account; your personal data is removed from active systems within 30 days.</li>
+        </ul>
+
+        <h3>(b) Rights Under GDPR (EU / EEA / UK Users)</h3>
+        <p>If you are located in the European Union, the European Economic Area, or the United Kingdom, you have the following rights:</p>
+        <ul>
+          <li>Right to access the personal data we hold about you.</li>
+          <li>Right to request correction of inaccurate data.</li>
+          <li>Right to request erasure of your data.</li>
+          <li>Right to restrict or object to processing.</li>
+          <li>Right to data portability (export in a structured, machine-readable format).</li>
+          <li>Right to withdraw consent where processing is based on consent.</li>
+          <li>Right to lodge a complaint with your local supervisory authority.</li>
+        </ul>
+        <p>To exercise these rights, email <a href="mailto:privacy@fetchbot.ai">privacy@fetchbot.ai</a>.</p>
+
+        <h3>(c) Rights Under CCPA / CPRA (California Residents)</h3>
+        <p>If you are a California resident, you have the following rights under the California Consumer Privacy Act, as amended by the California Privacy Rights Act:</p>
+        <ul>
+          <li>Right to know what categories of personal information we collect, the sources of that information, the purposes for which we use it, and the categories of third parties we share it with (described in Sections 1 through 5).</li>
+          <li>Right to access a copy of the personal information we hold about you.</li>
+          <li>Right to request deletion or correction of your personal information.</li>
+          <li>Right to limit the use and disclosure of sensitive personal information.</li>
+          <li>Right to opt out of the "sale" or "sharing" of personal information. We do not sell personal information and do not share it for cross-context behavioral advertising.</li>
+          <li>Right to non-discrimination for exercising any of these rights.</li>
+        </ul>
+        <p>To exercise these rights, email <a href="mailto:privacy@fetchbot.ai">privacy@fetchbot.ai</a> with the subject line "CCPA Request". We verify requests using account-based authentication and respond within the timeframes required by law.</p>
+      </section>
+
       <section id="cookies">
-        <h2>7. Cookies & Tracking Technologies</h2>
-        <h3>7.1 Cookies Used by FetchBot (the App)</h3>
-        <table class="legal-table">
-          <thead>
-            <tr><th>Cookie</th><th>Type</th><th>Purpose</th><th>Duration</th></tr>
-          </thead>
-          <tbody>
-            <tr><td>fb-session</td><td>Essential</td><td>Maintains login session</td><td>Session</td></tr>
-            <tr><td>fb-refresh</td><td>Essential</td><td>JWT refresh token</td><td>7 days</td></tr>
-            <tr><td>fb-theme</td><td>Preference</td><td>Dark/light mode preference</td><td>1 year</td></tr>
-            <tr><td>fb-consent</td><td>Essential</td><td>Records cookie consent choice</td><td>1 year</td></tr>
-          </tbody>
-        </table>
-
-        <h3>7.2 Your Tracking Script</h3>
-        <p>The FetchBot analytics tracking script you install on your website uses a first-party cookie to identify unique sessions. It does NOT use third-party cookies, fingerprinting, or cross-site tracking.</p>
-      </section>
-
-      <!-- ── 8. Analytics & Tracking Scripts ── -->
-      <section id="analytics">
-        <h2>8. Website Analytics & Tracking Scripts</h2>
-        <p>When you deploy the FetchBot tracking script on your website:</p>
+        <h2>10. Cookies and Tracking</h2>
+        <p>FetchBot uses cookies and similar technologies to operate the Services and understand how they are used:</p>
         <ul>
-          <li>You act as the <strong>Data Controller</strong> for your website visitors' data.</li>
-          <li>FetchBot acts as a <strong>Data Processor</strong> processing data on your behalf.</li>
-          <li>You are responsible for obtaining appropriate consent from your website visitors before deploying tracking scripts.</li>
-          <li>We provide tools to anonymize IP addresses and respect Do Not Track (DNT) headers.</li>
-          <li>We offer a Data Processing Agreement (DPA) for Enterprise customers upon request.</li>
+          <li><strong>Strictly necessary</strong>: session cookies that keep you signed in (HTTP-only refresh-token cookie), CSRF-protection tokens, and load-balancing cookies set by Cloudflare. These cannot be disabled without breaking the Services.</li>
+          <li><strong>Functional</strong>: cookies that remember workspace preferences (active website, theme).</li>
+          <li><strong>Error monitoring</strong>: Sentry may set short-lived identifiers to correlate client errors with backend logs.</li>
         </ul>
+        <p>
+          We do not use third-party advertising cookies and do not participate in
+          cross-context behavioral advertising networks. Most browsers let you block or
+          delete cookies; doing so may affect FetchBot's functionality.
+        </p>
       </section>
 
-      <!-- ── 9. AI & Machine Learning ── -->
-      <section id="ai-data">
-        <h2>9. AI & Machine Learning</h2>
-        <p>FetchBot uses AI to provide marketing intelligence and trend analysis. Regarding your data and AI:</p>
-        <ul>
-          <li>Your account data is used to generate personalized insights <strong>only within your account</strong>.</li>
-          <li>We do NOT use your individual data to train AI models for other users.</li>
-          <li>We may use <strong>anonymized, aggregated data</strong> (which cannot identify you, your company, or your users) to improve our AI models and algorithms.</li>
-          <li>AI-generated outputs may be similar or identical for different users based on similar inputs — no exclusivity is provided.</li>
-          <li>You can opt out of aggregated data usage by contacting <a href="mailto:privacy@fetchbot.ai">privacy@fetchbot.ai</a>.</li>
-        </ul>
-      </section>
-
-      <!-- ── 10. Third-Party Services ── -->
-      <section id="third-party">
-        <h2>10. Third-Party Services</h2>
-        <p>Our Service integrates with third-party platforms. When you use these integrations, you are subject to their respective privacy policies:</p>
-        <ul>
-          <li><a href="https://slack.com/privacy-policy" target="_blank" rel="noopener">Slack Privacy Policy</a></li>
-          <li><a href="https://discord.com/privacy" target="_blank" rel="noopener">Discord Privacy Policy</a></li>
-          <li><a href="https://telegram.org/privacy" target="_blank" rel="noopener">Telegram Privacy Policy</a></li>
-          <li><a href="https://stripe.com/privacy" target="_blank" rel="noopener">Stripe Privacy Policy</a></li>
-        </ul>
-        <p>We only share the minimum data necessary for the integration to function (e.g., notification content for messaging platforms).</p>
-      </section>
-
-      <!-- ── 11. Your Rights ── -->
-      <section id="your-rights">
-        <h2>11. Your Rights</h2>
-        <p>Depending on your jurisdiction, you may have the following rights regarding your personal data:</p>
-        <table class="legal-table">
-          <thead>
-            <tr><th>Right</th><th>Description</th></tr>
-          </thead>
-          <tbody>
-            <tr><td>Access</td><td>Request a copy of the personal data we hold about you.</td></tr>
-            <tr><td>Rectification</td><td>Request correction of inaccurate or incomplete data.</td></tr>
-            <tr><td>Erasure</td><td>Request deletion of your personal data ("right to be forgotten").</td></tr>
-            <tr><td>Portability</td><td>Request your data in a structured, machine-readable format.</td></tr>
-            <tr><td>Restriction</td><td>Request restriction of processing in certain circumstances.</td></tr>
-            <tr><td>Objection</td><td>Object to processing based on legitimate interest.</td></tr>
-            <tr><td>Withdraw Consent</td><td>Withdraw consent at any time where processing is based on consent.</td></tr>
-          </tbody>
-        </table>
-        <p>To exercise any of these rights, contact <a href="mailto:privacy@fetchbot.ai">privacy@fetchbot.ai</a>. We will respond within 30 days.</p>
-      </section>
-
-      <!-- ── 12. International Data Transfers ── -->
       <section id="international">
-        <h2>12. International Data Transfers</h2>
-        <p>Your data may be transferred to and processed in the United States, where our primary servers are located. For transfers from the EEA/UK, we rely on:</p>
-        <ul>
-          <li>Standard Contractual Clauses (SCCs) approved by the European Commission.</li>
-          <li>Adequacy decisions where applicable.</li>
-          <li>Supplementary measures to ensure data protection standards are maintained.</li>
-        </ul>
+        <h2>11. International Data Transfers</h2>
+        <p>
+          FetchBot is operated from the United States. If you access the Services from
+          outside the United States, your information will be transferred to and processed
+          in the United States. Where required by law (e.g., transfers out of the EEA or
+          UK), we rely on Standard Contractual Clauses or other lawful transfer mechanisms
+          with our subprocessors.
+        </p>
       </section>
 
-      <!-- ── 13. Children's Privacy ── -->
       <section id="children">
-        <h2>13. Children's Privacy</h2>
-        <p>The Service is not intended for individuals under 18 years of age. We do not knowingly collect personal information from children. If we become aware that a child under 18 has provided us with personal information, we will take steps to delete such information promptly.</p>
+        <h2>12. Children's Privacy</h2>
+        <p>
+          FetchBot is a B2B product not directed to children under 13 (or under 16 in the
+          EU / EEA / UK), and we do not knowingly collect personal information from such
+          children. If you believe we have collected information from a child below the
+          applicable age, please email
+          <a href="mailto:privacy@fetchbot.ai">privacy@fetchbot.ai</a> and we will delete it
+          promptly.
+        </p>
       </section>
 
-      <!-- ── 14. California Privacy Rights (CCPA) ── -->
-      <section id="california">
-        <h2>14. California Privacy Rights (CCPA)</h2>
-        <p>If you are a California resident, you have additional rights under the California Consumer Privacy Act (CCPA):</p>
-        <ul>
-          <li><strong>Right to Know</strong> — You can request details about the categories and specific pieces of personal information we have collected.</li>
-          <li><strong>Right to Delete</strong> — You can request deletion of your personal information, subject to certain exceptions.</li>
-          <li><strong>Right to Non-Discrimination</strong> — We will not discriminate against you for exercising your CCPA rights.</li>
-          <li><strong>No Sale of Personal Information</strong> — We do NOT sell personal information. We have not sold personal information in the preceding 12 months.</li>
-        </ul>
-        <p>To make a CCPA request, contact <a href="mailto:privacy@fetchbot.ai">privacy@fetchbot.ai</a> with the subject line "CCPA Request".</p>
-      </section>
-
-      <!-- ── 15. Changes ── -->
       <section id="changes">
-        <h2>15. Changes to This Policy</h2>
-        <p>We may update this Privacy Policy from time to time. When we make material changes, we will notify you by email and update the "Last updated" date. We encourage you to review this page periodically for the latest information on our privacy practices.</p>
+        <h2>13. Changes to This Policy</h2>
+        <p>
+          We may update this Privacy Policy from time to time. When we do, we will update
+          the "Effective Date" at the top and, for material changes, notify you by email
+          or an in-app notice before the changes take effect.
+        </p>
       </section>
 
-      <!-- ── 16. Contact ── -->
       <section id="contact">
-        <h2>16. Contact Us</h2>
-        <p>If you have any questions, concerns, or complaints about this Privacy Policy or our data practices, contact us at:</p>
-        <div class="contact-card">
-          <p><strong>FetchBot Inc. — Data Protection</strong></p>
-          <p>Email: <a href="mailto:privacy@fetchbot.ai">privacy@fetchbot.ai</a></p>
-          <p>General: <a href="mailto:support@fetchbot.ai">support@fetchbot.ai</a></p>
-          <p>Website: <a href="https://fetchbot.ai" target="_blank" rel="noopener">https://fetchbot.ai</a></p>
-        </div>
-        <p>For EEA/UK users: If you believe we have not adequately addressed your data protection concern, you have the right to lodge a complaint with your local Data Protection Authority (DPA).</p>
+        <h2>14. Contact</h2>
+        <p>
+          If you have questions about this Privacy Policy or our data practices, contact
+          us at <a href="mailto:privacy@fetchbot.ai">privacy@fetchbot.ai</a>. For security
+          issues, email <a href="mailto:security@fetchbot.ai">security@fetchbot.ai</a>.
+        </p>
+        <p>
+          FetchBot Inc.
+        </p>
       </section>
     </main>
 
