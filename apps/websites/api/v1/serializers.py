@@ -10,7 +10,7 @@ class WebsiteSerializer(serializers.ModelSerializer):
         model = Website
         fields = [
             "id", "url", "name", "industry", "description", "topics",
-            "platform_type", "onboarding_completed",
+            "platform_type",
             "pixel_key", "pixel_verified", "pixel_verified_at", "crawl_status",
             "is_active", "pixel_snippet", "created_at", "updated_at",
         ]
@@ -39,7 +39,6 @@ class WebsiteUpdateSerializer(serializers.Serializer):
         required=False,
         default=list,
     )
-    onboarding_completed = serializers.BooleanField(required=False)
 
 
 class WebsiteSettingsSerializer(serializers.ModelSerializer):

@@ -78,3 +78,7 @@ if SENTRY_DSN:  # noqa: F405
         traces_sample_rate=0.05,
         environment="production",
     )
+
+# Hard-wire dev billing OFF in prod regardless of env var. Stripe is
+# the only path to a real subscription on this environment.
+BILLING_DEV_MODE = False

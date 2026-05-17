@@ -12,9 +12,6 @@ from apps.content_studio.models import (
     ContentFormat,
     DraftStatus,
     GapType,
-    PublishLog,
-    PublishStatus,
-    PublishTarget,
 )
 from apps.content_studio.services import (
     accuracy_guard,
@@ -22,8 +19,6 @@ from apps.content_studio.services import (
     drafter,
     voice_guard,
 )
-from apps.content_studio.services.publish_adapters import get_adapter
-from apps.content_studio.services.roi_tracker import schedule_roi_measurement
 from apps.llm_ranking.tests.factories import (
     LLMRankingAuditFactory,
     LLMRankingResultFactory,
@@ -38,7 +33,6 @@ pytestmark = [
         CLAIM_VERIFICATION_ENABLED=False,
         CITATION_EXTRACTION_ENABLED=False,
         CONTENT_STUDIO_BRIEF_GENERATION_ENABLED=False,
-        CONTENT_STUDIO_PUBLISH_LIVE=False,
     ),
 ]
 
@@ -166,96 +160,3 @@ def test_accuracy_guard_detects_unsupported_claim():
     assert 0.0 <= score <= 1.0
     assert "claims" in notes.lower() or "verified" in notes.lower()
 
-
-def test_publish_adapter_dry_run_returns_payload():
-    website = WebsiteFactory()
-    target = PublishTarget.objects.create(
-        website=website, provider="wordpress",
-        config={"site_url": "https://x.example.com", "user": "u", "app_password": "p"},
-    )
-    draft = ContentDraft.objects.create(
-        brief=ContentBrief.objects.create(
-            website=website, gap_type=GapType.VISIBILITY.value,
-            target_format=ContentFormat.BLOG.value, headline="x", description="",
-        ),
-        website=website, title="Hello", body_markdown="Hi world",
-    )
-    adapter = get_adapter("wordpress")
-    result = adapter.publish(draft, target)
-    assert result["status"] == "published"
-    assert result["external_id"] == "dry-run"
-    assert result["request_payload"]["title"] == "Hello"
-
-
-def test_publish_target_dry_run_for_all_providers():
-    website = WebsiteFactory()
-    draft = ContentDraft.objects.create(
-        brief=ContentBrief.objects.create(
-            website=website, gap_type=GapType.VISIBILITY.value,
-            target_format=ContentFormat.BLOG.value, headline="x", description="",
-        ),
-        website=website, title="Hi", body_markdown="x",
-    )
-    for provider in ("wordpress", "webflow", "shopify", "hubspot", "manual"):
-        target = PublishTarget.objects.create(
-            website=website, provider=provider, label=provider, config={},
-        )
-        result = get_adapter(provider).publish(draft, target)
-        assert result["status"] == "published"
-
-
-def test_schedule_roi_measurement_does_not_raise():
-    website = WebsiteFactory()
-    draft = ContentDraft.objects.create(
-        brief=ContentBrief.objects.create(
-            website=website, gap_type=GapType.VISIBILITY.value,
-            target_format=ContentFormat.BLOG.value, headline="x", description="",
-        ),
-        website=website, title="t", body_markdown="x",
-    )
-    schedule_roi_measurement(str(draft.id), days_after=1)
-
-
-def test_publish_task_creates_log_and_publishes_draft():
-    from apps.content_studio.tasks import publish_draft as publish_task
-
-    website = WebsiteFactory()
-    target = PublishTarget.objects.create(
-        website=website, provider="manual", config={},
-    )
-    draft = ContentDraft.objects.create(
-        brief=ContentBrief.objects.create(
-            website=website, gap_type=GapType.VISIBILITY.value,
-            target_format=ContentFormat.BLOG.value, headline="x", description="",
-        ),
-        website=website, title="t", body_markdown="x",
-    )
-    log_id = publish_task.run(str(draft.id), str(target.id))
-    assert log_id
-    log = PublishLog.objects.get(id=log_id)
-    assert log.status == PublishStatus.PUBLISHED.value
-    draft.refresh_from_db()
-    assert draft.status == DraftStatus.PUBLISHED.value
-
-
-def test_finalize_audit_dispatches_brief_generation(monkeypatch):
-    """The Phase 4 hook must enqueue brief generation when enabled."""
-    from apps.content_studio import tasks as cs_tasks
-
-    calls: list[str] = []
-
-    class _Result:
-        id = "x"
-
-    def fake_delay(arg):
-        calls.append(str(arg))
-        return _Result()
-
-    monkeypatch.setattr(cs_tasks.generate_briefs_for_website, "delay", fake_delay)
-
-    website = WebsiteFactory()
-    with override_settings(CONTENT_STUDIO_BRIEF_GENERATION_ENABLED=True):
-        # Simulate the hook block from ranking_service.finalize_audit.
-        from apps.content_studio.tasks import generate_briefs_for_website
-        generate_briefs_for_website.delay(str(website.id))
-    assert calls == [str(website.id)]

@@ -129,112 +129,15 @@
         {{ saving ? 'Saving...' : 'Save draft' }}
       </AirButton>
       <AirButton
-        variant="outline"
+        variant="primary"
         size="md"
         :loading="approving"
-        :disabled="approving || draft.status === 'approved' || draft.status === 'published'"
+        :disabled="approving || draft.status === 'approved'"
         @click="approve"
       >
-        {{ draft.status === 'approved' ? 'Approved' : (approving ? 'Approving...' : 'Approve') }}
+        {{ draft.status === 'approved' ? 'Approved' : (approving ? 'Approving...' : 'Approve as publish content') }}
       </AirButton>
-
-      <div class="relative">
-        <AirButton variant="primary" size="md" @click="publishMenuOpen = !publishMenuOpen">
-          Publish
-          <template #iconRight>
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M3 5l3 3 3-3" />
-            </svg>
-          </template>
-        </AirButton>
-        <div
-          v-if="publishMenuOpen"
-          class="absolute bottom-full right-0 mb-2 w-72 rounded-2xl border border-zinc-200 bg-white p-2 shadow-lg"
-          @click.stop
-        >
-          <div class="px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
-            Publish to
-          </div>
-          <div v-if="!publishTargets.length" class="px-3 py-3 text-xs text-zinc-500">
-            No targets configured yet.
-            <router-link
-              :to="`/llm-ranking/${websiteId}/content/publish-targets`"
-              class="mt-2 block font-semibold text-rose-600"
-            >
-              Add a publish target →
-            </router-link>
-          </div>
-          <button
-            v-for="t in publishTargets"
-            :key="t.id"
-            type="button"
-            class="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm text-zinc-700 hover:bg-zinc-50"
-            @click="confirmPublish(t)"
-          >
-            <span>{{ t.label || t.provider }}</span>
-            <span v-if="t.is_default" class="text-[10px] font-semibold uppercase tracking-wider text-rose-500">Default</span>
-          </button>
-        </div>
-      </div>
-
-      <div class="relative">
-        <AirButton variant="ghost" size="md" @click="exportMenuOpen = !exportMenuOpen">
-          Export
-          <template #iconRight>
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M3 5l3 3 3-3" />
-            </svg>
-          </template>
-        </AirButton>
-        <div
-          v-if="exportMenuOpen"
-          class="absolute bottom-full right-0 mb-2 w-44 rounded-2xl border border-zinc-200 bg-white p-2 shadow-lg"
-        >
-          <button
-            v-for="fmt in ['md', 'html', 'json']"
-            :key="fmt"
-            type="button"
-            class="block w-full rounded-xl px-3 py-2 text-left text-sm text-zinc-700 hover:bg-zinc-50"
-            @click="exportAs(fmt)"
-          >
-            Download .{{ fmt }}
-          </button>
-        </div>
-      </div>
     </div>
-
-    <!-- Publish modal -->
-    <Teleport to="body">
-      <div
-        v-if="publishConfirm"
-        class="fixed inset-0 z-[200] flex items-center justify-center bg-zinc-900/60 px-4"
-        @click.self="publishConfirm = null"
-      >
-        <div class="w-full max-w-md rounded-3xl bg-white p-8 shadow-lg">
-          <h3 class="text-lg font-semibold text-zinc-900">
-            Publish to {{ publishConfirm.label || publishConfirm.provider }}?
-          </h3>
-          <p class="mt-2 text-sm leading-relaxed text-zinc-500">
-            We'll send this approved draft to <strong>{{ publishConfirm.label || publishConfirm.provider }}</strong>.
-            You can change targets later.
-          </p>
-          <div class="mt-6 flex justify-end gap-2">
-            <AirButton variant="ghost" size="md" @click="publishConfirm = null">
-              Cancel
-            </AirButton>
-            <AirButton
-              variant="primary"
-              size="md"
-              :loading="publishing"
-              :disabled="publishing"
-              @click="doPublish"
-            >
-              {{ publishing ? 'Publishing...' : 'Confirm publish' }}
-            </AirButton>
-          </div>
-        </div>
-      </div>
-    </Teleport>
   </div>
 </template>
 
@@ -261,15 +164,10 @@ const loading = ref(true)
 const saving = ref(false)
 const approving = ref(false)
 const regenerating = ref(false)
-const publishing = ref(false)
 const lastSavedAt = ref(null)
 
 const draft = ref(null)
 const brief = ref(null)
-const publishTargets = ref([])
-const publishConfirm = ref(null)
-const publishMenuOpen = ref(false)
-const exportMenuOpen = ref(false)
 const factsOpen = ref(false)
 
 const form = reactive({ title: '', body: '' })
@@ -310,17 +208,6 @@ async function loadDraft() {
   }
 }
 
-async function loadTargets() {
-  try {
-    const { data } = await contentStudioApi.publishTargets(websiteId.value)
-    const body = data?.data || data || {}
-    const list = body.results || body || []
-    publishTargets.value = (Array.isArray(list) ? list : []).filter((t) => t.is_active !== false)
-  } catch {
-    publishTargets.value = []
-  }
-}
-
 async function save() {
   if (!draft.value) return
   saving.value = true
@@ -353,7 +240,7 @@ async function approve() {
     const { data } = await contentStudioApi.approveDraft(draft.value.id)
     const body = data?.data || data
     draft.value = body || draft.value
-    toast.success('Draft approved. Choose a target to publish.')
+    toast.success('Draft approved as publish content.')
   } catch {
     // handled
   } finally {
@@ -379,50 +266,11 @@ async function regenerate() {
   }
 }
 
-function confirmPublish(target) {
-  publishMenuOpen.value = false
-  publishConfirm.value = target
-}
-
-async function doPublish() {
-  if (!publishConfirm.value) return
-  publishing.value = true
-  try {
-    await contentStudioApi.publishDraft(draft.value.id, publishConfirm.value.id)
-    toast.success(`Sent to ${publishConfirm.value.label || publishConfirm.value.provider}.`)
-    publishConfirm.value = null
-    router.push(`/llm-ranking/${websiteId.value}/content`)
-  } catch {
-    // handled
-  } finally {
-    publishing.value = false
-  }
-}
-
-async function exportAs(fmt) {
-  exportMenuOpen.value = false
-  try {
-    const { data } = await contentStudioApi.exportDraft(draft.value.id, fmt)
-    const blob = data instanceof Blob ? data : new Blob([data], { type: 'application/octet-stream' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `${(draft.value.title || 'draft').replace(/\s+/g, '-').toLowerCase()}.${fmt}`
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-    URL.revokeObjectURL(url)
-  } catch {
-    // handled
-  }
-}
-
 function goBack() {
   router.push(`/llm-ranking/${websiteId.value}/content`)
 }
 
 onMounted(() => {
   loadDraft()
-  loadTargets()
 })
 </script>

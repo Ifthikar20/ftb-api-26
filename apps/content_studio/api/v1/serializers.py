@@ -1,13 +1,7 @@
 """DRF serializers for the content_studio API."""
 from rest_framework import serializers
 
-from apps.content_studio.models import (
-    ContentBrief,
-    ContentDraft,
-    PublishLog,
-    PublishTarget,
-    ROIAttribution,
-)
+from apps.content_studio.models import ContentBrief, ContentDraft
 
 
 class ContentBriefSerializer(serializers.ModelSerializer):
@@ -52,41 +46,3 @@ class ContentDraftSerializer(serializers.ModelSerializer):
             "generated_by", "revision",
             "created_at", "updated_at",
         )
-
-
-class PublishTargetSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = PublishTarget
-        fields = (
-            "id", "website", "provider", "label", "config",
-            "is_default", "is_active",
-            "created_at", "updated_at",
-        )
-        read_only_fields = ("id", "website", "created_at", "updated_at")
-
-
-class PublishLogSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = PublishLog
-        fields = (
-            "id", "draft", "target",
-            "status", "external_id", "external_url",
-            "error_message", "request_payload", "response_payload",
-            "created_at",
-        )
-        read_only_fields = fields
-
-
-class ROIAttributionSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = ROIAttribution
-        fields = (
-            "id", "draft", "website",
-            "measured_at", "days_since_publish",
-            "visibility_before", "visibility_after", "visibility_lift",
-            "citation_count_before", "citation_count_after",
-            "accuracy_lift",
-            "affected_prompts",
-            "created_at",
-        )
-        read_only_fields = fields

@@ -39,29 +39,4 @@ urlpatterns = [
         views.DraftApproveView.as_view(),
         name="content-studio-draft-approve",
     ),
-    path(
-        "drafts/<uuid:draft_id>/publish/",
-        views.DraftPublishView.as_view(),
-        name="content-studio-draft-publish",
-    ),
-    path(
-        "drafts/<uuid:draft_id>/export/",
-        views.DraftExportView.as_view(),
-        name="content-studio-draft-export",
-    ),
-    path(
-        "websites/<uuid:website_id>/publish-targets/",
-        views.WebsitePublishTargetsView.as_view(),
-        name="content-studio-website-publish-targets",
-    ),
-    path(
-        "publish-targets/<uuid:target_id>/",
-        views.PublishTargetDetailView.as_view(),
-        name="content-studio-publish-target-detail",
-    ),
-    path(
-        "websites/<uuid:website_id>/roi/",
-        views.WebsiteROIView.as_view(),
-        name="content-studio-website-roi",
-    ),
 ]
