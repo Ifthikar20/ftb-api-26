@@ -179,25 +179,32 @@ router.beforeEach(async (to, from, next) => {
         return next()
     }
 
-    // If guest visits a guest-only page (login/register) but is already logged in, go to dashboard
+    // If guest visits a guest-only page (login/register) but is already
+    // logged in, send them to the right next step.
     if (to.meta.guest && auth.isAuthenticated) {
+        if (!auth.session) {
+            try { await auth.fetchSession() } catch (_) {}
+        }
+        const route = auth.session?.next_route
+        if (route === 'paywall') return next({ name: 'paywall' })
         return next({ name: 'dashboard' })
     }
 
-    // Onboarding + paywall gate: authenticated users with incomplete setup
-    // must finish onboarding and subscribe before reaching the app.
-    if (auth.isAuthenticated && !GATE_EXEMPT.has(to.name)) {
-        // Refresh session on transition into a protected route if we don't have one
+    // Paywall takes precedence over everything except auth pages and
+    // /paywall itself. An unpaid user shouldn't be able to load
+    // /dashboard, /llm-ranking/*, /settings, etc. — only the paywall.
+    if (auth.isAuthenticated) {
         if (!auth.session) {
-            await auth.fetchSession()
+            try { await auth.fetchSession() } catch (_) {}
         }
         const route = auth.session?.next_route
-        if (route === 'onboarding') {
-            // Onboarding is now a modal on the dashboard.
-            return next({ name: 'dashboard' })
-        }
-        if (route === 'paywall') {
+        if (route === 'paywall' && to.name !== 'paywall') {
             return next({ name: 'paywall' })
+        }
+        // Once they're paying, the second gate kicks in: route them to
+        // onboarding (modal on dashboard) until they have a website.
+        if (route === 'onboarding' && !GATE_EXEMPT.has(to.name)) {
+            return next({ name: 'dashboard' })
         }
     }
 

@@ -285,10 +285,14 @@ class SessionView(APIView):
         else:
             is_paying = False
 
-        if needs_onboarding:
-            next_route = "onboarding"
-        elif not is_paying:
+        # Paywall first. A user who hasn't subscribed yet shouldn't get
+        # access to the onboarding wizard or the dashboard chrome at
+        # all — pay first, set up second. Once they're paying we route
+        # to onboarding (modal on dashboard) if needed, then the app.
+        if not is_paying:
             next_route = "paywall"
+        elif needs_onboarding:
+            next_route = "onboarding"
         else:
             next_route = "app"
 
