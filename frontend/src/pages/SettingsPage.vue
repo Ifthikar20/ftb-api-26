@@ -300,11 +300,9 @@ const usageLoading = ref(false)
 const usagePeriod = ref('30')
 
 const moduleLabels = {
-  lead_finder: 'AI Lead Finder',
-  messaging: 'AI Messaging',
   llm_ranking: 'LLM Ranking',
-  seo_keywords: 'SEO Keywords',
-  analytics: 'AI Insights',
+  rag: 'RAG / Embeddings',
+  onboarding: 'Onboarding scan',
 }
 
 const providerLabels = {
@@ -312,10 +310,16 @@ const providerLabels = {
   openai: 'OpenAI (GPT)',
   google: 'Google (Gemini)',
   perplexity: 'Perplexity',
+  meta: 'Meta (Llama)',
+  mistral: 'Mistral AI',
+  cohere: 'Cohere',
+  deepseek: 'DeepSeek',
+  xai: 'xAI (Grok)',
+  amazon: 'Amazon (Nova / Bedrock)',
 }
 
 const roleLabels = {
-  upstream: 'Upstream LLM (ranking, lead finder, messaging)',
+  upstream: 'Upstream LLM (audit query)',
   extraction: 'Internal parsing (Haiku extraction)',
   prompt_generation: 'Prompt generation',
   context_inference: 'Audit context inference',
@@ -629,11 +633,9 @@ async function saveNotifPrefs() {
   width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
 }
 
-.module-dot.lead_finder { background: #22c55e; }
-.module-dot.messaging { background: #8b5cf6; }
 .module-dot.llm_ranking { background: #ec4899; }
-.module-dot.seo_keywords { background: #eab308; }
-.module-dot.analytics { background: #f97316; }
+.module-dot.rag { background: #22c55e; }
+.module-dot.onboarding { background: #f97316; }
 
 .model-name {
   font-family: 'SF Mono', 'Cascadia Mono', 'Consolas', monospace;
