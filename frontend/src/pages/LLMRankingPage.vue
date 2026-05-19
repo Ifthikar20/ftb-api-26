@@ -66,1311 +66,229 @@
       >Performance</button>
     </div>
 
-    <div v-show="activeTab === 'overview'">
+    <div v-show="activeTab === 'overview'" class="lr-overview">
 
-    <!-- Scheduled audits card (rich: ETA, in-flight, failures, run-now) -->
-    <div v-if="schedule" class="schedule-card">
-      <div class="schedule-card-head">
-        <div class="schedule-card-title">
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 4v4l3 2"/></svg>
-          <span>Scheduled audit</span>
-          <span class="schedule-pill" :class="{ paused: !schedule.is_enabled }">
-            {{ schedule.is_enabled ? 'Active' : 'Paused' }}
-          </span>
+      <!-- Schedule banner: shown only when the website has a schedule on file.
+           Keeps the action affordance prominent without dominating the dashboard. -->
+      <div v-if="schedule" class="ov-banner" :class="{ paused: !schedule.is_enabled }">
+        <div class="ov-banner-icon" aria-hidden="true">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+            <circle cx="8" cy="8" r="6"/><path d="M8 4v4l3 2"/>
+          </svg>
         </div>
-        <div class="schedule-card-actions">
-          <button class="btn btn-ghost btn-xs" :disabled="runNowBusy || (scheduleETA && scheduleETA.in_flight)"
-                  @click="runScheduleNow">
-            {{ runNowBusy ? 'Starting…' : (scheduleETA && scheduleETA.in_flight ? 'In flight' : 'Run now') }}
-          </button>
-          <button class="btn btn-ghost btn-xs" @click="showScheduleModal = true">Edit</button>
-          <button class="btn btn-ghost btn-xs" @click="disableSchedule">Disable</button>
+        <div class="ov-banner-text">
+          <strong>{{ schedule.is_enabled ? 'Scheduled audit active' : 'Schedule paused' }}</strong>
+          <span v-if="schedule.cadence" class="text-muted">· {{ schedule.cadence }}</span>
+          <span v-if="scheduleETA?.next_run_human" class="text-muted">· next run {{ scheduleETA.next_run_human }}</span>
         </div>
+        <button class="btn btn-ghost btn-sm" @click="showScheduleModal = true">Manage</button>
       </div>
 
-      <div class="schedule-card-body">
-        <div class="schedule-cell">
-          <div class="schedule-cell-label">Frequency</div>
-          <div class="schedule-cell-value">{{ schedule.frequency_display }}</div>
-        </div>
-        <div class="schedule-cell">
-          <div class="schedule-cell-label">Next run</div>
-          <div class="schedule-cell-value">{{ formatRelative(schedule.next_run_at) }}</div>
-        </div>
-        <div class="schedule-cell">
-          <div class="schedule-cell-label">Projected duration</div>
-          <div class="schedule-cell-value">
-            {{ scheduleETA && scheduleETA.estimated_duration_seconds
-                ? formatDuration(scheduleETA.estimated_duration_seconds)
-                : '—' }}
-          </div>
-        </div>
-        <div class="schedule-cell">
-          <div class="schedule-cell-label">Coverage</div>
-          <div class="schedule-cell-value">
-            {{ scheduleETA ? `${scheduleETA.n_prompts} prompts × ${scheduleETA.n_providers} providers` : '—' }}
-          </div>
-        </div>
+      <div v-if="loading" class="ov-loading">
+        <div class="ov-spinner" aria-hidden="true"></div>
+        <span>Loading dashboard...</span>
       </div>
 
-      <div v-if="scheduleETA && scheduleETA.in_flight" class="schedule-progress">
-        <div class="schedule-progress-row">
-          <span>Audit in flight</span>
-          <span>
-            {{ (scheduleETA.in_flight_progress && scheduleETA.in_flight_progress.completed) || 0 }}
-            /
-            {{ (scheduleETA.in_flight_progress && scheduleETA.in_flight_progress.total) || 0 }}
-            cells
-            <template v-if="scheduleETA.in_flight_seconds_remaining != null">
-              · ~{{ formatDuration(scheduleETA.in_flight_seconds_remaining) }} left
-            </template>
-          </span>
-        </div>
-        <div class="schedule-progress-bar">
-          <div class="schedule-progress-fill" :style="{ width: scheduleProgressPct + '%' }"></div>
-        </div>
-      </div>
-
-      <div v-if="scheduleETA && scheduleETA.consecutive_failures > 0" class="schedule-warn">
-        ⚠ {{ scheduleETA.consecutive_failures }} consecutive failure(s).
-        Schedule auto-pauses after a few in a row — check provider keys.
-      </div>
-    </div>
-
-    <div v-if="loading" class="loading-state">Loading LLM ranking data...</div>
-
-    <template v-else>
-      <!-- Empty state: onboarding wizard when no audits exist -->
-      <div v-if="!audits.length" class="card lr-onboarding">
-        <div class="lr-onb-eyebrow">FIRST AUDIT</div>
-        <h2 class="lr-onb-title">Track how AI mentions your business</h2>
-        <p class="lr-onb-sub">
-          Tell us about your business and we'll generate buyer-style prompts that match how
-          real people ask AI assistants for tools like yours. We'll send those prompts to
-          Claude, GPT-4, Gemini, and Perplexity, and report where you show up — and where
-          competitors get listed instead.
-        </p>
-        <button class="btn btn-primary btn-lg" @click="openRunAudit">
-          Set up your first audit
-        </button>
-      </div>
-
-      <!-- ═══ Brand Overview (Bear-style dashboard) ═══════════════════════ -->
-      <div v-if="audits.length && isAuditComplete" class="brand-overview" style="margin-bottom:24px">
-
-        <!-- Filter bar -->
-        <div class="bo-filters">
-          <button class="bo-filter" @click="toggleFilter('platform')" :class="{ open: openFilter === 'platform' }">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/>
-              <path d="M12 2a15 15 0 010 20 15 15 0 010-20"/>
-            </svg>
-            <span>{{ filters.platform === 'all' ? 'All Platforms' : providerLabel(filters.platform) }}</span>
-            <svg class="bo-caret" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4l3 3 3-3"/></svg>
-            <div v-if="openFilter === 'platform'" class="bo-filter-menu" @click.stop>
-              <button class="bo-filter-item" :class="{ active: filters.platform === 'all' }" @click="setFilter('platform', 'all')">All Platforms</button>
-              <button v-for="p in providerHealth.providers.filter(p => p.configured)" :key="p.key"
-                      class="bo-filter-item" :class="{ active: filters.platform === p.key }"
-                      @click="setFilter('platform', p.key)">{{ p.name }}</button>
-            </div>
-          </button>
-
-          <button class="bo-filter" @click="toggleFilter('time')" :class="{ open: openFilter === 'time' }">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/>
-              <line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
-            </svg>
-            <span>{{ timeRangeLabel }}</span>
-            <svg class="bo-caret" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4l3 3 3-3"/></svg>
-            <div v-if="openFilter === 'time'" class="bo-filter-menu" @click.stop>
-              <button v-for="r in timeRanges" :key="r.value" class="bo-filter-item"
-                      :class="{ active: filters.timeRange === r.value }"
-                      @click="setFilter('timeRange', r.value)">{{ r.label }}</button>
-            </div>
-          </button>
-
-          <button class="bo-filter" @click="toggleFilter('topic')" :class="{ open: openFilter === 'topic' }">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2zM22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/>
-            </svg>
-            <span>{{ filters.topic === 'all' ? 'All Topics' : formatIntent(filters.topic) }}</span>
-            <svg class="bo-caret" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4l3 3 3-3"/></svg>
-            <div v-if="openFilter === 'topic'" class="bo-filter-menu" @click.stop>
-              <button class="bo-filter-item" :class="{ active: filters.topic === 'all' }" @click="setFilter('topic', 'all')">All Topics</button>
-              <button v-for="t in availableTopics" :key="t" class="bo-filter-item"
-                      :class="{ active: filters.topic === t }"
-                      @click="setFilter('topic', t)">{{ formatIntent(t) }}</button>
-            </div>
-          </button>
-        </div>
-
-        <!-- 4-KPI strip -->
-        <div class="kpi-strip">
-          <div class="kpi-card">
-            <div class="kpi-label">
-              Brand Visibility
-              <span class="kpi-info" title="How often you appear when AI assistants are asked about your category. Smoothed via a Beta(2,8) prior so small-sample audits don't read 100%.">i</span>
-            </div>
-            <div class="kpi-value">
-              <span
-                v-if="visibilityConfidence(kpiBrandVisibility)"
-                class="kpi-conf-dot"
-                :class="`kpi-conf-${visibilityConfidence(kpiBrandVisibility)}`"
-                :title="`Estimate confidence: ${visibilityConfidence(kpiBrandVisibility)} (CI width ${(kpiBrandVisibility.ciHigh - kpiBrandVisibility.ciLow)}%)`"
-              />
-              {{ kpiBrandVisibility.value }}<span class="kpi-unit">%</span>
-            </div>
-            <div class="kpi-sub" v-if="kpiBrandVisibility.ciHigh > 0">
-              95% CI: {{ kpiBrandVisibility.ciLow }}–{{ kpiBrandVisibility.ciHigh }}%
-              <span class="kpi-sub-muted">· raw {{ kpiBrandVisibility.raw }}% · n={{ kpiBrandVisibility.basis }}</span>
-            </div>
-            <div class="kpi-sub" v-else>Based on {{ kpiBrandVisibility.basis }} prompts simulated</div>
+      <template v-else>
+      <!-- KPI strip -->
+      <div class="ov-kpis">
+        <div class="ov-kpi">
+          <div class="ov-kpi-head">
+            <span class="ov-kpi-label">AI Visibility Score</span>
+            <span v-if="isAuditComplete" class="ov-kpi-badge" :class="scorePillClass(latestAudit.overall_score)">
+              {{ latestAudit.overall_score >= 70 ? 'Strong' : latestAudit.overall_score >= 40 ? 'Fair' : 'Weak' }}
+            </span>
           </div>
-          <div class="kpi-card">
-            <div class="kpi-label">
-              Citation Share
-              <span class="kpi-info" title="Of all brand mentions across AI responses, the share that are you">i</span>
-            </div>
-            <div class="kpi-value">{{ kpiCitationShare.value }}<span class="kpi-unit">%</span></div>
-            <div class="kpi-sub">{{ kpiCitationShare.self }} of {{ kpiCitationShare.total }} citations</div>
+          <div class="ov-kpi-value">
+            <template v-if="isAuditComplete">{{ Math.round(latestAudit.overall_score || 0) }}<span class="ov-kpi-unit">/100</span></template>
+            <template v-else>—</template>
           </div>
-          <div class="kpi-card">
-            <div class="kpi-label">
-              Brand Ranking
-              <span class="kpi-info" title="Your position vs other brands by visibility in this audit">i</span>
-            </div>
-            <div class="kpi-value kpi-value-rank">#{{ kpiBrandRanking.rank }}</div>
-            <div class="kpi-sub">{{ kpiBrandRanking.label }}</div>
-          </div>
-          <div class="kpi-card">
-            <div class="kpi-label">
-              Closest Competitor
-              <span class="kpi-info" title="The brand right above or below you in the rankings">i</span>
-            </div>
-            <div class="kpi-closest">
-              <span class="kpi-closest-avatar" :style="{ background: brandColor(kpiClosestCompetitor.name) }">
-                {{ (kpiClosestCompetitor.name || '—')[0] }}
-              </span>
-              <div class="kpi-closest-meta">
-                <div class="kpi-closest-name">{{ kpiClosestCompetitor.name || '—' }}</div>
-                <div class="kpi-sub">{{ kpiClosestCompetitor.mention_count || 0 }} mentions</div>
-              </div>
-            </div>
+          <div class="ov-kpi-sub" :class="perfKpis.scoreTrendClass">
+            {{ isAuditComplete ? perfKpis.scoreTrendLabel : (latestAudit?.status ? capitalize(latestAudit.status) : 'No audit yet') }}
           </div>
         </div>
 
-        <!-- Row 2: Competitor Visibility chart + Competitor Rankings -->
-        <div class="lr-grid-2 bo-row">
-          <div class="card lr-grid-main bo-chart-card">
-            <div class="card-header">
-              <h3 class="card-title">Competitor Visibility</h3>
-              <span class="text-xs text-muted">multi-line · hover for details</span>
-            </div>
-            <div class="bo-chart-wrap">
-              <Line :data="competitorVisibilityData" :options="competitorVisibilityOptions" />
-            </div>
+        <div class="ov-kpi">
+          <div class="ov-kpi-head"><span class="ov-kpi-label">Mention Rate</span></div>
+          <div class="ov-kpi-value">
+            <template v-if="isAuditComplete">{{ Math.round(latestAudit.mention_rate || 0) }}<span class="ov-kpi-unit">%</span></template>
+            <template v-else>—</template>
           </div>
-
-          <div class="card lr-grid-side bo-ranking-card">
-            <div class="card-header">
-              <h3 class="card-title">Competitor Rankings</h3>
-            </div>
-            <div class="bo-ranking-head">
-              <span class="bo-rh-rank">#</span>
-              <span class="bo-rh-name">Competitor</span>
-              <span class="bo-rh-vis" :title="usingBrandStrengths ? 'Plackett-Luce brand strength (max=100). Calibrated across all rankings in this audit.' : 'Mention rate across responses.'">
-                {{ usingBrandStrengths ? 'Strength' : 'Visibility' }}
-              </span>
-            </div>
-            <div class="bo-ranking-list">
-              <div v-for="r in brandRankingRows" :key="r.name"
-                   class="bo-ranking-row"
-                   :class="{ 'is-you': r.is_you, 'is-highlighted': highlightedBrand === r.name }"
-                   @mouseenter="highlightedBrand = r.name"
-                   @mouseleave="highlightedBrand = null">
-                <span class="bo-rh-rank">{{ r.rank }}</span>
-                <span class="bo-rh-name">
-                  <span class="bo-brand-avatar" :style="{ background: brandColor(r.name) }">{{ r.name[0] }}</span>
-                  <span>{{ r.name }} <span v-if="r.is_you" class="bo-you-tag">(You)</span></span>
-                </span>
-                <span class="bo-rh-vis">
-                  <template v-if="usingBrandStrengths && r.strength != null">
-                    <span class="bo-strength-bar">
-                      <span class="bo-strength-fill" :style="{ width: (r.strength * 100) + '%' }" />
-                    </span>
-                    <span class="bo-strength-num">{{ Math.round(r.strength * 100) }}</span>
-                  </template>
-                  <template v-else>{{ r.visibility }}%</template>
-                </span>
-              </div>
-            </div>
+          <div class="ov-kpi-sub">
+            {{ isAuditComplete ? `${latestAudit.total_queries || 0} queries · ${(latestAudit.providers_queried || []).length} models` : 'Waiting on first completed audit' }}
           </div>
         </div>
 
-        <!-- Row 3: Citation Share trend + Top Sources -->
-        <div class="lr-grid-2 bo-row">
-          <div class="card lr-grid-main bo-chart-card">
-            <div class="card-header">
-              <h3 class="card-title">Citation Share</h3>
-              <span class="text-xs text-muted">your share of all brand citations over time</span>
-            </div>
-            <div class="bo-chart-wrap bo-chart-small">
-              <Line :data="citationShareData" :options="citationShareOptions" />
-            </div>
-          </div>
-
-          <div class="card lr-grid-side bo-sources-card">
-            <div class="card-header">
-              <h3 class="card-title">Top Sources</h3>
-              <button class="btn-ghost btn-sm" v-if="topSources.length" @click="sortTopSources">
-                Sort: {{ topSourcesSort === 'count' ? '↓ Citations' : '↓ Domain' }}
-              </button>
-            </div>
-            <div class="bo-sources-head">
-              <span class="bo-sh-rank">#</span>
-              <span class="bo-sh-domain">Web Page</span>
-              <span class="bo-sh-type">Type</span>
-              <span class="bo-sh-count">Citations</span>
-            </div>
-            <div class="bo-sources-list">
-              <div v-for="(s, i) in topSources" :key="s.domain" class="bo-source-row">
-                <span class="bo-sh-rank">{{ i + 1 }}</span>
-                <span class="bo-sh-domain">
-                  <span class="bo-source-favicon" :style="{ background: brandColor(s.domain) }">
-                    {{ s.domain[0].toUpperCase() }}
-                  </span>
-                  <span>
-                    <span class="bo-source-name">{{ s.label }}</span>
-                    <span class="bo-source-host">{{ s.domain }}</span>
-                  </span>
-                </span>
-                <span class="bo-sh-type"><span class="bo-type-pill" :class="'bo-type-' + s.type">{{ s.type }}</span></span>
-                <span class="bo-sh-count">{{ s.count }}</span>
-              </div>
-              <div v-if="!topSources.length" class="text-xs text-muted" style="padding:16px">
-                No citations detected yet. Sources are extracted as audits run.
-              </div>
-            </div>
+        <div class="ov-kpi">
+          <div class="ov-kpi-head"><span class="ov-kpi-label">Top Model</span></div>
+          <div class="ov-kpi-value ov-kpi-value-sm">{{ perfKpis.topProvider || '—' }}</div>
+          <div class="ov-kpi-sub">
+            {{ perfKpis.topProvider ? `${perfKpis.topProviderRate}% mention rate` : 'No model data yet' }}
           </div>
         </div>
 
-        <!-- Row 3b: Citation Footprint by Country (geo) -->
-        <div v-if="citationFootprint.length" class="card bo-footprint-card" style="margin-bottom:24px">
-          <div class="card-header">
-            <h3 class="card-title">Citation Footprint by Country</h3>
-            <span class="text-xs text-muted">where the LLMs' grounding sources are hosted</span>
-          </div>
-          <div class="bo-footprint-grid">
-            <div v-for="row in citationFootprint" :key="row.country" class="bo-footprint-row">
-              <span class="bo-footprint-flag" :title="row.country">{{ row.flag }}</span>
-              <span class="bo-footprint-name">{{ row.label }}</span>
-              <span class="bo-footprint-bar">
-                <span class="bo-footprint-fill" :style="{ width: row.share + '%' }" />
-              </span>
-              <span class="bo-footprint-num">{{ row.count }}</span>
-              <span class="bo-footprint-pct">{{ row.share }}%</span>
-            </div>
-          </div>
-          <div v-if="latestAudit && latestAudit.region && latestAudit.region !== 'global'"
-               class="text-xs text-muted" style="margin-top:8px">
-            Audit region: <strong>{{ regionLabel(latestAudit.region) }}</strong> — Perplexity grounded its web search in this country; other providers used the geo-flavored prompt.
+        <div class="ov-kpi">
+          <div class="ov-kpi-head"><span class="ov-kpi-label">Audits Run</span></div>
+          <div class="ov-kpi-value">{{ audits.length }}</div>
+          <div class="ov-kpi-sub">
+            {{ usageData?.audit_stats?.total_audits ? `${usageData.audit_stats.total_audits} total all-time` : 'Across this workspace' }}
           </div>
         </div>
       </div>
 
-      <!-- ═══ Diagnostics — visual breakdowns of the audit ═══
-           Shows when the audit produced data on at least one prompt.
-           Each component v-if-guards itself for empty data so partial
-           audits (running, single-provider) still render gracefully. -->
-      <div v-if="isAuditComplete && diagnosticsHaveData" class="lr-diagnostics" style="margin-bottom:24px">
-        <PromptHeatmap
-          :results="auditDetail?.results || []"
-          :provider-label="providerLabel"
-          :provider-color="providerColor"
-        />
-        <div class="lr-grid-2" style="margin-bottom:0">
-          <FunnelRadar
-            :results="auditDetail?.results || []"
-            :prompts="latestAudit?.prompts || []"
-            :target-name="latestAudit?.business_name || 'You'"
-            :competitor-name="kpiClosestCompetitor.name || ''"
-          />
-          <ProviderAgreement
-            :results="auditDetail?.results || []"
-            :provider-label="providerLabel"
-          />
-        </div>
-      </div>
-
-      <!-- LLM Systems: compact dropdown -->
-      <div v-if="audits.length || providerHealth.providers.length" class="lr-systems-bar" style="margin-bottom:24px">
-        <div class="card lr-systems-dropdown" @click="showSystemsDropdown = !showSystemsDropdown" style="cursor:pointer">
-          <div class="lr-systems-header">
-            <div class="lr-systems-left">
-              <h3 class="card-title" style="margin:0;font-size:14px">
-                LLM Systems
-                <span class="text-xs text-muted" style="font-weight:500">
-                  · {{ providerHealth.configured_count }}/{{ providerHealth.total }} configured
-                </span>
-              </h3>
-              <div class="lr-systems-pills">
-                <span
-                  v-for="p in providerHealth.providers.filter(p => p.configured)"
-                  :key="p.key"
-                  class="lr-sys-pill lr-sys-on"
-                >
-                  <span class="provider-status-dot" style="width:6px;height:6px"></span>
-                  {{ p.name.split('(')[0].trim() }}
-                </span>
-                <span
-                  v-if="providerHealth.providers.filter(p => !p.configured).length"
-                  class="lr-sys-pill lr-sys-off"
-                >
-                  +{{ providerHealth.providers.filter(p => !p.configured).length }} unconfigured
-                </span>
-              </div>
+      <!-- Trend + model coverage -->
+      <div class="ov-grid ov-grid-2">
+        <div class="card ov-card">
+          <div class="ov-card-head">
+            <div>
+              <h3 class="ov-card-title">Visibility Over Time</h3>
+              <p class="ov-card-sub">{{ historyData.length || 0 }} completed audits</p>
             </div>
-            <svg class="lr-systems-chevron" :class="{ open: showSystemsDropdown }" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M4 6l4 4 4-4"/>
-            </svg>
           </div>
-          <!-- Expanded list -->
-          <div v-if="showSystemsDropdown" class="lr-systems-list" @click.stop>
+          <div class="ov-chart">
+            <Line v-if="historyData.length" :data="trendChartData" :options="trendChartOptions" />
+            <div v-else class="ov-empty-inline">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/>
+              </svg>
+              <p>A trend line appears after your first completed audit.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="card ov-card">
+          <div class="ov-card-head">
+            <div>
+              <h3 class="ov-card-title">Model Coverage</h3>
+              <p class="ov-card-sub">{{ providerHealth.configured_count }}/{{ providerHealth.total }} configured</p>
+            </div>
+          </div>
+          <div class="ov-models">
             <div
               v-for="p in providerHealth.providers"
               :key="p.key"
-              class="provider-status-row"
-              :class="{ 'is-on': p.configured, 'is-off': !p.configured }"
+              class="ov-model-row"
+              :class="{ off: !p.configured }"
             >
-              <span class="provider-status-dot"></span>
-              <span class="provider-status-name">{{ p.name }}</span>
-              <span class="provider-status-model">{{ p.model }}</span>
-              <span class="provider-status-state">
-                {{ p.configured ? 'Enabled' : 'API key missing' }}
+              <span class="ov-model-dot" :style="{ background: p.configured ? providerColor(p.key) : 'var(--border-color, #e5e7eb)' }"></span>
+              <span class="ov-model-name">{{ p.name.split('(')[0].trim() }}</span>
+              <span class="ov-model-meta">
+                <span v-if="!p.configured" class="ov-tag ov-tag-warn">Not configured</span>
+                <span v-else-if="modelMentionRate(p.key) !== null" class="ov-model-rate">{{ modelMentionRate(p.key) }}%</span>
+                <span v-else class="ov-tag ov-tag-muted">Ready</span>
               </span>
-            </div>
-            <p v-if="providerHealth.configured_count < providerHealth.total" class="text-xs text-muted" style="padding:8px 16px 4px;line-height:1.5">
-              Disabled providers won't be queried; configure their API keys in settings to include them.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <!-- AI Visibility Score — compact widget bar -->
-      <div v-if="latestAudit" class="card lr-score-widget" style="margin-bottom:24px">
-        <div class="lr-score-bar" @click="showScoreDetail = !showScoreDetail" style="cursor:pointer">
-          <!-- Mini score ring -->
-          <div class="lr-score-mini-ring">
-            <svg viewBox="0 0 36 36" class="lr-mini-svg">
-              <circle cx="18" cy="18" r="15" fill="none" stroke="var(--border-color)" stroke-width="3"/>
-              <circle cx="18" cy="18" r="15" fill="none" 
-                :stroke="isAuditComplete ? scoreColor(latestAudit.overall_score) : 'var(--text-muted)'" 
-                stroke-width="3" stroke-linecap="round"
-                :stroke-dasharray="94.2" 
-                :stroke-dashoffset="isAuditComplete ? 94.2 - (94.2 * (latestAudit.overall_score || 0) / 100) : 94.2"
-                transform="rotate(-90 18 18)"
-                style="transition: stroke-dashoffset 0.8s ease"/>
-            </svg>
-            <span class="lr-mini-num">{{ isAuditComplete ? latestAudit.overall_score : '—' }}</span>
-          </div>
-
-          <!-- Score info -->
-          <div class="lr-score-info">
-            <div class="lr-score-title">AI Visibility Score</div>
-            <div class="lr-score-sub">
-              <template v-if="isAuditComplete">
-                <span class="badge" :class="mentionBadge(latestAudit.mention_rate)" style="margin-right:6px">
-                  {{ Math.round(latestAudit.mention_rate || 0) }}% mention rate
-                </span>
-                <span class="text-xs text-muted">
-                  {{ (latestAudit.providers_queried || []).length }} providers · {{ latestAudit.total_queries || 0 }} queries
-                </span>
-              </template>
-              <template v-else>
-                <span class="badge badge-neutral">{{ latestAudit.status === 'pending' ? 'Queued' : 'Running' }}</span>
-                <span v-if="latestAudit.status === 'running'" class="text-xs text-muted" style="margin-left:6px">
-                  {{ latestAudit.queries_completed || 0 }}/{{ latestAudit.total_queries || '?' }} queries · {{ auditProgressPct }}%
-                </span>
-              </template>
-            </div>
-          </div>
-
-          <!-- Progress bar for running audits -->
-          <div v-if="latestAudit.status === 'running' || latestAudit.status === 'pending'" class="lr-score-progress">
-            <div class="progress-bar-track" style="height:4px;border-radius:4px">
-              <div class="progress-bar-fill" :style="{ width: auditProgressPct + '%' }" style="height:4px;border-radius:4px"></div>
-            </div>
-          </div>
-
-          <!-- Expand chevron -->
-          <svg class="lr-systems-chevron" :class="{ open: showScoreDetail }" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M4 6l4 4 4-4"/>
-          </svg>
-        </div>
-
-        <!-- Expandable detail: Score Breakdown + Provider grid -->
-        <div v-if="showScoreDetail" class="lr-score-detail">
-          <!-- Score Breakdown bars -->
-          <div v-if="latestAudit.status === 'completed'" class="score-factors" style="padding:16px 20px 8px">
-            <div class="factor-row">
-              <span class="factor-label">Mention Rate (40pts)</span>
-              <div class="factor-bar-wrap">
-                <div class="factor-bar" :style="{ width: mentionPts + '%', background: mentionPts > 25 ? 'var(--color-success)' : mentionPts > 10 ? 'var(--color-warning)' : 'var(--color-danger)' }"></div>
-              </div>
-              <span class="factor-value">{{ mentionPts }}/40</span>
-            </div>
-            <div class="factor-row">
-              <span class="factor-label">Rank Position (35pts)</span>
-              <div class="factor-bar-wrap">
-                <div class="factor-bar" :style="{ width: rankPts / 35 * 100 + '%', background: rankPts > 20 ? 'var(--color-success)' : rankPts > 10 ? 'var(--color-warning)' : 'var(--color-danger)' }"></div>
-              </div>
-              <span class="factor-value">{{ rankPts }}/35</span>
-            </div>
-            <div class="factor-row">
-              <span class="factor-label">Sentiment + Coverage (25pts)</span>
-              <div class="factor-bar-wrap">
-                <div class="factor-bar" :style="{ width: sentimentPts / 25 * 100 + '%', background: sentimentPts > 15 ? 'var(--color-success)' : sentimentPts > 8 ? 'var(--color-warning)' : 'var(--color-danger)' }"></div>
-              </div>
-              <span class="factor-value">{{ sentimentPts }}/25</span>
-            </div>
-          </div>
-
-          <!-- Provider Breakdown grid -->
-          <div v-if="latestBreakdown.length" class="provider-grid" style="padding:12px 20px 16px">
-            <div
-              v-for="p in latestBreakdown"
-              :key="p.provider"
-              class="provider-card"
-              :class="{ 'provider-mentioned': p.mentioned > 0, 'provider-failed': p.succeeded === 0 }"
-            >
-              <div class="provider-icon">{{ providerInitial(p.provider) }}</div>
-              <div class="provider-name">{{ p.provider_display || providerLabel(p.provider) }}</div>
-              <template v-if="p.succeeded === 0">
-                <span class="badge badge-danger">Not configured</span>
-              </template>
-              <template v-else>
-                <span class="badge" :class="p.mentioned > 0 ? 'badge-success' : 'badge-neutral'">
-                  {{ p.mention_rate }}% mentioned
-                </span>
-                <div v-if="p.avg_rank" class="text-xs text-muted" style="margin-top:4px">Avg rank #{{ p.avg_rank }}</div>
-                <div class="text-xs" style="margin-top:2px;color:var(--text-muted)">{{ p.succeeded }}/{{ p.total_prompts }} queries OK</div>
-              </template>
             </div>
           </div>
         </div>
       </div>
 
-
-      <!-- Prompts Table (rich view — matching reference design) -->
-      <div v-if="isAuditComplete && intentGroups.length" class="card" style="margin-bottom:24px">
-        <div class="card-header" style="border-bottom:1px solid var(--border-color, #E5E7EB)">
-          <h3 class="card-title" style="font-size:1.1rem;font-weight:700">Prompts</h3>
-          <div class="pt-header-right">
-            <div class="pi-filter">
-              <select v-model="groupBy" class="pi-select">
-                <option value="funnel_stage">Group by funnel stage</option>
-                <option value="intent">Group by topic</option>
-              </select>
-            </div>
-            <div class="pi-filter">
-              <select v-model="providerFilter" class="pi-select">
-                <option value="">All Providers</option>
-                <option v-for="p in availableProviderFilters" :key="p" :value="p">{{ providerLabel(p) }}</option>
-              </select>
-            </div>
+      <!-- Recent audits -->
+      <div class="card ov-card">
+        <div class="ov-card-head">
+          <div>
+            <h3 class="ov-card-title">Recent Audits</h3>
+            <p class="ov-card-sub">{{ audits.length }} {{ audits.length === 1 ? 'run' : 'runs' }}</p>
           </div>
-        </div>
-
-        <!-- Table header -->
-        <div class="pt-table">
-          <div class="pt-thead">
-            <span class="pt-th pt-th-topic">Topic</span>
-            <span class="pt-th pt-th-count">Prompts</span>
-            <span class="pt-th pt-th-vis">Avg Visibility</span>
-            <span class="pt-th pt-th-score">Score</span>
-            <span class="pt-th pt-th-perf">Top Performers</span>
-            <span class="pt-th pt-th-keywords">Top Keywords</span>
-            <span class="pt-th pt-th-status">Status</span>
-          </div>
-
-          <!-- Topic group rows -->
-          <template v-for="group in intentGroups" :key="group.intent">
-            <!-- Topic header row (clickable) -->
-            <div class="pt-topic-row" @click="toggleIntent(group.intent)">
-              <span class="pt-td pt-td-topic">
-                <svg class="pi-chevron" :class="{ open: !collapsedIntents.has(group.intent) }"
-                     width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M5 4l5 4-5 4"/>
-                </svg>
-                <span class="pt-topic-name">{{ groupLabel(group.intent) }}</span>
-              </span>
-              <span class="pt-td pt-td-count">{{ group.prompts.length }}</span>
-              <span class="pt-td pt-td-vis">
-                <span :style="{ color: visibilityColor(group.avgVisibility) }">{{ group.avgVisibility }}%</span>
-                <svg v-if="group.avgVisibility > 0" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-left:3px">
-                  <path d="M2 7L5 3L8 7" :stroke="group.avgVisibility >= 50 ? '#10b981' : '#f59e0b'"/>
-                </svg>
-              </span>
-              <span class="pt-td pt-td-score">
-                <strong :style="{ color: scoreColor(group.avgScore) }">{{ group.avgScore }}</strong>
-              </span>
-              <span class="pt-td pt-td-perf">
-                <span
-                  v-for="d in group.providerSummary"
-                  :key="d.provider"
-                  class="pt-perf-icon"
-                  :class="{ 'is-hit': d.hitRate > 50, 'is-partial': d.hitRate > 0 && d.hitRate <= 50, 'is-miss': d.hitRate === 0 }"
-                  :title="providerLabel(d.provider) + ': ' + d.hitRate + '% hit rate'"
-                >{{ providerInitial(d.provider) }}</span>
-              </span>
-              <span class="pt-td pt-td-keywords">
-                <span v-for="kw in group.topKeywords.slice(0, 3)" :key="kw" class="pt-kw-chip">{{ kw }}</span>
-                <span v-if="!group.topKeywords.length" class="pt-kw-empty">—</span>
-              </span>
-              <span class="pt-td pt-td-status">
-                <span class="pt-see-link">See →</span>
-              </span>
-            </div>
-
-            <!-- Expanded prompt rows -->
-            <template v-if="!collapsedIntents.has(group.intent)">
-              <template v-for="p in group.prompts" :key="p.text">
-                <div class="pt-prompt-row" @click="togglePrompt(p.text)">
-                  <span class="pt-td pt-td-topic pt-td-prompt-text">
-                    <svg class="pi-chevron pi-chevron-prompt" :class="{ open: expandedPrompts.has(p.text) }"
-                         width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M5 4l5 4-5 4"/>
-                    </svg>
-                    <span class="pt-prompt-block">
-                      <span class="pt-prompt-headline">
-                        {{ p.text }}
-                        <span
-                          v-if="geoTagFor(p.text)"
-                          class="pt-geo-badge"
-                          :style="geoCategoryStyle(geoTagFor(p.text).category)"
-                          :title="`GEO domain: ${geoTagFor(p.text).category_label}. Tag source: ${geoTagFor(p.text).source}.`"
-                        >{{ geoTagFor(p.text).category_label }}</span>
-                        <span
-                          v-if="geoTopRecommendation(p.text)"
-                          class="pt-geo-tactic"
-                          :title="geoTopRecommendation(p.text).summary + ' (+' + geoTopRecommendation(p.text).lift + '% avg lift per GEO paper)'"
-                        >
-                          <svg width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M3 8l3 3 7-7" stroke-linecap="round" stroke-linejoin="round"/>
-                          </svg>
-                          {{ geoTopRecommendation(p.text).label }}
-                          <span class="pt-geo-lift">+{{ geoTopRecommendation(p.text).lift }}%</span>
-                        </span>
-                      </span>
-                      <span v-if="p.rationale" class="pt-prompt-rationale">{{ p.rationale }}</span>
-                    </span>
-                  </span>
-                  <span class="pt-td pt-td-count"></span>
-                  <span class="pt-td pt-td-vis">
-                    <strong :style="{ color: visibilityColor(p.visibility) }">{{ p.visibility }}%</strong>
-                    <svg v-if="p.visibility > 0" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke-width="1.5" style="margin-left:3px">
-                      <path d="M2 7L5 3L8 7" :stroke="p.visibility >= 50 ? '#10b981' : '#f59e0b'"/>
-                    </svg>
-                  </span>
-                  <span class="pt-td pt-td-score">
-                    <strong :style="{ color: scoreColor(p.score) }">{{ p.score }}</strong>
-                  </span>
-                  <span class="pt-td pt-td-perf">
-                    <span
-                      v-for="d in p.providerDots"
-                      :key="d.provider"
-                      class="pt-perf-icon"
-                      :class="{ 'is-hit': d.mentioned, 'is-miss': !d.mentioned && d.succeeded, 'is-fail': !d.succeeded }"
-                      :title="providerLabel(d.provider) + ': ' + providerDotTitle(d)"
-                    >
-                      {{ providerInitial(d.provider) }}<sub v-if="d.rank" class="pt-perf-rank">{{ d.rank }}</sub>
-                    </span>
-                  </span>
-                  <span class="pt-td pt-td-keywords">
-                    <span v-for="kw in p.matchedKeywords.slice(0, 3)" :key="kw" class="pt-kw-chip">{{ kw }}</span>
-                    <span v-if="!p.matchedKeywords.length" class="pt-kw-empty">—</span>
-                  </span>
-                  <span class="pt-td pt-td-status">
-                    <span class="pt-status-pill" :class="promptStatusClass(p)">
-                      {{ promptStatusLabel(p) }}
-                    </span>
-                  </span>
-                </div>
-
-                <!-- Per-prompt expansion panel -->
-                <div v-if="expandedPrompts.has(p.text)" class="pt-prompt-detail">
-                  <div class="pt-detail-summary">
-                    <div class="pt-detail-stat">
-                      <span class="pt-detail-stat-label">Score</span>
-                      <span class="pt-detail-stat-value" :style="{ color: scoreColor(p.score) }">{{ p.score }}/100</span>
-                    </div>
-                    <div class="pt-detail-stat">
-                      <span class="pt-detail-stat-label">Visibility</span>
-                      <span class="pt-detail-stat-value">{{ p.visibility }}%</span>
-                    </div>
-                    <div class="pt-detail-stat">
-                      <span class="pt-detail-stat-label">Avg rank</span>
-                      <span class="pt-detail-stat-value">{{ p.avgRank ? '#' + p.avgRank : '—' }}</span>
-                    </div>
-                    <div class="pt-detail-stat">
-                      <span class="pt-detail-stat-label">Sentiment</span>
-                      <span class="pt-detail-stat-value pt-sentiment" :class="'pt-sentiment-' + p.dominantSentiment">{{ p.dominantSentiment }}</span>
-                    </div>
-                  </div>
-
-                  <div v-if="geoTagFor(p.text)" class="pt-detail-section pt-geo-block">
-                    <div class="pt-detail-label">
-                      GEO recommendations
-                      <span class="pt-geo-block-cat" :style="geoCategoryStyle(geoTagFor(p.text).category)">
-                        {{ geoTagFor(p.text).category_label }}
-                      </span>
-                    </div>
-                    <p class="pt-geo-block-sub">
-                      Per the GEO paper (Aggarwal et al., KDD '24), prompts in
-                      the <strong>{{ geoTagFor(p.text).category_label }}</strong>
-                      domain respond best to these tactics — ranked by
-                      published visibility lift on Position-Adjusted Word Count.
-                    </p>
-                    <ol class="pt-geo-list">
-                      <li v-for="rec in geoTagFor(p.text).recommendations" :key="rec.id" class="pt-geo-item">
-                        <span class="pt-geo-rank">#{{ rec.rank }}</span>
-                        <span class="pt-geo-body">
-                          <span class="pt-geo-label">{{ rec.label }}</span>
-                          <span class="pt-geo-summary">{{ rec.summary }}</span>
-                        </span>
-                        <span class="pt-geo-lift-pill">+{{ rec.lift }}%</span>
-                      </li>
-                    </ol>
-                  </div>
-
-                  <div class="pt-detail-section">
-                    <div class="pt-detail-label">Per-provider results</div>
-                    <div v-for="r in p.responses" :key="r.provider" class="pt-resp-card">
-                      <div class="pt-resp-head">
-                        <span class="pt-resp-prov-dot" :class="'is-' + (r.provider || '').toLowerCase().replace(/[^a-z0-9]/g, '')"></span>
-                        <span class="pt-resp-prov">{{ providerLabel(r.provider) }}</span>
-                        <span v-if="r.is_mentioned" class="pt-resp-badge is-hit">
-                          {{ r.mention_rank ? 'rank #' + r.mention_rank : 'mentioned' }}
-                        </span>
-                        <span v-else-if="r.query_succeeded" class="pt-resp-badge is-miss">not mentioned</span>
-                        <span v-else class="pt-resp-badge is-fail">API failed</span>
-                        <span v-if="r.sentiment" class="pt-resp-badge pt-sentiment" :class="'pt-sentiment-' + r.sentiment">{{ r.sentiment }}</span>
-                        <div class="pt-resp-actions">
-                          <button
-                            v-if="(r.response_text || r.mention_context || '').length > 220"
-                            type="button"
-                            class="pt-resp-btn"
-                            @click.stop="toggleResponseExpand(p.text + '|' + r.provider)"
-                          >
-                            {{ isResponseExpanded(p.text + '|' + r.provider) ? 'Collapse' : 'Show full response' }}
-                          </button>
-                          <button
-                            v-if="r.response_text || r.mention_context"
-                            type="button"
-                            class="pt-resp-btn"
-                            @click.stop="copyResponse(r.response_text || r.mention_context)"
-                          >Copy</button>
-                        </div>
-                      </div>
-                      <div
-                        v-if="r.response_text || r.mention_context"
-                        class="pt-resp-body"
-                        :class="{ 'is-expanded': isResponseExpanded(p.text + '|' + r.provider) }"
-                      >
-                        <span class="pt-resp-text">
-                          {{
-                            isResponseExpanded(p.text + '|' + r.provider)
-                              ? (r.response_text || r.mention_context)
-                              : (r.mention_context || r.response_text || '').slice(0, 220) + ((r.response_text || r.mention_context || '').length > 220 ? '…' : '')
-                          }}
-                        </span>
-                      </div>
-                      <div v-else class="pt-resp-empty">No response captured.</div>
-                    </div>
-                  </div>
-
-                  <div v-if="p.matchedKeywords.length" class="pt-detail-section">
-                    <div class="pt-detail-label">Keywords found alongside your brand</div>
-                    <span v-for="kw in p.matchedKeywords" :key="kw" class="pt-kw-chip pt-kw-chip-strong">{{ kw }}</span>
-                  </div>
-
-                  <div v-if="p.topCompetitors.length" class="pt-detail-section">
-                    <div class="pt-detail-label">Competitors named on this prompt</div>
-                    <span v-for="c in p.topCompetitors.slice(0, 8)" :key="c.name" class="pt-comp-chip">
-                      {{ c.name }}<sub>×{{ c.count }}</sub>
-                    </span>
-                  </div>
-                </div>
-              </template>
-            </template>
-          </template>
-        </div>
-      </div>
-
-      <!-- Prompt Activity — chronological per-query record -->
-      <!-- Replaces the old Pipeline Log + Live Results ticker. Shows what
-           we asked, when we asked it, which model answered, and whether
-           the brand was mentioned. Same data is visible during a running
-           audit (partial) and after completion (full). -->
-      <div v-if="promptActivity.length" class="card" style="margin-bottom:24px">
-        <div class="card-header">
-          <h3 class="card-title">
-            Prompt Activity
-            <span v-if="isAuditRunning" class="text-xs text-muted" style="font-weight:500">
-              · running
-            </span>
-          </h3>
-          <span class="text-xs text-muted">
-            {{ filteredPromptActivity.length }}<template v-if="filteredPromptActivity.length !== promptActivity.length">/{{ promptActivity.length }}</template>
-            prompt{{ promptActivity.length === 1 ? '' : 's' }}
-            <template v-if="logProgress.total">
-              · {{ logProgress.completed }}/{{ logProgress.total }} queries
-            </template>
-          </span>
-        </div>
-
-        <!-- Filters: search, provider, status, sort. Operate on the
-             promptActivity array client-side so the Status poll can
-             continue refreshing the full list underneath without
-             losing the user's filter state. -->
-        <div class="pa-filters">
-          <div class="pa-filter-search">
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
-              <circle cx="7" cy="7" r="5"/>
-              <path d="M11 11l3 3"/>
-            </svg>
-            <input
-              v-model="paFilters.search"
-              class="pa-filter-input"
-              placeholder="Search prompts..."
-              type="text"
-            />
-          </div>
-          <select v-model="paFilters.provider" class="pa-filter-select">
-            <option value="">All providers</option>
-            <option v-for="key in promptActivityProviders" :key="key" :value="key">
-              {{ providerLabel(key) }}
-            </option>
-          </select>
-          <select v-model="paFilters.status" class="pa-filter-select">
-            <option value="">All status</option>
-            <option value="mentioned">Mentioned</option>
-            <option value="not_mentioned">Not mentioned</option>
-            <option value="error">API error</option>
-          </select>
-          <select v-model="paFilters.sort" class="pa-filter-select">
-            <option value="time_asc">Oldest first</option>
-            <option value="time_desc">Newest first</option>
-            <option value="rank_asc">Best rank first</option>
-            <option value="provider">Group by provider</option>
-          </select>
-          <button
-            v-if="paFiltersActive"
-            class="pa-filter-clear"
-            @click="resetPromptActivityFilters"
-            title="Clear all filters"
-          >
-            Clear
+          <button v-if="audits.length > 5" class="btn btn-ghost btn-sm" @click="showAllAudits = !showAllAudits">
+            {{ showAllAudits ? 'Show recent' : 'Show all' }}
           </button>
         </div>
 
-        <div class="prompt-activity-head">
-          <span class="pa-time">Time</span>
-          <span class="pa-provider">Provider</span>
-          <span class="pa-model">Model</span>
-          <span class="pa-prompt">Prompt</span>
-          <span class="pa-status">Status</span>
+        <div v-if="!audits.length" class="ov-empty-inline">
+          <p>No audits yet. Kick off your first run from the Prompt Library.</p>
         </div>
-        <div class="prompt-activity-list">
+        <div v-else class="ov-audit-table">
+          <div class="ov-audit-head">
+            <span>Date</span>
+            <span>Score</span>
+            <span>Mention Rate</span>
+            <span>Queries</span>
+            <span>Status</span>
+            <span></span>
+          </div>
           <div
-            v-for="r in filteredPromptActivity"
-            :key="r.id || (r.provider + r.prompt + r.created_at)"
-            class="prompt-activity-row"
-            :class="{ 'pa-fail': !r.query_succeeded, 'pa-hit': r.is_mentioned }"
+            v-for="audit in visibleAudits"
+            :key="audit.id"
+            class="ov-audit-row"
+            :class="{ selected: selectedAuditId === audit.id }"
+            @click="selectedAuditId = audit.id"
           >
-            <span class="pa-time">{{ formatPromptTime(r.created_at) }}</span>
-            <span class="pa-provider">
-              <span class="pa-provider-dot" :style="{ background: providerColor(r.provider) }"></span>
-              {{ providerLabel(r.provider) }}
+            <span class="ov-audit-date">{{ formatDate(audit.created_at) }}</span>
+            <span class="ov-audit-score">
+              <strong>{{ audit.overall_score != null ? Math.round(audit.overall_score) : '—' }}</strong>
+              <span v-if="audit.overall_score != null" class="text-muted">/100</span>
             </span>
-            <span class="pa-model" :title="providerModel(r.provider)">
-              {{ providerModel(r.provider) }}
+            <span>{{ audit.mention_rate != null ? Math.round(audit.mention_rate) + '%' : '—' }}</span>
+            <span class="text-muted">{{ audit.total_queries || 0 }} queries</span>
+            <span>
+              <span class="ov-status" :class="auditStatusClass(audit.status)">{{ capitalize(audit.status || 'pending') }}</span>
             </span>
-            <span class="pa-prompt" :title="r.prompt">
-              {{ r.prompt }}
-              <span class="badge badge-source" :class="badgeClass(r.prompt_source_label)">
-                {{ formatLabel(r.prompt_source_label) }}
-              </span>
-            </span>
-            <span class="pa-status">
-              <span v-if="!r.query_succeeded" class="badge badge-danger">API error</span>
-              <span v-else-if="r.is_mentioned" class="badge badge-success">
-                Ranked #{{ r.mention_rank || '—' }}
-              </span>
-              <span v-else class="badge badge-neutral">Not mentioned</span>
+            <span class="ov-audit-actions">
               <button
-                v-if="citationsForResult(r.id).length"
-                class="badge badge-citation"
-                style="margin-left:6px;cursor:pointer;border:0"
-                @click.stop="openCitationsDrawer(r)"
-                :title="`View ${citationsForResult(r.id).length} citations`"
+                v-if="audit.status === 'pending' || audit.status === 'failed'"
+                class="btn btn-ghost btn-sm"
+                @click.stop="runAuditNow(audit)"
+                :disabled="runningAuditId === audit.id"
               >
-                {{ citationsForResult(r.id).length }} citation{{ citationsForResult(r.id).length === 1 ? '' : 's' }}
+                {{ runningAuditId === audit.id ? 'Running…' : 'Run' }}
               </button>
+              <button
+                class="btn btn-ghost btn-sm ov-audit-delete"
+                aria-label="Delete audit"
+                @click.stop="confirmDeleteId = audit.id"
+              >×</button>
             </span>
           </div>
-          <div v-if="!filteredPromptActivity.length" class="pa-empty">
-            No prompts match the current filters.
-            <button class="pa-filter-clear" @click="resetPromptActivityFilters">Clear filters</button>
-          </div>
         </div>
       </div>
 
-      <!-- Overview row: trends (left) + competitors leaderboard (right) -->
-      <div v-if="history.length || (isAuditComplete && competitorLeaderboard.length)"
-           class="lr-grid-2" style="margin-bottom:24px">
-        <!-- AI Visibility Trends -->
-        <div v-if="history.length >= 1" class="card lr-grid-main">
-          <div class="card-header">
-            <h3 class="card-title">Provider Comparison</h3>
-            <span class="text-xs text-muted">Mention rate across LLMs</span>
+      <!-- Usage -->
+      <div v-if="usageData" class="card ov-card">
+        <div class="ov-card-head">
+          <div>
+            <h3 class="ov-card-title">Usage</h3>
+            <p class="ov-card-sub">Last {{ usageDays }} days</p>
           </div>
-          <div class="chart-wrap">
-            <Bar :data="providerChartData" :options="providerChartOptions" />
-          </div>
-        </div>
-
-        <!-- Trend Line Chart -->
-        <div v-if="historyData.length >= 2" class="card chart-card">
-          <div class="card-header">
-            <h3 class="card-title">Score Trend</h3>
-            <span class="text-xs text-muted">AI visibility over time</span>
-          </div>
-          <div class="chart-wrap">
-            <Line :data="trendChartData" :options="trendChartOptions" />
-          </div>
-          <p class="text-xs text-muted" style="padding:0 16px 16px">
-            Brands LLMs list alongside you. Your real competitive set in AI search.
-          </p>
-        </div>
-      </div>
-
-      <!-- Detailed Findings -->
-      <div v-if="auditDetail && auditDetail.results && auditDetail.results.length" class="card" style="margin-bottom:24px">
-        <div class="card-header" style="cursor:pointer" @click="showFindings = !showFindings">
-          <h3 class="card-title">Detailed Findings ({{ successfulResults.length }} queries analyzed)</h3>
-          <span class="text-xs text-muted">{{ showFindings ? 'Collapse' : 'Expand' }}</span>
-        </div>
-        <div v-if="showFindings" class="findings-list">
-          <!-- Summary stats at top -->
-          <div class="findings-summary">
-            <div class="summary-stat">
-              <span class="summary-num">{{ successfulResults.length }}</span>
-              <span class="summary-label">Queries Sent</span>
-            </div>
-            <div class="summary-stat">
-              <span class="summary-num">{{ mentionedResults.length }}</span>
-              <span class="summary-label">Mentions Found</span>
-            </div>
-            <div class="summary-stat">
-              <span class="summary-num">{{ mentionedResults.length ? avgRankDisplay : 'N/A' }}</span>
-              <span class="summary-label">Avg Rank</span>
-            </div>
-            <div class="summary-stat">
-              <span class="summary-num">{{ promptsUsed }}</span>
-              <span class="summary-label">Unique Prompts</span>
-            </div>
-            <div class="summary-stat">
-              <span class="summary-num" style="font-size:14px;line-height:1.3">{{ coverage }}</span>
-              <span class="summary-label">Prompt Coverage</span>
-            </div>
-            <div class="summary-stat">
-              <span class="summary-num">{{ totalAuditCitations }}</span>
-              <span class="summary-label">Citations</span>
-              <button
-                class="btn-ghost btn-sm"
-                style="margin-top:4px;font-size:11px;color:var(--accent, #ec4899)"
-                @click="gotoSourceInfluence"
-              >
-                View source influence →
-              </button>
-            </div>
-            <div class="summary-stat">
-              <span class="summary-num">{{ contentBriefsForAudit }}</span>
-              <span class="summary-label">Content suggested</span>
-              <button
-                class="btn-ghost btn-sm"
-                style="margin-top:4px;font-size:11px;color:#FF385C"
-                @click="gotoContentStudio"
-              >
-                Open in Content Studio →
-              </button>
-            </div>
-          </div>
-          <!-- Mini source-class breakdown for this audit. -->
-          <div
-            v-if="auditSourceInfluence && auditSourceInfluence.breakdown && Object.keys(auditSourceInfluence.breakdown).length"
-            style="margin: 4px 0 16px"
-          >
-            <SourceBreakdownBar :breakdown="auditSourceInfluence.breakdown" :height="10" />
-          </div>
-
-          <!-- Per-query results -->
-          <template v-for="(r, i) in auditDetail.results" :key="i">
-            <div v-if="r.query_succeeded" class="finding-card" :class="{ 'finding-mentioned': r.is_mentioned }">
-              <div class="finding-number">#{{ i + 1 }}</div>
-              <div class="finding-body">
-                <div class="finding-header">
-                  <span class="finding-provider">{{ providerLabel(r.provider) }}</span>
-                  <span v-if="r.is_mentioned" class="badge badge-success">Ranked #{{ r.mention_rank || '?' }}</span>
-                  <span v-else class="badge badge-neutral">Not found in response</span>
-                  <span v-if="r.sentiment && r.sentiment !== 'not_mentioned'" class="badge" :class="r.sentiment === 'positive' ? 'badge-success' : r.sentiment === 'negative' ? 'badge-danger' : 'badge-neutral'" style="margin-left:4px">
-                    {{ r.sentiment }}
-                  </span>
-                  <span class="finding-confidence" v-if="r.confidence_score">{{ Math.round(r.confidence_score) }}% confidence</span>
-                  <button
-                    v-if="citationsForResult(r.id).length"
-                    class="badge badge-citation"
-                    style="margin-left:6px;cursor:pointer;border:0"
-                    @click="openCitationsDrawer(r)"
-                  >
-                    {{ citationsForResult(r.id).length }} citation{{ citationsForResult(r.id).length === 1 ? '' : 's' }}
-                  </button>
-                </div>
-                <div class="finding-prompt">
-                  <strong>Q:</strong> {{ r.prompt }}
-                  <span class="badge badge-source" :class="badgeClass(r.prompt_source_label)">
-                    {{ formatLabel(r.prompt_source_label) }}
-                  </span>
-                </div>
-                <div v-if="r.mention_context" class="finding-context">
-                  <strong>Match:</strong> "...{{ r.mention_context }}..."
-                </div>
-                <details v-if="r.response_text" class="finding-response">
-                  <summary class="response-toggle">View full AI response ({{ r.response_text.length }} chars)</summary>
-                  <pre class="response-pre">{{ r.response_text }}</pre>
-                </details>
-              </div>
-            </div>
-            <!-- Failed queries shown compactly -->
-            <div v-else class="finding-card finding-failed">
-              <div class="finding-number">#{{ i + 1 }}</div>
-              <div class="finding-body">
-                <div class="finding-header">
-                  <span class="finding-provider">{{ providerLabel(r.provider) }}</span>
-                  <span class="badge badge-danger">API Failed</span>
-                </div>
-                <div class="finding-error">{{ r.error_message }}</div>
-              </div>
-            </div>
-          </template>
-        </div>
-      </div>
-
-      <!-- Recommendations -->
-      <div v-if="recommendations.length" class="card" style="margin-bottom:24px">
-        <div class="card-header">
-          <h3 class="card-title">Recommendations</h3>
-        </div>
-        <div class="recs-list">
-          <div v-for="(rec, i) in recommendations" :key="i" class="rec-row">
-            <span class="rec-num">{{ i + 1 }}</span>
-            <span class="text-sm" style="color:var(--text-secondary);line-height:1.5">{{ rec }}</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- How Scoring Works (when audit is completed, shown below) -->
-      <div v-if="latestAudit && latestAudit.status === 'completed'" class="card" style="margin-bottom:24px">
-        <div class="card-header" style="cursor:pointer" @click="showMethodology = !showMethodology">
-          <h3 class="card-title">How This Score Was Calculated</h3>
-          <span class="text-xs text-muted">{{ showMethodology ? 'Hide' : 'Show' }}</span>
-        </div>
-        <div v-if="showMethodology" class="methodology-content">
-          <div class="method-steps">
-            <div class="method-step">
-              <div class="step-num">1</div>
-              <div>
-                <div class="step-title">Generate Prompts</div>
-                <div class="step-desc">{{ auditDetail?.prompts?.length || latestAudit.prompts?.length || '?' }} natural-language questions were generated based on your business name, industry{{ latestAudit.location ? ', and location (' + latestAudit.location + ')' : '' }}.</div>
-              </div>
-            </div>
-            <div class="method-step">
-              <div class="step-num">2</div>
-              <div>
-                <div class="step-title">Query AI Providers</div>
-                <div class="step-desc">Each prompt was sent to {{ (latestAudit.providers_queried || []).join(', ') || 'selected providers' }}. We ask the AI to list top options in your industry to simulate real user queries.</div>
-              </div>
-            </div>
-            <div class="method-step">
-              <div class="step-num">3</div>
-              <div>
-                <div class="step-title">Analyze Responses</div>
-                <div class="step-desc">Each response is scanned for your business name. If found, we extract the rank position (e.g., listed 3rd out of 10) and the sentiment of the mention (positive, neutral, or negative).</div>
-              </div>
-            </div>
-            <div class="method-step">
-              <div class="step-num">4</div>
-              <div>
-                <div class="step-title">Compute Score</div>
-                <div class="step-desc">
-                  <strong>Mention Rate</strong> (40pts): Beta(2,8)-smoothed mention rate &mdash; small samples shrink toward a 20% prior so a 1/1 audit can't peg the score at 100%.
-                  <strong>Rank Position</strong> (35pts): Higher rank = more points (rank #1 → 35pts, #5 → 20pts).
-                  <strong>Sentiment + Coverage</strong> (25pts): Positive mentions and multi-provider presence boost this.
-                  <br><br>
-                  <strong>Brand strengths</strong> in the rankings table are fit with a Plackett-Luce model across all responses where you and competitors appeared with positions, so they reflect head-to-head dominance rather than raw mention counts.
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Audit Jobs -->
-      <div class="card">
-        <div class="card-header">
-          <h3 class="card-title">Audit Jobs</h3>
-          <span class="text-xs text-muted">{{ audits.length }} run{{ audits.length !== 1 ? 's' : '' }}</span>
-        </div>
-
-        <div v-if="audits.length === 0" class="empty-state">
-          <div class="empty-state-title">No audits yet</div>
-          <p class="empty-state-desc">Run your first audit to see how LLMs rank your business.</p>
-        </div>
-
-        <div v-else class="lr-audit-jobs">
-          <div v-for="audit in audits" :key="audit.id" class="lr-job-block">
-            <!-- Job header row (clickable) -->
-            <div
-              class="lr-job-header"
-              :class="{ 'is-active': expandedAuditId === audit.id, 'row-selected': selectedAuditId === audit.id }"
-              @click="toggleAuditExpand(audit)"
-            >
-              <svg class="lr-job-chevron" :class="{ open: expandedAuditId === audit.id }" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M5 4l5 4-5 4"/>
-              </svg>
-              <span class="lr-job-date">{{ formatDate(audit.created_at) }}</span>
-              <span class="lr-job-name">{{ audit.business_name }}</span>
-              <span class="lr-job-score">
-                <span class="score-pill" :class="scorePillClass(audit.overall_score)">
-                  {{ audit.overall_score ?? '—' }}
-                </span>
-              </span>
-              <span class="lr-job-mention">{{ Math.round(audit.mention_rate || 0) }}%</span>
-              <span class="lr-job-queries">{{ audit.total_queries || '—' }} queries</span>
-              <span class="lr-job-status">
-                <button
-                  v-if="audit.status === 'pending' || audit.status === 'failed'"
-                  class="btn btn-sm lr-run-btn"
-                  :disabled="runningAuditId === audit.id"
-                  @click.stop="executeAuditJob(audit)"
-                >
-                  <template v-if="runningAuditId === audit.id">
-                    <span class="pulse-dot" style="width:6px;height:6px;display:inline-block;margin-right:4px"></span>
-                    Running…
-                  </template>
-                  <template v-else>▶ Run</template>
-                </button>
-                <span v-else-if="audit.status === 'running'" class="badge badge-warning">
-                  <span class="pulse-dot" style="width:5px;height:5px;display:inline-block;margin-right:3px"></span>
-                  running
-                </span>
-                <span v-else class="badge" :class="auditStatusBadge(audit.status)">{{ audit.status }}</span>
-              </span>
-              <span class="lr-job-actions">
-                <div v-if="confirmDeleteId === audit.id" class="flex gap-8 items-center" @click.stop>
-                  <button class="btn btn-danger btn-sm" @click.stop="confirmDelete(audit)">Yes</button>
-                  <button class="btn btn-secondary btn-sm" @click.stop="confirmDeleteId = null">No</button>
-                </div>
-                <button v-else class="btn btn-ghost btn-sm delete-btn" @click.stop="confirmDeleteId = audit.id">×</button>
-              </span>
-            </div>
-            <!-- Cost caption (only when populated) -->
-            <div v-if="audit.total_cost_usd && Number(audit.total_cost_usd) > 0" class="lr-job-cost-caption">
-              ${{ Number(audit.total_cost_usd).toFixed(4) }} · {{ formatTokens(audit.total_tokens) }} tokens
-            </div>
-
-            <!-- Expanded prompt jobs -->
-            <div v-if="expandedAuditId === audit.id" class="lr-job-detail">
-              <div v-if="!audit.prompts || !audit.prompts.length" class="text-xs text-muted" style="padding:12px 16px">
-                <template v-if="audit.status === 'pending'">
-                  <span class="pulse-dot" style="margin-right:6px"></span>
-                  Queued — prompts will appear when the job starts running.
-                </template>
-                <template v-else-if="audit.status === 'running'">
-                  <span class="pulse-dot" style="margin-right:6px"></span>
-                  Running {{ audit.queries_completed || 0 }}/{{ audit.total_queries || '?' }} queries...
-                </template>
-                <template v-else>No prompt data available for this audit.</template>
-              </div>
-              <div v-else class="lr-prompt-jobs">
-                <div class="lr-prompt-header">
-                  <span class="lr-ph-num">#</span>
-                  <span class="lr-ph-prompt">Prompt</span>
-                  <span class="lr-ph-type">Type</span>
-                  <span class="lr-ph-providers">Providers</span>
-                  <span class="lr-ph-result">Result</span>
-                </div>
-                <div
-                  v-for="(prompt, pi) in audit.prompts"
-                  :key="pi"
-                  class="lr-prompt-row"
-                >
-                  <span class="lr-pr-num">{{ pi + 1 }}</span>
-                  <span class="lr-pr-prompt">
-                    <span class="lr-pr-prompt-text">{{ promptText(prompt) }}</span>
-                    <span v-if="promptRationale(prompt)" class="lr-pr-rationale">
-                      {{ promptRationale(prompt) }}
-                    </span>
-                  </span>
-                  <span class="lr-pr-type">
-                    <span class="badge badge-neutral" style="font-size:10px">{{ promptIntents[pi] || 'custom' }}</span>
-                    <span
-                      v-if="promptStageLabel(prompt, promptIntents[pi] || 'custom')"
-                      class="badge"
-                      :class="'lr-pr-stage-' + (prompt?.funnel_stage || INTENT_TO_FUNNEL[promptIntents[pi]] || 'niche')"
-                      style="font-size:10px;margin-left:4px"
-                    >{{ promptStageLabel(prompt, promptIntents[pi] || 'custom') }}</span>
-                  </span>
-                  <span class="lr-pr-providers">
-                    <span
-                      v-for="prov in (audit.providers_queried || [])"
-                      :key="prov"
-                      class="lr-pr-dot"
-                      :title="providerLabel(prov)"
-                    >{{ providerInitial(prov) }}</span>
-                  </span>
-                  <span class="lr-pr-result">
-                    <span v-if="audit.status === 'completed'" class="badge" :class="getPromptMentioned(audit, pi) ? 'badge-success' : 'badge-neutral'" style="font-size:10px">
-                      {{ getPromptMentioned(audit, pi) ? 'Mentioned' : 'No mention' }}
-                    </span>
-                    <span v-else-if="audit.status === 'running'" class="pulse-dot" style="width:6px;height:6px"></span>
-                    <span v-else class="text-xs text-muted">—</span>
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- ═══ Prompt Results Table ═════════════════════════════════════════ -->
-      <div v-if="audits.length && isAuditComplete && promptResultsData" class="card" style="margin-top:16px">
-        <div class="card-header" style="flex-wrap:wrap;gap:8px">
-          <h3 class="card-title">Prompt Results</h3>
-          <div class="pr-filters">
-            <select v-model="promptFilterProvider" class="pr-select" @change="loadPromptResults">
-              <option value="">All Models</option>
-              <option v-for="p in (latestAudit?.providers_queried || [])" :key="p" :value="p">{{ providerLabel(p) }}</option>
-            </select>
-            <select v-model="promptFilterType" class="pr-select" @change="loadPromptResults">
-              <option value="">All Types</option>
-              <option value="recommendation">Recommendation</option>
-              <option value="comparison">Comparison</option>
-              <option value="use_case">Use Case</option>
-              <option value="persona">Persona</option>
-              <option value="custom">Custom</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="pr-table-wrap">
-          <table class="pr-table">
-            <thead>
-              <tr>
-                <th style="width:36px">#</th>
-                <th>Prompt</th>
-                <th style="width:90px">Type</th>
-                <th style="width:80px">Visibility</th>
-                <th style="width:160px">Providers</th>
-                <th style="width:72px">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="p in promptResultsData.prompts" :key="p.index" class="pr-row">
-                <td class="pr-num">{{ p.index }}</td>
-                <td class="pr-prompt">{{ p.prompt }}</td>
-                <td>
-                  <span class="badge badge-neutral" style="font-size:10px;text-transform:capitalize">{{ p.prompt_type }}</span>
-                </td>
-                <td>
-                  <div class="pr-vis-wrap">
-                    <div class="pr-vis-bar">
-                      <div class="pr-vis-fill" :class="visTier(p.avg_visibility)" :style="{ width: p.avg_visibility + '%' }"></div>
-                    </div>
-                    <span class="pr-vis-pct" :class="visTier(p.avg_visibility)">{{ p.avg_visibility }}%</span>
-                  </div>
-                </td>
-                <td>
-                  <div class="pr-providers">
-                    <span
-                      v-for="prov in Object.values(p.providers)"
-                      :key="prov.provider"
-                      class="pr-prov-pill"
-                      :class="{ mentioned: prov.mentioned, failed: !prov.succeeded }"
-                      :title="`${prov.provider_display}: ${prov.mentioned ? 'Mentioned (rank #' + (prov.rank || '—') + ', ' + prov.sentiment + ')' : 'Not mentioned'}`"
-                      @click="openProviderDetail(prov.provider)"
-                    >{{ providerInitial(prov.provider) }}</span>
-                  </div>
-                </td>
-                <td>
-                  <span class="badge" :class="promptStatusBadge(p.status)" style="font-size:10px">{{ p.status }}</span>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- ═══ Usage Meter ═════════════════════════════════════════════════ -->
-      <div v-if="audits.length && usageData" class="card" style="margin-top:16px">
-        <div class="card-header">
-          <h3 class="card-title">Usage</h3>
-          <select v-model="usageDays" class="pr-select" @change="loadUsage" style="margin-left:auto">
+          <select v-model.number="usageDays" class="ov-select" @change="loadUsage">
             <option :value="7">Last 7 days</option>
             <option :value="30">Last 30 days</option>
             <option :value="90">Last 90 days</option>
           </select>
         </div>
 
-        <div class="usage-grid">
-          <div class="usage-stat">
-            <div class="usage-val">{{ usageData.totals.calls }}</div>
-            <div class="usage-label">API Calls</div>
+        <div class="ov-usage-totals">
+          <div class="ov-usage-cell">
+            <div class="ov-usage-val">{{ usageData.totals.calls }}</div>
+            <div class="ov-usage-label">API Calls</div>
           </div>
-          <div class="usage-stat">
-            <div class="usage-val">{{ formatTokens(usageData.totals.total_tokens) }}</div>
-            <div class="usage-label">Tokens Used</div>
+          <div class="ov-usage-cell">
+            <div class="ov-usage-val">{{ formatTokens(usageData.totals.total_tokens) }}</div>
+            <div class="ov-usage-label">Tokens</div>
           </div>
-          <div class="usage-stat">
-            <div class="usage-val">${{ usageData.totals.estimated_cost_usd.toFixed(2) }}</div>
-            <div class="usage-label">Estimated Cost</div>
+          <div class="ov-usage-cell">
+            <div class="ov-usage-val">${{ usageData.totals.estimated_cost_usd.toFixed(2) }}</div>
+            <div class="ov-usage-label">Estimated Cost</div>
           </div>
-          <div class="usage-stat">
-            <div class="usage-val">{{ usageData.audit_stats.total_audits }}</div>
-            <div class="usage-label">Audits Run</div>
+          <div class="ov-usage-cell">
+            <div class="ov-usage-val">{{ usageData.audit_stats.total_audits }}</div>
+            <div class="ov-usage-label">Audits</div>
           </div>
         </div>
 
-        <!-- Per-model breakdown -->
-        <div v-if="usageData.by_model.length" class="usage-models">
-          <div class="usage-model-header">
+        <div v-if="usageData.by_model && usageData.by_model.length" class="ov-usage-models">
+          <div class="ov-usage-models-head">
             <span>Model</span><span>Calls</span><span>Tokens</span><span>Cost</span>
           </div>
-          <div v-for="m in usageData.by_model" :key="m.model_name" class="usage-model-row">
-            <span class="usage-model-name">{{ m.model_name }}</span>
+          <div v-for="m in usageData.by_model" :key="m.model_name" class="ov-usage-models-row">
+            <span class="ov-usage-model-name">{{ m.model_name }}</span>
             <span>{{ m.calls }}</span>
             <span>{{ formatTokens(m.tokens) }}</span>
             <span>${{ Number(m.cost || 0).toFixed(4) }}</span>
           </div>
         </div>
-
-        <div v-else class="text-xs text-muted" style="padding:12px 16px">
-          No API usage recorded yet. Run an audit to see usage data.
-        </div>
       </div>
-    </template>
 
+      </template>
     </div><!-- /overview tab -->
 
     <div v-show="activeTab === 'performance'" class="lr-performance">
@@ -2686,6 +1604,34 @@ const perfKpis = computed(() => {
 })
 const promptLibraryRoute = computed(() => `/llm-ranking/${websiteId}/prompts`)
 const promptLibraryRepoRoute = computed(() => `/llm-ranking/${websiteId}/prompts?tab=repository`)
+
+// Overview tab helpers ------------------------------------------------------
+const showAllAudits = ref(false)
+const visibleAudits = computed(() => showAllAudits.value ? audits.value : audits.value.slice(0, 5))
+
+function capitalize(s) {
+  if (!s) return ''
+  return String(s).charAt(0).toUpperCase() + String(s).slice(1)
+}
+
+function modelMentionRate(key) {
+  const hit = (latestBreakdown.value || []).find(p => p.provider === key)
+  if (!hit || hit.mention_rate == null) return null
+  return Math.round(hit.mention_rate)
+}
+
+function auditStatusClass(status) {
+  return {
+    pending: 'ov-status-pending',
+    running: 'ov-status-running',
+    completed: 'ov-status-success',
+    failed: 'ov-status-failed',
+  }[status] || 'ov-status-pending'
+}
+
+// Alias so the Recent Audits row can re-trigger a stuck pending/failed run
+// using the same execute path the legacy table used.
+const runAuditNow = (audit) => executeAuditJob(audit)
 
 function handleAuditStarted(audit) {
   // The new audit record is now live — add it to the list, select it, and
@@ -4965,6 +3911,316 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .loading-state { text-align: center; padding: 80px 20px; font-size: var(--font-md); color: var(--text-muted); }
+
+/* ───────────────────────────────────────────────────────────────────────────
+   Modern Overview tab
+   Clean dashboard-style layout: KPI strip, two-column main grid, recent
+   audits table, usage card. Sits inside .lr-overview.
+   ─────────────────────────────────────────────────────────────────────── */
+.lr-overview { display: flex; flex-direction: column; gap: 20px; }
+
+.ov-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: linear-gradient(90deg, rgba(255,107,53,0.07), rgba(255,107,53,0.02));
+  border: 1px solid rgba(255,107,53,0.18);
+  font-size: 0.875rem;
+  color: var(--text-primary);
+}
+.ov-banner.paused {
+  background: var(--bg-subtle, #fafafa);
+  border-color: var(--border-color, #e5e7eb);
+}
+.ov-banner-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: rgba(255,107,53,0.12);
+  color: var(--brand-accent, #ff6b35);
+  flex-shrink: 0;
+}
+.ov-banner.paused .ov-banner-icon { background: var(--border-color, #e5e7eb); color: var(--text-muted); }
+.ov-banner-text { flex: 1; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.ov-banner-text strong { color: var(--text-primary); font-weight: 600; }
+
+.ov-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 60px 20px;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+.ov-spinner {
+  width: 18px; height: 18px;
+  border: 2px solid var(--border-color, #e5e7eb);
+  border-top-color: var(--brand-accent, #ff6b35);
+  border-radius: 50%;
+  animation: ov-spin 0.8s linear infinite;
+}
+@keyframes ov-spin { to { transform: rotate(360deg); } }
+
+/* KPI cards ─────────────────────────────────────────────────────────────── */
+.ov-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+@media (max-width: 900px) { .ov-kpis { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 540px) { .ov-kpis { grid-template-columns: 1fr; } }
+.ov-kpi {
+  background: var(--bg-card, #ffffff);
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 12px;
+  padding: 18px 20px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.ov-kpi:hover {
+  border-color: var(--border-strong, #d4d4d8);
+  box-shadow: 0 6px 18px -10px rgba(20,23,24,0.10);
+}
+.ov-kpi-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  min-height: 18px;
+}
+.ov-kpi-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+.ov-kpi-badge {
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+.ov-kpi-badge.pill-green { background: rgba(16,185,129,0.12); color: #047857; }
+.ov-kpi-badge.pill-yellow { background: rgba(245,158,11,0.14); color: #b45309; }
+.ov-kpi-badge.pill-red { background: rgba(239,68,68,0.12); color: #b91c1c; }
+.ov-kpi-badge.pill-neutral { background: var(--bg-subtle, #f4f4f5); color: var(--text-muted); }
+.ov-kpi-value {
+  font-size: 1.9rem;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  color: var(--text-primary);
+  line-height: 1.05;
+}
+.ov-kpi-value-sm { font-size: 1.15rem; font-weight: 600; }
+.ov-kpi-unit { font-size: 0.85rem; font-weight: 500; color: var(--text-muted); margin-left: 2px; }
+.ov-kpi-sub { font-size: 0.78rem; color: var(--text-muted); margin-top: 8px; }
+.perf-trend-up { color: #10b981; }
+.perf-trend-down { color: #ef4444; }
+.perf-trend-flat { color: var(--text-muted); }
+
+/* Cards & grid ──────────────────────────────────────────────────────────── */
+.ov-grid { display: grid; gap: 16px; }
+.ov-grid-2 { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); }
+@media (max-width: 1024px) { .ov-grid-2 { grid-template-columns: 1fr; } }
+.ov-card { padding: 18px 22px 22px; border-radius: 14px; }
+.ov-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.ov-card-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+}
+.ov-card-sub { margin: 4px 0 0; font-size: 0.78rem; color: var(--text-muted); }
+.ov-select {
+  appearance: none;
+  background: var(--bg-input, #fff);
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 8px;
+  padding: 6px 28px 6px 10px;
+  font-size: 0.8rem;
+  color: var(--text-primary);
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' fill='%236b7280' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+}
+
+.ov-chart { position: relative; height: 260px; }
+.ov-empty-inline {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 100%;
+  min-height: 140px;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  text-align: center;
+}
+.ov-empty-inline svg { color: var(--text-muted); opacity: 0.6; }
+.ov-empty-inline p { margin: 0; }
+
+/* Model coverage list ───────────────────────────────────────────────────── */
+.ov-models { display: flex; flex-direction: column; gap: 4px; }
+.ov-model-row {
+  display: grid;
+  grid-template-columns: 12px 1fr auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 10px;
+  transition: background 0.15s ease;
+}
+.ov-model-row:hover { background: var(--bg-subtle, #fafafa); }
+.ov-model-row.off { opacity: 0.65; }
+.ov-model-dot { width: 10px; height: 10px; border-radius: 50%; }
+.ov-model-name { font-size: 0.88rem; font-weight: 500; color: var(--text-primary); }
+.ov-model-meta { font-size: 0.78rem; color: var(--text-muted); }
+.ov-model-rate {
+  font-weight: 600;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+.ov-tag {
+  font-size: 0.7rem;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.ov-tag-warn { background: rgba(245,158,11,0.14); color: #b45309; }
+.ov-tag-muted { background: var(--bg-subtle, #f4f4f5); color: var(--text-muted); }
+
+/* Recent audits table ───────────────────────────────────────────────────── */
+.ov-audit-table {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ov-audit-head, .ov-audit-row {
+  display: grid;
+  grid-template-columns: 1.2fr 0.8fr 1fr 1fr 0.9fr auto;
+  gap: 14px;
+  align-items: center;
+  padding: 10px 12px;
+  font-size: 0.85rem;
+}
+.ov-audit-head {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-color, #e5e7eb);
+  padding-bottom: 12px;
+  margin-bottom: 4px;
+}
+.ov-audit-row {
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.ov-audit-row:hover { background: var(--bg-subtle, #fafafa); }
+.ov-audit-row.selected {
+  background: rgba(255,107,53,0.06);
+  outline: 1px solid rgba(255,107,53,0.25);
+}
+.ov-audit-date { color: var(--text-primary); font-weight: 500; }
+.ov-audit-score strong {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+.ov-audit-actions { display: flex; gap: 4px; justify-content: flex-end; }
+.ov-audit-delete {
+  width: 26px;
+  height: 26px;
+  padding: 0 !important;
+  font-size: 1.1rem;
+  line-height: 1;
+  color: var(--text-muted);
+}
+.ov-audit-delete:hover { color: #ef4444; background: rgba(239,68,68,0.08); }
+
+.ov-status {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.ov-status-success { background: rgba(16,185,129,0.12); color: #047857; }
+.ov-status-running { background: rgba(245,158,11,0.14); color: #b45309; }
+.ov-status-pending { background: var(--bg-subtle, #f4f4f5); color: var(--text-muted); }
+.ov-status-failed { background: rgba(239,68,68,0.12); color: #b91c1c; }
+
+/* Usage card ────────────────────────────────────────────────────────────── */
+.ov-usage-totals {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 22px;
+}
+@media (max-width: 700px) { .ov-usage-totals { grid-template-columns: repeat(2, 1fr); } }
+.ov-usage-cell {
+  padding: 14px 16px;
+  background: var(--bg-subtle, #fafafa);
+  border-radius: 10px;
+}
+.ov-usage-val {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+.ov-usage-label {
+  font-size: 0.72rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+.ov-usage-models { display: flex; flex-direction: column; gap: 1px; }
+.ov-usage-models-head, .ov-usage-models-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr 1fr;
+  gap: 14px;
+  padding: 10px 12px;
+  font-size: 0.85rem;
+  align-items: center;
+}
+.ov-usage-models-head {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-color, #e5e7eb);
+}
+.ov-usage-models-row { border-radius: 8px; font-variant-numeric: tabular-nums; }
+.ov-usage-models-row:hover { background: var(--bg-subtle, #fafafa); }
+.ov-usage-model-name { font-weight: 500; color: var(--text-primary); }
 
 /* Empty-state shown when the website has no audit data yet. */
 .empty-dashboard {
