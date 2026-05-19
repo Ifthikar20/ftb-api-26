@@ -43,13 +43,6 @@
     </div>
 
     <div class="auth-right">
-      <div class="auth-theme-toggle">
-        <button class="theme-toggle" @click="toggleTheme" :title="currentTheme === 'light' ? 'Dark mode' : 'Light mode'">
-          <svg v-if="currentTheme === 'light'" width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M15 10A7 7 0 1 1 8 3a5 5 0 0 0 7 7z"/></svg>
-          <svg v-else width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="9" cy="9" r="4"/><path d="M9 1v2M9 15v2M1 9h2M15 9h2M3.3 3.3l1.4 1.4M13.3 13.3l1.4 1.4M14.7 3.3l-1.4 1.4M4.7 13.3l-1.4 1.4"/></svg>
-        </button>
-      </div>
-
       <div class="auth-form-container">
         <div class="auth-form-header">
           <h2 class="auth-title">{{ title }}</h2>
@@ -64,23 +57,27 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { onMounted, onUnmounted } from 'vue'
 
 defineProps({
   title: { type: String, default: '' },
   subtitle: { type: String, default: '' },
 })
 
-const currentTheme = ref(localStorage.getItem('fb-theme') || 'light')
-
-function toggleTheme() {
-  currentTheme.value = currentTheme.value === 'light' ? 'dark' : 'light'
-  document.documentElement.setAttribute('data-theme', currentTheme.value)
-  localStorage.setItem('fb-theme', currentTheme.value)
-}
-
+// Auth screens are light-only. Stash whatever theme the rest of the app
+// was using and restore it on unmount so we don't surprise authenticated
+// users when they navigate away.
+let _previousTheme = null
 onMounted(() => {
-  document.documentElement.setAttribute('data-theme', currentTheme.value)
+  _previousTheme = document.documentElement.getAttribute('data-theme')
+  document.documentElement.setAttribute('data-theme', 'light')
+})
+onUnmounted(() => {
+  if (_previousTheme) {
+    document.documentElement.setAttribute('data-theme', _previousTheme)
+  } else {
+    document.documentElement.removeAttribute('data-theme')
+  }
 })
 </script>
 
@@ -218,12 +215,6 @@ onMounted(() => {
   padding: 48px 56px;
   border-left: 1px solid var(--border-color);
   position: relative;
-}
-
-.auth-theme-toggle {
-  position: absolute;
-  top: 24px;
-  right: 24px;
 }
 
 .auth-form-container {
