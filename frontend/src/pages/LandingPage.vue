@@ -1276,7 +1276,8 @@ function updateStickyCta() {
   font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
   min-height: 100vh;
   width: 100%;
-  overflow-x: hidden;
+  max-width: 100vw;
+  overflow-x: clip;
   -webkit-font-smoothing: antialiased;
 }
 .wrap { max-width: 1200px; margin: 0 auto; padding: 0 32px; }
@@ -2833,6 +2834,16 @@ em { color: #5B8DEF; font-style: italic; }
 </style>
 <style>
 :root { scroll-behavior: smooth; }
+/* Landing page must never produce horizontal scroll. The .lp wrapper
+   below uses overflow-x: clip, but a few browsers (and some descendant
+   stacking contexts) still let intrinsic overflow leak up to the
+   document. Lock it at the root while this page is in the DOM. */
+html:has(.lp),
+html:has(.lp) body,
+html:has(.lp) #app {
+  overflow-x: clip;
+  max-width: 100vw;
+}
 </style>
 <style scoped>
 
