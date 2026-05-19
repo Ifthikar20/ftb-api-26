@@ -1369,6 +1369,7 @@
           No API usage recorded yet. Run an audit to see usage data.
         </div>
       </div>
+    </template>
 
     </div><!-- /overview tab -->
 
@@ -1504,7 +1505,6 @@
         </div>
       </template>
     </div><!-- /performance tab -->
-    </template>
 
       <!-- ═══ Provider Detail Modal ═══════════════════════════════════════ -->
       <BaseModal v-model="showProviderDetail" :title="providerDetailData?.provider_display + ' — Detailed Report'" :wide="true">
