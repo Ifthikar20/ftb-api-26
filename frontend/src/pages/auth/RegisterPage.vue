@@ -149,8 +149,8 @@ async function handleRegister() {
   margin-top: 1px;
 }
 
-.pw-field { position: relative; }
-.pw-input { padding-right: 44px; }
+.pw-field { position: relative; display: flex; }
+.pw-input { flex: 1; padding-right: 44px; }
 .pw-toggle {
   position: absolute;
   top: 50%;
