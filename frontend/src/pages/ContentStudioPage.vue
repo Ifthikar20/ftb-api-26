@@ -117,7 +117,7 @@
         miss you, we'll suggest exactly what to write.
       </p>
       <AirButton variant="primary" size="lg" class="mt-6" @click="goToLLMRanking">
-        Open LLM Ranking
+        Open LLM Dashboard
       </AirButton>
     </div>
 

@@ -1016,7 +1016,7 @@ const features = [
     icon: '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="12" cy="7" r="4"/><path d="M5.5 21c0-3.5 3-6 6.5-6s6.5 2.5 6.5 6"/></svg>'
   },
   {
-    title: 'LLM Ranking',
+    title: 'LLM Dashboard',
     desc: 'Audit your AI visibility across ChatGPT, Claude, Gemini & more — see if LLMs recommend your brand.',
     replaces: 'Nothing like it exists',
     tint: 'tint-violet',

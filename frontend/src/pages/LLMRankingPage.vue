@@ -1,14 +1,29 @@
 <template>
   <div class="llm-ranking-page fade-in">
-    <FirstRunLLMRanking
-      v-if="showFirstRun"
-      :website="activeWebsite"
-      @audit-started="handleAuditStarted"
-    />
+    <div v-if="showFirstRun" class="empty-dashboard">
+      <div class="empty-dashboard-card">
+        <div class="empty-dashboard-icon" aria-hidden="true">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="7"/>
+            <path d="M21 21l-4.3-4.3"/>
+          </svg>
+        </div>
+        <h1 class="empty-dashboard-title">Your LLM Dashboard is empty</h1>
+        <p class="empty-dashboard-sub">
+          Nothing has been measured yet for <strong>{{ websiteName || 'this website' }}</strong>.
+          Add a prompt of your own or pull one from the prompt repository to start tracking how
+          AI assistants talk about your brand.
+        </p>
+        <div class="empty-dashboard-actions">
+          <router-link :to="promptLibraryRoute" class="btn btn-primary">Create a prompt</router-link>
+          <router-link :to="promptLibraryRepoRoute" class="btn btn-secondary">Browse the prompt repository</router-link>
+        </div>
+      </div>
+    </div>
     <template v-else>
     <div class="page-header">
       <div>
-        <h1 class="page-title">LLM Ranking</h1>
+        <h1 class="page-title">LLM Dashboard</h1>
         <p class="page-subtitle">
           See how AI tools like Claude, GPT-4, Gemini, and Perplexity rank your business
           when users ask them to find a service like yours.
@@ -1966,7 +1981,6 @@ import { useAppStore } from '@/stores/app'
 import llmRankingApi from '@/api/llm_ranking'
 import websitesApi from '@/api/websites'
 import BaseModal from '@/components/ui/BaseModal.vue'
-import FirstRunLLMRanking from '@/components/llm_ranking/FirstRunLLMRanking.vue'
 import PromptHeatmap from '@/components/llm_ranking/PromptHeatmap.vue'
 import FunnelRadar from '@/components/llm_ranking/FunnelRadar.vue'
 import ProviderAgreement from '@/components/llm_ranking/ProviderAgreement.vue'
@@ -2464,8 +2478,12 @@ async function loadWebsite() {
   }
 }
 
-// First-run gate: user lands here before ever running an audit.
+// First-run gate: user lands here before any audit data exists for this
+// website. The dashboard renders an empty-state card that nudges them
+// over to the Prompt Library — audits are kicked off from there, not here.
 const showFirstRun = computed(() => !loading.value && audits.value.length === 0)
+const promptLibraryRoute = computed(() => `/llm-ranking/${websiteId}/prompts`)
+const promptLibraryRepoRoute = computed(() => `/llm-ranking/${websiteId}/prompts?tab=repository`)
 
 function handleAuditStarted(audit) {
   // The new audit record is now live — add it to the list, select it, and
@@ -4745,6 +4763,56 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .loading-state { text-align: center; padding: 80px 20px; font-size: var(--font-md); color: var(--text-muted); }
+
+/* Empty-state shown when the website has no audit data yet. */
+.empty-dashboard {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+  padding: 40px 20px;
+}
+.empty-dashboard-card {
+  width: 100%;
+  max-width: 520px;
+  text-align: center;
+  background: var(--bg-card, #ffffff);
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 16px;
+  padding: 40px 32px;
+  box-shadow: 0 20px 50px -28px rgba(20, 23, 24, 0.18);
+}
+.empty-dashboard-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 16px;
+  background: rgba(255, 107, 53, 0.10);
+  color: var(--brand-accent, #ff6b35);
+  margin-bottom: 18px;
+}
+.empty-dashboard-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 10px;
+  letter-spacing: -0.01em;
+}
+.empty-dashboard-sub {
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin: 0 0 24px;
+}
+.empty-dashboard-sub strong { color: var(--text-primary); }
+.empty-dashboard-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
 
 /* Top filter bar */
 .lr-topbar {

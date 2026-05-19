@@ -90,7 +90,7 @@
           <li><strong>Heatmaps</strong> — Visual representation of user interaction patterns on your pages.</li>
           <li><strong>Keyword Research</strong> — Search engine keyword analysis and tracking with competitive positioning data.</li>
           <li><strong>Campaign Management</strong> — Tools to plan, execute, and track multi-channel marketing campaigns.</li>
-          <li><strong>LLM Ranking</strong> — Monitor how your brand appears in AI search results across ChatGPT, Claude, Gemini, and others.</li>
+          <li><strong>LLM Dashboard</strong> — Monitor how your brand appears in AI search results across ChatGPT, Claude, Gemini, and others.</li>
           <li><strong>Competitive Intelligence</strong> — Track competitor websites, keywords, and market positioning.</li>
           <li><strong>Integrations</strong> — Connect with Slack, Discord, Telegram, and other platforms for real-time alerts and reports.</li>
         </ul>
