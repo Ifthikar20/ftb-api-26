@@ -37,8 +37,14 @@ class BillingOverviewView(APIView):
         # Usage — never fails, returns {} if no subscription
         usage = UsageService.get_current_usage(user=request.user)
 
+        # Plan should mirror the actual subscription where one exists
+        # (user.plan can drift from subscription.plan when the user
+        # upgrades or downgrades). Falls back to the user's profile
+        # plan only when there's no subscription row.
+        active_plan = subscription.plan if subscription else getattr(request.user, "plan", "starter")
+
         return Response({
-            "plan": getattr(request.user, "plan", "starter"),
+            "plan": active_plan,
             "segment": segment,
             "plan_details": plan_data,
             "subscription_status": subscription.status if subscription else "none",
@@ -48,6 +54,12 @@ class BillingOverviewView(APIView):
             ),
             "cancel_at_period_end": subscription.cancel_at_period_end if subscription else False,
             "stripe_customer_id": bool(subscription.stripe_customer_id) if subscription else False,
+            # Surface the Subscription ID so the frontend can tell a
+            # dev_sub_* (mock) row from a real Stripe one and decide
+            # whether to show the "Manage subscription" portal button.
+            "stripe_subscription_id": (
+                subscription.stripe_subscription_id if subscription else None
+            ),
             "usage": usage,
         })
 
@@ -204,6 +216,65 @@ class PortalView(APIView):
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+
+class SubscriptionCancelView(APIView):
+    """
+    Cancel the current user's subscription at the end of the period.
+
+    Honours the same dev/prod split as DevSubscribeView:
+      - In dev (BILLING_DEV_MODE), or for mock subs whose
+        stripe_subscription_id starts with 'dev_sub_', just flips
+        the local cancel_at_period_end flag.
+      - For a real Stripe subscription, asks Stripe to cancel at
+        period end via StripeService.
+
+    POST /api/v1/billing/cancel/   -> sets cancel_at_period_end = True
+    POST /api/v1/billing/resume/   -> sets cancel_at_period_end = False
+    """
+    permission_classes = [IsAuthenticated]
+    cancel = True   # subclass flips to False for resume
+
+    def post(self, request):
+        try:
+            sub = request.user.subscription
+        except Subscription.DoesNotExist:
+            return Response(
+                {"success": False, "error": {"code": "no_subscription",
+                 "message": "You don't have an active subscription."}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        is_mock = (sub.stripe_subscription_id or "").startswith("dev_sub_")
+        if not is_mock and sub.stripe_subscription_id:
+            try:
+                StripeService.set_cancel_at_period_end(
+                    subscription=sub, cancel=self.cancel,
+                )
+            except Exception as e:
+                logger.error("Stripe cancel/resume failed: %s", e)
+                return Response(
+                    {"success": False, "error": {"code": "stripe_failed",
+                     "message": "We couldn't reach Stripe. Please try again."}},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        sub.cancel_at_period_end = self.cancel
+        sub.save(update_fields=["cancel_at_period_end", "updated_at"])
+        return Response({
+            "success": True,
+            "data": {
+                "cancel_at_period_end": sub.cancel_at_period_end,
+                "current_period_end": (
+                    sub.current_period_end.isoformat()
+                    if sub.current_period_end else None
+                ),
+            },
+        })
+
+
+class SubscriptionResumeView(SubscriptionCancelView):
+    cancel = False
 
 
 class InvoiceListView(APIView):
