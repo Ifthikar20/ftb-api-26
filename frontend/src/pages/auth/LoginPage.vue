@@ -179,8 +179,9 @@ function handleGoogleLogin() {
 
 .form-row {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
   font-size: var(--font-sm);
 }
 
