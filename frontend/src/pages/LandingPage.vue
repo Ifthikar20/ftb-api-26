@@ -502,29 +502,27 @@
 
           <div class="footer-col">
             <div class="footer-col-title">Resources</div>
-            <a href="https://docs.fetchbot.ai" target="_blank" rel="noopener">Documentation</a>
-            <a href="https://docs.fetchbot.ai/api" target="_blank" rel="noopener">API reference</a>
-            <a href="/blog">Blog</a>
-            <a href="/changelog">Changelog</a>
-            <a href="/status" target="_blank" rel="noopener">Status</a>
+            <router-link to="/docs">Documentation</router-link>
+            <router-link to="/api">API reference</router-link>
+            <router-link to="/blog">Blog</router-link>
+            <router-link to="/changelog">Changelog</router-link>
+            <router-link to="/status">Status</router-link>
           </div>
 
           <div class="footer-col">
             <div class="footer-col-title">Company</div>
-            <a href="/about">About</a>
-            <a href="/contact">Contact us</a>
+            <router-link to="/about">About</router-link>
+            <router-link to="/contact">Contact us</router-link>
             <a href="mailto:hello@fetchbot.ai">hello@fetchbot.ai</a>
-            <a href="/careers">Careers</a>
-            <a href="/security">Security</a>
           </div>
 
           <div class="footer-col">
             <div class="footer-col-title">Legal</div>
             <router-link to="/terms">Terms of Service</router-link>
             <router-link to="/privacy">Privacy Policy</router-link>
-            <a href="/dpa">Data Processing Agreement</a>
-            <a href="/cookies">Cookie Policy</a>
-            <a href="/ai-policy">Responsible AI Use</a>
+            <router-link to="/dpa">Data Processing Agreement</router-link>
+            <router-link to="/cookies">Cookie Policy</router-link>
+            <router-link to="/ai-policy">Responsible AI Use</router-link>
           </div>
         </div>
 

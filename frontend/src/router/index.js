@@ -36,6 +36,68 @@ const routes = [
         component: () => import('@/pages/legal/PrivacyPage.vue'),
         meta: { public: true }
     },
+    {
+        path: '/dpa',
+        name: 'dpa',
+        component: () => import('@/pages/info/DpaPage.vue'),
+        meta: { public: true }
+    },
+    {
+        path: '/cookies',
+        name: 'cookies',
+        component: () => import('@/pages/info/CookiesPage.vue'),
+        meta: { public: true }
+    },
+    {
+        path: '/ai-policy',
+        name: 'ai-policy',
+        component: () => import('@/pages/info/AiPolicyPage.vue'),
+        meta: { public: true }
+    },
+
+    /* ── Marketing / company (public) ── */
+    {
+        path: '/about',
+        name: 'about',
+        component: () => import('@/pages/info/AboutPage.vue'),
+        meta: { public: true }
+    },
+    {
+        path: '/contact',
+        name: 'contact',
+        component: () => import('@/pages/info/ContactPage.vue'),
+        meta: { public: true }
+    },
+    {
+        path: '/blog',
+        name: 'blog',
+        component: () => import('@/pages/info/BlogPage.vue'),
+        meta: { public: true }
+    },
+    {
+        path: '/changelog',
+        name: 'changelog',
+        component: () => import('@/pages/info/ChangelogPage.vue'),
+        meta: { public: true }
+    },
+    {
+        path: '/status',
+        name: 'status',
+        component: () => import('@/pages/info/StatusPage.vue'),
+        meta: { public: true }
+    },
+    {
+        path: '/docs',
+        name: 'docs',
+        component: () => import('@/pages/info/DocsPage.vue'),
+        meta: { public: true }
+    },
+    {
+        path: '/api',
+        name: 'api-reference',
+        component: () => import('@/pages/info/ApiReferencePage.vue'),
+        meta: { public: true }
+    },
 
     /* ── Public Integrations Showcase ── hidden for now; redirect to landing ── */
     { path: '/integrations',          redirect: '/' },
