@@ -164,7 +164,10 @@ class GenerateFromContextRequestSerializer(serializers.Serializer):
     """Validate the free-form context input for prompt generation."""
 
     context = serializers.CharField()
-    count = serializers.IntegerField(min_value=1, max_value=40, default=20)
+    # Cap at 50 — the LLM generator gets unreliable past that, and
+    # each prompt also represents a future audit cost downstream so
+    # we don't want users requesting hundreds at a time.
+    count = serializers.IntegerField(min_value=1, max_value=50, default=20)
     persist = serializers.BooleanField(default=False)
     website_id = serializers.UUIDField(required=False)
 

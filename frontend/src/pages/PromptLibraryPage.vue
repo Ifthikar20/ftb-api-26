@@ -1,14 +1,14 @@
 <template>
   <div class="pl-page">
     <!-- Header -->
-    <header id="pl-header" class="page-header">
-      <div>
-        <h1 class="page-title">Prompt Library</h1>
-        <p class="page-subtitle">
-          Describe a scenario. We'll find the prompts AI assistants are likely
-          being asked about you.
-        </p>
-      </div>
+    <header id="pl-header" class="page-header pl-hero">
+      <span class="pl-hero-eyebrow">Prompt library</span>
+      <Transition name="pl-hero-fade" mode="out-in">
+        <h1 :key="heroIndex" class="pl-hero-title">{{ heroLine.title }}</h1>
+      </Transition>
+      <Transition name="pl-hero-fade" mode="out-in">
+        <p :key="`s-${heroIndex}`" class="pl-hero-sub">{{ heroLine.sub }}</p>
+      </Transition>
     </header>
 
     <!-- Tab toggle: Search vs Saved -->
@@ -62,6 +62,7 @@
     <section class="pl-section pl-section-search">
       <ContextInputCard
         v-model="contextInput"
+        v-model:count="promptCount"
         :loading="generating"
         @generate="onGenerate"
       />
@@ -228,8 +229,9 @@
             <tbody>
               <template v-for="(p, idx) in pagedGeneratedPrompts" :key="p._uid">
                 <tr
-                  class="pl-row"
+                  class="pl-row pl-row-stagger"
                   :class="{ 'is-expanded': expandedResult === p._uid }"
+                  :style="{ animationDelay: Math.min(idx, 12) * 28 + 'ms' }"
                   @click="toggleExpand(p._uid)"
                 >
                   <td class="pl-td">
@@ -450,7 +452,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch, h } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch, h } from 'vue'
 import { useRoute } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useToast } from '@/composables/useToast'
@@ -516,7 +518,51 @@ const synthesizing = ref(false)
 
 // ── Context-driven generation state ──
 const contextInput = ref('')
+// How many prompts to ask the LLM to generate. Capped at 50 by the
+// backend serializer; the slider lets users dial it back when they
+// just want a quick sample.
+const promptCount = ref(20)
 const generating = ref(false)
+
+// Rotating hero. Cycles through a few angles on the same theme so
+// the landing copy doesn't feel static on repeat visits. Picks the
+// starting line randomly so two users hitting the page at the same
+// moment don't see the same headline, and advances every 6s with a
+// soft cross-fade.
+const HERO_LINES = [
+  {
+    title: 'What are AI assistants saying about you?',
+    sub: "Describe a scenario. We'll surface the prompts buyers are typing into ChatGPT, Claude, and Perplexity right now — and benchmark you against the brands they hear back.",
+  },
+  {
+    title: 'Find out where you rank inside the LLMs.',
+    sub: "When a buyer asks Claude or ChatGPT for the best in your category, who comes up? Search the prompts they're actually asking — and see exactly which competitors show up alongside you.",
+  },
+  {
+    title: 'See the questions your future customers are asking.',
+    sub: "Real buyer-intent prompts, generated from a one-line scenario. Each prompt is benchmarked against the brands an LLM is most likely to mention back.",
+  },
+  {
+    title: "Audit your visibility in the answer engines.",
+    sub: "Google indexes pages. Claude, ChatGPT, and Perplexity recommend brands. Use the library to discover the prompts that put your competitors in front of buyers — and yours.",
+  },
+  {
+    title: 'Reverse-engineer the conversations buyers have with AI.',
+    sub: "Type a scenario like 'fresh bagels in Dallas' or 'family dentist in Austin'. We'll generate the prompts an actual buyer would type, and surface the brands that win those answers.",
+  },
+]
+const heroIndex = ref(Math.floor(Math.random() * HERO_LINES.length))
+const heroLine = computed(() => HERO_LINES[heroIndex.value % HERO_LINES.length])
+let heroTimer = null
+onMounted(() => {
+  heroTimer = setInterval(() => {
+    heroIndex.value = (heroIndex.value + 1) % HERO_LINES.length
+  }, 6000)
+})
+onBeforeUnmount(() => {
+  if (heroTimer) clearInterval(heroTimer)
+  heroTimer = null
+})
 const generatedPrompts = ref([]) // { _uid, _saved, _saving, template_text, ... }
 const generationProvider = ref('')
 const generationError = ref(false)
@@ -818,13 +864,18 @@ function _wrap(item) {
   }
 }
 
-async function onGenerate(text) {
+async function onGenerate(text, count) {
   generating.value = true
   generationError.value = false
+  // Honour the slider when present; fall back to whatever the parent
+  // last persisted into promptCount.
+  const requested = Number(count) || promptCount.value || 20
+  const clamped = Math.max(1, Math.min(50, requested))
+  promptCount.value = clamped
   try {
     const { data } = await promptLibrary.generateFromContext({
       context: text,
-      count: 20,
+      count: clamped,
       persist: false,
     })
     const payload = data?.data || data || {}
@@ -1149,18 +1200,97 @@ watch(websiteId, loadVariables)
 <style scoped>
 /* ── Full-width dashboard layout ──────────────────────────── */
 .pl-page {
+  --pl-accent: #ff6a2c;
+  --pl-accent-soft: rgba(255, 106, 44, 0.10);
+  --pl-spring: cubic-bezier(0.22, 1, 0.36, 1);
+  --pl-spring-strong: cubic-bezier(0.16, 1, 0.3, 1);
+
+  position: relative;
   width: 100%;
   max-width: none;
   padding: 32px 40px 48px;
   margin: 0;
   background: var(--bg-root, var(--bg-page, #fafafa));
   min-height: 100%;
+  overflow-x: hidden;
 }
+/* Ambient hero glow behind the header — same trick used in the
+   onboarding modal and paywall so the search bar feels like the
+   focal point of a real library/search app. */
+.pl-page::before {
+  content: '';
+  position: absolute;
+  top: -120px;
+  left: 50%;
+  width: 820px;
+  height: 480px;
+  transform: translateX(-50%);
+  background: radial-gradient(ellipse at center, var(--pl-accent-soft) 0%, transparent 65%);
+  filter: blur(48px);
+  pointer-events: none;
+  opacity: 0.7;
+  z-index: 0;
+}
+.pl-page > * { position: relative; z-index: 1; }
+
 .pl-page-header {
-  margin-bottom: 24px;
+  margin-bottom: 28px;
   text-align: left;
   max-width: 720px;
+  animation: pl-rise 0.55s var(--pl-spring-strong) both;
 }
+@keyframes pl-rise {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Library-style hero ───────────────────────────────────── */
+.pl-hero {
+  display: flex;
+  flex-direction: column;
+  text-align: center;
+  align-items: center;
+  margin: 0 auto 32px;
+  max-width: 720px;
+}
+.pl-hero-eyebrow {
+  display: inline-block;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 14px;
+  font-weight: 600;
+}
+.pl-hero-title {
+  font-size: clamp(28px, 3.4vw, 40px);
+  line-height: 1.08;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  color: var(--text-primary);
+  margin: 0 0 12px;
+}
+.pl-hero-sub {
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--text-muted);
+  margin: 0;
+  max-width: 560px;
+}
+/* Centre the tabs row under the centred hero. */
+.pl-tabs { margin-left: auto; margin-right: auto; }
+
+/* Hero rotation: 6s cycle with a soft cross-fade so the headline
+   never feels static. mode='out-in' on the wrapping <Transition>
+   guarantees the old line finishes leaving before the new one enters
+   — important because the title height changes between lines. */
+.pl-hero-fade-enter-active,
+.pl-hero-fade-leave-active {
+  transition: opacity 0.45s var(--pl-spring),
+              transform 0.55s var(--pl-spring);
+}
+.pl-hero-fade-enter-from { opacity: 0; transform: translateY(8px); }
+.pl-hero-fade-leave-to   { opacity: 0; transform: translateY(-8px); }
 
 /* ── Tabs (Search / Saved) ──────────────────────────────────── */
 .pl-tabs {
@@ -1184,9 +1314,32 @@ watch(websiteId, loadVariables)
   box-shadow:
     0 1px 2px rgba(15, 23, 42, 0.06),
     0 4px 12px rgba(15, 23, 42, 0.06);
-  transition: transform 0.32s cubic-bezier(0.32, 0.72, 0, 1);
+  transition: transform 0.45s var(--pl-spring-strong, cubic-bezier(0.32, 0.72, 0, 1));
   z-index: 0;
 }
+
+/* ── Framer-style staggered entry on result rows ────────────
+   Each row fades up with a small delay set inline (Math.min(idx,12)
+   * 28ms) so the table feels like it's populating itself instead
+   of slamming in all at once. */
+.pl-row-stagger {
+  animation: pl-row-in 0.42s var(--pl-spring-strong) both;
+}
+@keyframes pl-row-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.pl-row {
+  transition: background-color 0.22s var(--pl-spring),
+              transform 0.22s var(--pl-spring),
+              box-shadow 0.28s var(--pl-spring);
+}
+.pl-row:hover:not(.is-expanded) {
+  transform: translateY(-1px);
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.04),
+              0 10px 22px rgba(15, 23, 42, 0.05);
+}
+
 .pl-tab {
   position: relative;
   z-index: 1;
