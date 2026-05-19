@@ -503,7 +503,6 @@
           <div class="footer-col">
             <div class="footer-col-title">Resources</div>
             <router-link to="/docs">Documentation</router-link>
-            <router-link to="/api">API reference</router-link>
             <router-link to="/blog">Blog</router-link>
             <router-link to="/changelog">Changelog</router-link>
             <router-link to="/status">Status</router-link>

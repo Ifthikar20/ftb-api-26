@@ -92,12 +92,6 @@ const routes = [
         component: () => import('@/pages/info/DocsPage.vue'),
         meta: { public: true }
     },
-    {
-        path: '/api',
-        name: 'api-reference',
-        component: () => import('@/pages/info/ApiReferencePage.vue'),
-        meta: { public: true }
-    },
 
     /* ── Public Integrations Showcase ── hidden for now; redirect to landing ── */
     { path: '/integrations',          redirect: '/' },

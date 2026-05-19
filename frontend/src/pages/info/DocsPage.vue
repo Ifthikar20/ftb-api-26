@@ -31,7 +31,6 @@
     <h2>Need a deeper dive?</h2>
     <p>
       The full handbook lives at <a href="https://docs.fetchbot.ai" target="_blank" rel="noopener">docs.fetchbot.ai</a>.
-      For API integrations, see the <router-link to="/api">API reference</router-link>.
     </p>
   </InfoPage>
 </template>
