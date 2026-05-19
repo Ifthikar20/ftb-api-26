@@ -1,7 +1,10 @@
 """Tests for the deterministic-fallback embedder + similarity math."""
 from apps.rag.services.embedder import (
-    FALLBACK_DIM, FALLBACK_MODEL,
-    cosine_similarity, embed_one, embed_texts,
+    FALLBACK_DIM,
+    FALLBACK_MODEL,
+    cosine_similarity,
+    embed_one,
+    embed_texts,
 )
 
 

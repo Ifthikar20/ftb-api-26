@@ -18,8 +18,6 @@ import re
 from html.parser import HTMLParser
 from urllib.parse import urljoin, urlparse
 
-import requests
-
 from apps.llm_ranking.services.domain_scanner import scan_domain
 
 logger = logging.getLogger("apps")

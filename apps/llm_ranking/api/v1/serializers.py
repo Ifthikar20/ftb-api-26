@@ -155,7 +155,7 @@ class RunAuditSerializer(serializers.Serializer):
             except UnsafeURLError as exc:
                 raise serializers.ValidationError(
                     f"context_url '{u}' rejected: {exc}",
-                )
+                ) from exc
         return cleaned
     # Optional themes for prompt generation
     themes = serializers.ListField(

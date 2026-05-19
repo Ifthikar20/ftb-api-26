@@ -3,8 +3,6 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-import pytest
-
 from apps.prompt_library.services.effectiveness import (
     MIN_RUNS_STABLE,
     compute_effectiveness,

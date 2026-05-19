@@ -13,7 +13,6 @@ from apps.brand_vault.services.fact_versioning import (
 )
 from apps.websites.tests.factories import WebsiteFactory
 
-
 pytestmark = [
     pytest.mark.django_db,
     override_settings(

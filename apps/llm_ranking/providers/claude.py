@@ -1,7 +1,6 @@
 """Anthropic Claude provider."""
 from .base import LLMProvider, ProviderResult
 
-
 DEFAULT_SYSTEM = (
     "When listing tools, platforms, or products, please use a numbered list "
     "(1., 2., 3., etc.) and include a brief description for each. "

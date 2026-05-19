@@ -33,13 +33,11 @@ from apps.prompt_library.api.v1.serializers import (
     SynthesizeRequestSerializer,
     TestEnvironmentSerializer,
     UseLibrarySampleRequestSerializer,
-    VariableSetUpdateSerializer,
 )
 from apps.prompt_library.models import (
     BrandPrompt,
     Industry,
     Prompt,
-    PromptSampleRun,
     PromptSource,
     PromptVariableSet,
     TestEnvironment,
@@ -406,9 +404,9 @@ class PromptSynthesizeView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
+        from apps.llm_ranking.providers import get_synthesis_provider
         from apps.prompt_library.services._hash import text_hash
         from apps.prompt_library.services.auto_template import auto_template
-        from apps.llm_ranking.providers import get_synthesis_provider
 
         serializer = SynthesizeRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)

@@ -14,7 +14,8 @@ foot-gun. These bases centralize the contract.
 
 from __future__ import annotations
 
-from typing import Any, Iterable
+from collections.abc import Iterable
+from typing import Any
 
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response

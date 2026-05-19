@@ -30,7 +30,7 @@ data around for a full day.
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from django.conf import settings
 from django.core.cache import cache
@@ -42,7 +42,7 @@ _TTL_SECONDS = 60 * 60 * 26
 
 
 def _today_str() -> str:
-    return datetime.now(timezone.utc).strftime("%Y%m%d")
+    return datetime.now(UTC).strftime("%Y%m%d")
 
 
 class DailyQuota:

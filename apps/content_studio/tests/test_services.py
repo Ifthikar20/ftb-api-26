@@ -25,7 +25,6 @@ from apps.llm_ranking.tests.factories import (
 )
 from apps.websites.tests.factories import WebsiteFactory
 
-
 pytestmark = [
     pytest.mark.django_db,
     override_settings(

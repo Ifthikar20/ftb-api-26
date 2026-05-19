@@ -8,7 +8,7 @@ constraint on ``(result, normalized_url)`` collapses repeat inserts).
 from __future__ import annotations
 
 import logging
-from typing import Dict, Iterable, List
+from collections.abc import Iterable
 
 from apps.citations.models import (
     Citation,
@@ -31,7 +31,7 @@ from apps.citations.services.url_normalizer import normalize_url
 logger = logging.getLogger("apps")
 
 
-def _strategy_for_provider(provider: str) -> List:
+def _strategy_for_provider(provider: str) -> list:
     """Return the ordered list of extractor instances for ``provider``."""
     p = (provider or "").lower()
     if p == "perplexity":
@@ -44,9 +44,9 @@ def _strategy_for_provider(provider: str) -> List:
     return [RegexExtractor(), LLMAssistedExtractor(enabled=False)]
 
 
-def _dedupe_candidates(candidates: Iterable[CitationCandidate]) -> List[CitationCandidate]:
+def _dedupe_candidates(candidates: Iterable[CitationCandidate]) -> list[CitationCandidate]:
     """Collapse candidates by normalised URL, keeping the highest-confidence one."""
-    by_url: Dict[str, CitationCandidate] = {}
+    by_url: dict[str, CitationCandidate] = {}
     for cand in candidates:
         if not cand.url:
             continue
@@ -81,7 +81,7 @@ def extract_for_result(result_id: str) -> int:
     competitor_apexes = collect_competitor_apexes(website) if website else set()
 
     extractors = _strategy_for_provider(result.provider)
-    candidates: List[CitationCandidate] = []
+    candidates: list[CitationCandidate] = []
     for extractor in extractors:
         try:
             found = extractor.extract(result) or []

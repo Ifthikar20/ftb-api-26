@@ -12,7 +12,7 @@ sample can be replayed. Strategies:
 from __future__ import annotations
 
 import random
-from typing import Iterable
+from collections.abc import Iterable
 
 from django.db import transaction
 

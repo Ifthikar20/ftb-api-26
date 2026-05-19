@@ -6,10 +6,10 @@ duplicate-name 409 path.
 """
 from __future__ import annotations
 
-from rest_framework import status
-from rest_framework.test import APIClient
 from django.test import TestCase
 from django.urls import reverse
+from rest_framework import status
+from rest_framework.test import APIClient
 
 from apps.accounts.tests.factories import UserFactory
 from apps.prompt_library.models import BrandPrompt, TestEnvironment

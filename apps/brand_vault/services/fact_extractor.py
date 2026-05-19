@@ -19,7 +19,6 @@ from __future__ import annotations
 import json
 import logging
 import re
-from typing import List
 
 from django.conf import settings
 
@@ -90,7 +89,7 @@ def _exists(website_id, subject: str, predicate: str, obj: str) -> bool:
     ).exists()
 
 
-def extract_facts_for_chunk(chunk_id: str) -> List[BrandFact]:
+def extract_facts_for_chunk(chunk_id: str) -> list[BrandFact]:
     """Run LLM extraction on a single KnowledgeChunk."""
     if not getattr(settings, "BRAND_VAULT_EXTRACTION_ENABLED", True):
         return []
@@ -110,7 +109,7 @@ def extract_facts_for_chunk(chunk_id: str) -> List[BrandFact]:
     )
 
 
-def _persist_items(items: list[dict], *, website, source_chunk=None, source_url="") -> List[BrandFact]:
+def _persist_items(items: list[dict], *, website, source_chunk=None, source_url="") -> list[BrandFact]:
     created: list[BrandFact] = []
     for item in items:
         try:

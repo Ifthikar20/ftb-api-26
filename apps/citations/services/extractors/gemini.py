@@ -7,7 +7,7 @@ ranking_service may flatten them onto :attr:`LLMRankingResult.citations`
 """
 from __future__ import annotations
 
-from typing import Iterable, List
+from collections.abc import Iterable
 
 from apps.citations.services.extractors.base import BaseExtractor, CitationCandidate
 
@@ -29,12 +29,12 @@ class GeminiGroundingExtractor(BaseExtractor):
     name = "gemini_grounding"
     confidence = 1.0
 
-    def extract(self, result) -> List[CitationCandidate]:
+    def extract(self, result) -> list[CitationCandidate]:
         # Look for grounding payload in common locations. The
         # ranking_service stores the structured citation list on .citations
         # — Gemini chunks may be flattened into that list, or we may have
         # a raw payload buried in an extension hook in the future.
-        out: List[CitationCandidate] = []
+        out: list[CitationCandidate] = []
         seen: set[str] = set()
 
         chunks = _iter_grounding_chunks(getattr(result, "grounding_chunks", None))

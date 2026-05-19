@@ -8,7 +8,6 @@ respect to the database — persistence happens in the orchestrator
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import List
 
 
 @dataclass
@@ -27,5 +26,5 @@ class BaseExtractor:
 
     name: str = "base"
 
-    def extract(self, result) -> List[CitationCandidate]:  # pragma: no cover
+    def extract(self, result) -> list[CitationCandidate]:  # pragma: no cover
         raise NotImplementedError

@@ -9,7 +9,7 @@ called from the API layer before the audit task is enqueued.
 """
 from __future__ import annotations
 
-from typing import Iterable
+from collections.abc import Iterable
 
 
 def _from_vault(audit) -> list[dict]:

@@ -8,8 +8,6 @@ citation.
 """
 from __future__ import annotations
 
-from typing import List
-
 from apps.citations.services.extractors.base import BaseExtractor, CitationCandidate
 
 
@@ -17,11 +15,11 @@ class PerplexityNativeExtractor(BaseExtractor):
     name = "perplexity_native"
     confidence = 1.0
 
-    def extract(self, result) -> List[CitationCandidate]:
+    def extract(self, result) -> list[CitationCandidate]:
         citations = getattr(result, "citations", None) or []
         if not citations:
             return []
-        out: List[CitationCandidate] = []
+        out: list[CitationCandidate] = []
         for idx, entry in enumerate(citations):
             url = ""
             title = ""

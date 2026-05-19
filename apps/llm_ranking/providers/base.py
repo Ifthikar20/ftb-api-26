@@ -16,7 +16,8 @@ import time
 from dataclasses import dataclass, field
 
 from core.resilience import (
-    CircuitBreaker, CircuitBreakerOpen, RateLimited, TokenBucket,
+    CircuitBreaker,
+    TokenBucket,
 )
 
 logger = logging.getLogger("apps")

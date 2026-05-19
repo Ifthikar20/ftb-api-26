@@ -17,7 +17,6 @@ from apps.content_studio.models import (
 )
 from apps.websites.tests.factories import WebsiteFactory
 
-
 pytestmark = [
     pytest.mark.django_db,
     override_settings(
@@ -82,7 +81,7 @@ def test_briefs_list_tenant_isolation(auth_client):
 def test_briefs_list_filter_by_status(auth_client):
     client, user = auth_client
     website, b1 = _seed_brief(user, headline="open one")
-    b2 = ContentBrief.objects.create(
+    ContentBrief.objects.create(
         website=website, gap_type=GapType.VISIBILITY.value,
         target_format=ContentFormat.BLOG.value,
         headline="skipped one", description="",

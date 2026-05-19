@@ -1,7 +1,10 @@
 """Tests for the region prompt-flavor helpers."""
 from apps.llm_ranking.services.regions import (
-    REGIONS, REGION_GLOBAL, REGION_IN, REGION_US,
-    flavor_prompt, get_region,
+    REGION_GLOBAL,
+    REGION_IN,
+    REGION_US,
+    flavor_prompt,
+    get_region,
 )
 
 
