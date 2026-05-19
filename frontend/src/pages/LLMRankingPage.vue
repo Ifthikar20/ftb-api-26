@@ -45,6 +45,29 @@
       </div>
     </div>
 
+    <!-- Tab nav: Overview is the dense brand-visibility dashboard; Performance
+         is a chart-first view of how each model is doing on the latest run. -->
+    <div class="lr-tabs" role="tablist">
+      <button
+        type="button"
+        class="lr-tab"
+        :class="{ active: activeTab === 'overview' }"
+        role="tab"
+        :aria-selected="activeTab === 'overview'"
+        @click="activeTab = 'overview'"
+      >Overview</button>
+      <button
+        type="button"
+        class="lr-tab"
+        :class="{ active: activeTab === 'performance' }"
+        role="tab"
+        :aria-selected="activeTab === 'performance'"
+        @click="activeTab = 'performance'"
+      >Performance</button>
+    </div>
+
+    <div v-show="activeTab === 'overview'">
+
     <!-- Scheduled audits card (rich: ETA, in-flight, failures, run-now) -->
     <div v-if="schedule" class="schedule-card">
       <div class="schedule-card-head">
@@ -1346,6 +1369,141 @@
           No API usage recorded yet. Run an audit to see usage data.
         </div>
       </div>
+
+    </div><!-- /overview tab -->
+
+    <div v-show="activeTab === 'performance'" class="lr-performance">
+      <!-- Empty state when there's nothing to chart yet. The Overview tab
+           handles the truly-empty website (no audits at all); this branch
+           covers the case where audits exist but haven't completed. -->
+      <div v-if="!perfHasData" class="perf-empty">
+        <div class="perf-empty-icon" aria-hidden="true">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 3v18h18"/>
+            <path d="M7 14l4-4 3 3 5-6"/>
+          </svg>
+        </div>
+        <h3>No model performance data yet</h3>
+        <p>Charts appear once at least one audit finishes. Kick off a run from the Prompt Library to start collecting data.</p>
+      </div>
+
+      <template v-else>
+        <!-- KPI strip: one-glance summary of the latest model run. -->
+        <div class="perf-kpis">
+          <div class="perf-kpi">
+            <div class="perf-kpi-label">Overall visibility</div>
+            <div class="perf-kpi-value">{{ perfKpis.overallScore }}<span class="perf-kpi-unit">/100</span></div>
+            <div class="perf-kpi-sub" :class="perfKpis.scoreTrendClass">{{ perfKpis.scoreTrendLabel }}</div>
+          </div>
+          <div class="perf-kpi">
+            <div class="perf-kpi-label">Mention rate</div>
+            <div class="perf-kpi-value">{{ perfKpis.mentionRate }}<span class="perf-kpi-unit">%</span></div>
+            <div class="perf-kpi-sub">across {{ perfKpis.totalQueries }} queries</div>
+          </div>
+          <div class="perf-kpi">
+            <div class="perf-kpi-label">Top model</div>
+            <div class="perf-kpi-value perf-kpi-value-sm">{{ perfKpis.topProvider || '—' }}</div>
+            <div class="perf-kpi-sub">{{ perfKpis.topProviderRate }}% mention rate</div>
+          </div>
+          <div class="perf-kpi">
+            <div class="perf-kpi-label">Models tested</div>
+            <div class="perf-kpi-value">{{ perfKpis.providerCount }}</div>
+            <div class="perf-kpi-sub">{{ perfKpis.successfulProviders }} returning mentions</div>
+          </div>
+        </div>
+
+        <!-- Row 1: provider comparison (bar) + visibility trend (line) -->
+        <div class="perf-grid">
+          <div class="card perf-card">
+            <div class="perf-card-head">
+              <h3>Mention rate by model</h3>
+              <span class="perf-card-sub">Latest audit</span>
+            </div>
+            <div class="perf-chart">
+              <Bar :data="providerChartData" :options="providerChartOptions" />
+            </div>
+          </div>
+          <div class="card perf-card">
+            <div class="perf-card-head">
+              <h3>Visibility over time</h3>
+              <span class="perf-card-sub">{{ historyData.length }} audits</span>
+            </div>
+            <div class="perf-chart">
+              <Line v-if="historyData.length" :data="trendChartData" :options="trendChartOptions" />
+              <div v-else class="perf-chart-empty">A trend line will appear after your second audit.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Row 2: per-prompt hit rate by provider (heatmap) + provider agreement -->
+        <div class="perf-grid">
+          <div class="card perf-card">
+            <div class="perf-card-head">
+              <h3>Prompt × model heatmap</h3>
+              <span class="perf-card-sub">Where each model recommends you</span>
+            </div>
+            <div class="perf-heatmap">
+              <PromptHeatmap
+                v-if="latestAudit?.prompts?.length"
+                :prompts="latestAudit.prompts"
+                :target-name="latestAudit?.business_name || 'You'"
+                :provider-label="providerLabel"
+                :provider-color="providerColor"
+              />
+              <div v-else class="perf-chart-empty">No prompt-level results yet.</div>
+            </div>
+          </div>
+          <div class="card perf-card">
+            <div class="perf-card-head">
+              <h3>Model agreement</h3>
+              <span class="perf-card-sub">Do the models tell the same story?</span>
+            </div>
+            <div class="perf-chart">
+              <ProviderAgreement
+                v-if="latestBreakdown.length"
+                :breakdown="latestBreakdown"
+                :provider-label="providerLabel"
+              />
+              <div v-else class="perf-chart-empty">Need at least two providers with results.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Row 3: per-model scorecards -->
+        <div class="card perf-card">
+          <div class="perf-card-head">
+            <h3>Per-model scorecard</h3>
+            <span class="perf-card-sub">Latest audit breakdown</span>
+          </div>
+          <div class="perf-scorecards">
+            <div
+              v-for="p in latestBreakdown"
+              :key="p.provider"
+              class="perf-scorecard"
+            >
+              <div class="perf-scorecard-head">
+                <span class="perf-scorecard-dot" :style="{ background: providerColor(p.provider) }"></span>
+                <span class="perf-scorecard-name">{{ p.provider_display || providerLabel(p.provider) }}</span>
+              </div>
+              <div class="perf-scorecard-metric">
+                <span class="perf-scorecard-value">{{ Math.round(p.mention_rate || 0) }}%</span>
+                <span class="perf-scorecard-label">mention rate</span>
+              </div>
+              <div class="perf-scorecard-bar">
+                <div
+                  class="perf-scorecard-bar-fill"
+                  :style="{ width: Math.min(100, Math.max(0, p.mention_rate || 0)) + '%', background: providerColor(p.provider) }"
+                ></div>
+              </div>
+              <div class="perf-scorecard-foot">
+                <span>{{ p.succeeded || 0 }}/{{ (p.succeeded || 0) + (p.failed || 0) }} queries</span>
+                <span v-if="p.failed">· {{ p.failed }} failed</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </template>
+    </div><!-- /performance tab -->
     </template>
 
       <!-- ═══ Provider Detail Modal ═══════════════════════════════════════ -->
@@ -2482,6 +2640,50 @@ async function loadWebsite() {
 // website. The dashboard renders an empty-state card that nudges them
 // over to the Prompt Library — audits are kicked off from there, not here.
 const showFirstRun = computed(() => !loading.value && audits.value.length === 0)
+
+// Tabs split the dashboard's two roles: dense Overview (kept as-is) and
+// a chart-first Performance view for reading model-by-model results.
+const activeTab = ref('overview')
+
+// Performance tab needs a completed audit to chart against. We surface
+// whatever the latest one produced rather than guarding on `running`,
+// because a partially-failed audit still has plottable provider data.
+const perfHasData = computed(() => {
+  const a = latestAudit.value
+  if (!a) return false
+  if (a.status !== 'completed') return false
+  return latestBreakdown.value.length > 0
+})
+
+const perfKpis = computed(() => {
+  const a = latestAudit.value || {}
+  const bd = latestBreakdown.value || []
+  const succeeded = bd.filter(p => (p.succeeded || 0) > 0)
+  const top = [...bd].sort((x, y) => (y.mention_rate || 0) - (x.mention_rate || 0))[0]
+  // Trend: compare overall score to the previous completed audit so users
+  // can see whether the latest run improved or regressed.
+  const completed = (historyData.value || []).filter(h => typeof h.overall_score === 'number')
+  const prev = completed.length > 1 ? completed[completed.length - 2] : null
+  const delta = prev ? (a.overall_score || 0) - (prev.overall_score || 0) : null
+  let scoreTrendLabel = 'First completed audit'
+  let scoreTrendClass = 'perf-trend-flat'
+  if (delta !== null) {
+    if (delta > 0) { scoreTrendLabel = `+${delta.toFixed(1)} vs previous`; scoreTrendClass = 'perf-trend-up' }
+    else if (delta < 0) { scoreTrendLabel = `${delta.toFixed(1)} vs previous`; scoreTrendClass = 'perf-trend-down' }
+    else { scoreTrendLabel = 'No change vs previous' }
+  }
+  return {
+    overallScore: Math.round(a.overall_score || 0),
+    mentionRate: Math.round(a.mention_rate || 0),
+    totalQueries: a.total_queries || 0,
+    providerCount: (a.providers_queried || []).length || bd.length,
+    successfulProviders: succeeded.length,
+    topProvider: top ? (top.provider_display || providerLabel(top.provider)) : '',
+    topProviderRate: top ? Math.round(top.mention_rate || 0) : 0,
+    scoreTrendLabel,
+    scoreTrendClass,
+  }
+})
 const promptLibraryRoute = computed(() => `/llm-ranking/${websiteId}/prompts`)
 const promptLibraryRepoRoute = computed(() => `/llm-ranking/${websiteId}/prompts?tab=repository`)
 
@@ -4812,6 +5014,158 @@ onBeforeUnmount(() => {
   gap: 10px;
   justify-content: center;
   flex-wrap: wrap;
+}
+
+/* ── Tabs ────────────────────────────────────────────────────────────────── */
+.lr-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--border-color, #e5e7eb);
+  margin: 0 0 20px;
+}
+.lr-tab {
+  appearance: none;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 10px 16px;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-muted, #6b7280);
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.lr-tab:hover { color: var(--text-primary); }
+.lr-tab.active {
+  color: var(--text-primary);
+  border-bottom-color: var(--brand-accent, #ff6b35);
+}
+.lr-tab:focus-visible {
+  outline: 2px solid var(--brand-accent, #ff6b35);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ── Performance tab ─────────────────────────────────────────────────────── */
+.lr-performance { display: flex; flex-direction: column; gap: 20px; }
+.perf-empty {
+  text-align: center;
+  padding: 60px 20px;
+  border: 1px dashed var(--border-color, #e5e7eb);
+  border-radius: 14px;
+  color: var(--text-secondary);
+}
+.perf-empty-icon {
+  display: inline-flex;
+  width: 56px; height: 56px;
+  align-items: center; justify-content: center;
+  border-radius: 14px;
+  background: rgba(255, 107, 53, 0.10);
+  color: var(--brand-accent, #ff6b35);
+  margin-bottom: 14px;
+}
+.perf-empty h3 { margin: 0 0 6px; font-size: 1.1rem; color: var(--text-primary); }
+.perf-empty p { margin: 0; font-size: 0.9rem; }
+
+.perf-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+@media (max-width: 900px) { .perf-kpis { grid-template-columns: repeat(2, 1fr); } }
+.perf-kpi {
+  background: var(--bg-card, #ffffff);
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 12px;
+  padding: 16px 18px;
+}
+.perf-kpi-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+.perf-kpi-value {
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+  line-height: 1.1;
+}
+.perf-kpi-value-sm { font-size: 1.15rem; font-weight: 600; }
+.perf-kpi-unit { font-size: 0.85rem; font-weight: 500; color: var(--text-muted); margin-left: 2px; }
+.perf-kpi-sub { font-size: 0.78rem; color: var(--text-muted); margin-top: 6px; }
+.perf-trend-up { color: #10b981; }
+.perf-trend-down { color: #ef4444; }
+.perf-trend-flat { color: var(--text-muted); }
+
+.perf-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+@media (max-width: 1024px) { .perf-grid { grid-template-columns: 1fr; } }
+.perf-card { padding: 18px 20px 22px; }
+.perf-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.perf-card-head h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.perf-card-sub { font-size: 0.78rem; color: var(--text-muted); }
+.perf-chart { position: relative; height: 280px; }
+.perf-heatmap { min-height: 200px; }
+.perf-chart-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.perf-scorecards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+}
+.perf-scorecard {
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 10px;
+  padding: 14px 16px;
+  background: var(--bg-subtle, #fafafa);
+}
+.perf-scorecard-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.perf-scorecard-dot { width: 10px; height: 10px; border-radius: 50%; }
+.perf-scorecard-name { font-size: 0.9rem; font-weight: 600; color: var(--text-primary); }
+.perf-scorecard-metric { display: flex; align-items: baseline; gap: 6px; margin-bottom: 8px; }
+.perf-scorecard-value { font-size: 1.4rem; font-weight: 700; color: var(--text-primary); letter-spacing: -0.01em; }
+.perf-scorecard-label { font-size: 0.78rem; color: var(--text-muted); }
+.perf-scorecard-bar {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--border-color, #e5e7eb);
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+.perf-scorecard-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.4s ease;
+}
+.perf-scorecard-foot {
+  display: flex;
+  gap: 6px;
+  font-size: 0.78rem;
+  color: var(--text-muted);
 }
 
 /* Top filter bar */
