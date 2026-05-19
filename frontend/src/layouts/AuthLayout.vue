@@ -23,12 +23,20 @@
 
         <div class="auth-features">
           <div class="feature-item">
-            <span class="feature-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M2 14V6l4-4 4 4 4-4v12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg></span>
-            <span>Real-time analytics</span>
+            <span class="feature-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="5"/><path d="M11 11l3 3" stroke-linecap="round"/></svg></span>
+            <span>Prompt library</span>
           </div>
           <div class="feature-item">
-            <span class="feature-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="5" r="3" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M2 14c0-3 3-5 6-5s6 2 6 5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></span>
-            <span>Lead scoring</span>
+            <span class="feature-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="5" height="5" rx="1"/><rect x="9" y="3" width="5" height="5" rx="1"/><rect x="2" y="10" width="5" height="3" rx="1"/><rect x="9" y="10" width="5" height="3" rx="1"/></svg></span>
+            <span>Multi-LLM probing</span>
+          </div>
+          <div class="feature-item">
+            <span class="feature-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 8h12M8 2v12" stroke-linecap="round"/><circle cx="8" cy="8" r="6"/></svg></span>
+            <span>Source influence</span>
+          </div>
+          <div class="feature-item">
+            <span class="feature-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 2h7l3 3v9H3z"/><path d="M10 2v3h3M6 9h4M6 11h4" stroke-linecap="round"/></svg></span>
+            <span>Content studio</span>
           </div>
         </div>
       </div>
@@ -180,7 +188,8 @@ onMounted(() => {
 
 .auth-features {
   display: flex;
-  gap: 24px;
+  flex-wrap: wrap;
+  gap: 12px 24px;
   margin-top: 40px;
 }
 
