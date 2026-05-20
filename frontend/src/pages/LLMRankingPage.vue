@@ -478,7 +478,11 @@
         </div>
         <div class="pages-summary-cell">
           <div class="pages-summary-val">{{ scannedContextCount }}</div>
-          <div class="pages-summary-label">External sources scanned</div>
+          <div class="pages-summary-label">External sources</div>
+        </div>
+        <div class="pages-summary-cell">
+          <div class="pages-summary-val">{{ uploadedDocsReady.length }}</div>
+          <div class="pages-summary-label">Uploaded docs</div>
         </div>
         <div class="pages-summary-cell pages-summary-cell-strong">
           <div class="pages-summary-val">{{ importedCount }}</div>
@@ -594,6 +598,59 @@
                 @click="removeContextUrl(c.url)"
               >×</button>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Uploaded documents card: same upload zone the wizard uses, so
+           anything dropped here is immediately queued for the next run. -->
+      <div class="card ov-card">
+        <div class="ov-card-head">
+          <div>
+            <h3 class="ov-card-title">Uploaded documents</h3>
+            <p class="ov-card-sub">Briefs, sheets, or notes you want the models to read alongside your pages.</p>
+          </div>
+          <span class="pages-count">{{ uploadedDocuments.length }} files</span>
+        </div>
+        <div
+          class="ctx-upload-zone"
+          :class="{ dragging: uploadDragging }"
+          @dragover.prevent="uploadDragging = true"
+          @dragleave="uploadDragging = false"
+          @drop.prevent="onContextFileDrop"
+          @click="triggerContextUpload"
+        >
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <path d="M17 8l-5-5-5 5"/>
+            <path d="M12 3v12"/>
+          </svg>
+          <div class="ctx-upload-zone-text">
+            <strong>Drag &amp; drop or click to upload</strong>
+            <span class="text-muted">.txt, .md, .csv, .json, .html · up to 256 KB each</span>
+          </div>
+        </div>
+        <div v-if="uploadedDocuments.length" class="ctx-uploaded-list" style="margin-top:12px">
+          <div
+            v-for="doc in uploadedDocuments"
+            :key="doc.id"
+            class="ctx-uploaded-row"
+            :class="{ errored: doc.error }"
+          >
+            <span class="ctx-uploaded-icon" aria-hidden="true">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M3 2h7l3 3v9H3z"/><path d="M10 2v3h3"/>
+              </svg>
+            </span>
+            <div class="ctx-uploaded-body">
+              <div class="ctx-uploaded-name">{{ doc.name }}</div>
+              <div class="ctx-uploaded-meta">
+                <span>{{ formatBytes(doc.size) }}</span>
+                <span v-if="doc.error" class="wizard-scan-error">· {{ doc.error }}</span>
+                <span v-else>· {{ doc.charCount }} chars extracted</span>
+              </div>
+            </div>
+            <button class="ctx-uploaded-remove" aria-label="Remove" @click.stop="removeUploadedDoc(doc.id)">×</button>
           </div>
         </div>
       </div>
@@ -971,17 +1028,76 @@
               that answers your prompts.
             </p>
 
-            <!-- Cloud connectors — disabled until the backend OAuth is in place
-                 but surfaced so users see the roadmap and can pick the right
-                 path. Each card emits a not-implemented toast and a clear
-                 "Coming soon" status. -->
+            <!-- Drag-and-drop / click-to-pick upload zone. Reads each
+                 file client-side (.txt / .md / .csv / .json / .html),
+                 caps the per-file size, and adds the parsed text to
+                 uploadedDocuments. The backend receives them on submit
+                 via the inline_documents field. -->
+            <div
+              class="ctx-upload-zone"
+              :class="{ dragging: uploadDragging }"
+              @dragover.prevent="uploadDragging = true"
+              @dragleave="uploadDragging = false"
+              @drop.prevent="onContextFileDrop"
+              @click="triggerContextUpload"
+            >
+              <input
+                ref="contextUploadInput"
+                type="file"
+                multiple
+                accept=".txt,.md,.csv,.json,.html,text/plain,text/markdown,text/csv,application/json,text/html"
+                class="visually-hidden"
+                @change="onContextFilePick"
+              />
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <path d="M17 8l-5-5-5 5"/>
+                <path d="M12 3v12"/>
+              </svg>
+              <div class="ctx-upload-zone-text">
+                <strong>Drag &amp; drop files here</strong>
+                <span class="text-muted">or click to pick · .txt, .md, .csv, .json, .html · up to 256 KB each</span>
+              </div>
+            </div>
+
+            <div v-if="uploadedDocuments.length" class="ctx-uploaded-list">
+              <div
+                v-for="(doc, idx) in uploadedDocuments"
+                :key="doc.id"
+                class="ctx-uploaded-row"
+                :class="{ errored: doc.error }"
+              >
+                <span class="ctx-uploaded-icon" aria-hidden="true">
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M3 2h7l3 3v9H3z"/><path d="M10 2v3h3"/>
+                  </svg>
+                </span>
+                <div class="ctx-uploaded-body">
+                  <div class="ctx-uploaded-name">{{ doc.name }}</div>
+                  <div class="ctx-uploaded-meta">
+                    <span>{{ formatBytes(doc.size) }}</span>
+                    <span v-if="doc.error" class="wizard-scan-error">· {{ doc.error }}</span>
+                    <span v-else>· {{ doc.charCount }} chars extracted</span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  class="ctx-uploaded-remove"
+                  aria-label="Remove file"
+                  @click.stop="removeUploadedDoc(doc.id)"
+                >×</button>
+              </div>
+            </div>
+
+            <!-- Connector strip is purely informational — direct OAuth sync
+                 is on the roadmap. Clicking a card still opens the local
+                 file picker so the workflow keeps moving. -->
             <div class="ctx-connectors">
               <button
                 v-for="conn in cloudConnectors"
                 :key="conn.key"
                 type="button"
                 class="ctx-connector"
-                :disabled="!conn.enabled"
                 @click="onConnectorClick(conn)"
               >
                 <span class="ctx-connector-logo" v-html="conn.logo"></span>
@@ -989,7 +1105,7 @@
                   <span class="ctx-connector-name">{{ conn.name }}</span>
                   <span class="ctx-connector-desc">{{ conn.desc }}</span>
                 </span>
-                <span class="ctx-connector-status">{{ conn.enabled ? 'Connect' : 'Coming soon' }}</span>
+                <span class="ctx-connector-status">Upload</span>
               </button>
             </div>
 
@@ -1224,8 +1340,8 @@
                   </svg>
                 </div>
                 <div class="wizard-flow-label">Sources</div>
-                <div class="wizard-flow-count">{{ 1 + extraPaths.length + contextUrls.filter(c => c.success).length }}</div>
-                <div class="wizard-flow-sub">root + {{ extraPaths.length }} pages + {{ contextUrls.filter(c => c.success).length }} external</div>
+                <div class="wizard-flow-count">{{ 1 + extraPaths.length + contextUrls.filter(c => c.success).length + uploadedDocsReady.length }}</div>
+                <div class="wizard-flow-sub">root + {{ extraPaths.length }} pages + {{ contextUrls.filter(c => c.success).length }} external + {{ uploadedDocsReady.length }} uploads</div>
               </div>
               <div class="wizard-flow-arrow" aria-hidden="true">→</div>
               <div class="wizard-flow-stage">
@@ -1303,7 +1419,9 @@
               </div>
               <div class="wizard-review-item">
                 <span class="wizard-review-label">Context Sources</span>
-                <span class="wizard-review-value">{{ contextUrls.filter(c => c.success).length }} URLs scanned</span>
+                <span class="wizard-review-value">
+                  {{ contextUrls.filter(c => c.success).length }} URLs · {{ uploadedDocsReady.length }} uploads
+                </span>
               </div>
               <div class="wizard-review-item wizard-review-cost" :class="{ 'over-cap': preflight && preflight.cap_status.would_exceed }">
                 <span class="wizard-review-label">Estimated cost</span>
@@ -1897,7 +2015,9 @@ async function addQuickPage() {
 
 // Mirror importedCount for use inside the wizard so the two surfaces stay
 // in lockstep without coupling templates.
-const wizardImportedCount = computed(() => extraPaths.value.length + contextUrls.value.filter(c => c.success).length)
+const wizardImportedCount = computed(() =>
+  extraPaths.value.length + contextUrls.value.filter(c => c.success).length + uploadedDocsReady.value.length,
+)
 
 // Description "Upload brief" — slurps a small text/markdown file into the
 // textarea so the user doesn't have to retype an existing brief. Capped
@@ -1967,11 +2087,70 @@ const cloudConnectors = Object.freeze([
   },
 ])
 function onConnectorClick(conn) {
-  if (!conn.enabled) {
-    toast.info(`${conn.name} sync is coming soon. Paste a URL below for now.`)
-    return
+  // OAuth-backed cloud sync is on the roadmap; for now every connector
+  // routes through the same local file picker so the user can still pull
+  // a real document into the audit.
+  toast.info(`${conn.name} OAuth sync is coming soon. Pick a local file for now.`)
+  triggerContextUpload()
+}
+
+// Context Sources: local file uploader -----------------------------------
+// Reads small text files client-side and stores the extracted body so
+// the backend can read it on the audit payload's inline_documents field.
+const uploadDragging = ref(false)
+const contextUploadInput = ref(null)
+const uploadedDocuments = ref([]) // {id, name, size, content, charCount, error}
+const UPLOAD_MAX_BYTES = 256 * 1024
+const UPLOAD_ACCEPT = /\.(txt|md|csv|json|html?)$/i
+
+let _uploadCounter = 0
+function triggerContextUpload() {
+  contextUploadInput.value?.click()
+}
+function onContextFilePick(event) {
+  const files = Array.from(event.target?.files || [])
+  event.target.value = ''
+  ingestUploadedFiles(files)
+}
+function onContextFileDrop(event) {
+  uploadDragging.value = false
+  const files = Array.from(event.dataTransfer?.files || [])
+  ingestUploadedFiles(files)
+}
+async function ingestUploadedFiles(files) {
+  for (const file of files) {
+    const id = `upload-${++_uploadCounter}-${Date.now()}`
+    const entry = { id, name: file.name, size: file.size, content: '', charCount: 0, error: '' }
+    if (!UPLOAD_ACCEPT.test(file.name)) {
+      entry.error = 'Unsupported file type'
+      uploadedDocuments.value.push(entry)
+      continue
+    }
+    if (file.size > UPLOAD_MAX_BYTES) {
+      entry.error = 'File over 256 KB'
+      uploadedDocuments.value.push(entry)
+      continue
+    }
+    try {
+      const text = await file.text()
+      entry.content = text
+      entry.charCount = text.length
+    } catch (_) {
+      entry.error = 'Could not read file'
+    }
+    uploadedDocuments.value.push(entry)
   }
 }
+function removeUploadedDoc(id) {
+  uploadedDocuments.value = uploadedDocuments.value.filter(d => d.id !== id)
+}
+function formatBytes(n) {
+  if (!n) return '0 B'
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
+  return `${(n / 1024 / 1024).toFixed(1)} MB`
+}
+const uploadedDocsReady = computed(() => uploadedDocuments.value.filter(d => !d.error && d.content))
 
 // Competitor auto-suggestions — pulled from `competitors_mentioned` on
 // prior audit responses. Capped at 8 so the chip strip stays readable;
@@ -2246,9 +2425,12 @@ const runAuditNow = (audit) => executeAuditJob(audit)
 
 // Pages tab: count of external sources that finished scanning successfully,
 // plus the total number of URLs the next audit will pull in (root is always
-// implicit, so the count here covers only the *additional* imports).
+// implicit, so the count here covers only the *additional* imports). Local
+// uploads count too once they parse cleanly.
 const scannedContextCount = computed(() => contextUrls.value.filter(c => c.success).length)
-const importedCount = computed(() => extraPaths.value.length + scannedContextCount.value)
+const importedCount = computed(() =>
+  extraPaths.value.length + scannedContextCount.value + uploadedDocsReady.value.length,
+)
 
 function handleAuditStarted(audit) {
   // The new audit record is now live — add it to the list, select it, and
@@ -4103,6 +4285,13 @@ async function submitAudit() {
             ...extraPaths.value.map(p => p.url),
           ]
         : [],
+      // Locally-uploaded documents (.txt / .md / .csv / .json / .html)
+      // travel as their extracted text body. The backend can opt in to
+      // using these as additional grounding; unknown fields are ignored
+      // safely by the audit serializer.
+      inline_documents: agentScanPermission.value
+        ? uploadedDocsReady.value.map(d => ({ name: d.name, content: d.content }))
+        : [],
     }
     if (customPromptsText.value.trim()) {
       payload.custom_prompts = customPromptsText.value.split('\n').map(s => s.trim()).filter(Boolean)
@@ -4909,7 +5098,7 @@ onBeforeUnmount(() => {
 
 .pages-summary {
   display: grid;
-  grid-template-columns: repeat(3, 1fr) auto;
+  grid-template-columns: repeat(4, 1fr) auto;
   gap: 14px;
   align-items: center;
   background: var(--bg-card, #ffffff);
@@ -4917,8 +5106,8 @@ onBeforeUnmount(() => {
   border-radius: 12px;
   padding: 14px 18px;
 }
-@media (max-width: 720px) {
-  .pages-summary { grid-template-columns: repeat(3, 1fr); }
+@media (max-width: 900px) {
+  .pages-summary { grid-template-columns: repeat(2, 1fr); }
   .pages-summary-cta { grid-column: 1 / -1; }
 }
 .pages-summary-cell { display: flex; flex-direction: column; gap: 2px; }
@@ -5281,6 +5470,72 @@ onBeforeUnmount(() => {
   white-space: nowrap;
   border: 0;
 }
+
+/* Context sources: file upload zone */
+.ctx-upload-zone {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 20px;
+  border: 1.5px dashed var(--border-color, #e5e7eb);
+  border-radius: 12px;
+  background: var(--bg-subtle, #fafafa);
+  color: var(--text-muted);
+  cursor: pointer;
+  margin-bottom: 14px;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.ctx-upload-zone:hover, .ctx-upload-zone.dragging {
+  border-color: var(--brand-accent, #ff6b35);
+  background: rgba(255,107,53,0.04);
+  color: var(--text-primary);
+}
+.ctx-upload-zone-text { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+.ctx-upload-zone-text strong { color: var(--text-primary); font-weight: 600; font-size: 0.92rem; }
+.ctx-upload-zone-text span { font-size: 0.78rem; }
+
+.ctx-uploaded-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+.ctx-uploaded-row {
+  display: grid;
+  grid-template-columns: 24px 1fr auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  background: var(--bg-card, #fff);
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 10px;
+}
+.ctx-uploaded-row.errored { border-color: rgba(239,68,68,0.35); background: rgba(239,68,68,0.04); }
+.ctx-uploaded-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px; height: 24px;
+  border-radius: 6px;
+  background: rgba(91,141,239,0.10);
+  color: #1e40af;
+}
+.ctx-uploaded-row.errored .ctx-uploaded-icon { background: rgba(239,68,68,0.10); color: #b91c1c; }
+.ctx-uploaded-body { min-width: 0; }
+.ctx-uploaded-name {
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  word-break: break-word;
+}
+.ctx-uploaded-meta { font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; }
+.ctx-uploaded-remove {
+  appearance: none;
+  background: transparent;
+  border: none;
+  width: 24px; height: 24px;
+  border-radius: 6px;
+  font-size: 1.1rem;
+  line-height: 1;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.ctx-uploaded-remove:hover { background: rgba(239,68,68,0.10); color: #ef4444; }
 
 /* Context sources: cloud connectors */
 .ctx-connectors {
