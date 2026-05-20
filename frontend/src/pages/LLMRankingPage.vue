@@ -598,6 +598,13 @@
         </div>
       </div>
 
+      <label class="wizard-permission pages-permission">
+        <input type="checkbox" v-model="agentScanPermission" />
+        <span>
+          <strong>I authorize agents to scan these pages</strong> and use the extracted content as context for the next model test on this project. Without permission, only the project root URL is sent.
+        </span>
+      </label>
+
       <p class="pages-note">
         These pages are imported into the next model test on this project.
         Click <strong>Run New Audit</strong> in the header to send them to Claude, GPT-4, Gemini, and Perplexity — usage and cost
@@ -831,6 +838,104 @@
                   </svg>
                   Regenerate Description
                 </button>
+              </div>
+            </div>
+
+            <!-- Compare-against-prompts panel ──────────────────────────────
+                 Lets the user add pages for our agents to read, grant
+                 explicit scan permission, and see sample prompts the
+                 models will be asked. Writes to the same extraPaths /
+                 contextUrls refs the Pages tab and submitAudit use, so
+                 nothing is forked. -->
+            <div class="wizard-compare">
+              <div class="wizard-compare-head">
+                <h3 class="wizard-compare-title">Compare your application against the prompts</h3>
+                <p class="wizard-compare-sub">
+                  Point our agents at the pages they should learn from. We'll scan each one before sending the questions below to Claude, GPT-4, Gemini, and Perplexity, then show you where you surface.
+                </p>
+              </div>
+
+              <div class="wizard-compare-grid">
+                <!-- LEFT: pages we'll scan -->
+                <div class="wizard-compare-col">
+                  <div class="wizard-compare-col-head">
+                    <span class="wizard-compare-col-label">Pages our agents will read</span>
+                    <span class="text-xs text-muted">{{ wizardImportedCount }} queued</span>
+                  </div>
+
+                  <div class="wizard-scan-list">
+                    <div class="wizard-scan-row wizard-scan-row-root">
+                      <span class="wizard-scan-pill">Root</span>
+                      <span class="wizard-scan-url">
+                        <a v-if="homepageUrl" :href="homepageUrl" target="_blank" rel="noopener">{{ homepageUrl }}</a>
+                        <span v-else class="text-muted">No project URL on file</span>
+                      </span>
+                    </div>
+                    <div v-for="p in extraPaths" :key="p.url" class="wizard-scan-row">
+                      <span class="wizard-scan-pill wizard-scan-pill-same">Same site</span>
+                      <span class="wizard-scan-url">
+                        <a :href="p.url" target="_blank" rel="noopener">{{ p.label || p.url }}</a>
+                      </span>
+                      <button class="wizard-scan-remove" aria-label="Remove" @click="removeExtraPath(p.url)">×</button>
+                    </div>
+                    <div
+                      v-for="c in contextUrls"
+                      :key="c.url"
+                      class="wizard-scan-row"
+                      :class="{ scanning: c.scanning, errored: !c.scanning && !c.success }"
+                    >
+                      <span class="wizard-scan-pill wizard-scan-pill-ext">External</span>
+                      <span class="wizard-scan-url">
+                        <a :href="c.url" target="_blank" rel="noopener">{{ c.title || c.url }}</a>
+                        <span v-if="c.scanning" class="text-xs text-muted">· scanning…</span>
+                        <span v-else-if="c.error" class="text-xs wizard-scan-error">· {{ c.error }}</span>
+                      </span>
+                      <button class="wizard-scan-remove" aria-label="Remove" @click="removeContextUrl(c.url)">×</button>
+                    </div>
+                  </div>
+
+                  <form class="wizard-scan-add" @submit.prevent="addQuickPage">
+                    <input
+                      v-model="quickPageInput"
+                      class="form-input"
+                      :placeholder="quickPagePlaceholder"
+                    />
+                    <button
+                      type="submit"
+                      class="btn btn-secondary btn-sm"
+                      :disabled="!quickPageInput.trim() || scanningContextUrl"
+                    >{{ scanningContextUrl ? 'Scanning…' : 'Add page' }}</button>
+                  </form>
+                  <p v-if="quickPageError" class="wizard-scan-error" style="margin:6px 0 0">{{ quickPageError }}</p>
+
+                  <label class="wizard-permission">
+                    <input type="checkbox" v-model="agentScanPermission" />
+                    <span>
+                      <strong>I authorize agents to scan these pages</strong> and use the extracted content as context for this model test.
+                    </span>
+                  </label>
+                </div>
+
+                <!-- RIGHT: sample prompts we'll compare against -->
+                <div class="wizard-compare-col">
+                  <div class="wizard-compare-col-head">
+                    <span class="wizard-compare-col-label">Sample prompts we'll compare against</span>
+                    <span class="text-xs text-muted">{{ samplePrompts.length }} previews</span>
+                  </div>
+
+                  <ul class="wizard-prompt-preview-list">
+                    <li v-for="(sp, i) in samplePrompts" :key="i" class="wizard-prompt-preview-row">
+                      <span class="wizard-prompt-preview-num">{{ i + 1 }}</span>
+                      <div class="wizard-prompt-preview-body">
+                        <span class="wizard-prompt-preview-text">"{{ sp.text }}"</span>
+                        <span class="wizard-prompt-preview-meta">{{ sp.intent }} · {{ sp.funnel }}</span>
+                      </div>
+                    </li>
+                  </ul>
+                  <p class="wizard-compare-foot">
+                    The full prompt set is finalized in the <strong>Topics</strong> step. Each model's answer is then compared against your description and the pages above.
+                  </p>
+                </div>
               </div>
             </div>
           </div>
@@ -1610,6 +1715,83 @@ function removeExtraPath(url) {
 function removeContextUrl(url) {
   contextUrls.value = contextUrls.value.filter(c => c.url !== url)
 }
+
+// Wizard "Compare against prompts" panel ------------------------------------
+// Single-input adder that routes a raw value to either the same-domain
+// sub-paths list or the external context scanner based on its origin.
+const agentScanPermission = ref(false)
+const quickPageInput = ref('')
+const quickPageError = ref('')
+const quickPagePlaceholder = computed(() => homepageOrigin.value
+  ? `/pricing or https://blog.example.com/...`
+  : 'https://example.com/page')
+
+async function addQuickPage() {
+  const raw = (quickPageInput.value || '').trim()
+  if (!raw) return
+  quickPageError.value = ''
+
+  const origin = homepageOrigin.value
+  let isExternal = false
+  let normalized = raw
+  if (raw.startsWith('http://') || raw.startsWith('https://')) {
+    try {
+      const parsed = new URL(raw)
+      isExternal = !origin || parsed.origin !== origin
+      normalized = raw
+    } catch (_) {
+      quickPageError.value = 'That URL is not valid.'
+      return
+    }
+  } else if (!origin) {
+    quickPageError.value = 'Add the project URL first, or paste a full https:// link.'
+    return
+  }
+
+  if (isExternal) {
+    if (contextUrls.value.length >= 5) {
+      quickPageError.value = 'You can add up to 5 external sources.'
+      return
+    }
+    contextUrlInput.value = normalized
+    await addContextUrl()
+  } else {
+    if (extraPaths.value.length >= 20) {
+      quickPageError.value = 'You can add up to 20 same-site pages.'
+      return
+    }
+    extraPathInput.value = normalized
+    addExtraPath()
+  }
+  quickPageInput.value = ''
+}
+
+// Mirror importedCount for use inside the wizard so the two surfaces stay
+// in lockstep without coupling templates.
+const wizardImportedCount = computed(() => extraPaths.value.length + contextUrls.value.filter(c => c.success).length)
+
+// Sample prompts shown so the user can mentally compare their app/pages
+// against what the AIs will be asked. We surface real prompts when the
+// wizard has generated them; otherwise we synthesise three buyer-style
+// queries from the current industry/business name so the panel is never
+// empty.
+const samplePrompts = computed(() => {
+  // Real prompts (preview from the dispatcher, if any) take precedence.
+  if (previewedPrompts.value?.length) {
+    return previewedPrompts.value.slice(0, 3).map(p => ({
+      text: p.text || p.prompt || '',
+      intent: p.intent || 'recommendation',
+      funnel: p.funnel || p.funnel_stage || 'bottom funnel',
+    }))
+  }
+  const industry = (auditForm.value.industry || 'industry').toLowerCase()
+  const name = auditForm.value.business_name || 'your business'
+  return [
+    { text: `What are the best ${industry} tools available right now?`, intent: 'recommendation', funnel: 'bottom funnel' },
+    { text: `Compare the top 5 ${industry} platforms and explain their strengths.`, intent: 'comparison', funnel: 'mid funnel' },
+    { text: `I need to ${industry}. What tools should I consider for ${name.toLowerCase()}-like needs?`, intent: 'use case', funnel: 'mid funnel' },
+  ]
+})
 
 // Region catalogue mirrors apps/llm_ranking/services/regions.py. Adding a
 // new entry here requires a backend change too — kept short to make the
@@ -3668,10 +3850,15 @@ async function submitAudit() {
       // ``context_urls`` field; the audit's enrichment treats them
       // uniformly. Keep external sources first since they're often the
       // user's most curated picks; sub-paths are supplementary.
-      context_urls: [
-        ...contextUrls.value.filter(c => c.success).map(c => c.url),
-        ...extraPaths.value.map(p => p.url),
-      ],
+      // The compare-against-prompts permission gate strips the extra
+      // URLs when the user hasn't explicitly opted in — the project's
+      // root URL is always included by the backend's enrichment.
+      context_urls: agentScanPermission.value
+        ? [
+            ...contextUrls.value.filter(c => c.success).map(c => c.url),
+            ...extraPaths.value.map(p => p.url),
+          ]
+        : [],
     }
     if (customPromptsText.value.trim()) {
       payload.custom_prompts = customPromptsText.value.split('\n').map(s => s.trim()).filter(Boolean)
@@ -4635,6 +4822,207 @@ onBeforeUnmount(() => {
   line-height: 1.5;
 }
 .pages-note strong { color: var(--text-primary); font-weight: 600; }
+
+/* ───────────────────────────────────────────────────────────────────────────
+   Wizard "Compare against prompts" panel — embedded in Step 1 so the user
+   can attach pages, grant permission, and see sample prompts side-by-side.
+   ─────────────────────────────────────────────────────────────────────── */
+.wizard-compare {
+  margin-top: 22px;
+  border-top: 1px solid var(--border-color, #e5e7eb);
+  padding-top: 20px;
+}
+.wizard-compare-head { margin-bottom: 14px; }
+.wizard-compare-title {
+  margin: 0 0 4px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.wizard-compare-sub {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+.wizard-compare-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+@media (max-width: 880px) { .wizard-compare-grid { grid-template-columns: 1fr; } }
+.wizard-compare-col {
+  background: var(--bg-subtle, #fafafa);
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 12px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.wizard-compare-col-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.wizard-compare-col-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.wizard-scan-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.wizard-scan-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+  background: var(--bg-card, #fff);
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 8px;
+  font-size: 0.82rem;
+}
+.wizard-scan-row-root { background: rgba(255,107,53,0.05); border-color: rgba(255,107,53,0.20); }
+.wizard-scan-row.scanning { border-style: dashed; opacity: 0.85; }
+.wizard-scan-row.errored { border-color: rgba(239,68,68,0.30); background: rgba(239,68,68,0.04); }
+.wizard-scan-pill {
+  font-size: 0.66rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--bg-subtle, #fafafa);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.wizard-scan-row-root .wizard-scan-pill { background: rgba(255,107,53,0.14); color: #c2410c; }
+.wizard-scan-pill-same { background: rgba(91,141,239,0.12); color: #1e40af; }
+.wizard-scan-pill-ext { background: rgba(16,185,129,0.12); color: #047857; }
+.wizard-scan-url {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+}
+.wizard-scan-url a {
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+}
+.wizard-scan-url a:hover { border-bottom-color: var(--text-muted); }
+.wizard-scan-error { color: #b91c1c; }
+.wizard-scan-remove {
+  appearance: none;
+  background: transparent;
+  border: none;
+  width: 22px; height: 22px;
+  border-radius: 6px;
+  font-size: 1rem;
+  line-height: 1;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.wizard-scan-remove:hover { background: rgba(239,68,68,0.10); color: #ef4444; }
+
+.wizard-scan-add {
+  display: flex;
+  gap: 8px;
+}
+.wizard-scan-add .form-input {
+  flex: 1;
+  padding: 8px 12px;
+  font-size: 0.85rem;
+}
+.wizard-scan-add .btn { flex-shrink: 0; }
+
+.wizard-permission {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  background: var(--bg-card, #fff);
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 10px;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.wizard-permission input[type="checkbox"] {
+  margin-top: 2px;
+  flex-shrink: 0;
+  accent-color: var(--brand-accent, #ff6b35);
+  width: 16px;
+  height: 16px;
+}
+.wizard-permission strong { color: var(--text-primary); font-weight: 600; }
+.wizard-permission:has(input:checked) {
+  background: rgba(16,185,129,0.04);
+  border-color: rgba(16,185,129,0.30);
+}
+.pages-permission { margin: 0; }
+
+.wizard-prompt-preview-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.wizard-prompt-preview-row {
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--bg-card, #fff);
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 8px;
+}
+.wizard-prompt-preview-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: var(--bg-subtle, #fafafa);
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.wizard-prompt-preview-body { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.wizard-prompt-preview-text {
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  line-height: 1.45;
+}
+.wizard-prompt-preview-meta {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+.wizard-compare-foot {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+.wizard-compare-foot strong { color: var(--text-primary); }
 
 /* Empty-state shown when the website has no audit data yet. */
 .empty-dashboard {
