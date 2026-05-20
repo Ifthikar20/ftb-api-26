@@ -820,7 +820,7 @@
             <div class="form-group" style="margin-top:12px">
               <label class="form-label">
                 Description
-                <span class="text-muted text-xs">Who you serve and what makes you different</span>
+                <span class="text-muted text-xs">Type or upload — who you serve and what makes you different</span>
               </label>
               <textarea
                 v-model="auditForm.description"
@@ -831,14 +831,36 @@
               ></textarea>
               <div class="wizard-textarea-meta">
                 <span class="text-xs text-muted">{{ (auditForm.description || '').length }}/500 characters</span>
-                <button class="wizard-regen-btn" @click="regenerateTopics" :disabled="generatingTopics">
-                  <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
-                    <path d="M2 8a6 6 0 0110.9-3.5M14 8A6 6 0 013.1 11.5"/>
-                    <path d="M14 2v4h-4M2 14v-4h4"/>
-                  </svg>
-                  Regenerate Description
-                </button>
+                <div class="wizard-textarea-actions">
+                  <!-- Upload a small text brief and stitch it into the
+                       description. Reads .txt / .md / .csv client-side
+                       only, capped at the same 500-char limit as the
+                       textarea so the payload stays predictable. -->
+                  <input
+                    ref="descriptionUploadInput"
+                    type="file"
+                    accept=".txt,.md,.csv,text/plain,text/markdown"
+                    class="visually-hidden"
+                    @change="onDescriptionUpload"
+                  />
+                  <button class="wizard-regen-btn" type="button" @click="triggerDescriptionUpload">
+                    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                      <path d="M8 1v10"/><path d="M4 5l4-4 4 4"/><path d="M2 13h12"/>
+                    </svg>
+                    Upload brief
+                  </button>
+                  <button class="wizard-regen-btn" type="button" @click="regenerateTopics" :disabled="generatingTopics">
+                    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                      <path d="M2 8a6 6 0 0110.9-3.5M14 8A6 6 0 013.1 11.5"/>
+                      <path d="M14 2v4h-4M2 14v-4h4"/>
+                    </svg>
+                    Regenerate Description
+                  </button>
+                </div>
               </div>
+              <p v-if="descriptionUploadStatus" class="text-xs" :class="descriptionUploadStatus.error ? 'wizard-scan-error' : 'text-muted'" style="margin-top:6px">
+                {{ descriptionUploadStatus.message }}
+              </p>
             </div>
 
             <!-- Compare-against-prompts panel ──────────────────────────────
@@ -944,9 +966,34 @@
           <div v-if="wizardStep === 2" class="wizard-pane">
             <h2 class="wizard-pane-title">Add context sources</h2>
             <p class="wizard-pane-sub">
-              Add blog posts, product pages, or any URLs that tell the story of your business.
-              We'll scan them and feed the content to the LLMs for a more accurate ranking.
+              Connect a cloud source or paste URLs so our agents can read more about
+              what we're prompting against. The content feeds into every model
+              that answers your prompts.
             </p>
+
+            <!-- Cloud connectors — disabled until the backend OAuth is in place
+                 but surfaced so users see the roadmap and can pick the right
+                 path. Each card emits a not-implemented toast and a clear
+                 "Coming soon" status. -->
+            <div class="ctx-connectors">
+              <button
+                v-for="conn in cloudConnectors"
+                :key="conn.key"
+                type="button"
+                class="ctx-connector"
+                :disabled="!conn.enabled"
+                @click="onConnectorClick(conn)"
+              >
+                <span class="ctx-connector-logo" v-html="conn.logo"></span>
+                <span class="ctx-connector-body">
+                  <span class="ctx-connector-name">{{ conn.name }}</span>
+                  <span class="ctx-connector-desc">{{ conn.desc }}</span>
+                </span>
+                <span class="ctx-connector-status">{{ conn.enabled ? 'Connect' : 'Coming soon' }}</span>
+              </button>
+            </div>
+
+            <div class="ctx-divider"><span>or paste a URL</span></div>
 
             <div class="ctx-url-input-row">
               <input
@@ -1053,7 +1100,28 @@
           <!-- Step 4: Competitors -->
           <div v-if="wizardStep === 4" class="wizard-pane">
             <h2 class="wizard-pane-title">Add Your Competitors</h2>
-            <p class="wizard-pane-sub">Track up to 20 competitors to monitor your relative AI visibility</p>
+            <p class="wizard-pane-sub">Track up to 20 competitors to monitor your relative AI visibility. We've surfaced names co-mentioned with you in past audits — tap to add.</p>
+
+            <!-- Auto-suggested competitors: pulled from competitors_mentioned
+                 on prior audit responses. Clicking a chip adds it to the
+                 form's competitor list and removes it from the suggestion
+                 strip so the user sees forward progress. -->
+            <div v-if="suggestedCompetitors.length" class="wc-suggestions">
+              <span class="wc-suggestions-label">Suggested from past audits:</span>
+              <div class="wc-suggestions-chips">
+                <button
+                  v-for="c in suggestedCompetitors"
+                  :key="c.name"
+                  type="button"
+                  class="wc-suggestion-chip"
+                  @click="addSuggestedCompetitor(c)"
+                  :disabled="auditForm.competitors.length >= 20"
+                >
+                  <span>+ {{ c.name }}</span>
+                  <span class="wc-suggestion-count">{{ c.count }}× mentioned</span>
+                </button>
+              </div>
+            </div>
 
             <div class="wc-header">
               <label class="form-label" style="margin:0;font-weight:700">Add New Competitor</label>
@@ -1141,7 +1209,68 @@
           <!-- Step 6: Review -->
           <div v-if="wizardStep === 6" class="wizard-pane">
             <h2 class="wizard-pane-title">Review &amp; run your audit</h2>
-            <p class="wizard-pane-sub">Everything looks good? Hit start to kick off the audit.</p>
+            <p class="wizard-pane-sub">Here's the estimated cost, how we'll run this, and how your sources connect to what we'll measure.</p>
+
+            <!-- Run flow: sources → models → prompts → results. The arrows
+                 visualise the pipeline so the user understands what
+                 happens when they hit "Start audit" instead of seeing a
+                 flat list of metadata. -->
+            <div class="wizard-flow" aria-label="Audit run flow">
+              <div class="wizard-flow-stage">
+                <div class="wizard-flow-icon wizard-flow-icon-src" aria-hidden="true">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <path d="M14 2v6h6"/>
+                  </svg>
+                </div>
+                <div class="wizard-flow-label">Sources</div>
+                <div class="wizard-flow-count">{{ 1 + extraPaths.length + contextUrls.filter(c => c.success).length }}</div>
+                <div class="wizard-flow-sub">root + {{ extraPaths.length }} pages + {{ contextUrls.filter(c => c.success).length }} external</div>
+              </div>
+              <div class="wizard-flow-arrow" aria-hidden="true">→</div>
+              <div class="wizard-flow-stage">
+                <div class="wizard-flow-icon wizard-flow-icon-prompt" aria-hidden="true">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                  </svg>
+                </div>
+                <div class="wizard-flow-label">Prompts</div>
+                <div class="wizard-flow-count">{{ flowPromptCount }}</div>
+                <div class="wizard-flow-sub">{{ auditForm.selectedTopics.length }} topics × intents</div>
+              </div>
+              <div class="wizard-flow-arrow" aria-hidden="true">→</div>
+              <div class="wizard-flow-stage">
+                <div class="wizard-flow-icon wizard-flow-icon-models" aria-hidden="true">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="3" width="7" height="7" rx="1"/>
+                    <rect x="14" y="3" width="7" height="7" rx="1"/>
+                    <rect x="3" y="14" width="7" height="7" rx="1"/>
+                    <rect x="14" y="14" width="7" height="7" rx="1"/>
+                  </svg>
+                </div>
+                <div class="wizard-flow-label">Models</div>
+                <div class="wizard-flow-count">{{ auditForm.providers.length }}</div>
+                <div class="wizard-flow-sub">{{ auditForm.providers.map(providerLabel).join(', ') || 'None selected' }}</div>
+              </div>
+              <div class="wizard-flow-arrow" aria-hidden="true">→</div>
+              <div class="wizard-flow-stage">
+                <div class="wizard-flow-icon wizard-flow-icon-result" aria-hidden="true">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 3v18h18"/>
+                    <path d="M7 14l4-4 3 3 5-6"/>
+                  </svg>
+                </div>
+                <div class="wizard-flow-label">Results</div>
+                <div class="wizard-flow-count">{{ flowQueryCount }}</div>
+                <div class="wizard-flow-sub">queries · scored &amp; trended</div>
+              </div>
+            </div>
+
+            <p class="wizard-flow-note text-xs text-muted">
+              Each source is scanned before the prompts run, so models see your
+              latest copy. Every query is logged and added to your usage on the
+              Overview tab.
+            </p>
 
             <div class="wizard-review-grid">
               <div class="wizard-review-item">
@@ -1769,6 +1898,121 @@ async function addQuickPage() {
 // Mirror importedCount for use inside the wizard so the two surfaces stay
 // in lockstep without coupling templates.
 const wizardImportedCount = computed(() => extraPaths.value.length + contextUrls.value.filter(c => c.success).length)
+
+// Description "Upload brief" — slurps a small text/markdown file into the
+// textarea so the user doesn't have to retype an existing brief. Capped
+// at the same 500 chars the textarea enforces; anything longer is
+// truncated with a clear status line.
+const descriptionUploadInput = ref(null)
+const descriptionUploadStatus = ref(null)
+const DESCRIPTION_MAX = 500
+function triggerDescriptionUpload() {
+  descriptionUploadInput.value?.click()
+}
+async function onDescriptionUpload(event) {
+  const file = event.target?.files?.[0]
+  event.target.value = ''
+  if (!file) return
+  if (file.size > 256 * 1024) {
+    descriptionUploadStatus.value = { error: true, message: 'File is over 256 KB — paste a shorter brief.' }
+    return
+  }
+  try {
+    const text = await file.text()
+    const clean = text.replace(/\s+/g, ' ').trim()
+    const truncated = clean.length > DESCRIPTION_MAX
+    auditForm.value.description = clean.slice(0, DESCRIPTION_MAX)
+    descriptionUploadStatus.value = {
+      error: false,
+      message: truncated
+        ? `Loaded ${file.name} — trimmed to ${DESCRIPTION_MAX} characters.`
+        : `Loaded ${file.name} (${clean.length} characters).`,
+    }
+  } catch (_) {
+    descriptionUploadStatus.value = { error: true, message: 'Could not read the file.' }
+  }
+}
+
+// Context Sources — cloud connector cards. The OAuth backend isn't wired
+// yet, but the UI surfaces the roadmap so users know it's coming and we
+// have a place to attach handlers when integrations ship.
+const cloudConnectors = Object.freeze([
+  {
+    key: 'google-drive',
+    name: 'Google Drive',
+    desc: 'Docs, sheets, briefs',
+    enabled: false,
+    logo: '<svg width="20" height="20" viewBox="0 0 87 76" fill="none"><path d="M6.6 66.9l3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8H0c0 1.55.4 3.1 1.2 4.5z" fill="#0066DA"/><path d="M43.65 25l-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44A9 9 0 0 0 0 53.05h27.5z" fill="#00AC47"/><path d="M73 76.85c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.5l5.85 11.5z" fill="#EA4335"/><path d="M43.65 25L57.4 1.2A8.9 8.9 0 0 0 52.9 0h-18.5c-1.55 0-3.1.45-4.5 1.2z" fill="#00832D"/><path d="M59.75 53.05h-32.2L13.8 76.85c1.4.8 2.95 1.2 4.5 1.2h50.85c1.55 0 3.1-.45 4.5-1.2z" fill="#2684FC"/><path d="M73 26.5l-12.7-22a9 9 0 0 0-3.3-3.3l-13.75 23.8L59.75 53.05h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#FFBA00"/></svg>',
+  },
+  {
+    key: 'dropbox',
+    name: 'Dropbox',
+    desc: 'PDFs, brand kits',
+    enabled: false,
+    logo: '<svg width="20" height="20" viewBox="0 0 42 40" fill="#0061FF"><path d="M10.5 0L0 6.75l10.5 6.75L21 6.75 10.5 0zm21 0L21 6.75 31.5 13.5 42 6.75 31.5 0zM0 20.25L10.5 27l10.5-6.75-10.5-6.75L0 20.25zm31.5-6.75L21 20.25 31.5 27 42 20.25l-10.5-6.75zM10.5 28.5L21 35.25l10.5-6.75L21 21.75 10.5 28.5z"/></svg>',
+  },
+  {
+    key: 'notion',
+    name: 'Notion',
+    desc: 'Docs and wikis',
+    enabled: false,
+    logo: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M4.5 4.4l13.5-1c1.6-.1 2 0 3.1.8L24 6.4c.7.5.9.6.9 1.2v17.1c0 1.2-.4 1.9-1.9 2L8.5 27.6c-1.1.1-1.7-.1-2.3-.9L1.1 20.2C.5 19.3.2 18.7.2 17.9V6.6c0-1 .4-1.8 1.6-1.9 0 0 2.7-.3 2.7-.3z" fill="#fff" transform="scale(0.83)"/><path d="M18 3.4L4.5 4.4c-1.2.1-1.6.9-1.6 1.9l.1 11.3c0 .8.3 1.4.9 2.3l5.1 6.5c.6.8 1.2 1 2.3.9l14.5-.9c1.5-.1 1.9-.8 1.9-2V7.6c0-.6-.2-.7-.9-1.2l-2.9-2.1c-1.1-.8-1.5-.9-3.1-.9zM8.7 7.2c-1.5.1-1.8.1-2.6-.5L4 5c-.2-.2-.1-.4.4-.5L17.4 3.5c1.2-.1 1.9.4 2.4.8l2.4 1.7c.1.1.4.4 0 .4L8.7 7.2zM7.1 24V8.7c0-.7.2-1 .8-1.1l16.1-.9c.6 0 .8.3.8 1V23c0 .7-.1 1.2-1 1.3l-15.4.9c-.9 0-1.3-.3-1.3-1.2zm15.1-14.4c.1.4 0 .8-.4.8l-.7.1V21c-.6.3-1.2.5-1.7.5-.8 0-1-.3-1.6-1l-5-7.7v7.4l1.5.4s0 .8-1.2.8l-3.2.2c-.1-.2 0-.7.4-.8l1-.3V12.6l-1.4-.1c-.1-.4.1-1 .8-1.1l3.4-.2 4.7 7.1V12l-1.2-.1c-.1-.5.3-.9.8-.9l3.8-.2z" fill="#000" transform="scale(0.83)"/></svg>',
+  },
+  {
+    key: 'onedrive',
+    name: 'OneDrive',
+    desc: 'SharePoint files',
+    enabled: false,
+    logo: '<svg width="20" height="20" viewBox="0 0 32 32" fill="none"><path d="M22 13a6 6 0 0 0-11.6-2A5 5 0 0 0 6 16a4 4 0 0 0 .5 8h17.4a4.5 4.5 0 0 0 .5-9 4.6 4.6 0 0 0-2.4-2z" fill="#0364B8"/></svg>',
+  },
+])
+function onConnectorClick(conn) {
+  if (!conn.enabled) {
+    toast.info(`${conn.name} sync is coming soon. Paste a URL below for now.`)
+    return
+  }
+}
+
+// Competitor auto-suggestions — pulled from `competitors_mentioned` on
+// prior audit responses. Capped at 8 so the chip strip stays readable;
+// already-added competitors are filtered out so users never see "+ X"
+// for someone they already track.
+const suggestedCompetitors = computed(() => {
+  const counts = new Map()
+  const results = auditDetail.value?.results || []
+  for (const r of results) {
+    for (const c of (r.competitors_mentioned || [])) {
+      if (!c?.name) continue
+      counts.set(c.name, (counts.get(c.name) || 0) + 1)
+    }
+  }
+  const have = new Set((auditForm.value.competitors || []).map(c => (c.name || '').toLowerCase()))
+  return [...counts.entries()]
+    .map(([name, count]) => ({ name, count }))
+    .filter(c => !have.has(c.name.toLowerCase()))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 8)
+})
+function addSuggestedCompetitor(c) {
+  if (auditForm.value.competitors.length >= 20) return
+  auditForm.value.competitors.push({ name: c.name, domain: '' })
+}
+
+// Review flow stages: estimate the prompt count using preflight when we
+// have it, otherwise fall back to a simple "topics × intents" sketch so
+// the diagram never shows blank counts.
+const flowPromptCount = computed(() => {
+  if (preflight.value?.queries && auditForm.value.providers.length) {
+    return Math.max(1, Math.round(preflight.value.queries / auditForm.value.providers.length))
+  }
+  const topics = auditForm.value.selectedTopics.length || 0
+  const intents = (auditForm.value.themes || []).length || 1
+  return Math.max(topics * intents, 0)
+})
+const flowQueryCount = computed(() => {
+  if (preflight.value?.queries) return preflight.value.queries
+  return flowPromptCount.value * Math.max(auditForm.value.providers.length, 1)
+})
 
 // Sample prompts shown so the user can mentally compare their app/pages
 // against what the AIs will be asked. We surface real prompts when the
@@ -5023,6 +5267,206 @@ onBeforeUnmount(() => {
   line-height: 1.45;
 }
 .wizard-compare-foot strong { color: var(--text-primary); }
+
+/* Description: upload + regenerate buttons share a row */
+.wizard-textarea-actions { display: flex; gap: 8px; align-items: center; }
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Context sources: cloud connectors */
+.ctx-connectors {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+@media (max-width: 640px) { .ctx-connectors { grid-template-columns: 1fr; } }
+.ctx-connector {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 12px;
+  background: var(--bg-card, #fff);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.ctx-connector:hover:not(:disabled) {
+  border-color: var(--text-primary);
+  box-shadow: 0 4px 14px -8px rgba(20,23,24,0.12);
+}
+.ctx-connector:disabled { cursor: not-allowed; opacity: 0.7; }
+.ctx-connector-logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--bg-subtle, #fafafa);
+  flex-shrink: 0;
+}
+.ctx-connector-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.ctx-connector-name { font-size: 0.88rem; font-weight: 600; color: var(--text-primary); }
+.ctx-connector-desc { font-size: 0.75rem; color: var(--text-muted); }
+.ctx-connector-status {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--bg-subtle, #fafafa);
+}
+.ctx-connector:not(:disabled) .ctx-connector-status {
+  color: #047857;
+  background: rgba(16,185,129,0.12);
+}
+.ctx-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 8px 0 16px;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+.ctx-divider::before, .ctx-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border-color, #e5e7eb);
+}
+
+/* Competitors: auto-suggestion chips */
+.wc-suggestions {
+  background: var(--bg-subtle, #fafafa);
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-bottom: 16px;
+}
+.wc-suggestions-label {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+.wc-suggestions-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.wc-suggestion-chip {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 999px;
+  background: var(--bg-card, #fff);
+  font-size: 0.8rem;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.wc-suggestion-chip:hover:not(:disabled) {
+  border-color: var(--brand-accent, #ff6b35);
+  background: rgba(255,107,53,0.05);
+}
+.wc-suggestion-chip:disabled { opacity: 0.5; cursor: not-allowed; }
+.wc-suggestion-count { font-size: 0.7rem; color: var(--text-muted); }
+
+/* Review flow visualization */
+.wizard-flow {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr auto 1fr auto 1fr;
+  gap: 8px;
+  align-items: stretch;
+  background: var(--bg-subtle, #fafafa);
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 14px;
+  padding: 16px;
+  margin-bottom: 12px;
+}
+@media (max-width: 900px) {
+  .wizard-flow {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+  .wizard-flow-arrow {
+    text-align: center;
+    transform: rotate(90deg);
+    padding: 2px 0;
+  }
+}
+.wizard-flow-stage {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--bg-card, #fff);
+  border: 1px solid var(--border-color, #e5e7eb);
+  text-align: center;
+}
+.wizard-flow-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  margin: 0 auto 4px;
+}
+.wizard-flow-icon-src { background: rgba(91,141,239,0.12); color: #1d4ed8; }
+.wizard-flow-icon-prompt { background: rgba(167,139,250,0.14); color: #6d28d9; }
+.wizard-flow-icon-models { background: rgba(255,107,53,0.12); color: #c2410c; }
+.wizard-flow-icon-result { background: rgba(16,185,129,0.14); color: #047857; }
+.wizard-flow-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+.wizard-flow-count {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+.wizard-flow-sub {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  line-height: 1.3;
+}
+.wizard-flow-arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: 1.1rem;
+  font-weight: 300;
+}
+.wizard-flow-note {
+  margin: 0 0 16px;
+  line-height: 1.5;
+}
 
 /* Empty-state shown when the website has no audit data yet. */
 .empty-dashboard {
