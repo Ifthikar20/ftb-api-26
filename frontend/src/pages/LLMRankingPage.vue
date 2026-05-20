@@ -64,6 +64,16 @@
         :aria-selected="activeTab === 'performance'"
         @click="activeTab = 'performance'"
       >Performance</button>
+      <button
+        type="button"
+        class="lr-tab"
+        :class="{ active: activeTab === 'pages' }"
+        role="tab"
+        :aria-selected="activeTab === 'pages'"
+        @click="activeTab = 'pages'"
+      >Pages
+        <span v-if="importedCount" class="lr-tab-badge">{{ importedCount }}</span>
+      </button>
     </div>
 
     <div v-show="activeTab === 'overview'" class="lr-overview">
@@ -423,6 +433,177 @@
         </div>
       </template>
     </div><!-- /performance tab -->
+
+    <!-- ═════════════════════════════════════════════════════════════════════
+         Pages tab — manage which pages of the project's site get scanned and
+         imported into the next model-test run. Reuses the same reactive
+         refs (extraPaths, contextUrls) and helpers (addExtraPath,
+         addContextUrl) the audit-wizard reads from, so anything selected
+         here flows into the next "Run New Audit" without further wiring.
+         ═══════════════════════════════════════════════════════════════════ -->
+    <div v-show="activeTab === 'pages'" class="lr-pages">
+      <!-- Project URL card: shows the existing project-level URL so the user
+           always sees what site we're working on. The change-website link
+           on the page header still owns the swap action. -->
+      <div class="card pages-project">
+        <div class="pages-project-head">
+          <div class="pages-project-icon" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"/>
+              <path d="M2 12h20"/>
+              <path d="M12 2a15 15 0 0 1 0 20"/>
+              <path d="M12 2a15 15 0 0 0 0 20"/>
+            </svg>
+          </div>
+          <div class="pages-project-body">
+            <div class="pages-project-label">Project site</div>
+            <div class="pages-project-url">
+              <a v-if="homepageUrl" :href="homepageUrl" target="_blank" rel="noopener">{{ homepageUrl }}</a>
+              <span v-else class="text-muted">No URL on file</span>
+            </div>
+            <div class="pages-project-meta">
+              <strong>{{ websiteName || '—' }}</strong>
+              <span class="text-muted" v-if="currentWebsite?.industry">· {{ currentWebsite.industry }}</span>
+            </div>
+          </div>
+          <router-link class="btn btn-ghost btn-sm" to="/websites/">Change site</router-link>
+        </div>
+      </div>
+
+      <!-- Summary strip: how many pages are queued for the next run. -->
+      <div class="pages-summary">
+        <div class="pages-summary-cell">
+          <div class="pages-summary-val">{{ extraPaths.length }}</div>
+          <div class="pages-summary-label">Same-site pages</div>
+        </div>
+        <div class="pages-summary-cell">
+          <div class="pages-summary-val">{{ scannedContextCount }}</div>
+          <div class="pages-summary-label">External sources scanned</div>
+        </div>
+        <div class="pages-summary-cell pages-summary-cell-strong">
+          <div class="pages-summary-val">{{ importedCount }}</div>
+          <div class="pages-summary-label">Will import into next audit</div>
+        </div>
+        <button class="btn btn-primary btn-sm pages-summary-cta" @click="openRunAudit" :disabled="running">
+          {{ running ? 'Running…' : 'Run audit with these pages' }}
+        </button>
+      </div>
+
+      <div class="ov-grid ov-grid-2">
+        <!-- Same-domain sub-paths. Add a path like /pricing or a full URL on
+             the same origin; the audit's enrichment will scan each at run
+             time. -->
+        <div class="card ov-card">
+          <div class="ov-card-head">
+            <div>
+              <h3 class="ov-card-title">Pages on your site</h3>
+              <p class="ov-card-sub">
+                Pull in any path on <strong v-if="homepageOrigin">{{ homepageOrigin }}</strong><span v-else>this domain</span> so models see them when answering buyer-style questions.
+              </p>
+            </div>
+            <span class="pages-count">{{ extraPaths.length }}/20</span>
+          </div>
+          <form class="pages-input-row" @submit.prevent="addExtraPath">
+            <span class="pages-input-prefix" v-if="homepageOrigin">{{ homepageOrigin }}</span>
+            <input
+              v-model="extraPathInput"
+              class="form-input pages-input"
+              :placeholder="homepageOrigin ? '/pricing or full URL on same domain' : 'Add a URL'"
+              :disabled="!homepageOrigin || extraPaths.length >= 20"
+            />
+            <button
+              type="submit"
+              class="btn btn-secondary btn-sm"
+              :disabled="!extraPathInput.trim() || !homepageOrigin || extraPaths.length >= 20"
+            >Add</button>
+          </form>
+          <div v-if="!extraPaths.length" class="ov-empty-inline" style="min-height:80px">
+            <p>No additional pages yet — root URL is always included.</p>
+          </div>
+          <div v-else class="pages-list">
+            <div v-for="p in extraPaths" :key="p.url" class="pages-list-row">
+              <span class="pages-list-icon" aria-hidden="true">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <path d="M3 3h7l3 3v7H3z"/><path d="M10 3v3h3"/>
+                </svg>
+              </span>
+              <span class="pages-list-text">
+                <span class="pages-list-label">{{ p.label || p.url }}</span>
+                <a :href="p.url" target="_blank" rel="noopener" class="pages-list-url">{{ p.url }}</a>
+              </span>
+              <button
+                class="pages-list-remove"
+                aria-label="Remove page"
+                @click="removeExtraPath(p.url)"
+              >×</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- External context URLs — scanned via llmRankingApi.scanUrl so the
+             user can see what we'll send into the audit. -->
+        <div class="card ov-card">
+          <div class="ov-card-head">
+            <div>
+              <h3 class="ov-card-title">External sources</h3>
+              <p class="ov-card-sub">Press, docs, comparison sites — anything off your domain. We'll scan and summarize each.</p>
+            </div>
+            <span class="pages-count">{{ contextUrls.length }}/5</span>
+          </div>
+          <form class="pages-input-row" @submit.prevent="addContextUrl">
+            <input
+              v-model="contextUrlInput"
+              class="form-input pages-input"
+              placeholder="https://example.com/article"
+              :disabled="contextUrls.length >= 5"
+            />
+            <button
+              type="submit"
+              class="btn btn-secondary btn-sm"
+              :disabled="!contextUrlInput.trim() || contextUrls.length >= 5 || scanningContextUrl"
+            >{{ scanningContextUrl ? 'Scanning…' : 'Scan' }}</button>
+          </form>
+          <div v-if="!contextUrls.length" class="ov-empty-inline" style="min-height:80px">
+            <p>No external sources added.</p>
+          </div>
+          <div v-else class="pages-list">
+            <div
+              v-for="c in contextUrls"
+              :key="c.url"
+              class="pages-list-row pages-list-row-tall"
+              :class="{ scanning: c.scanning, errored: !c.scanning && !c.success }"
+            >
+              <span class="pages-list-icon" aria-hidden="true">
+                <span v-if="c.scanning" class="pages-list-spinner"></span>
+                <svg v-else-if="c.success" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M3 8.5l3 3 7-7"/>
+                </svg>
+                <svg v-else width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+                  <path d="M4 4l8 8M12 4l-8 8"/>
+                </svg>
+              </span>
+              <span class="pages-list-text">
+                <span class="pages-list-label">{{ c.title || c.url }}</span>
+                <a :href="c.url" target="_blank" rel="noopener" class="pages-list-url">{{ c.url }}</a>
+                <span v-if="c.summary" class="pages-list-summary">{{ c.summary }}</span>
+                <span v-if="c.error" class="pages-list-error">{{ c.error }}</span>
+              </span>
+              <button
+                class="pages-list-remove"
+                aria-label="Remove source"
+                @click="removeContextUrl(c.url)"
+              >×</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <p class="pages-note">
+        These pages are imported into the next model test on this project.
+        Click <strong>Run New Audit</strong> in the header to send them to Claude, GPT-4, Gemini, and Perplexity — usage and cost
+        are tracked per run on the Overview tab.
+      </p>
+    </div><!-- /pages tab -->
 
       <!-- ═══ Provider Detail Modal ═══════════════════════════════════════ -->
       <BaseModal v-model="showProviderDetail" :title="providerDetailData?.provider_display + ' — Detailed Report'" :wide="true">
@@ -1426,6 +1607,10 @@ function removeExtraPath(url) {
   extraPaths.value = extraPaths.value.filter(p => p.url !== url)
 }
 
+function removeContextUrl(url) {
+  contextUrls.value = contextUrls.value.filter(c => c.url !== url)
+}
+
 // Region catalogue mirrors apps/llm_ranking/services/regions.py. Adding a
 // new entry here requires a backend change too — kept short to make the
 // drift obvious.
@@ -1632,6 +1817,12 @@ function auditStatusClass(status) {
 // Alias so the Recent Audits row can re-trigger a stuck pending/failed run
 // using the same execute path the legacy table used.
 const runAuditNow = (audit) => executeAuditJob(audit)
+
+// Pages tab: count of external sources that finished scanning successfully,
+// plus the total number of URLs the next audit will pull in (root is always
+// implicit, so the count here covers only the *additional* imports).
+const scannedContextCount = computed(() => contextUrls.value.filter(c => c.success).length)
+const importedCount = computed(() => extraPaths.value.length + scannedContextCount.value)
 
 function handleAuditStarted(audit) {
   // The new audit record is now live — add it to the list, select it, and
@@ -4221,6 +4412,229 @@ onBeforeUnmount(() => {
 .ov-usage-models-row { border-radius: 8px; font-variant-numeric: tabular-nums; }
 .ov-usage-models-row:hover { background: var(--bg-subtle, #fafafa); }
 .ov-usage-model-name { font-weight: 500; color: var(--text-primary); }
+
+/* ───────────────────────────────────────────────────────────────────────────
+   Pages tab — same-site + external sources picker
+   ─────────────────────────────────────────────────────────────────────── */
+.lr-pages { display: flex; flex-direction: column; gap: 20px; }
+.lr-tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--brand-accent, #ff6b35);
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.pages-project {
+  padding: 18px 22px;
+  border-radius: 14px;
+}
+.pages-project-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.pages-project-icon {
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  background: rgba(255,107,53,0.10);
+  color: var(--brand-accent, #ff6b35);
+  flex-shrink: 0;
+}
+.pages-project-body { flex: 1; min-width: 0; }
+.pages-project-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+.pages-project-url {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  word-break: break-all;
+}
+.pages-project-url a {
+  color: var(--text-primary);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+}
+.pages-project-url a:hover { border-bottom-color: var(--brand-accent, #ff6b35); }
+.pages-project-meta { font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px; }
+
+.pages-summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  background: var(--bg-card, #ffffff);
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 12px;
+  padding: 14px 18px;
+}
+@media (max-width: 720px) {
+  .pages-summary { grid-template-columns: repeat(3, 1fr); }
+  .pages-summary-cta { grid-column: 1 / -1; }
+}
+.pages-summary-cell { display: flex; flex-direction: column; gap: 2px; }
+.pages-summary-val {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+.pages-summary-label {
+  font-size: 0.72rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+.pages-summary-cell-strong .pages-summary-val { color: var(--brand-accent, #ff6b35); }
+
+.pages-count {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: var(--bg-subtle, #fafafa);
+  padding: 4px 10px;
+  border-radius: 999px;
+}
+
+.pages-input-row {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  margin-bottom: 14px;
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 10px;
+  background: var(--bg-input, #fff);
+  padding: 4px 4px 4px 12px;
+}
+.pages-input-row:focus-within {
+  border-color: var(--text-primary);
+  box-shadow: var(--shadow-glow);
+}
+.pages-input-prefix {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.pages-input.form-input {
+  flex: 1;
+  border: none;
+  box-shadow: none;
+  padding: 8px 4px;
+  min-width: 0;
+  background: transparent;
+}
+.pages-input.form-input:focus { box-shadow: none; }
+.pages-input-row .btn { align-self: center; }
+
+.pages-list { display: flex; flex-direction: column; gap: 6px; }
+.pages-list-row {
+  display: grid;
+  grid-template-columns: 22px 1fr auto;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 10px;
+  background: var(--bg-card, #ffffff);
+  align-items: center;
+  transition: border-color 0.15s ease;
+}
+.pages-list-row:hover { border-color: var(--border-strong, #d4d4d8); }
+.pages-list-row-tall { align-items: flex-start; }
+.pages-list-row-tall .pages-list-icon { margin-top: 2px; }
+.pages-list-row.scanning { border-style: dashed; }
+.pages-list-row.errored { border-color: rgba(239,68,68,0.35); background: rgba(239,68,68,0.03); }
+.pages-list-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px; height: 22px;
+  border-radius: 6px;
+  background: var(--bg-subtle, #fafafa);
+  color: var(--text-muted);
+}
+.pages-list-row.errored .pages-list-icon { background: rgba(239,68,68,0.10); color: #b91c1c; }
+.pages-list-row:not(.scanning):not(.errored) .pages-list-icon { color: #047857; background: rgba(16,185,129,0.10); }
+.pages-list-spinner {
+  width: 12px; height: 12px;
+  border: 2px solid var(--border-color, #e5e7eb);
+  border-top-color: var(--brand-accent, #ff6b35);
+  border-radius: 50%;
+  animation: ov-spin 0.8s linear infinite;
+}
+.pages-list-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.pages-list-label {
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  word-break: break-word;
+}
+.pages-list-url {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-decoration: none;
+  word-break: break-all;
+}
+.pages-list-url:hover { color: var(--text-primary); }
+.pages-list-summary {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  margin-top: 4px;
+  line-height: 1.4;
+}
+.pages-list-error {
+  font-size: 0.78rem;
+  color: #b91c1c;
+  margin-top: 4px;
+}
+.pages-list-remove {
+  appearance: none;
+  background: transparent;
+  border: none;
+  width: 24px; height: 24px;
+  border-radius: 6px;
+  font-size: 1.1rem;
+  line-height: 1;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.pages-list-remove:hover { background: rgba(239,68,68,0.10); color: #ef4444; }
+
+.pages-note {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  background: var(--bg-subtle, #fafafa);
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 10px;
+  padding: 12px 16px;
+  margin: 0;
+  line-height: 1.5;
+}
+.pages-note strong { color: var(--text-primary); font-weight: 600; }
 
 /* Empty-state shown when the website has no audit data yet. */
 .empty-dashboard {
