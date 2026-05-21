@@ -451,7 +451,7 @@ class PromptSynthesizeView(APIView):
         items: list[str] = []
         if match:
             try:
-                items = [str(x) for x in json.loads(match.group()) if isinstance(x, (str, int, float))]
+                items = [str(x) for x in json.loads(match.group()) if isinstance(x, str | int | float)]
             except Exception:
                 items = []
         created = []

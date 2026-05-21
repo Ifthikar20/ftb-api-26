@@ -115,7 +115,7 @@ def _normalise(raw: dict) -> dict:
         pos = c.get("position")
         competitors.append({
             "name": name[:200],
-            "position": int(pos) if isinstance(pos, (int, float)) and pos is not None else None,
+            "position": int(pos) if isinstance(pos, int | float) and pos is not None else None,
             "linked": bool(c.get("linked", False)),
         })
 
@@ -130,7 +130,7 @@ def _normalise(raw: dict) -> dict:
 
     is_mentioned = bool(raw.get("target_mentioned"))
     position = raw.get("target_position")
-    position = int(position) if isinstance(position, (int, float)) and position is not None else None
+    position = int(position) if isinstance(position, int | float) and position is not None else None
 
     return {
         "is_mentioned": is_mentioned,
