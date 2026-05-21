@@ -15,7 +15,7 @@ import hashlib
 import logging
 import random
 import re
-from typing import Iterable
+from collections.abc import Iterable
 
 from apps.brand_vault.models import ToneSample
 from apps.brand_vault.services.embeddings import embed_text
@@ -52,7 +52,7 @@ def _slice_paragraphs(text: str) -> Iterable[str]:
 
 
 def _ranked_chunks(website_id: str):
-    from apps.rag.models import KnowledgeChunk, KnowledgeSource
+    from apps.rag.models import KnowledgeChunk
 
     qs = (
         KnowledgeChunk.objects.filter(website_id=website_id)

@@ -1,6 +1,8 @@
 """Tests for ccTLD-based citation country attribution."""
 from apps.llm_ranking.services.citation_geo import (
-    aggregate_countries, attribute_country, merge_country_counts,
+    aggregate_countries,
+    attribute_country,
+    merge_country_counts,
 )
 
 

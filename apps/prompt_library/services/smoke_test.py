@@ -14,7 +14,6 @@ from __future__ import annotations
 import logging
 import re
 import time
-from typing import Optional
 
 from apps.prompt_library.models import Prompt
 from apps.prompt_library.services.variable_resolver import resolve_for_website

@@ -1,4 +1,5 @@
 import logging
+import re as _re
 from datetime import timedelta
 
 from celery import chord, shared_task
@@ -179,8 +180,9 @@ def dispatch_scheduled_audits() -> None:
                 user=cap_user,
                 website=schedule.website,
             )
-            from apps.llm_ranking.providers import PROVIDERS
             from django.conf import settings as _settings
+
+            from apps.llm_ranking.providers import PROVIDERS
             requested = schedule.providers or list(PROVIDERS.keys())
             selected_providers = [
                 key for key in requested
@@ -299,13 +301,16 @@ def run_model_test(self, *, run_id: str, website_id: str, user_id: int | None,
     after each (prompt, provider) call so the FE can poll and render
     results as they arrive.
     """
+    import time as _time
+
     from django.contrib.auth import get_user_model
+
     from apps.llm_ranking.providers import (
-        get_provider, get_provider_for_variant, parse_variant,
+        get_provider,
+        get_provider_for_variant,
+        parse_variant,
     )
     from apps.websites.models import Website
-
-    import time as _time
     started_monotonic = _time.monotonic()
 
     # Resolve pacing once per run so the worker doesn't import Django
@@ -584,6 +589,7 @@ def run_model_test(self, *, run_id: str, website_id: str, user_id: int | None,
 def _persist_model_test_run(*, run_id, website_id, user_id, state, duration_seconds):
     """Write/update the durable ModelTestRun row mirroring `state`."""
     from django.utils import timezone
+
     from apps.llm_ranking.models import ModelTestRun
 
     defaults = dict(
@@ -611,8 +617,6 @@ def _persist_model_test_run(*, run_id, website_id, user_id, state, duration_seco
 
 
 # ── Model Test response analyzers ──────────────────────────────────
-
-import re as _re
 
 # Reasonably general list-item detector. Matches:
 #   "1. ..."  "1) ..."  "1: ..."  "- ..."  "* ..."  "• ..."
@@ -1039,7 +1043,7 @@ def _model_test_google_grounding(*, brand_terms, prompts, website, user_id=None)
             response = model.generate_content(grounding_prompt)
             used_grounding = False
         except Exception as exc:
-            raise RuntimeError(f"Gemini grounding failed: {exc}")
+            raise RuntimeError(f"Gemini grounding failed: {exc}") from exc
 
     text = (getattr(response, "text", "") or "").strip()
 
@@ -1053,6 +1057,8 @@ def _model_test_google_grounding(*, brand_terms, prompts, website, user_id=None)
     # own, so we don't surface that as an error.
     from apps.llm_ranking.services.google_search import (
         is_configured as _cse_configured,
+    )
+    from apps.llm_ranking.services.google_search import (
         search_many as _cse_search_many,
     )
 

@@ -5,9 +5,9 @@ import pytest
 from rest_framework.test import APIClient
 
 from apps.accounts.tests.factories import UserFactory
-from apps.websites.tests.factories import WebsiteFactory
 from apps.llm_ranking.models import LLMRankingAudit
 from apps.llm_ranking.tests.factories import LLMRankingAuditFactory, LLMRankingResultFactory
+from apps.websites.tests.factories import WebsiteFactory
 
 
 @pytest.fixture

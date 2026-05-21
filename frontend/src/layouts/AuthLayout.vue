@@ -23,25 +23,26 @@
 
         <div class="auth-features">
           <div class="feature-item">
-            <span class="feature-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M2 14V6l4-4 4 4 4-4v12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg></span>
-            <span>Real-time analytics</span>
+            <span class="feature-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="5"/><path d="M11 11l3 3" stroke-linecap="round"/></svg></span>
+            <span>Prompt library</span>
           </div>
           <div class="feature-item">
-            <span class="feature-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="5" r="3" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M2 14c0-3 3-5 6-5s6 2 6 5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></span>
-            <span>Lead scoring</span>
+            <span class="feature-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="5" height="5" rx="1"/><rect x="9" y="3" width="5" height="5" rx="1"/><rect x="2" y="10" width="5" height="3" rx="1"/><rect x="9" y="10" width="5" height="3" rx="1"/></svg></span>
+            <span>Multi-LLM probing</span>
+          </div>
+          <div class="feature-item">
+            <span class="feature-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 8h12M8 2v12" stroke-linecap="round"/><circle cx="8" cy="8" r="6"/></svg></span>
+            <span>Source influence</span>
+          </div>
+          <div class="feature-item">
+            <span class="feature-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 2h7l3 3v9H3z"/><path d="M10 2v3h3M6 9h4M6 11h4" stroke-linecap="round"/></svg></span>
+            <span>Content studio</span>
           </div>
         </div>
       </div>
     </div>
 
     <div class="auth-right">
-      <div class="auth-theme-toggle">
-        <button class="theme-toggle" @click="toggleTheme" :title="currentTheme === 'light' ? 'Dark mode' : 'Light mode'">
-          <svg v-if="currentTheme === 'light'" width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M15 10A7 7 0 1 1 8 3a5 5 0 0 0 7 7z"/></svg>
-          <svg v-else width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="9" cy="9" r="4"/><path d="M9 1v2M9 15v2M1 9h2M15 9h2M3.3 3.3l1.4 1.4M13.3 13.3l1.4 1.4M14.7 3.3l-1.4 1.4M4.7 13.3l-1.4 1.4"/></svg>
-        </button>
-      </div>
-
       <div class="auth-form-container">
         <div class="auth-form-header">
           <h2 class="auth-title">{{ title }}</h2>
@@ -56,23 +57,27 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { onMounted, onUnmounted } from 'vue'
 
 defineProps({
   title: { type: String, default: '' },
   subtitle: { type: String, default: '' },
 })
 
-const currentTheme = ref(localStorage.getItem('fb-theme') || 'light')
-
-function toggleTheme() {
-  currentTheme.value = currentTheme.value === 'light' ? 'dark' : 'light'
-  document.documentElement.setAttribute('data-theme', currentTheme.value)
-  localStorage.setItem('fb-theme', currentTheme.value)
-}
-
+// Auth screens are light-only. Stash whatever theme the rest of the app
+// was using and restore it on unmount so we don't surprise authenticated
+// users when they navigate away.
+let _previousTheme = null
 onMounted(() => {
-  document.documentElement.setAttribute('data-theme', currentTheme.value)
+  _previousTheme = document.documentElement.getAttribute('data-theme')
+  document.documentElement.setAttribute('data-theme', 'light')
+})
+onUnmounted(() => {
+  if (_previousTheme) {
+    document.documentElement.setAttribute('data-theme', _previousTheme)
+  } else {
+    document.documentElement.removeAttribute('data-theme')
+  }
 })
 </script>
 
@@ -180,7 +185,8 @@ onMounted(() => {
 
 .auth-features {
   display: flex;
-  gap: 24px;
+  flex-wrap: wrap;
+  gap: 12px 24px;
   margin-top: 40px;
 }
 
@@ -209,12 +215,6 @@ onMounted(() => {
   padding: 48px 56px;
   border-left: 1px solid var(--border-color);
   position: relative;
-}
-
-.auth-theme-toggle {
-  position: absolute;
-  top: 24px;
-  right: 24px;
 }
 
 .auth-form-container {

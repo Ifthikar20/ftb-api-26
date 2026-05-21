@@ -9,8 +9,6 @@ so the orchestrator code path is exercised in tests.
 """
 from __future__ import annotations
 
-from typing import List
-
 from apps.citations.services.extractors.base import BaseExtractor, CitationCandidate
 
 
@@ -24,7 +22,7 @@ class LLMAssistedExtractor(BaseExtractor):
         # explicitly opts in.
         self.enabled = enabled
 
-    def extract(self, result) -> List[CitationCandidate]:
+    def extract(self, result) -> list[CitationCandidate]:
         if not self.enabled:
             return []
         # Intentionally a no-op until the meta-prompt + provider routing

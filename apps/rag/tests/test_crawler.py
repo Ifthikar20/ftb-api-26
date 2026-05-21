@@ -9,8 +9,13 @@ from unittest.mock import MagicMock, patch
 
 from apps.rag.services import crawler
 from apps.rag.services.crawler import (
-    _canonical, _is_asset, _kind_from_url, _normalize_domain,
-    _parse_sitemap_xml, crawl_site, discover_from_sitemap,
+    _canonical,
+    _is_asset,
+    _kind_from_url,
+    _normalize_domain,
+    _parse_sitemap_xml,
+    crawl_site,
+    discover_from_sitemap,
     extract_same_domain_links,
 )
 
@@ -118,18 +123,18 @@ class TestExtractSameDomainLinks:
         with patch.object(crawler, "requests") as req:
             req.get.return_value = self._make_response(html)
             links = extract_same_domain_links("https://example.com", "example.com")
-        assert any("/about" in l for l in links)
-        assert any("/blog" in l for l in links)
-        assert any("/contact" in l for l in links)
-        assert not any("other.com" in l for l in links)
+        assert any("/about" in link for link in links)
+        assert any("/blog" in link for link in links)
+        assert any("/contact" in link for link in links)
+        assert not any("other.com" in link for link in links)
 
     def test_skips_assets(self):
         html = "<a href='/x.pdf'>doc</a><a href='/foo'>foo</a>"
         with patch.object(crawler, "requests") as req:
             req.get.return_value = self._make_response(html)
             links = extract_same_domain_links("https://example.com", "example.com")
-        assert any("/foo" in l for l in links)
-        assert not any(".pdf" in l for l in links)
+        assert any("/foo" in link for link in links)
+        assert not any(".pdf" in link for link in links)
 
     def test_skips_anchor_and_mailto(self):
         html = (

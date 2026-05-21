@@ -86,9 +86,10 @@ class DevSubscribeView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
+        from datetime import timedelta
+
         from django.conf import settings as dj_settings
         from django.utils import timezone
-        from datetime import timedelta
 
         if not getattr(dj_settings, "BILLING_DEV_MODE", False):
             return Response(

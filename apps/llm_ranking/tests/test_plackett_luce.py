@@ -1,6 +1,7 @@
 """Tests for the Plackett-Luce ranking model."""
 from apps.llm_ranking.services.plackett_luce import (
-    fit_plackett_luce, rankings_from_results,
+    fit_plackett_luce,
+    rankings_from_results,
 )
 
 

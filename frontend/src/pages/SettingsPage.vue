@@ -226,7 +226,7 @@
           <!-- Empty state -->
           <div v-if="!usage.by_module.length" class="usage-empty">
             <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="1.5"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z"/><path d="M12 6v6l4 2"/></svg>
-            <p>No AI usage recorded yet. Token tracking starts automatically when you use AI features like Lead Finder, Agents, Messaging, or LLM Ranking.</p>
+            <p>No AI usage recorded yet. Token tracking starts automatically when you use AI features like Lead Finder, Agents, Messaging, or LLM Dashboard.</p>
           </div>
         </div>
       </div>
@@ -300,7 +300,7 @@ const usageLoading = ref(false)
 const usagePeriod = ref('30')
 
 const moduleLabels = {
-  llm_ranking: 'LLM Ranking',
+  llm_ranking: 'LLM Dashboard',
   rag: 'RAG / Embeddings',
   onboarding: 'Onboarding scan',
 }

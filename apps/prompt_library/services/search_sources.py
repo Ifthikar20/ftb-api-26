@@ -69,7 +69,7 @@ _DATE_PATTERNS: list[re.Pattern[str]] = [
 
 
 def _classify_domain(host: str) -> str:
-    h = (host or "").lower().lstrip("www.")
+    h = (host or "").lower().removeprefix("www.")
     for pat, label in _SOURCE_RULES:
         if re.search(pat, h):
             return label

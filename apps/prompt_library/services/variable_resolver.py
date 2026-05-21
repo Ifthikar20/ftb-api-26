@@ -12,8 +12,6 @@ in the panel takes precedence.
 """
 from __future__ import annotations
 
-from typing import Tuple
-
 from apps.prompt_library.models import Prompt
 from apps.prompt_library.services.template_parser import (
     extract_variables,
@@ -69,7 +67,7 @@ def resolve_variables(website) -> dict:
     return merged
 
 
-def resolve_for_website(website, prompt: Prompt) -> Tuple[str, list[str]]:
+def resolve_for_website(website, prompt: Prompt) -> tuple[str, list[str]]:
     """Return ``(filled_template, missing_var_list)`` for the prompt.
 
     Falls back to ``prompt.text`` when the prompt has no template body so

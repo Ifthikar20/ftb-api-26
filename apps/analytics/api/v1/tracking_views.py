@@ -7,7 +7,7 @@ feature; the tracking pixel is no longer served.
 """
 import logging
 
-from django.http import HttpResponseRedirect
+from django.http import HttpResponse, HttpResponseRedirect
 from django.views import View
 
 from apps.analytics.models import TrackedLink

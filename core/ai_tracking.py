@@ -139,8 +139,9 @@ def get_usage_summary(user=None, days=30):
     via record_usage() — Lead Finder, Messaging, Analytics, LLM Ranking
     (upstream + extraction), Competitor Discovery — rolls into the same totals.
     """
-    from django.db.models import Sum, Count
+    from django.db.models import Count, Sum
     from django.db.models.functions import TruncDate
+
     from apps.accounts.models import AITokenUsage
 
     cutoff = timezone.now() - timedelta(days=days)
@@ -234,6 +235,7 @@ def get_usage_summary(user=None, days=30):
 def _cap_status(user):
     """Calendar-month-to-date spend vs the user's monthly cap (if any)."""
     from django.db.models import Sum
+
     from apps.accounts.models import AITokenUsage
 
     now = timezone.now()
@@ -257,6 +259,7 @@ def _cap_status(user):
 def month_to_date_cost(user) -> float:
     """Calendar-month-to-date AI cost for a user. Used by per-module cost guards."""
     from django.db.models import Sum
+
     from apps.accounts.models import AITokenUsage
 
     now = timezone.now()

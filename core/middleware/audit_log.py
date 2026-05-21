@@ -9,7 +9,6 @@ Logs: timestamp, user, IP, method, path, status code, response time,
 request ID, user agent. Sensitive data (passwords, tokens) is NEVER logged.
 """
 
-import json
 import logging
 import time
 
@@ -34,7 +33,6 @@ class AuditLogMiddleware:
         duration_ms = (time.monotonic() - start_time) * 1000
 
         user_id = str(request.user.id) if request.user.is_authenticated else None
-        user_email = getattr(request.user, "email", "") if request.user.is_authenticated else ""
         ip_address = self._get_client_ip(request)
         user_agent = request.META.get("HTTP_USER_AGENT", "")[:300]
         request_id = getattr(request, "request_id", "")
@@ -52,16 +50,6 @@ class AuditLogMiddleware:
             "user_agent": user_agent,
             "content_length": request.META.get("CONTENT_LENGTH", 0),
         }
-
-        # NEVER log request body for sensitive endpoints
-        metadata = {}
-        if request.path not in self.SENSITIVE_PATHS and request.method in ("POST", "PUT", "PATCH", "DELETE"):
-            try:
-                body = json.loads(request.body) if request.body else None
-                if body:
-                    metadata = self._redact_sensitive(body)
-            except (json.JSONDecodeError, UnicodeDecodeError, Exception):
-                pass
 
         # 1. Write to text log. Successful GETs are deliberately
         # logged at DEBUG so the dev console stays readable —

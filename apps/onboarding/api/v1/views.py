@@ -13,15 +13,15 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from core.resilience import TokenBucket
-
 from apps.onboarding.api.v1.serializers import (
     OnboardingSaveSerializer,
     OnboardingScanSerializer,
 )
 from apps.onboarding.services.onboarding_service import (
-    run_onboarding_scan, to_dict,
+    run_onboarding_scan,
+    to_dict,
 )
+from core.resilience import TokenBucket
 
 
 def _scan_bucket(user_id) -> TokenBucket:

@@ -18,7 +18,7 @@ def test_sampler_stratifies_across_buckets():
     industry = IndustryFactory()
     # Three category prompts, one comparison, no problem/local — sampler
     # must back-fill from leftovers when a bucket runs short.
-    for i in range(3):
+    for _i in range(3):
         PromptFactory(industry=industry, intent_bucket=IntentBucket.CATEGORY)
     PromptFactory(industry=industry, intent_bucket=IntentBucket.COMPARISON)
 

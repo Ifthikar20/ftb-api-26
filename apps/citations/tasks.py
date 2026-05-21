@@ -26,14 +26,16 @@ def compute_source_influence_snapshots(period_days: int = 30) -> int:
     Builds a global snapshot per provider, then a per-website snapshot for
     every website that has citations in the window.
     """
+    from datetime import timedelta
+
+    from django.utils import timezone
+
     from apps.citations.models import Citation
     from apps.citations.services.snapshot_service import (
         compute_for_website,
         compute_global,
     )
     from apps.websites.models import Website
-    from datetime import timedelta
-    from django.utils import timezone
 
     total = 0
     try:

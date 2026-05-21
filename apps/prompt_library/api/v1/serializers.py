@@ -9,8 +9,8 @@ from apps.prompt_library.models import (
     Prompt,
     PromptSampleEntry,
     PromptSampleRun,
-    TestEnvironment,
     PromptVariableSet,
+    TestEnvironment,
 )
 
 

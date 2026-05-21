@@ -216,9 +216,10 @@ def _llm_topics(
         if not api_key:
             return []
 
-        import anthropic
         import json
         import re
+
+        import anthropic
 
         client = anthropic.Anthropic(api_key=api_key)
 
@@ -351,9 +352,10 @@ def _llm_competitors(
         if not api_key:
             return []
 
-        import anthropic
         import json
         import re
+
+        import anthropic
 
         client = anthropic.Anthropic(api_key=api_key)
 
@@ -403,7 +405,7 @@ def _llm_competitors(
 
         # Normalise + dedupe. Drop entries that don't at least have a
         # name; strip protocol from domain just in case.
-        own = (domain or "").lower().lstrip("www.")
+        own = (domain or "").lower().removeprefix("www.")
         seen: set[str] = set()
         out: list[dict] = []
         for row in data:
@@ -414,7 +416,7 @@ def _llm_competitors(
                 continue
             comp_domain = (row.get("domain") or "").strip().lower()
             comp_domain = re.sub(r"^https?://", "", comp_domain).rstrip("/")
-            comp_domain = comp_domain.lstrip("www.")
+            comp_domain = comp_domain.removeprefix("www.")
             if comp_domain and comp_domain == own:
                 continue  # skip self
             key = comp_domain or name.lower()

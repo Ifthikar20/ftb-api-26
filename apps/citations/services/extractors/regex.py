@@ -8,7 +8,6 @@ from the structured list is still captured).
 from __future__ import annotations
 
 import re
-from typing import List
 
 from apps.citations.services.extractors.base import BaseExtractor, CitationCandidate
 
@@ -26,11 +25,11 @@ class RegexExtractor(BaseExtractor):
     name = "regex"
     confidence = 0.6
 
-    def extract(self, result) -> List[CitationCandidate]:
+    def extract(self, result) -> list[CitationCandidate]:
         text = getattr(result, "response_text", "") or ""
         if not text:
             return []
-        out: List[CitationCandidate] = []
+        out: list[CitationCandidate] = []
         seen: set[str] = set()
         for idx, match in enumerate(_URL_RE.finditer(text)):
             url = match.group(0)

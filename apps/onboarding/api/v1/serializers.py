@@ -14,7 +14,7 @@ class OnboardingScanSerializer(serializers.Serializer):
         try:
             return assert_url_safe(value)
         except UnsafeURLError as exc:
-            raise serializers.ValidationError(str(exc))
+            raise serializers.ValidationError(str(exc)) from exc
 
 
 class OnboardingSaveSerializer(serializers.Serializer):
@@ -42,4 +42,4 @@ class OnboardingSaveSerializer(serializers.Serializer):
         try:
             return assert_url_safe(value)
         except UnsafeURLError as exc:
-            raise serializers.ValidationError(str(exc))
+            raise serializers.ValidationError(str(exc)) from exc

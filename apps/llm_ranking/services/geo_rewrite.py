@@ -33,7 +33,7 @@ flat per-user daily call budget, single env var, never raises.
 from __future__ import annotations
 
 import logging
-from typing import Callable
+from collections.abc import Callable
 
 from django.conf import settings
 

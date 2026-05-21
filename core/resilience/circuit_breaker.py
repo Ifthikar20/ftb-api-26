@@ -33,12 +33,12 @@ from __future__ import annotations
 import logging
 import time
 from contextlib import contextmanager
-from enum import Enum
+from enum import StrEnum
 
 logger = logging.getLogger("core.resilience")
 
 
-class CircuitState(str, Enum):
+class CircuitState(StrEnum):
     CLOSED = "closed"
     OPEN = "open"
     HALF_OPEN = "half_open"

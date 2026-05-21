@@ -10,7 +10,6 @@ from apps.accounts.tests.factories import UserFactory
 from apps.brand_vault.models import BrandFact, FactStatus
 from apps.websites.tests.factories import WebsiteFactory
 
-
 pytestmark = [
     pytest.mark.django_db,
     override_settings(

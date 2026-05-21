@@ -52,7 +52,7 @@ def is_configured() -> bool:
 
 
 def _cache_key(query: str, num: int) -> str:
-    h = hashlib.sha1(f"{query.strip().lower()}|{num}".encode("utf-8")).hexdigest()
+    h = hashlib.sha1(f"{query.strip().lower()}|{num}".encode()).hexdigest()
     return f"gcse:v1:{h}"
 
 

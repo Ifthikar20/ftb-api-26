@@ -9,7 +9,6 @@ import pytest
 
 from apps.llm_ranking.services import impression
 
-
 # ── Imp_pwc (eq. 3) ──────────────────────────────────────────────────────
 
 def test_empty_response_returns_zero_for_requested_indices():

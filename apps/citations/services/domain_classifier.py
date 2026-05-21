@@ -8,7 +8,7 @@ depend on the calling website.
 from __future__ import annotations
 
 import logging
-from typing import Iterable, Optional
+from collections.abc import Iterable
 from urllib.parse import urlsplit
 
 from apps.citations.models import DomainClassification, SourceClass
@@ -112,7 +112,7 @@ def classify(
     *,
     host: str | None = None,
     website=None,
-    competitor_apexes: Optional[Iterable[str]] = None,
+    competitor_apexes: Iterable[str] | None = None,
     persist: bool = True,
 ) -> str:
     """Classify ``apex_domain`` into a :class:`SourceClass` value.

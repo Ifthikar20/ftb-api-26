@@ -1,7 +1,7 @@
 """Tests for competitor name normalization."""
 from apps.llm_ranking.services.competitor_normalize import (
-    canonical_name,
     MIN_MENTIONS_FOR_RANKING,
+    canonical_name,
 )
 
 
