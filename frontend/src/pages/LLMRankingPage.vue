@@ -1591,13 +1591,11 @@ import llmRankingApi from '@/api/llm_ranking'
 import websitesApi from '@/api/websites'
 import BaseModal from '@/components/ui/BaseModal.vue'
 import PromptHeatmap from '@/components/llm_ranking/PromptHeatmap.vue'
-import FunnelRadar from '@/components/llm_ranking/FunnelRadar.vue'
 import ProviderAgreement from '@/components/llm_ranking/ProviderAgreement.vue'
 import PromptSourceToggle from '@/components/llm_ranking/PromptSourceToggle.vue'
 import PromptPreviewDrawer from '@/components/llm_ranking/PromptPreviewDrawer.vue'
 import citationsApi from '@/api/citations'
 import CitationsDrawer from '@/components/citations/CitationsDrawer.vue'
-import SourceBreakdownBar from '@/components/citations/SourceBreakdownBar.vue'
 import { Line, Bar } from 'vue-chartjs'
 import {
   Chart as ChartJS,
