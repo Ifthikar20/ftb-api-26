@@ -9,10 +9,13 @@ import pytest
 
 from apps.llm_ranking.models import LLMRankingResult
 from apps.llm_ranking.services.ranking_service import (
-    LLMRankingService, beta_binomial_mean, wilson_ci,
+    LLMRankingService,
+    beta_binomial_mean,
+    wilson_ci,
 )
 from apps.llm_ranking.tests.factories import (
-    LLMRankingAuditFactory, LLMRankingResultFactory,
+    LLMRankingAuditFactory,
+    LLMRankingResultFactory,
 )
 
 

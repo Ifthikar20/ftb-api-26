@@ -273,6 +273,6 @@ class GlobalSourceInfluenceView(APIView):
             "period_days": period_days,
             "snapshots": SourceInfluenceSnapshotSerializer(qs, many=True).data,
             "source_classes": [
-                {"value": v, "label": l} for v, l in SourceClass.choices
+                {"value": v, "label": label} for v, label in SourceClass.choices
             ],
         })

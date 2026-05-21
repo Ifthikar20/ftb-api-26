@@ -130,7 +130,9 @@ class LLMRankingService:
         phrasings the library can't anticipate.
         """
         from apps.llm_ranking.services.prompt_library import (
-            PromptLibrary, funnel_stage_for, rationale_for,
+            PromptLibrary,
+            funnel_stage_for,
+            rationale_for,
         )
 
         use_case = use_case or (keywords[0] if keywords else industry)
@@ -591,7 +593,7 @@ class LLMRankingService:
         Run enrichment + flip the audit to RUNNING. Returns the plan dict the
         Celery task uses to fan out cells, or None if the audit isn't runnable.
         """
-        from apps.llm_ranking.models import LLMRankingAudit, LLMRankingResult
+        from apps.llm_ranking.models import LLMRankingAudit
 
         try:
             audit = LLMRankingAudit.objects.select_related("website").get(id=audit_id)
@@ -905,6 +907,7 @@ class LLMRankingService:
     def _bump_progress(audit_id: str) -> None:
         """Atomically increment queries_completed so the live UI ETAs work."""
         from django.db.models import F
+
         from apps.llm_ranking.models import LLMRankingAudit
         LLMRankingAudit.objects.filter(id=audit_id).update(
             queries_completed=F("queries_completed") + 1,
@@ -913,7 +916,7 @@ class LLMRankingService:
     @staticmethod
     def finalise_audit(*, audit_id: str) -> None:
         """Chord callback — compute aggregates, roll up cost, mark completed."""
-        from apps.llm_ranking.models import LLMRankingAudit, LLMRankingResult
+        from apps.llm_ranking.models import LLMRankingAudit
 
         try:
             audit = LLMRankingAudit.objects.get(id=audit_id)
@@ -939,7 +942,8 @@ class LLMRankingService:
         # response brand strength rather than a raw mention count.
         try:
             from apps.llm_ranking.services.plackett_luce import (
-                fit_plackett_luce, rankings_from_results,
+                fit_plackett_luce,
+                rankings_from_results,
             )
             rankings = rankings_from_results(all_results, audit.business_name)
             audit.brand_strengths = fit_plackett_luce(rankings)
@@ -950,6 +954,7 @@ class LLMRankingService:
         # Cost roll-up — only rows tagged with this audit's id.
         try:
             from django.db.models import Sum
+
             from apps.accounts.models import AITokenUsage
             spend = (
                 AITokenUsage.objects
@@ -1089,7 +1094,7 @@ class LLMRankingService:
                 products = main_scan.get("products", [])
                 _audit_log(audit, f"✅ Website scanned — found {len(products)} product(s)/service(s)", "success")
             else:
-                _audit_log(audit, f"⚠️ Website scan returned no data", "warn")
+                _audit_log(audit, "⚠️ Website scan returned no data", "warn")
 
             extra_scans = enrichment.get("extra_scans", [])
             for scan in extra_scans:
@@ -1342,7 +1347,8 @@ class LLMRankingService:
         # Plackett-Luce brand strengths across the target + competitors.
         try:
             from apps.llm_ranking.services.plackett_luce import (
-                fit_plackett_luce, rankings_from_results,
+                fit_plackett_luce,
+                rankings_from_results,
             )
             rankings = rankings_from_results(all_results, audit.business_name)
             audit.brand_strengths = fit_plackett_luce(rankings)
@@ -1361,6 +1367,7 @@ class LLMRankingService:
         # produced (upstream + extraction + any prompt-generation).
         try:
             from django.db.models import Sum
+
             from apps.accounts.models import AITokenUsage
             spend = (
                 AITokenUsage.objects
@@ -1386,8 +1393,8 @@ class LLMRankingService:
         if audit.started_at:
             audit.duration_seconds = (audit.completed_at - audit.started_at).total_seconds()
 
-        _audit_log(audit, f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-        _audit_log(audit, f"🏁 AUDIT COMPLETE", "success")
+        _audit_log(audit, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        _audit_log(audit, "🏁 AUDIT COMPLETE", "success")
         _audit_log(audit, f"   Overall Score: {scores['overall_score']}/100")
         _audit_log(audit, f"   Mention Rate: {scores['mention_rate']:.1f}%")
         _audit_log(audit, f"   Avg Rank When Mentioned: #{scores['avg_mention_rank']:.1f}")
@@ -1395,7 +1402,7 @@ class LLMRankingService:
             _audit_log(audit, f"   Duration: {audit.duration_seconds:.1f}s")
         if audit.total_cost_usd:
             _audit_log(audit, f"   Cost: ${float(audit.total_cost_usd):.4f} ({audit.total_tokens:,} tokens)")
-        _audit_log(audit, f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        _audit_log(audit, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
         audit.save(update_fields=[
             "status", "overall_score", "mention_rate", "mention_rate_smoothed",

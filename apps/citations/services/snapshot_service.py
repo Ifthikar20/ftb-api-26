@@ -8,10 +8,9 @@ from __future__ import annotations
 
 import logging
 from collections import Counter
+from collections.abc import Iterable
 from datetime import date, timedelta
-from typing import Iterable
 
-from django.db.models import Count
 from django.utils import timezone
 
 from apps.citations.models import Citation, SourceInfluenceSnapshot
@@ -80,7 +79,7 @@ def compute_for_website(website, *, period_days: int = 30, end: date | None = No
     end = end or timezone.now().date()
     start = end - timedelta(days=period_days)
 
-    qs = Citation.objects.filter(
+    Citation.objects.filter(
         audit__website=website,
         created_at__date__gte=start,
         created_at__date__lte=end,

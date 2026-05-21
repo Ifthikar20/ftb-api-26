@@ -18,11 +18,8 @@ would otherwise drag the projection up and demoralize the user.
 from __future__ import annotations
 
 import statistics
-from datetime import timedelta
-from typing import Optional
 
 from django.utils import timezone
-
 
 # Fallback when there's no history yet. Empirically, a healthy 4-provider
 # / 10-prompt audit completes in ~30s when keys are valid. Under hash-
@@ -83,9 +80,10 @@ def schedule_eta(schedule) -> dict:
       - in_flight_audit_id last audit's UUID when in_flight
       - in_flight_progress {completed, total} when in_flight
     """
+    from django.conf import settings as dj_settings
+
     from apps.llm_ranking.models import LLMRankingAudit
     from apps.llm_ranking.providers import PROVIDERS as PROV_REGISTRY
-    from django.conf import settings as dj_settings
 
     n_prompts = _projected_prompt_count(schedule)
     requested = schedule.providers or list(PROV_REGISTRY.keys())
@@ -149,7 +147,7 @@ def _projected_prompt_count(schedule) -> int:
     return max(1, min(cap, 10))
 
 
-def format_eta(seconds: Optional[float]) -> str:
+def format_eta(seconds: float | None) -> str:
     """Human-friendly ETA string. Used by the UI label fallback."""
     if seconds is None:
         return "—"

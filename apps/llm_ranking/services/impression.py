@@ -32,7 +32,7 @@ from __future__ import annotations
 
 import math
 import re
-from typing import Iterable
+from collections.abc import Iterable
 
 # ── Sentence + citation parsing ───────────────────────────────────────────
 

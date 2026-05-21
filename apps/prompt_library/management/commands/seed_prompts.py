@@ -17,13 +17,12 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 
 from apps.prompt_library.models import (
-    IntentBucket,
     Industry,
+    IntentBucket,
     Prompt,
     PromptSource,
 )
 from apps.prompt_library.services._hash import text_hash
-
 
 # Demand score is a 0..1 popularity proxy. We bucket: 0.85+ = very hot,
 # 0.6 = strong, 0.4 = mid, 0.25 = niche/long-tail. Numbers are heuristic

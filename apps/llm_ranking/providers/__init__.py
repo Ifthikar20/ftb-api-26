@@ -13,11 +13,10 @@ configured tooling chain.
 """
 from .base import LLMProvider, ProviderResult
 from .claude import ClaudeProvider
-from .openai import OpenAIProvider
-from .gemini import GeminiProvider
-from .perplexity import PerplexityProvider
 from .deepseek import DeepSeekProvider
-
+from .gemini import GeminiProvider
+from .openai import OpenAIProvider
+from .perplexity import PerplexityProvider
 
 PROVIDERS: dict[str, type[LLMProvider]] = {
     "claude": ClaudeProvider,
@@ -121,7 +120,7 @@ def parse_variant(variant_id: str) -> tuple[str, str] | None:
 def default_variant_for(provider_key: str) -> str | None:
     """Return the wire-format id of the default variant for a provider."""
     variants = MODEL_VARIANTS.get(provider_key) or []
-    for label, model_id, is_default in variants:
+    for _label, model_id, is_default in variants:
         if is_default:
             return f"{provider_key}:{model_id}"
     if variants:

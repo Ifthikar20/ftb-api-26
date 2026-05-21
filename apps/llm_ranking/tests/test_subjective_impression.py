@@ -6,7 +6,6 @@ the service is pure orchestration around an LLM call plus quota and
 JSON parsing.
 """
 import json
-from unittest.mock import patch
 
 import pytest
 

@@ -14,12 +14,11 @@ effectiveness signals. The lookup is best-effort:
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 logger = logging.getLogger("apps")
 
 
-def resolve_source_prompt_id(prompt_text: str) -> Optional[str]:
+def resolve_source_prompt_id(prompt_text: str) -> str | None:
     """Return a Prompt.id matching ``prompt_text`` exactly, or ``None``."""
     if not prompt_text:
         return None

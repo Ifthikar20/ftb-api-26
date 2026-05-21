@@ -82,7 +82,7 @@ def _prompt_keywords(prompt: str) -> list[str]:
 
 
 def _cache_key(prompt: str, url: str) -> str:
-    h = hashlib.sha1(f"{prompt}\n{url}".encode("utf-8")).hexdigest()
+    h = hashlib.sha1(f"{prompt}\n{url}".encode()).hexdigest()
     return f"psv:{h}"
 
 

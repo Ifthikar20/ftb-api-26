@@ -502,29 +502,26 @@
 
           <div class="footer-col">
             <div class="footer-col-title">Resources</div>
-            <a href="https://docs.fetchbot.ai" target="_blank" rel="noopener">Documentation</a>
-            <a href="https://docs.fetchbot.ai/api" target="_blank" rel="noopener">API reference</a>
-            <a href="/blog">Blog</a>
-            <a href="/changelog">Changelog</a>
-            <a href="/status" target="_blank" rel="noopener">Status</a>
+            <router-link to="/docs">Documentation</router-link>
+            <router-link to="/blog">Blog</router-link>
+            <router-link to="/changelog">Changelog</router-link>
+            <router-link to="/status">Status</router-link>
           </div>
 
           <div class="footer-col">
             <div class="footer-col-title">Company</div>
-            <a href="/about">About</a>
-            <a href="/contact">Contact us</a>
+            <router-link to="/about">About</router-link>
+            <router-link to="/contact">Contact us</router-link>
             <a href="mailto:hello@fetchbot.ai">hello@fetchbot.ai</a>
-            <a href="/careers">Careers</a>
-            <a href="/security">Security</a>
           </div>
 
           <div class="footer-col">
             <div class="footer-col-title">Legal</div>
             <router-link to="/terms">Terms of Service</router-link>
             <router-link to="/privacy">Privacy Policy</router-link>
-            <a href="/dpa">Data Processing Agreement</a>
-            <a href="/cookies">Cookie Policy</a>
-            <a href="/ai-policy">Responsible AI Use</a>
+            <router-link to="/dpa">Data Processing Agreement</router-link>
+            <router-link to="/cookies">Cookie Policy</router-link>
+            <router-link to="/ai-policy">Responsible AI Use</router-link>
           </div>
         </div>
 
@@ -1019,7 +1016,7 @@ const features = [
     icon: '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="12" cy="7" r="4"/><path d="M5.5 21c0-3.5 3-6 6.5-6s6.5 2.5 6.5 6"/></svg>'
   },
   {
-    title: 'LLM Ranking',
+    title: 'LLM Dashboard',
     desc: 'Audit your AI visibility across ChatGPT, Claude, Gemini & more — see if LLMs recommend your brand.',
     replaces: 'Nothing like it exists',
     tint: 'tint-violet',
@@ -1276,7 +1273,8 @@ function updateStickyCta() {
   font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
   min-height: 100vh;
   width: 100%;
-  overflow-x: hidden;
+  max-width: 100vw;
+  overflow-x: clip;
   -webkit-font-smoothing: antialiased;
 }
 .wrap { max-width: 1200px; margin: 0 auto; padding: 0 32px; }
@@ -2833,6 +2831,16 @@ em { color: #5B8DEF; font-style: italic; }
 </style>
 <style>
 :root { scroll-behavior: smooth; }
+/* Landing page must never produce horizontal scroll. The .lp wrapper
+   below uses overflow-x: clip, but a few browsers (and some descendant
+   stacking contexts) still let intrinsic overflow leak up to the
+   document. Lock it at the root while this page is in the DOM. */
+html:has(.lp),
+html:has(.lp) body,
+html:has(.lp) #app {
+  overflow-x: clip;
+  max-width: 100vw;
+}
 </style>
 <style scoped>
 

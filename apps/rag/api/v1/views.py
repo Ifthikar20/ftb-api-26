@@ -9,9 +9,6 @@ unique constraint on KnowledgeSource enforces it).
 from rest_framework import status
 from rest_framework.response import Response
 
-from core.resilience import TokenBucket
-from core.views.base import TenantScopedAPIView
-
 from apps.rag.api.v1.serializers import (
     HitSerializer,
     IngestURLSerializer,
@@ -21,6 +18,8 @@ from apps.rag.api.v1.serializers import (
 )
 from apps.rag.models import KnowledgeChunk, KnowledgeSource
 from apps.rag.services.retriever import retrieve
+from core.resilience import TokenBucket
+from core.views.base import TenantScopedAPIView
 
 
 def _ingest_bucket(user_id) -> TokenBucket:

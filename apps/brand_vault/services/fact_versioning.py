@@ -8,8 +8,6 @@ and similarly emit a revision row.
 """
 from __future__ import annotations
 
-from typing import Optional
-
 from django.db import transaction
 from django.utils import timezone
 
@@ -122,7 +120,7 @@ def reject_fact(fact_id: str, *, actor_user=None) -> BrandFact:
     return fact
 
 
-def record_creation(fact: BrandFact, *, actor_user=None) -> Optional[FactRevision]:
+def record_creation(fact: BrandFact, *, actor_user=None) -> FactRevision | None:
     return FactRevision.objects.create(
         fact=fact,
         action=FactRevision.ACTION_CREATED,

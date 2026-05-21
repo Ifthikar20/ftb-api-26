@@ -515,7 +515,7 @@ class TestPromptLibrary:
 
 class TestPromptPackLoader:
     def test_default_pack_loads(self):
-        from apps.llm_ranking.services.prompt_library import load_pack, DEFAULT_PACK
+        from apps.llm_ranking.services.prompt_library import DEFAULT_PACK, load_pack
         pack = load_pack(DEFAULT_PACK)
         assert pack is not None
         assert pack.name
@@ -524,7 +524,9 @@ class TestPromptPackLoader:
     def test_default_pack_has_industry_coverage(self):
         # The default pack should carry prompts for every intent we weight.
         from apps.llm_ranking.services.prompt_library import (
-            INTENT_PRIORITY, load_pack, DEFAULT_PACK,
+            DEFAULT_PACK,
+            INTENT_PRIORITY,
+            load_pack,
         )
         pack = load_pack(DEFAULT_PACK)
         assert pack is not None

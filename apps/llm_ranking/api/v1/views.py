@@ -5,9 +5,7 @@ from django.conf import settings
 from django.db.models import Avg, Count, Q
 from django.utils import timezone
 from rest_framework import status
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from rest_framework.views import APIView
 
 from apps.llm_ranking.api.v1.serializers import (
     CreateScheduleSerializer,
@@ -47,8 +45,8 @@ class LLMRankingAuditListView(TenantScopedListAPIView):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
-        from apps.llm_ranking.services.ranking_service import LLMRankingService
         from apps.llm_ranking.providers import PROVIDERS
+        from apps.llm_ranking.services.ranking_service import LLMRankingService
 
         # Enforce per-user monthly AI spend cap before queuing more work.
         # 0 = no cap; spend covers every module that writes to AITokenUsage.
@@ -94,7 +92,8 @@ class LLMRankingAuditListView(TenantScopedListAPIView):
             # Tag custom prompts with "custom" type and the niche funnel
             # stage so they group sensibly in the Prompts table.
             from apps.llm_ranking.services.prompt_library import (
-                funnel_stage_for, rationale_for,
+                funnel_stage_for,
+                rationale_for,
             )
             prompts = [
                 {
@@ -232,7 +231,8 @@ class LLMRankingPreflightView(TenantScopedAPIView):
         self.get_website(website_id)
         from apps.llm_ranking.providers import PROVIDERS
         from core.ai_tracking import (
-            PRICING, MODEL_PROVIDER, _estimate_cost, month_to_date_cost,
+            _estimate_cost,
+            month_to_date_cost,
         )
 
         try:
@@ -256,8 +256,9 @@ class LLMRankingPreflightView(TenantScopedAPIView):
 
         # Try to compute from historical AITokenUsage averages for this user;
         # fall back to defaults when there's nothing to learn from.
-        from apps.accounts.models import AITokenUsage
         from django.db.models import Avg
+
+        from apps.accounts.models import AITokenUsage
         method = "historical"
         total_cost = 0.0
         total_tokens = 0
@@ -462,6 +463,7 @@ class LLMRankingAuditRunView(TenantScopedAPIView):
         # do the same thing across workers; the thread approach is
         # simpler and works either way without a broker dependency.
         import threading
+
         from apps.llm_ranking.services.ranking_service import LLMRankingService
 
         def _run_in_background(audit_id: str) -> None:
@@ -515,7 +517,7 @@ class LLMRankingAuditLogsView(TenantScopedAPIView):
         # Optional: only return logs after a given timestamp
         after = request.query_params.get("after")
         if after:
-            logs = [l for l in logs if l.get("ts", "") > after]
+            logs = [entry for entry in logs if entry.get("ts", "") > after]
 
         # Sanitise message bodies before returning. Provider stack traces
         # occasionally include API keys or internal URLs; redact both
@@ -761,7 +763,8 @@ class LLMRankingProviderDetailView(TenantScopedAPIView):
         # Top competitors — collapse surface-form variants ("Mixpanel" /
         # "mixpanel" / "Mixpanel Inc.") so the leaderboard isn't inflated.
         from apps.llm_ranking.services.competitor_normalize import (
-            canonical_name, MIN_MENTIONS_FOR_RANKING,
+            MIN_MENTIONS_FOR_RANKING,
+            canonical_name,
         )
         comp_counts: dict = {}
         for r in succeeded:
@@ -1023,7 +1026,8 @@ class LLMRankingHistoryView(TenantScopedAPIView):
         # canonical_name() so the citation-share denominator and rankings
         # aren't inflated by name drift.
         from apps.llm_ranking.services.competitor_normalize import (
-            canonical_name, MIN_MENTIONS_FOR_RANKING,
+            MIN_MENTIONS_FOR_RANKING,
+            canonical_name,
         )
         competitor_by_audit: dict = {}
         per_audit_total: dict = {}
@@ -1293,8 +1297,8 @@ class LLMRankingScheduleRunNowView(TenantScopedAPIView):
 
         # Generate the prompts and create the audit row inline so the
         # caller gets the audit_id back to poll.
-        from apps.llm_ranking.services.ranking_service import LLMRankingService
         from apps.llm_ranking.providers import PROVIDERS as PROV_REGISTRY
+        from apps.llm_ranking.services.ranking_service import LLMRankingService
 
         prompts = LLMRankingService.generate_prompts(
             business_name=schedule.business_name,
@@ -1388,15 +1392,20 @@ class ModelTestRunView(TenantScopedAPIView):
 
     def post(self, request, website_id):
         import uuid
+
+        from django.core.cache import cache
+
         from apps.llm_ranking.providers import (
-            PROVIDERS, default_variant_for, list_model_variants, parse_variant,
+            PROVIDERS,
+            default_variant_for,
+            list_model_variants,
+            parse_variant,
         )
         from apps.llm_ranking.tasks import (
-            MODEL_TEST_TTL_SECONDS,
             MODEL_TEST_CACHE_KEY,
+            MODEL_TEST_TTL_SECONDS,
             run_model_test,
         )
-        from django.core.cache import cache
 
         website = self.get_website(website_id)
 

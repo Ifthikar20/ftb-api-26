@@ -17,6 +17,7 @@ from apps.accounts.services.oauth_service import OAuthService
 from apps.accounts.services.user_service import UserService
 from core.interceptors.throttling import AuthRateThrottle, PasswordResetThrottle
 
+
 # Cookie attributes for the JWT refresh token. In production we require
 # Secure + SameSite=None so the cookie crosses domains (frontend ↔ API)
 # safely. In dev (DEBUG=True) modern browsers grant a localhost

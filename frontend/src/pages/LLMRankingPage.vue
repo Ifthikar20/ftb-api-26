@@ -1,14 +1,29 @@
 <template>
   <div class="llm-ranking-page fade-in">
-    <FirstRunLLMRanking
-      v-if="showFirstRun"
-      :website="activeWebsite"
-      @audit-started="handleAuditStarted"
-    />
+    <div v-if="showFirstRun" class="empty-dashboard">
+      <div class="empty-dashboard-card">
+        <div class="empty-dashboard-icon" aria-hidden="true">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="7"/>
+            <path d="M21 21l-4.3-4.3"/>
+          </svg>
+        </div>
+        <h1 class="empty-dashboard-title">Your LLM Dashboard is empty</h1>
+        <p class="empty-dashboard-sub">
+          Nothing has been measured yet for <strong>{{ websiteName || 'this website' }}</strong>.
+          Add a prompt of your own or pull one from the prompt repository to start tracking how
+          AI assistants talk about your brand.
+        </p>
+        <div class="empty-dashboard-actions">
+          <router-link :to="promptLibraryRoute" class="btn btn-primary">Create a prompt</router-link>
+          <router-link :to="promptLibraryRepoRoute" class="btn btn-secondary">Browse the prompt repository</router-link>
+        </div>
+      </div>
+    </div>
     <template v-else>
     <div class="page-header">
       <div>
-        <h1 class="page-title">LLM Ranking</h1>
+        <h1 class="page-title">LLM Dashboard</h1>
         <p class="page-subtitle">
           See how AI tools like Claude, GPT-4, Gemini, and Perplexity rank your business
           when users ask them to find a service like yours.
@@ -30,1308 +45,629 @@
       </div>
     </div>
 
-    <!-- Scheduled audits card (rich: ETA, in-flight, failures, run-now) -->
-    <div v-if="schedule" class="schedule-card">
-      <div class="schedule-card-head">
-        <div class="schedule-card-title">
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 4v4l3 2"/></svg>
-          <span>Scheduled audit</span>
-          <span class="schedule-pill" :class="{ paused: !schedule.is_enabled }">
-            {{ schedule.is_enabled ? 'Active' : 'Paused' }}
-          </span>
-        </div>
-        <div class="schedule-card-actions">
-          <button class="btn btn-ghost btn-xs" :disabled="runNowBusy || (scheduleETA && scheduleETA.in_flight)"
-                  @click="runScheduleNow">
-            {{ runNowBusy ? 'Starting…' : (scheduleETA && scheduleETA.in_flight ? 'In flight' : 'Run now') }}
-          </button>
-          <button class="btn btn-ghost btn-xs" @click="showScheduleModal = true">Edit</button>
-          <button class="btn btn-ghost btn-xs" @click="disableSchedule">Disable</button>
-        </div>
-      </div>
-
-      <div class="schedule-card-body">
-        <div class="schedule-cell">
-          <div class="schedule-cell-label">Frequency</div>
-          <div class="schedule-cell-value">{{ schedule.frequency_display }}</div>
-        </div>
-        <div class="schedule-cell">
-          <div class="schedule-cell-label">Next run</div>
-          <div class="schedule-cell-value">{{ formatRelative(schedule.next_run_at) }}</div>
-        </div>
-        <div class="schedule-cell">
-          <div class="schedule-cell-label">Projected duration</div>
-          <div class="schedule-cell-value">
-            {{ scheduleETA && scheduleETA.estimated_duration_seconds
-                ? formatDuration(scheduleETA.estimated_duration_seconds)
-                : '—' }}
-          </div>
-        </div>
-        <div class="schedule-cell">
-          <div class="schedule-cell-label">Coverage</div>
-          <div class="schedule-cell-value">
-            {{ scheduleETA ? `${scheduleETA.n_prompts} prompts × ${scheduleETA.n_providers} providers` : '—' }}
-          </div>
-        </div>
-      </div>
-
-      <div v-if="scheduleETA && scheduleETA.in_flight" class="schedule-progress">
-        <div class="schedule-progress-row">
-          <span>Audit in flight</span>
-          <span>
-            {{ (scheduleETA.in_flight_progress && scheduleETA.in_flight_progress.completed) || 0 }}
-            /
-            {{ (scheduleETA.in_flight_progress && scheduleETA.in_flight_progress.total) || 0 }}
-            cells
-            <template v-if="scheduleETA.in_flight_seconds_remaining != null">
-              · ~{{ formatDuration(scheduleETA.in_flight_seconds_remaining) }} left
-            </template>
-          </span>
-        </div>
-        <div class="schedule-progress-bar">
-          <div class="schedule-progress-fill" :style="{ width: scheduleProgressPct + '%' }"></div>
-        </div>
-      </div>
-
-      <div v-if="scheduleETA && scheduleETA.consecutive_failures > 0" class="schedule-warn">
-        ⚠ {{ scheduleETA.consecutive_failures }} consecutive failure(s).
-        Schedule auto-pauses after a few in a row — check provider keys.
-      </div>
+    <!-- Tab nav: Overview is the dense brand-visibility dashboard; Performance
+         is a chart-first view of how each model is doing on the latest run. -->
+    <div class="lr-tabs" role="tablist">
+      <button
+        type="button"
+        class="lr-tab"
+        :class="{ active: activeTab === 'overview' }"
+        role="tab"
+        :aria-selected="activeTab === 'overview'"
+        @click="activeTab = 'overview'"
+      >Overview</button>
+      <button
+        type="button"
+        class="lr-tab"
+        :class="{ active: activeTab === 'performance' }"
+        role="tab"
+        :aria-selected="activeTab === 'performance'"
+        @click="activeTab = 'performance'"
+      >Performance</button>
+      <button
+        type="button"
+        class="lr-tab"
+        :class="{ active: activeTab === 'pages' }"
+        role="tab"
+        :aria-selected="activeTab === 'pages'"
+        @click="activeTab = 'pages'"
+      >Pages
+        <span v-if="importedCount" class="lr-tab-badge">{{ importedCount }}</span>
+      </button>
     </div>
 
-    <div v-if="loading" class="loading-state">Loading LLM ranking data...</div>
+    <div v-show="activeTab === 'overview'" class="lr-overview">
 
-    <template v-else>
-      <!-- Empty state: onboarding wizard when no audits exist -->
-      <div v-if="!audits.length" class="card lr-onboarding">
-        <div class="lr-onb-eyebrow">FIRST AUDIT</div>
-        <h2 class="lr-onb-title">Track how AI mentions your business</h2>
-        <p class="lr-onb-sub">
-          Tell us about your business and we'll generate buyer-style prompts that match how
-          real people ask AI assistants for tools like yours. We'll send those prompts to
-          Claude, GPT-4, Gemini, and Perplexity, and report where you show up — and where
-          competitors get listed instead.
-        </p>
-        <button class="btn btn-primary btn-lg" @click="openRunAudit">
-          Set up your first audit
-        </button>
+      <!-- Schedule banner: shown only when the website has a schedule on file.
+           Keeps the action affordance prominent without dominating the dashboard. -->
+      <div v-if="schedule" class="ov-banner" :class="{ paused: !schedule.is_enabled }">
+        <div class="ov-banner-icon" aria-hidden="true">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+            <circle cx="8" cy="8" r="6"/><path d="M8 4v4l3 2"/>
+          </svg>
+        </div>
+        <div class="ov-banner-text">
+          <strong>{{ schedule.is_enabled ? 'Scheduled audit active' : 'Schedule paused' }}</strong>
+          <span v-if="schedule.cadence" class="text-muted">· {{ schedule.cadence }}</span>
+          <span v-if="scheduleETA?.next_run_human" class="text-muted">· next run {{ scheduleETA.next_run_human }}</span>
+        </div>
+        <button class="btn btn-ghost btn-sm" @click="showScheduleModal = true">Manage</button>
       </div>
 
-      <!-- ═══ Brand Overview (Bear-style dashboard) ═══════════════════════ -->
-      <div v-if="audits.length && isAuditComplete" class="brand-overview" style="margin-bottom:24px">
+      <div v-if="loading" class="ov-loading">
+        <div class="ov-spinner" aria-hidden="true"></div>
+        <span>Loading dashboard...</span>
+      </div>
 
-        <!-- Filter bar -->
-        <div class="bo-filters">
-          <button class="bo-filter" @click="toggleFilter('platform')" :class="{ open: openFilter === 'platform' }">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/>
-              <path d="M12 2a15 15 0 010 20 15 15 0 010-20"/>
-            </svg>
-            <span>{{ filters.platform === 'all' ? 'All Platforms' : providerLabel(filters.platform) }}</span>
-            <svg class="bo-caret" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4l3 3 3-3"/></svg>
-            <div v-if="openFilter === 'platform'" class="bo-filter-menu" @click.stop>
-              <button class="bo-filter-item" :class="{ active: filters.platform === 'all' }" @click="setFilter('platform', 'all')">All Platforms</button>
-              <button v-for="p in providerHealth.providers.filter(p => p.configured)" :key="p.key"
-                      class="bo-filter-item" :class="{ active: filters.platform === p.key }"
-                      @click="setFilter('platform', p.key)">{{ p.name }}</button>
-            </div>
-          </button>
-
-          <button class="bo-filter" @click="toggleFilter('time')" :class="{ open: openFilter === 'time' }">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/>
-              <line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
-            </svg>
-            <span>{{ timeRangeLabel }}</span>
-            <svg class="bo-caret" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4l3 3 3-3"/></svg>
-            <div v-if="openFilter === 'time'" class="bo-filter-menu" @click.stop>
-              <button v-for="r in timeRanges" :key="r.value" class="bo-filter-item"
-                      :class="{ active: filters.timeRange === r.value }"
-                      @click="setFilter('timeRange', r.value)">{{ r.label }}</button>
-            </div>
-          </button>
-
-          <button class="bo-filter" @click="toggleFilter('topic')" :class="{ open: openFilter === 'topic' }">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2zM22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/>
-            </svg>
-            <span>{{ filters.topic === 'all' ? 'All Topics' : formatIntent(filters.topic) }}</span>
-            <svg class="bo-caret" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4l3 3 3-3"/></svg>
-            <div v-if="openFilter === 'topic'" class="bo-filter-menu" @click.stop>
-              <button class="bo-filter-item" :class="{ active: filters.topic === 'all' }" @click="setFilter('topic', 'all')">All Topics</button>
-              <button v-for="t in availableTopics" :key="t" class="bo-filter-item"
-                      :class="{ active: filters.topic === t }"
-                      @click="setFilter('topic', t)">{{ formatIntent(t) }}</button>
-            </div>
-          </button>
-        </div>
-
-        <!-- 4-KPI strip -->
-        <div class="kpi-strip">
-          <div class="kpi-card">
-            <div class="kpi-label">
-              Brand Visibility
-              <span class="kpi-info" title="How often you appear when AI assistants are asked about your category. Smoothed via a Beta(2,8) prior so small-sample audits don't read 100%.">i</span>
-            </div>
-            <div class="kpi-value">
-              <span
-                v-if="visibilityConfidence(kpiBrandVisibility)"
-                class="kpi-conf-dot"
-                :class="`kpi-conf-${visibilityConfidence(kpiBrandVisibility)}`"
-                :title="`Estimate confidence: ${visibilityConfidence(kpiBrandVisibility)} (CI width ${(kpiBrandVisibility.ciHigh - kpiBrandVisibility.ciLow)}%)`"
-              />
-              {{ kpiBrandVisibility.value }}<span class="kpi-unit">%</span>
-            </div>
-            <div class="kpi-sub" v-if="kpiBrandVisibility.ciHigh > 0">
-              95% CI: {{ kpiBrandVisibility.ciLow }}–{{ kpiBrandVisibility.ciHigh }}%
-              <span class="kpi-sub-muted">· raw {{ kpiBrandVisibility.raw }}% · n={{ kpiBrandVisibility.basis }}</span>
-            </div>
-            <div class="kpi-sub" v-else>Based on {{ kpiBrandVisibility.basis }} prompts simulated</div>
+      <template v-else>
+      <!-- KPI strip -->
+      <div class="ov-kpis">
+        <div class="ov-kpi">
+          <div class="ov-kpi-head">
+            <span class="ov-kpi-label">AI Visibility Score</span>
+            <span v-if="isAuditComplete" class="ov-kpi-badge" :class="scorePillClass(latestAudit.overall_score)">
+              {{ latestAudit.overall_score >= 70 ? 'Strong' : latestAudit.overall_score >= 40 ? 'Fair' : 'Weak' }}
+            </span>
           </div>
-          <div class="kpi-card">
-            <div class="kpi-label">
-              Citation Share
-              <span class="kpi-info" title="Of all brand mentions across AI responses, the share that are you">i</span>
-            </div>
-            <div class="kpi-value">{{ kpiCitationShare.value }}<span class="kpi-unit">%</span></div>
-            <div class="kpi-sub">{{ kpiCitationShare.self }} of {{ kpiCitationShare.total }} citations</div>
+          <div class="ov-kpi-value">
+            <template v-if="isAuditComplete">{{ Math.round(latestAudit.overall_score || 0) }}<span class="ov-kpi-unit">/100</span></template>
+            <template v-else>—</template>
           </div>
-          <div class="kpi-card">
-            <div class="kpi-label">
-              Brand Ranking
-              <span class="kpi-info" title="Your position vs other brands by visibility in this audit">i</span>
-            </div>
-            <div class="kpi-value kpi-value-rank">#{{ kpiBrandRanking.rank }}</div>
-            <div class="kpi-sub">{{ kpiBrandRanking.label }}</div>
-          </div>
-          <div class="kpi-card">
-            <div class="kpi-label">
-              Closest Competitor
-              <span class="kpi-info" title="The brand right above or below you in the rankings">i</span>
-            </div>
-            <div class="kpi-closest">
-              <span class="kpi-closest-avatar" :style="{ background: brandColor(kpiClosestCompetitor.name) }">
-                {{ (kpiClosestCompetitor.name || '—')[0] }}
-              </span>
-              <div class="kpi-closest-meta">
-                <div class="kpi-closest-name">{{ kpiClosestCompetitor.name || '—' }}</div>
-                <div class="kpi-sub">{{ kpiClosestCompetitor.mention_count || 0 }} mentions</div>
-              </div>
-            </div>
+          <div class="ov-kpi-sub" :class="perfKpis.scoreTrendClass">
+            {{ isAuditComplete ? perfKpis.scoreTrendLabel : (latestAudit?.status ? capitalize(latestAudit.status) : 'No audit yet') }}
           </div>
         </div>
 
-        <!-- Row 2: Competitor Visibility chart + Competitor Rankings -->
-        <div class="lr-grid-2 bo-row">
-          <div class="card lr-grid-main bo-chart-card">
-            <div class="card-header">
-              <h3 class="card-title">Competitor Visibility</h3>
-              <span class="text-xs text-muted">multi-line · hover for details</span>
-            </div>
-            <div class="bo-chart-wrap">
-              <Line :data="competitorVisibilityData" :options="competitorVisibilityOptions" />
-            </div>
+        <div class="ov-kpi">
+          <div class="ov-kpi-head"><span class="ov-kpi-label">Mention Rate</span></div>
+          <div class="ov-kpi-value">
+            <template v-if="isAuditComplete">{{ Math.round(latestAudit.mention_rate || 0) }}<span class="ov-kpi-unit">%</span></template>
+            <template v-else>—</template>
           </div>
-
-          <div class="card lr-grid-side bo-ranking-card">
-            <div class="card-header">
-              <h3 class="card-title">Competitor Rankings</h3>
-            </div>
-            <div class="bo-ranking-head">
-              <span class="bo-rh-rank">#</span>
-              <span class="bo-rh-name">Competitor</span>
-              <span class="bo-rh-vis" :title="usingBrandStrengths ? 'Plackett-Luce brand strength (max=100). Calibrated across all rankings in this audit.' : 'Mention rate across responses.'">
-                {{ usingBrandStrengths ? 'Strength' : 'Visibility' }}
-              </span>
-            </div>
-            <div class="bo-ranking-list">
-              <div v-for="r in brandRankingRows" :key="r.name"
-                   class="bo-ranking-row"
-                   :class="{ 'is-you': r.is_you, 'is-highlighted': highlightedBrand === r.name }"
-                   @mouseenter="highlightedBrand = r.name"
-                   @mouseleave="highlightedBrand = null">
-                <span class="bo-rh-rank">{{ r.rank }}</span>
-                <span class="bo-rh-name">
-                  <span class="bo-brand-avatar" :style="{ background: brandColor(r.name) }">{{ r.name[0] }}</span>
-                  <span>{{ r.name }} <span v-if="r.is_you" class="bo-you-tag">(You)</span></span>
-                </span>
-                <span class="bo-rh-vis">
-                  <template v-if="usingBrandStrengths && r.strength != null">
-                    <span class="bo-strength-bar">
-                      <span class="bo-strength-fill" :style="{ width: (r.strength * 100) + '%' }" />
-                    </span>
-                    <span class="bo-strength-num">{{ Math.round(r.strength * 100) }}</span>
-                  </template>
-                  <template v-else>{{ r.visibility }}%</template>
-                </span>
-              </div>
-            </div>
+          <div class="ov-kpi-sub">
+            {{ isAuditComplete ? `${latestAudit.total_queries || 0} queries · ${(latestAudit.providers_queried || []).length} models` : 'Waiting on first completed audit' }}
           </div>
         </div>
 
-        <!-- Row 3: Citation Share trend + Top Sources -->
-        <div class="lr-grid-2 bo-row">
-          <div class="card lr-grid-main bo-chart-card">
-            <div class="card-header">
-              <h3 class="card-title">Citation Share</h3>
-              <span class="text-xs text-muted">your share of all brand citations over time</span>
-            </div>
-            <div class="bo-chart-wrap bo-chart-small">
-              <Line :data="citationShareData" :options="citationShareOptions" />
-            </div>
-          </div>
-
-          <div class="card lr-grid-side bo-sources-card">
-            <div class="card-header">
-              <h3 class="card-title">Top Sources</h3>
-              <button class="btn-ghost btn-sm" v-if="topSources.length" @click="sortTopSources">
-                Sort: {{ topSourcesSort === 'count' ? '↓ Citations' : '↓ Domain' }}
-              </button>
-            </div>
-            <div class="bo-sources-head">
-              <span class="bo-sh-rank">#</span>
-              <span class="bo-sh-domain">Web Page</span>
-              <span class="bo-sh-type">Type</span>
-              <span class="bo-sh-count">Citations</span>
-            </div>
-            <div class="bo-sources-list">
-              <div v-for="(s, i) in topSources" :key="s.domain" class="bo-source-row">
-                <span class="bo-sh-rank">{{ i + 1 }}</span>
-                <span class="bo-sh-domain">
-                  <span class="bo-source-favicon" :style="{ background: brandColor(s.domain) }">
-                    {{ s.domain[0].toUpperCase() }}
-                  </span>
-                  <span>
-                    <span class="bo-source-name">{{ s.label }}</span>
-                    <span class="bo-source-host">{{ s.domain }}</span>
-                  </span>
-                </span>
-                <span class="bo-sh-type"><span class="bo-type-pill" :class="'bo-type-' + s.type">{{ s.type }}</span></span>
-                <span class="bo-sh-count">{{ s.count }}</span>
-              </div>
-              <div v-if="!topSources.length" class="text-xs text-muted" style="padding:16px">
-                No citations detected yet. Sources are extracted as audits run.
-              </div>
-            </div>
+        <div class="ov-kpi">
+          <div class="ov-kpi-head"><span class="ov-kpi-label">Top Model</span></div>
+          <div class="ov-kpi-value ov-kpi-value-sm">{{ perfKpis.topProvider || '—' }}</div>
+          <div class="ov-kpi-sub">
+            {{ perfKpis.topProvider ? `${perfKpis.topProviderRate}% mention rate` : 'No model data yet' }}
           </div>
         </div>
 
-        <!-- Row 3b: Citation Footprint by Country (geo) -->
-        <div v-if="citationFootprint.length" class="card bo-footprint-card" style="margin-bottom:24px">
-          <div class="card-header">
-            <h3 class="card-title">Citation Footprint by Country</h3>
-            <span class="text-xs text-muted">where the LLMs' grounding sources are hosted</span>
-          </div>
-          <div class="bo-footprint-grid">
-            <div v-for="row in citationFootprint" :key="row.country" class="bo-footprint-row">
-              <span class="bo-footprint-flag" :title="row.country">{{ row.flag }}</span>
-              <span class="bo-footprint-name">{{ row.label }}</span>
-              <span class="bo-footprint-bar">
-                <span class="bo-footprint-fill" :style="{ width: row.share + '%' }" />
-              </span>
-              <span class="bo-footprint-num">{{ row.count }}</span>
-              <span class="bo-footprint-pct">{{ row.share }}%</span>
-            </div>
-          </div>
-          <div v-if="latestAudit && latestAudit.region && latestAudit.region !== 'global'"
-               class="text-xs text-muted" style="margin-top:8px">
-            Audit region: <strong>{{ regionLabel(latestAudit.region) }}</strong> — Perplexity grounded its web search in this country; other providers used the geo-flavored prompt.
+        <div class="ov-kpi">
+          <div class="ov-kpi-head"><span class="ov-kpi-label">Audits Run</span></div>
+          <div class="ov-kpi-value">{{ audits.length }}</div>
+          <div class="ov-kpi-sub">
+            {{ usageData?.audit_stats?.total_audits ? `${usageData.audit_stats.total_audits} total all-time` : 'Across this workspace' }}
           </div>
         </div>
       </div>
 
-      <!-- ═══ Diagnostics — visual breakdowns of the audit ═══
-           Shows when the audit produced data on at least one prompt.
-           Each component v-if-guards itself for empty data so partial
-           audits (running, single-provider) still render gracefully. -->
-      <div v-if="isAuditComplete && diagnosticsHaveData" class="lr-diagnostics" style="margin-bottom:24px">
-        <PromptHeatmap
-          :results="auditDetail?.results || []"
-          :provider-label="providerLabel"
-          :provider-color="providerColor"
-        />
-        <div class="lr-grid-2" style="margin-bottom:0">
-          <FunnelRadar
-            :results="auditDetail?.results || []"
-            :prompts="latestAudit?.prompts || []"
-            :target-name="latestAudit?.business_name || 'You'"
-            :competitor-name="kpiClosestCompetitor.name || ''"
-          />
-          <ProviderAgreement
-            :results="auditDetail?.results || []"
-            :provider-label="providerLabel"
-          />
-        </div>
-      </div>
-
-      <!-- LLM Systems: compact dropdown -->
-      <div v-if="audits.length || providerHealth.providers.length" class="lr-systems-bar" style="margin-bottom:24px">
-        <div class="card lr-systems-dropdown" @click="showSystemsDropdown = !showSystemsDropdown" style="cursor:pointer">
-          <div class="lr-systems-header">
-            <div class="lr-systems-left">
-              <h3 class="card-title" style="margin:0;font-size:14px">
-                LLM Systems
-                <span class="text-xs text-muted" style="font-weight:500">
-                  · {{ providerHealth.configured_count }}/{{ providerHealth.total }} configured
-                </span>
-              </h3>
-              <div class="lr-systems-pills">
-                <span
-                  v-for="p in providerHealth.providers.filter(p => p.configured)"
-                  :key="p.key"
-                  class="lr-sys-pill lr-sys-on"
-                >
-                  <span class="provider-status-dot" style="width:6px;height:6px"></span>
-                  {{ p.name.split('(')[0].trim() }}
-                </span>
-                <span
-                  v-if="providerHealth.providers.filter(p => !p.configured).length"
-                  class="lr-sys-pill lr-sys-off"
-                >
-                  +{{ providerHealth.providers.filter(p => !p.configured).length }} unconfigured
-                </span>
-              </div>
+      <!-- Trend + model coverage -->
+      <div class="ov-grid ov-grid-2">
+        <div class="card ov-card">
+          <div class="ov-card-head">
+            <div>
+              <h3 class="ov-card-title">Visibility Over Time</h3>
+              <p class="ov-card-sub">{{ historyData.length || 0 }} completed audits</p>
             </div>
-            <svg class="lr-systems-chevron" :class="{ open: showSystemsDropdown }" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M4 6l4 4 4-4"/>
-            </svg>
           </div>
-          <!-- Expanded list -->
-          <div v-if="showSystemsDropdown" class="lr-systems-list" @click.stop>
+          <div class="ov-chart">
+            <Line v-if="historyData.length" :data="trendChartData" :options="trendChartOptions" />
+            <div v-else class="ov-empty-inline">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/>
+              </svg>
+              <p>A trend line appears after your first completed audit.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="card ov-card">
+          <div class="ov-card-head">
+            <div>
+              <h3 class="ov-card-title">Model Coverage</h3>
+              <p class="ov-card-sub">{{ providerHealth.configured_count }}/{{ providerHealth.total }} configured</p>
+            </div>
+          </div>
+          <div class="ov-models">
             <div
               v-for="p in providerHealth.providers"
               :key="p.key"
-              class="provider-status-row"
-              :class="{ 'is-on': p.configured, 'is-off': !p.configured }"
+              class="ov-model-row"
+              :class="{ off: !p.configured }"
             >
-              <span class="provider-status-dot"></span>
-              <span class="provider-status-name">{{ p.name }}</span>
-              <span class="provider-status-model">{{ p.model }}</span>
-              <span class="provider-status-state">
-                {{ p.configured ? 'Enabled' : 'API key missing' }}
+              <span class="ov-model-dot" :style="{ background: p.configured ? providerColor(p.key) : 'var(--border-color, #e5e7eb)' }"></span>
+              <span class="ov-model-name">{{ p.name.split('(')[0].trim() }}</span>
+              <span class="ov-model-meta">
+                <span v-if="!p.configured" class="ov-tag ov-tag-warn">Not configured</span>
+                <span v-else-if="modelMentionRate(p.key) !== null" class="ov-model-rate">{{ modelMentionRate(p.key) }}%</span>
+                <span v-else class="ov-tag ov-tag-muted">Ready</span>
               </span>
-            </div>
-            <p v-if="providerHealth.configured_count < providerHealth.total" class="text-xs text-muted" style="padding:8px 16px 4px;line-height:1.5">
-              Disabled providers won't be queried; configure their API keys in settings to include them.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <!-- AI Visibility Score — compact widget bar -->
-      <div v-if="latestAudit" class="card lr-score-widget" style="margin-bottom:24px">
-        <div class="lr-score-bar" @click="showScoreDetail = !showScoreDetail" style="cursor:pointer">
-          <!-- Mini score ring -->
-          <div class="lr-score-mini-ring">
-            <svg viewBox="0 0 36 36" class="lr-mini-svg">
-              <circle cx="18" cy="18" r="15" fill="none" stroke="var(--border-color)" stroke-width="3"/>
-              <circle cx="18" cy="18" r="15" fill="none" 
-                :stroke="isAuditComplete ? scoreColor(latestAudit.overall_score) : 'var(--text-muted)'" 
-                stroke-width="3" stroke-linecap="round"
-                :stroke-dasharray="94.2" 
-                :stroke-dashoffset="isAuditComplete ? 94.2 - (94.2 * (latestAudit.overall_score || 0) / 100) : 94.2"
-                transform="rotate(-90 18 18)"
-                style="transition: stroke-dashoffset 0.8s ease"/>
-            </svg>
-            <span class="lr-mini-num">{{ isAuditComplete ? latestAudit.overall_score : '—' }}</span>
-          </div>
-
-          <!-- Score info -->
-          <div class="lr-score-info">
-            <div class="lr-score-title">AI Visibility Score</div>
-            <div class="lr-score-sub">
-              <template v-if="isAuditComplete">
-                <span class="badge" :class="mentionBadge(latestAudit.mention_rate)" style="margin-right:6px">
-                  {{ Math.round(latestAudit.mention_rate || 0) }}% mention rate
-                </span>
-                <span class="text-xs text-muted">
-                  {{ (latestAudit.providers_queried || []).length }} providers · {{ latestAudit.total_queries || 0 }} queries
-                </span>
-              </template>
-              <template v-else>
-                <span class="badge badge-neutral">{{ latestAudit.status === 'pending' ? 'Queued' : 'Running' }}</span>
-                <span v-if="latestAudit.status === 'running'" class="text-xs text-muted" style="margin-left:6px">
-                  {{ latestAudit.queries_completed || 0 }}/{{ latestAudit.total_queries || '?' }} queries · {{ auditProgressPct }}%
-                </span>
-              </template>
-            </div>
-          </div>
-
-          <!-- Progress bar for running audits -->
-          <div v-if="latestAudit.status === 'running' || latestAudit.status === 'pending'" class="lr-score-progress">
-            <div class="progress-bar-track" style="height:4px;border-radius:4px">
-              <div class="progress-bar-fill" :style="{ width: auditProgressPct + '%' }" style="height:4px;border-radius:4px"></div>
-            </div>
-          </div>
-
-          <!-- Expand chevron -->
-          <svg class="lr-systems-chevron" :class="{ open: showScoreDetail }" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M4 6l4 4 4-4"/>
-          </svg>
-        </div>
-
-        <!-- Expandable detail: Score Breakdown + Provider grid -->
-        <div v-if="showScoreDetail" class="lr-score-detail">
-          <!-- Score Breakdown bars -->
-          <div v-if="latestAudit.status === 'completed'" class="score-factors" style="padding:16px 20px 8px">
-            <div class="factor-row">
-              <span class="factor-label">Mention Rate (40pts)</span>
-              <div class="factor-bar-wrap">
-                <div class="factor-bar" :style="{ width: mentionPts + '%', background: mentionPts > 25 ? 'var(--color-success)' : mentionPts > 10 ? 'var(--color-warning)' : 'var(--color-danger)' }"></div>
-              </div>
-              <span class="factor-value">{{ mentionPts }}/40</span>
-            </div>
-            <div class="factor-row">
-              <span class="factor-label">Rank Position (35pts)</span>
-              <div class="factor-bar-wrap">
-                <div class="factor-bar" :style="{ width: rankPts / 35 * 100 + '%', background: rankPts > 20 ? 'var(--color-success)' : rankPts > 10 ? 'var(--color-warning)' : 'var(--color-danger)' }"></div>
-              </div>
-              <span class="factor-value">{{ rankPts }}/35</span>
-            </div>
-            <div class="factor-row">
-              <span class="factor-label">Sentiment + Coverage (25pts)</span>
-              <div class="factor-bar-wrap">
-                <div class="factor-bar" :style="{ width: sentimentPts / 25 * 100 + '%', background: sentimentPts > 15 ? 'var(--color-success)' : sentimentPts > 8 ? 'var(--color-warning)' : 'var(--color-danger)' }"></div>
-              </div>
-              <span class="factor-value">{{ sentimentPts }}/25</span>
-            </div>
-          </div>
-
-          <!-- Provider Breakdown grid -->
-          <div v-if="latestBreakdown.length" class="provider-grid" style="padding:12px 20px 16px">
-            <div
-              v-for="p in latestBreakdown"
-              :key="p.provider"
-              class="provider-card"
-              :class="{ 'provider-mentioned': p.mentioned > 0, 'provider-failed': p.succeeded === 0 }"
-            >
-              <div class="provider-icon">{{ providerInitial(p.provider) }}</div>
-              <div class="provider-name">{{ p.provider_display || providerLabel(p.provider) }}</div>
-              <template v-if="p.succeeded === 0">
-                <span class="badge badge-danger">Not configured</span>
-              </template>
-              <template v-else>
-                <span class="badge" :class="p.mentioned > 0 ? 'badge-success' : 'badge-neutral'">
-                  {{ p.mention_rate }}% mentioned
-                </span>
-                <div v-if="p.avg_rank" class="text-xs text-muted" style="margin-top:4px">Avg rank #{{ p.avg_rank }}</div>
-                <div class="text-xs" style="margin-top:2px;color:var(--text-muted)">{{ p.succeeded }}/{{ p.total_prompts }} queries OK</div>
-              </template>
             </div>
           </div>
         </div>
       </div>
 
-
-      <!-- Prompts Table (rich view — matching reference design) -->
-      <div v-if="isAuditComplete && intentGroups.length" class="card" style="margin-bottom:24px">
-        <div class="card-header" style="border-bottom:1px solid var(--border-color, #E5E7EB)">
-          <h3 class="card-title" style="font-size:1.1rem;font-weight:700">Prompts</h3>
-          <div class="pt-header-right">
-            <div class="pi-filter">
-              <select v-model="groupBy" class="pi-select">
-                <option value="funnel_stage">Group by funnel stage</option>
-                <option value="intent">Group by topic</option>
-              </select>
-            </div>
-            <div class="pi-filter">
-              <select v-model="providerFilter" class="pi-select">
-                <option value="">All Providers</option>
-                <option v-for="p in availableProviderFilters" :key="p" :value="p">{{ providerLabel(p) }}</option>
-              </select>
-            </div>
+      <!-- Recent audits -->
+      <div class="card ov-card">
+        <div class="ov-card-head">
+          <div>
+            <h3 class="ov-card-title">Recent Audits</h3>
+            <p class="ov-card-sub">{{ audits.length }} {{ audits.length === 1 ? 'run' : 'runs' }}</p>
           </div>
-        </div>
-
-        <!-- Table header -->
-        <div class="pt-table">
-          <div class="pt-thead">
-            <span class="pt-th pt-th-topic">Topic</span>
-            <span class="pt-th pt-th-count">Prompts</span>
-            <span class="pt-th pt-th-vis">Avg Visibility</span>
-            <span class="pt-th pt-th-score">Score</span>
-            <span class="pt-th pt-th-perf">Top Performers</span>
-            <span class="pt-th pt-th-keywords">Top Keywords</span>
-            <span class="pt-th pt-th-status">Status</span>
-          </div>
-
-          <!-- Topic group rows -->
-          <template v-for="group in intentGroups" :key="group.intent">
-            <!-- Topic header row (clickable) -->
-            <div class="pt-topic-row" @click="toggleIntent(group.intent)">
-              <span class="pt-td pt-td-topic">
-                <svg class="pi-chevron" :class="{ open: !collapsedIntents.has(group.intent) }"
-                     width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M5 4l5 4-5 4"/>
-                </svg>
-                <span class="pt-topic-name">{{ groupLabel(group.intent) }}</span>
-              </span>
-              <span class="pt-td pt-td-count">{{ group.prompts.length }}</span>
-              <span class="pt-td pt-td-vis">
-                <span :style="{ color: visibilityColor(group.avgVisibility) }">{{ group.avgVisibility }}%</span>
-                <svg v-if="group.avgVisibility > 0" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-left:3px">
-                  <path d="M2 7L5 3L8 7" :stroke="group.avgVisibility >= 50 ? '#10b981' : '#f59e0b'"/>
-                </svg>
-              </span>
-              <span class="pt-td pt-td-score">
-                <strong :style="{ color: scoreColor(group.avgScore) }">{{ group.avgScore }}</strong>
-              </span>
-              <span class="pt-td pt-td-perf">
-                <span
-                  v-for="d in group.providerSummary"
-                  :key="d.provider"
-                  class="pt-perf-icon"
-                  :class="{ 'is-hit': d.hitRate > 50, 'is-partial': d.hitRate > 0 && d.hitRate <= 50, 'is-miss': d.hitRate === 0 }"
-                  :title="providerLabel(d.provider) + ': ' + d.hitRate + '% hit rate'"
-                >{{ providerInitial(d.provider) }}</span>
-              </span>
-              <span class="pt-td pt-td-keywords">
-                <span v-for="kw in group.topKeywords.slice(0, 3)" :key="kw" class="pt-kw-chip">{{ kw }}</span>
-                <span v-if="!group.topKeywords.length" class="pt-kw-empty">—</span>
-              </span>
-              <span class="pt-td pt-td-status">
-                <span class="pt-see-link">See →</span>
-              </span>
-            </div>
-
-            <!-- Expanded prompt rows -->
-            <template v-if="!collapsedIntents.has(group.intent)">
-              <template v-for="p in group.prompts" :key="p.text">
-                <div class="pt-prompt-row" @click="togglePrompt(p.text)">
-                  <span class="pt-td pt-td-topic pt-td-prompt-text">
-                    <svg class="pi-chevron pi-chevron-prompt" :class="{ open: expandedPrompts.has(p.text) }"
-                         width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M5 4l5 4-5 4"/>
-                    </svg>
-                    <span class="pt-prompt-block">
-                      <span class="pt-prompt-headline">
-                        {{ p.text }}
-                        <span
-                          v-if="geoTagFor(p.text)"
-                          class="pt-geo-badge"
-                          :style="geoCategoryStyle(geoTagFor(p.text).category)"
-                          :title="`GEO domain: ${geoTagFor(p.text).category_label}. Tag source: ${geoTagFor(p.text).source}.`"
-                        >{{ geoTagFor(p.text).category_label }}</span>
-                        <span
-                          v-if="geoTopRecommendation(p.text)"
-                          class="pt-geo-tactic"
-                          :title="geoTopRecommendation(p.text).summary + ' (+' + geoTopRecommendation(p.text).lift + '% avg lift per GEO paper)'"
-                        >
-                          <svg width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M3 8l3 3 7-7" stroke-linecap="round" stroke-linejoin="round"/>
-                          </svg>
-                          {{ geoTopRecommendation(p.text).label }}
-                          <span class="pt-geo-lift">+{{ geoTopRecommendation(p.text).lift }}%</span>
-                        </span>
-                      </span>
-                      <span v-if="p.rationale" class="pt-prompt-rationale">{{ p.rationale }}</span>
-                    </span>
-                  </span>
-                  <span class="pt-td pt-td-count"></span>
-                  <span class="pt-td pt-td-vis">
-                    <strong :style="{ color: visibilityColor(p.visibility) }">{{ p.visibility }}%</strong>
-                    <svg v-if="p.visibility > 0" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke-width="1.5" style="margin-left:3px">
-                      <path d="M2 7L5 3L8 7" :stroke="p.visibility >= 50 ? '#10b981' : '#f59e0b'"/>
-                    </svg>
-                  </span>
-                  <span class="pt-td pt-td-score">
-                    <strong :style="{ color: scoreColor(p.score) }">{{ p.score }}</strong>
-                  </span>
-                  <span class="pt-td pt-td-perf">
-                    <span
-                      v-for="d in p.providerDots"
-                      :key="d.provider"
-                      class="pt-perf-icon"
-                      :class="{ 'is-hit': d.mentioned, 'is-miss': !d.mentioned && d.succeeded, 'is-fail': !d.succeeded }"
-                      :title="providerLabel(d.provider) + ': ' + providerDotTitle(d)"
-                    >
-                      {{ providerInitial(d.provider) }}<sub v-if="d.rank" class="pt-perf-rank">{{ d.rank }}</sub>
-                    </span>
-                  </span>
-                  <span class="pt-td pt-td-keywords">
-                    <span v-for="kw in p.matchedKeywords.slice(0, 3)" :key="kw" class="pt-kw-chip">{{ kw }}</span>
-                    <span v-if="!p.matchedKeywords.length" class="pt-kw-empty">—</span>
-                  </span>
-                  <span class="pt-td pt-td-status">
-                    <span class="pt-status-pill" :class="promptStatusClass(p)">
-                      {{ promptStatusLabel(p) }}
-                    </span>
-                  </span>
-                </div>
-
-                <!-- Per-prompt expansion panel -->
-                <div v-if="expandedPrompts.has(p.text)" class="pt-prompt-detail">
-                  <div class="pt-detail-summary">
-                    <div class="pt-detail-stat">
-                      <span class="pt-detail-stat-label">Score</span>
-                      <span class="pt-detail-stat-value" :style="{ color: scoreColor(p.score) }">{{ p.score }}/100</span>
-                    </div>
-                    <div class="pt-detail-stat">
-                      <span class="pt-detail-stat-label">Visibility</span>
-                      <span class="pt-detail-stat-value">{{ p.visibility }}%</span>
-                    </div>
-                    <div class="pt-detail-stat">
-                      <span class="pt-detail-stat-label">Avg rank</span>
-                      <span class="pt-detail-stat-value">{{ p.avgRank ? '#' + p.avgRank : '—' }}</span>
-                    </div>
-                    <div class="pt-detail-stat">
-                      <span class="pt-detail-stat-label">Sentiment</span>
-                      <span class="pt-detail-stat-value pt-sentiment" :class="'pt-sentiment-' + p.dominantSentiment">{{ p.dominantSentiment }}</span>
-                    </div>
-                  </div>
-
-                  <div v-if="geoTagFor(p.text)" class="pt-detail-section pt-geo-block">
-                    <div class="pt-detail-label">
-                      GEO recommendations
-                      <span class="pt-geo-block-cat" :style="geoCategoryStyle(geoTagFor(p.text).category)">
-                        {{ geoTagFor(p.text).category_label }}
-                      </span>
-                    </div>
-                    <p class="pt-geo-block-sub">
-                      Per the GEO paper (Aggarwal et al., KDD '24), prompts in
-                      the <strong>{{ geoTagFor(p.text).category_label }}</strong>
-                      domain respond best to these tactics — ranked by
-                      published visibility lift on Position-Adjusted Word Count.
-                    </p>
-                    <ol class="pt-geo-list">
-                      <li v-for="rec in geoTagFor(p.text).recommendations" :key="rec.id" class="pt-geo-item">
-                        <span class="pt-geo-rank">#{{ rec.rank }}</span>
-                        <span class="pt-geo-body">
-                          <span class="pt-geo-label">{{ rec.label }}</span>
-                          <span class="pt-geo-summary">{{ rec.summary }}</span>
-                        </span>
-                        <span class="pt-geo-lift-pill">+{{ rec.lift }}%</span>
-                      </li>
-                    </ol>
-                  </div>
-
-                  <div class="pt-detail-section">
-                    <div class="pt-detail-label">Per-provider results</div>
-                    <div v-for="r in p.responses" :key="r.provider" class="pt-resp-card">
-                      <div class="pt-resp-head">
-                        <span class="pt-resp-prov-dot" :class="'is-' + (r.provider || '').toLowerCase().replace(/[^a-z0-9]/g, '')"></span>
-                        <span class="pt-resp-prov">{{ providerLabel(r.provider) }}</span>
-                        <span v-if="r.is_mentioned" class="pt-resp-badge is-hit">
-                          {{ r.mention_rank ? 'rank #' + r.mention_rank : 'mentioned' }}
-                        </span>
-                        <span v-else-if="r.query_succeeded" class="pt-resp-badge is-miss">not mentioned</span>
-                        <span v-else class="pt-resp-badge is-fail">API failed</span>
-                        <span v-if="r.sentiment" class="pt-resp-badge pt-sentiment" :class="'pt-sentiment-' + r.sentiment">{{ r.sentiment }}</span>
-                        <div class="pt-resp-actions">
-                          <button
-                            v-if="(r.response_text || r.mention_context || '').length > 220"
-                            type="button"
-                            class="pt-resp-btn"
-                            @click.stop="toggleResponseExpand(p.text + '|' + r.provider)"
-                          >
-                            {{ isResponseExpanded(p.text + '|' + r.provider) ? 'Collapse' : 'Show full response' }}
-                          </button>
-                          <button
-                            v-if="r.response_text || r.mention_context"
-                            type="button"
-                            class="pt-resp-btn"
-                            @click.stop="copyResponse(r.response_text || r.mention_context)"
-                          >Copy</button>
-                        </div>
-                      </div>
-                      <div
-                        v-if="r.response_text || r.mention_context"
-                        class="pt-resp-body"
-                        :class="{ 'is-expanded': isResponseExpanded(p.text + '|' + r.provider) }"
-                      >
-                        <span class="pt-resp-text">
-                          {{
-                            isResponseExpanded(p.text + '|' + r.provider)
-                              ? (r.response_text || r.mention_context)
-                              : (r.mention_context || r.response_text || '').slice(0, 220) + ((r.response_text || r.mention_context || '').length > 220 ? '…' : '')
-                          }}
-                        </span>
-                      </div>
-                      <div v-else class="pt-resp-empty">No response captured.</div>
-                    </div>
-                  </div>
-
-                  <div v-if="p.matchedKeywords.length" class="pt-detail-section">
-                    <div class="pt-detail-label">Keywords found alongside your brand</div>
-                    <span v-for="kw in p.matchedKeywords" :key="kw" class="pt-kw-chip pt-kw-chip-strong">{{ kw }}</span>
-                  </div>
-
-                  <div v-if="p.topCompetitors.length" class="pt-detail-section">
-                    <div class="pt-detail-label">Competitors named on this prompt</div>
-                    <span v-for="c in p.topCompetitors.slice(0, 8)" :key="c.name" class="pt-comp-chip">
-                      {{ c.name }}<sub>×{{ c.count }}</sub>
-                    </span>
-                  </div>
-                </div>
-              </template>
-            </template>
-          </template>
-        </div>
-      </div>
-
-      <!-- Prompt Activity — chronological per-query record -->
-      <!-- Replaces the old Pipeline Log + Live Results ticker. Shows what
-           we asked, when we asked it, which model answered, and whether
-           the brand was mentioned. Same data is visible during a running
-           audit (partial) and after completion (full). -->
-      <div v-if="promptActivity.length" class="card" style="margin-bottom:24px">
-        <div class="card-header">
-          <h3 class="card-title">
-            Prompt Activity
-            <span v-if="isAuditRunning" class="text-xs text-muted" style="font-weight:500">
-              · running
-            </span>
-          </h3>
-          <span class="text-xs text-muted">
-            {{ filteredPromptActivity.length }}<template v-if="filteredPromptActivity.length !== promptActivity.length">/{{ promptActivity.length }}</template>
-            prompt{{ promptActivity.length === 1 ? '' : 's' }}
-            <template v-if="logProgress.total">
-              · {{ logProgress.completed }}/{{ logProgress.total }} queries
-            </template>
-          </span>
-        </div>
-
-        <!-- Filters: search, provider, status, sort. Operate on the
-             promptActivity array client-side so the Status poll can
-             continue refreshing the full list underneath without
-             losing the user's filter state. -->
-        <div class="pa-filters">
-          <div class="pa-filter-search">
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
-              <circle cx="7" cy="7" r="5"/>
-              <path d="M11 11l3 3"/>
-            </svg>
-            <input
-              v-model="paFilters.search"
-              class="pa-filter-input"
-              placeholder="Search prompts..."
-              type="text"
-            />
-          </div>
-          <select v-model="paFilters.provider" class="pa-filter-select">
-            <option value="">All providers</option>
-            <option v-for="key in promptActivityProviders" :key="key" :value="key">
-              {{ providerLabel(key) }}
-            </option>
-          </select>
-          <select v-model="paFilters.status" class="pa-filter-select">
-            <option value="">All status</option>
-            <option value="mentioned">Mentioned</option>
-            <option value="not_mentioned">Not mentioned</option>
-            <option value="error">API error</option>
-          </select>
-          <select v-model="paFilters.sort" class="pa-filter-select">
-            <option value="time_asc">Oldest first</option>
-            <option value="time_desc">Newest first</option>
-            <option value="rank_asc">Best rank first</option>
-            <option value="provider">Group by provider</option>
-          </select>
-          <button
-            v-if="paFiltersActive"
-            class="pa-filter-clear"
-            @click="resetPromptActivityFilters"
-            title="Clear all filters"
-          >
-            Clear
+          <button v-if="audits.length > 5" class="btn btn-ghost btn-sm" @click="showAllAudits = !showAllAudits">
+            {{ showAllAudits ? 'Show recent' : 'Show all' }}
           </button>
         </div>
 
-        <div class="prompt-activity-head">
-          <span class="pa-time">Time</span>
-          <span class="pa-provider">Provider</span>
-          <span class="pa-model">Model</span>
-          <span class="pa-prompt">Prompt</span>
-          <span class="pa-status">Status</span>
+        <div v-if="!audits.length" class="ov-empty-inline">
+          <p>No audits yet. Kick off your first run from the Prompt Library.</p>
         </div>
-        <div class="prompt-activity-list">
+        <div v-else class="ov-audit-table">
+          <div class="ov-audit-head">
+            <span>Date</span>
+            <span>Score</span>
+            <span>Mention Rate</span>
+            <span>Queries</span>
+            <span>Status</span>
+            <span></span>
+          </div>
           <div
-            v-for="r in filteredPromptActivity"
-            :key="r.id || (r.provider + r.prompt + r.created_at)"
-            class="prompt-activity-row"
-            :class="{ 'pa-fail': !r.query_succeeded, 'pa-hit': r.is_mentioned }"
+            v-for="audit in visibleAudits"
+            :key="audit.id"
+            class="ov-audit-row"
+            :class="{ selected: selectedAuditId === audit.id }"
+            @click="selectedAuditId = audit.id"
           >
-            <span class="pa-time">{{ formatPromptTime(r.created_at) }}</span>
-            <span class="pa-provider">
-              <span class="pa-provider-dot" :style="{ background: providerColor(r.provider) }"></span>
-              {{ providerLabel(r.provider) }}
+            <span class="ov-audit-date">{{ formatDate(audit.created_at) }}</span>
+            <span class="ov-audit-score">
+              <strong>{{ audit.overall_score != null ? Math.round(audit.overall_score) : '—' }}</strong>
+              <span v-if="audit.overall_score != null" class="text-muted">/100</span>
             </span>
-            <span class="pa-model" :title="providerModel(r.provider)">
-              {{ providerModel(r.provider) }}
+            <span>{{ audit.mention_rate != null ? Math.round(audit.mention_rate) + '%' : '—' }}</span>
+            <span class="text-muted">{{ audit.total_queries || 0 }} queries</span>
+            <span>
+              <span class="ov-status" :class="auditStatusClass(audit.status)">{{ capitalize(audit.status || 'pending') }}</span>
             </span>
-            <span class="pa-prompt" :title="r.prompt">
-              {{ r.prompt }}
-              <span class="badge badge-source" :class="badgeClass(r.prompt_source_label)">
-                {{ formatLabel(r.prompt_source_label) }}
-              </span>
-            </span>
-            <span class="pa-status">
-              <span v-if="!r.query_succeeded" class="badge badge-danger">API error</span>
-              <span v-else-if="r.is_mentioned" class="badge badge-success">
-                Ranked #{{ r.mention_rank || '—' }}
-              </span>
-              <span v-else class="badge badge-neutral">Not mentioned</span>
+            <span class="ov-audit-actions">
               <button
-                v-if="citationsForResult(r.id).length"
-                class="badge badge-citation"
-                style="margin-left:6px;cursor:pointer;border:0"
-                @click.stop="openCitationsDrawer(r)"
-                :title="`View ${citationsForResult(r.id).length} citations`"
+                v-if="audit.status === 'pending' || audit.status === 'failed'"
+                class="btn btn-ghost btn-sm"
+                @click.stop="runAuditNow(audit)"
+                :disabled="runningAuditId === audit.id"
               >
-                {{ citationsForResult(r.id).length }} citation{{ citationsForResult(r.id).length === 1 ? '' : 's' }}
+                {{ runningAuditId === audit.id ? 'Running…' : 'Run' }}
               </button>
+              <button
+                class="btn btn-ghost btn-sm ov-audit-delete"
+                aria-label="Delete audit"
+                @click.stop="confirmDeleteId = audit.id"
+              >×</button>
             </span>
           </div>
-          <div v-if="!filteredPromptActivity.length" class="pa-empty">
-            No prompts match the current filters.
-            <button class="pa-filter-clear" @click="resetPromptActivityFilters">Clear filters</button>
-          </div>
         </div>
       </div>
 
-      <!-- Overview row: trends (left) + competitors leaderboard (right) -->
-      <div v-if="history.length || (isAuditComplete && competitorLeaderboard.length)"
-           class="lr-grid-2" style="margin-bottom:24px">
-        <!-- AI Visibility Trends -->
-        <div v-if="history.length >= 1" class="card lr-grid-main">
-          <div class="card-header">
-            <h3 class="card-title">Provider Comparison</h3>
-            <span class="text-xs text-muted">Mention rate across LLMs</span>
+      <!-- Usage -->
+      <div v-if="usageData" class="card ov-card">
+        <div class="ov-card-head">
+          <div>
+            <h3 class="ov-card-title">Usage</h3>
+            <p class="ov-card-sub">Last {{ usageDays }} days</p>
           </div>
-          <div class="chart-wrap">
-            <Bar :data="providerChartData" :options="providerChartOptions" />
-          </div>
-        </div>
-
-        <!-- Trend Line Chart -->
-        <div v-if="historyData.length >= 2" class="card chart-card">
-          <div class="card-header">
-            <h3 class="card-title">Score Trend</h3>
-            <span class="text-xs text-muted">AI visibility over time</span>
-          </div>
-          <div class="chart-wrap">
-            <Line :data="trendChartData" :options="trendChartOptions" />
-          </div>
-          <p class="text-xs text-muted" style="padding:0 16px 16px">
-            Brands LLMs list alongside you. Your real competitive set in AI search.
-          </p>
-        </div>
-      </div>
-
-      <!-- Detailed Findings -->
-      <div v-if="auditDetail && auditDetail.results && auditDetail.results.length" class="card" style="margin-bottom:24px">
-        <div class="card-header" style="cursor:pointer" @click="showFindings = !showFindings">
-          <h3 class="card-title">Detailed Findings ({{ successfulResults.length }} queries analyzed)</h3>
-          <span class="text-xs text-muted">{{ showFindings ? 'Collapse' : 'Expand' }}</span>
-        </div>
-        <div v-if="showFindings" class="findings-list">
-          <!-- Summary stats at top -->
-          <div class="findings-summary">
-            <div class="summary-stat">
-              <span class="summary-num">{{ successfulResults.length }}</span>
-              <span class="summary-label">Queries Sent</span>
-            </div>
-            <div class="summary-stat">
-              <span class="summary-num">{{ mentionedResults.length }}</span>
-              <span class="summary-label">Mentions Found</span>
-            </div>
-            <div class="summary-stat">
-              <span class="summary-num">{{ mentionedResults.length ? avgRankDisplay : 'N/A' }}</span>
-              <span class="summary-label">Avg Rank</span>
-            </div>
-            <div class="summary-stat">
-              <span class="summary-num">{{ promptsUsed }}</span>
-              <span class="summary-label">Unique Prompts</span>
-            </div>
-            <div class="summary-stat">
-              <span class="summary-num" style="font-size:14px;line-height:1.3">{{ coverage }}</span>
-              <span class="summary-label">Prompt Coverage</span>
-            </div>
-            <div class="summary-stat">
-              <span class="summary-num">{{ totalAuditCitations }}</span>
-              <span class="summary-label">Citations</span>
-              <button
-                class="btn-ghost btn-sm"
-                style="margin-top:4px;font-size:11px;color:var(--accent, #ec4899)"
-                @click="gotoSourceInfluence"
-              >
-                View source influence →
-              </button>
-            </div>
-            <div class="summary-stat">
-              <span class="summary-num">{{ contentBriefsForAudit }}</span>
-              <span class="summary-label">Content suggested</span>
-              <button
-                class="btn-ghost btn-sm"
-                style="margin-top:4px;font-size:11px;color:#FF385C"
-                @click="gotoContentStudio"
-              >
-                Open in Content Studio →
-              </button>
-            </div>
-          </div>
-          <!-- Mini source-class breakdown for this audit. -->
-          <div
-            v-if="auditSourceInfluence && auditSourceInfluence.breakdown && Object.keys(auditSourceInfluence.breakdown).length"
-            style="margin: 4px 0 16px"
-          >
-            <SourceBreakdownBar :breakdown="auditSourceInfluence.breakdown" :height="10" />
-          </div>
-
-          <!-- Per-query results -->
-          <template v-for="(r, i) in auditDetail.results" :key="i">
-            <div v-if="r.query_succeeded" class="finding-card" :class="{ 'finding-mentioned': r.is_mentioned }">
-              <div class="finding-number">#{{ i + 1 }}</div>
-              <div class="finding-body">
-                <div class="finding-header">
-                  <span class="finding-provider">{{ providerLabel(r.provider) }}</span>
-                  <span v-if="r.is_mentioned" class="badge badge-success">Ranked #{{ r.mention_rank || '?' }}</span>
-                  <span v-else class="badge badge-neutral">Not found in response</span>
-                  <span v-if="r.sentiment && r.sentiment !== 'not_mentioned'" class="badge" :class="r.sentiment === 'positive' ? 'badge-success' : r.sentiment === 'negative' ? 'badge-danger' : 'badge-neutral'" style="margin-left:4px">
-                    {{ r.sentiment }}
-                  </span>
-                  <span class="finding-confidence" v-if="r.confidence_score">{{ Math.round(r.confidence_score) }}% confidence</span>
-                  <button
-                    v-if="citationsForResult(r.id).length"
-                    class="badge badge-citation"
-                    style="margin-left:6px;cursor:pointer;border:0"
-                    @click="openCitationsDrawer(r)"
-                  >
-                    {{ citationsForResult(r.id).length }} citation{{ citationsForResult(r.id).length === 1 ? '' : 's' }}
-                  </button>
-                </div>
-                <div class="finding-prompt">
-                  <strong>Q:</strong> {{ r.prompt }}
-                  <span class="badge badge-source" :class="badgeClass(r.prompt_source_label)">
-                    {{ formatLabel(r.prompt_source_label) }}
-                  </span>
-                </div>
-                <div v-if="r.mention_context" class="finding-context">
-                  <strong>Match:</strong> "...{{ r.mention_context }}..."
-                </div>
-                <details v-if="r.response_text" class="finding-response">
-                  <summary class="response-toggle">View full AI response ({{ r.response_text.length }} chars)</summary>
-                  <pre class="response-pre">{{ r.response_text }}</pre>
-                </details>
-              </div>
-            </div>
-            <!-- Failed queries shown compactly -->
-            <div v-else class="finding-card finding-failed">
-              <div class="finding-number">#{{ i + 1 }}</div>
-              <div class="finding-body">
-                <div class="finding-header">
-                  <span class="finding-provider">{{ providerLabel(r.provider) }}</span>
-                  <span class="badge badge-danger">API Failed</span>
-                </div>
-                <div class="finding-error">{{ r.error_message }}</div>
-              </div>
-            </div>
-          </template>
-        </div>
-      </div>
-
-      <!-- Recommendations -->
-      <div v-if="recommendations.length" class="card" style="margin-bottom:24px">
-        <div class="card-header">
-          <h3 class="card-title">Recommendations</h3>
-        </div>
-        <div class="recs-list">
-          <div v-for="(rec, i) in recommendations" :key="i" class="rec-row">
-            <span class="rec-num">{{ i + 1 }}</span>
-            <span class="text-sm" style="color:var(--text-secondary);line-height:1.5">{{ rec }}</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- How Scoring Works (when audit is completed, shown below) -->
-      <div v-if="latestAudit && latestAudit.status === 'completed'" class="card" style="margin-bottom:24px">
-        <div class="card-header" style="cursor:pointer" @click="showMethodology = !showMethodology">
-          <h3 class="card-title">How This Score Was Calculated</h3>
-          <span class="text-xs text-muted">{{ showMethodology ? 'Hide' : 'Show' }}</span>
-        </div>
-        <div v-if="showMethodology" class="methodology-content">
-          <div class="method-steps">
-            <div class="method-step">
-              <div class="step-num">1</div>
-              <div>
-                <div class="step-title">Generate Prompts</div>
-                <div class="step-desc">{{ auditDetail?.prompts?.length || latestAudit.prompts?.length || '?' }} natural-language questions were generated based on your business name, industry{{ latestAudit.location ? ', and location (' + latestAudit.location + ')' : '' }}.</div>
-              </div>
-            </div>
-            <div class="method-step">
-              <div class="step-num">2</div>
-              <div>
-                <div class="step-title">Query AI Providers</div>
-                <div class="step-desc">Each prompt was sent to {{ (latestAudit.providers_queried || []).join(', ') || 'selected providers' }}. We ask the AI to list top options in your industry to simulate real user queries.</div>
-              </div>
-            </div>
-            <div class="method-step">
-              <div class="step-num">3</div>
-              <div>
-                <div class="step-title">Analyze Responses</div>
-                <div class="step-desc">Each response is scanned for your business name. If found, we extract the rank position (e.g., listed 3rd out of 10) and the sentiment of the mention (positive, neutral, or negative).</div>
-              </div>
-            </div>
-            <div class="method-step">
-              <div class="step-num">4</div>
-              <div>
-                <div class="step-title">Compute Score</div>
-                <div class="step-desc">
-                  <strong>Mention Rate</strong> (40pts): Beta(2,8)-smoothed mention rate &mdash; small samples shrink toward a 20% prior so a 1/1 audit can't peg the score at 100%.
-                  <strong>Rank Position</strong> (35pts): Higher rank = more points (rank #1 → 35pts, #5 → 20pts).
-                  <strong>Sentiment + Coverage</strong> (25pts): Positive mentions and multi-provider presence boost this.
-                  <br><br>
-                  <strong>Brand strengths</strong> in the rankings table are fit with a Plackett-Luce model across all responses where you and competitors appeared with positions, so they reflect head-to-head dominance rather than raw mention counts.
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Audit Jobs -->
-      <div class="card">
-        <div class="card-header">
-          <h3 class="card-title">Audit Jobs</h3>
-          <span class="text-xs text-muted">{{ audits.length }} run{{ audits.length !== 1 ? 's' : '' }}</span>
-        </div>
-
-        <div v-if="audits.length === 0" class="empty-state">
-          <div class="empty-state-title">No audits yet</div>
-          <p class="empty-state-desc">Run your first audit to see how LLMs rank your business.</p>
-        </div>
-
-        <div v-else class="lr-audit-jobs">
-          <div v-for="audit in audits" :key="audit.id" class="lr-job-block">
-            <!-- Job header row (clickable) -->
-            <div
-              class="lr-job-header"
-              :class="{ 'is-active': expandedAuditId === audit.id, 'row-selected': selectedAuditId === audit.id }"
-              @click="toggleAuditExpand(audit)"
-            >
-              <svg class="lr-job-chevron" :class="{ open: expandedAuditId === audit.id }" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M5 4l5 4-5 4"/>
-              </svg>
-              <span class="lr-job-date">{{ formatDate(audit.created_at) }}</span>
-              <span class="lr-job-name">{{ audit.business_name }}</span>
-              <span class="lr-job-score">
-                <span class="score-pill" :class="scorePillClass(audit.overall_score)">
-                  {{ audit.overall_score ?? '—' }}
-                </span>
-              </span>
-              <span class="lr-job-mention">{{ Math.round(audit.mention_rate || 0) }}%</span>
-              <span class="lr-job-queries">{{ audit.total_queries || '—' }} queries</span>
-              <span class="lr-job-status">
-                <button
-                  v-if="audit.status === 'pending' || audit.status === 'failed'"
-                  class="btn btn-sm lr-run-btn"
-                  :disabled="runningAuditId === audit.id"
-                  @click.stop="executeAuditJob(audit)"
-                >
-                  <template v-if="runningAuditId === audit.id">
-                    <span class="pulse-dot" style="width:6px;height:6px;display:inline-block;margin-right:4px"></span>
-                    Running…
-                  </template>
-                  <template v-else>▶ Run</template>
-                </button>
-                <span v-else-if="audit.status === 'running'" class="badge badge-warning">
-                  <span class="pulse-dot" style="width:5px;height:5px;display:inline-block;margin-right:3px"></span>
-                  running
-                </span>
-                <span v-else class="badge" :class="auditStatusBadge(audit.status)">{{ audit.status }}</span>
-              </span>
-              <span class="lr-job-actions">
-                <div v-if="confirmDeleteId === audit.id" class="flex gap-8 items-center" @click.stop>
-                  <button class="btn btn-danger btn-sm" @click.stop="confirmDelete(audit)">Yes</button>
-                  <button class="btn btn-secondary btn-sm" @click.stop="confirmDeleteId = null">No</button>
-                </div>
-                <button v-else class="btn btn-ghost btn-sm delete-btn" @click.stop="confirmDeleteId = audit.id">×</button>
-              </span>
-            </div>
-            <!-- Cost caption (only when populated) -->
-            <div v-if="audit.total_cost_usd && Number(audit.total_cost_usd) > 0" class="lr-job-cost-caption">
-              ${{ Number(audit.total_cost_usd).toFixed(4) }} · {{ formatTokens(audit.total_tokens) }} tokens
-            </div>
-
-            <!-- Expanded prompt jobs -->
-            <div v-if="expandedAuditId === audit.id" class="lr-job-detail">
-              <div v-if="!audit.prompts || !audit.prompts.length" class="text-xs text-muted" style="padding:12px 16px">
-                <template v-if="audit.status === 'pending'">
-                  <span class="pulse-dot" style="margin-right:6px"></span>
-                  Queued — prompts will appear when the job starts running.
-                </template>
-                <template v-else-if="audit.status === 'running'">
-                  <span class="pulse-dot" style="margin-right:6px"></span>
-                  Running {{ audit.queries_completed || 0 }}/{{ audit.total_queries || '?' }} queries...
-                </template>
-                <template v-else>No prompt data available for this audit.</template>
-              </div>
-              <div v-else class="lr-prompt-jobs">
-                <div class="lr-prompt-header">
-                  <span class="lr-ph-num">#</span>
-                  <span class="lr-ph-prompt">Prompt</span>
-                  <span class="lr-ph-type">Type</span>
-                  <span class="lr-ph-providers">Providers</span>
-                  <span class="lr-ph-result">Result</span>
-                </div>
-                <div
-                  v-for="(prompt, pi) in audit.prompts"
-                  :key="pi"
-                  class="lr-prompt-row"
-                >
-                  <span class="lr-pr-num">{{ pi + 1 }}</span>
-                  <span class="lr-pr-prompt">
-                    <span class="lr-pr-prompt-text">{{ promptText(prompt) }}</span>
-                    <span v-if="promptRationale(prompt)" class="lr-pr-rationale">
-                      {{ promptRationale(prompt) }}
-                    </span>
-                  </span>
-                  <span class="lr-pr-type">
-                    <span class="badge badge-neutral" style="font-size:10px">{{ promptIntents[pi] || 'custom' }}</span>
-                    <span
-                      v-if="promptStageLabel(prompt, promptIntents[pi] || 'custom')"
-                      class="badge"
-                      :class="'lr-pr-stage-' + (prompt?.funnel_stage || INTENT_TO_FUNNEL[promptIntents[pi]] || 'niche')"
-                      style="font-size:10px;margin-left:4px"
-                    >{{ promptStageLabel(prompt, promptIntents[pi] || 'custom') }}</span>
-                  </span>
-                  <span class="lr-pr-providers">
-                    <span
-                      v-for="prov in (audit.providers_queried || [])"
-                      :key="prov"
-                      class="lr-pr-dot"
-                      :title="providerLabel(prov)"
-                    >{{ providerInitial(prov) }}</span>
-                  </span>
-                  <span class="lr-pr-result">
-                    <span v-if="audit.status === 'completed'" class="badge" :class="getPromptMentioned(audit, pi) ? 'badge-success' : 'badge-neutral'" style="font-size:10px">
-                      {{ getPromptMentioned(audit, pi) ? 'Mentioned' : 'No mention' }}
-                    </span>
-                    <span v-else-if="audit.status === 'running'" class="pulse-dot" style="width:6px;height:6px"></span>
-                    <span v-else class="text-xs text-muted">—</span>
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- ═══ Prompt Results Table ═════════════════════════════════════════ -->
-      <div v-if="audits.length && isAuditComplete && promptResultsData" class="card" style="margin-top:16px">
-        <div class="card-header" style="flex-wrap:wrap;gap:8px">
-          <h3 class="card-title">Prompt Results</h3>
-          <div class="pr-filters">
-            <select v-model="promptFilterProvider" class="pr-select" @change="loadPromptResults">
-              <option value="">All Models</option>
-              <option v-for="p in (latestAudit?.providers_queried || [])" :key="p" :value="p">{{ providerLabel(p) }}</option>
-            </select>
-            <select v-model="promptFilterType" class="pr-select" @change="loadPromptResults">
-              <option value="">All Types</option>
-              <option value="recommendation">Recommendation</option>
-              <option value="comparison">Comparison</option>
-              <option value="use_case">Use Case</option>
-              <option value="persona">Persona</option>
-              <option value="custom">Custom</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="pr-table-wrap">
-          <table class="pr-table">
-            <thead>
-              <tr>
-                <th style="width:36px">#</th>
-                <th>Prompt</th>
-                <th style="width:90px">Type</th>
-                <th style="width:80px">Visibility</th>
-                <th style="width:160px">Providers</th>
-                <th style="width:72px">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="p in promptResultsData.prompts" :key="p.index" class="pr-row">
-                <td class="pr-num">{{ p.index }}</td>
-                <td class="pr-prompt">{{ p.prompt }}</td>
-                <td>
-                  <span class="badge badge-neutral" style="font-size:10px;text-transform:capitalize">{{ p.prompt_type }}</span>
-                </td>
-                <td>
-                  <div class="pr-vis-wrap">
-                    <div class="pr-vis-bar">
-                      <div class="pr-vis-fill" :class="visTier(p.avg_visibility)" :style="{ width: p.avg_visibility + '%' }"></div>
-                    </div>
-                    <span class="pr-vis-pct" :class="visTier(p.avg_visibility)">{{ p.avg_visibility }}%</span>
-                  </div>
-                </td>
-                <td>
-                  <div class="pr-providers">
-                    <span
-                      v-for="prov in Object.values(p.providers)"
-                      :key="prov.provider"
-                      class="pr-prov-pill"
-                      :class="{ mentioned: prov.mentioned, failed: !prov.succeeded }"
-                      :title="`${prov.provider_display}: ${prov.mentioned ? 'Mentioned (rank #' + (prov.rank || '—') + ', ' + prov.sentiment + ')' : 'Not mentioned'}`"
-                      @click="openProviderDetail(prov.provider)"
-                    >{{ providerInitial(prov.provider) }}</span>
-                  </div>
-                </td>
-                <td>
-                  <span class="badge" :class="promptStatusBadge(p.status)" style="font-size:10px">{{ p.status }}</span>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- ═══ Usage Meter ═════════════════════════════════════════════════ -->
-      <div v-if="audits.length && usageData" class="card" style="margin-top:16px">
-        <div class="card-header">
-          <h3 class="card-title">Usage</h3>
-          <select v-model="usageDays" class="pr-select" @change="loadUsage" style="margin-left:auto">
+          <select v-model.number="usageDays" class="ov-select" @change="loadUsage">
             <option :value="7">Last 7 days</option>
             <option :value="30">Last 30 days</option>
             <option :value="90">Last 90 days</option>
           </select>
         </div>
 
-        <div class="usage-grid">
-          <div class="usage-stat">
-            <div class="usage-val">{{ usageData.totals.calls }}</div>
-            <div class="usage-label">API Calls</div>
+        <div class="ov-usage-totals">
+          <div class="ov-usage-cell">
+            <div class="ov-usage-val">{{ usageData.totals.calls }}</div>
+            <div class="ov-usage-label">API Calls</div>
           </div>
-          <div class="usage-stat">
-            <div class="usage-val">{{ formatTokens(usageData.totals.total_tokens) }}</div>
-            <div class="usage-label">Tokens Used</div>
+          <div class="ov-usage-cell">
+            <div class="ov-usage-val">{{ formatTokens(usageData.totals.total_tokens) }}</div>
+            <div class="ov-usage-label">Tokens</div>
           </div>
-          <div class="usage-stat">
-            <div class="usage-val">${{ usageData.totals.estimated_cost_usd.toFixed(2) }}</div>
-            <div class="usage-label">Estimated Cost</div>
+          <div class="ov-usage-cell">
+            <div class="ov-usage-val">${{ usageData.totals.estimated_cost_usd.toFixed(2) }}</div>
+            <div class="ov-usage-label">Estimated Cost</div>
           </div>
-          <div class="usage-stat">
-            <div class="usage-val">{{ usageData.audit_stats.total_audits }}</div>
-            <div class="usage-label">Audits Run</div>
+          <div class="ov-usage-cell">
+            <div class="ov-usage-val">{{ usageData.audit_stats.total_audits }}</div>
+            <div class="ov-usage-label">Audits</div>
           </div>
         </div>
 
-        <!-- Per-model breakdown -->
-        <div v-if="usageData.by_model.length" class="usage-models">
-          <div class="usage-model-header">
+        <div v-if="usageData.by_model && usageData.by_model.length" class="ov-usage-models">
+          <div class="ov-usage-models-head">
             <span>Model</span><span>Calls</span><span>Tokens</span><span>Cost</span>
           </div>
-          <div v-for="m in usageData.by_model" :key="m.model_name" class="usage-model-row">
-            <span class="usage-model-name">{{ m.model_name }}</span>
+          <div v-for="m in usageData.by_model" :key="m.model_name" class="ov-usage-models-row">
+            <span class="ov-usage-model-name">{{ m.model_name }}</span>
             <span>{{ m.calls }}</span>
             <span>{{ formatTokens(m.tokens) }}</span>
             <span>${{ Number(m.cost || 0).toFixed(4) }}</span>
           </div>
         </div>
+      </div>
 
-        <div v-else class="text-xs text-muted" style="padding:12px 16px">
-          No API usage recorded yet. Run an audit to see usage data.
+      </template>
+    </div><!-- /overview tab -->
+
+    <div v-show="activeTab === 'performance'" class="lr-performance">
+      <!-- Empty state when there's nothing to chart yet. The Overview tab
+           handles the truly-empty website (no audits at all); this branch
+           covers the case where audits exist but haven't completed. -->
+      <div v-if="!perfHasData" class="perf-empty">
+        <div class="perf-empty-icon" aria-hidden="true">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 3v18h18"/>
+            <path d="M7 14l4-4 3 3 5-6"/>
+          </svg>
+        </div>
+        <h3>No model performance data yet</h3>
+        <p>Charts appear once at least one audit finishes. Kick off a run from the Prompt Library to start collecting data.</p>
+      </div>
+
+      <template v-else>
+        <!-- KPI strip: one-glance summary of the latest model run. -->
+        <div class="perf-kpis">
+          <div class="perf-kpi">
+            <div class="perf-kpi-label">Overall visibility</div>
+            <div class="perf-kpi-value">{{ perfKpis.overallScore }}<span class="perf-kpi-unit">/100</span></div>
+            <div class="perf-kpi-sub" :class="perfKpis.scoreTrendClass">{{ perfKpis.scoreTrendLabel }}</div>
+          </div>
+          <div class="perf-kpi">
+            <div class="perf-kpi-label">Mention rate</div>
+            <div class="perf-kpi-value">{{ perfKpis.mentionRate }}<span class="perf-kpi-unit">%</span></div>
+            <div class="perf-kpi-sub">across {{ perfKpis.totalQueries }} queries</div>
+          </div>
+          <div class="perf-kpi">
+            <div class="perf-kpi-label">Top model</div>
+            <div class="perf-kpi-value perf-kpi-value-sm">{{ perfKpis.topProvider || '—' }}</div>
+            <div class="perf-kpi-sub">{{ perfKpis.topProviderRate }}% mention rate</div>
+          </div>
+          <div class="perf-kpi">
+            <div class="perf-kpi-label">Models tested</div>
+            <div class="perf-kpi-value">{{ perfKpis.providerCount }}</div>
+            <div class="perf-kpi-sub">{{ perfKpis.successfulProviders }} returning mentions</div>
+          </div>
+        </div>
+
+        <!-- Row 1: provider comparison (bar) + visibility trend (line) -->
+        <div class="perf-grid">
+          <div class="card perf-card">
+            <div class="perf-card-head">
+              <h3>Mention rate by model</h3>
+              <span class="perf-card-sub">Latest audit</span>
+            </div>
+            <div class="perf-chart">
+              <Bar :data="providerChartData" :options="providerChartOptions" />
+            </div>
+          </div>
+          <div class="card perf-card">
+            <div class="perf-card-head">
+              <h3>Visibility over time</h3>
+              <span class="perf-card-sub">{{ historyData.length }} audits</span>
+            </div>
+            <div class="perf-chart">
+              <Line v-if="historyData.length" :data="trendChartData" :options="trendChartOptions" />
+              <div v-else class="perf-chart-empty">A trend line will appear after your second audit.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Row 2: per-prompt hit rate by provider (heatmap) + provider agreement -->
+        <div class="perf-grid">
+          <div class="card perf-card">
+            <div class="perf-card-head">
+              <h3>Prompt × model heatmap</h3>
+              <span class="perf-card-sub">Where each model recommends you</span>
+            </div>
+            <div class="perf-heatmap">
+              <PromptHeatmap
+                v-if="latestAudit?.prompts?.length"
+                :prompts="latestAudit.prompts"
+                :target-name="latestAudit?.business_name || 'You'"
+                :provider-label="providerLabel"
+                :provider-color="providerColor"
+              />
+              <div v-else class="perf-chart-empty">No prompt-level results yet.</div>
+            </div>
+          </div>
+          <div class="card perf-card">
+            <div class="perf-card-head">
+              <h3>Model agreement</h3>
+              <span class="perf-card-sub">Do the models tell the same story?</span>
+            </div>
+            <div class="perf-chart">
+              <ProviderAgreement
+                v-if="latestBreakdown.length"
+                :breakdown="latestBreakdown"
+                :provider-label="providerLabel"
+              />
+              <div v-else class="perf-chart-empty">Need at least two providers with results.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Row 3: per-model scorecards -->
+        <div class="card perf-card">
+          <div class="perf-card-head">
+            <h3>Per-model scorecard</h3>
+            <span class="perf-card-sub">Latest audit breakdown</span>
+          </div>
+          <div class="perf-scorecards">
+            <div
+              v-for="p in latestBreakdown"
+              :key="p.provider"
+              class="perf-scorecard"
+            >
+              <div class="perf-scorecard-head">
+                <span class="perf-scorecard-dot" :style="{ background: providerColor(p.provider) }"></span>
+                <span class="perf-scorecard-name">{{ p.provider_display || providerLabel(p.provider) }}</span>
+              </div>
+              <div class="perf-scorecard-metric">
+                <span class="perf-scorecard-value">{{ Math.round(p.mention_rate || 0) }}%</span>
+                <span class="perf-scorecard-label">mention rate</span>
+              </div>
+              <div class="perf-scorecard-bar">
+                <div
+                  class="perf-scorecard-bar-fill"
+                  :style="{ width: Math.min(100, Math.max(0, p.mention_rate || 0)) + '%', background: providerColor(p.provider) }"
+                ></div>
+              </div>
+              <div class="perf-scorecard-foot">
+                <span>{{ p.succeeded || 0 }}/{{ (p.succeeded || 0) + (p.failed || 0) }} queries</span>
+                <span v-if="p.failed">· {{ p.failed }} failed</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </template>
+    </div><!-- /performance tab -->
+
+    <!-- ═════════════════════════════════════════════════════════════════════
+         Pages tab — manage which pages of the project's site get scanned and
+         imported into the next model-test run. Reuses the same reactive
+         refs (extraPaths, contextUrls) and helpers (addExtraPath,
+         addContextUrl) the audit-wizard reads from, so anything selected
+         here flows into the next "Run New Audit" without further wiring.
+         ═══════════════════════════════════════════════════════════════════ -->
+    <div v-show="activeTab === 'pages'" class="lr-pages">
+      <!-- Project URL card: shows the existing project-level URL so the user
+           always sees what site we're working on. The change-website link
+           on the page header still owns the swap action. -->
+      <div class="card pages-project">
+        <div class="pages-project-head">
+          <div class="pages-project-icon" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"/>
+              <path d="M2 12h20"/>
+              <path d="M12 2a15 15 0 0 1 0 20"/>
+              <path d="M12 2a15 15 0 0 0 0 20"/>
+            </svg>
+          </div>
+          <div class="pages-project-body">
+            <div class="pages-project-label">Project site</div>
+            <div class="pages-project-url">
+              <a v-if="homepageUrl" :href="homepageUrl" target="_blank" rel="noopener">{{ homepageUrl }}</a>
+              <span v-else class="text-muted">No URL on file</span>
+            </div>
+            <div class="pages-project-meta">
+              <strong>{{ websiteName || '—' }}</strong>
+              <span class="text-muted" v-if="currentWebsite?.industry">· {{ currentWebsite.industry }}</span>
+            </div>
+          </div>
+          <router-link class="btn btn-ghost btn-sm" to="/websites/">Change site</router-link>
         </div>
       </div>
-    </template>
+
+      <!-- Summary strip: how many pages are queued for the next run. -->
+      <div class="pages-summary">
+        <div class="pages-summary-cell">
+          <div class="pages-summary-val">{{ extraPaths.length }}</div>
+          <div class="pages-summary-label">Same-site pages</div>
+        </div>
+        <div class="pages-summary-cell">
+          <div class="pages-summary-val">{{ scannedContextCount }}</div>
+          <div class="pages-summary-label">External sources</div>
+        </div>
+        <div class="pages-summary-cell">
+          <div class="pages-summary-val">{{ uploadedDocsReady.length }}</div>
+          <div class="pages-summary-label">Uploaded docs</div>
+        </div>
+        <div class="pages-summary-cell pages-summary-cell-strong">
+          <div class="pages-summary-val">{{ importedCount }}</div>
+          <div class="pages-summary-label">Will import into next audit</div>
+        </div>
+        <button class="btn btn-primary btn-sm pages-summary-cta" @click="openRunAudit" :disabled="running">
+          {{ running ? 'Running…' : 'Run audit with these pages' }}
+        </button>
+      </div>
+
+      <div class="ov-grid ov-grid-2">
+        <!-- Same-domain sub-paths. Add a path like /pricing or a full URL on
+             the same origin; the audit's enrichment will scan each at run
+             time. -->
+        <div class="card ov-card">
+          <div class="ov-card-head">
+            <div>
+              <h3 class="ov-card-title">Pages on your site</h3>
+              <p class="ov-card-sub">
+                Pull in any path on <strong v-if="homepageOrigin">{{ homepageOrigin }}</strong><span v-else>this domain</span> so models see them when answering buyer-style questions.
+              </p>
+            </div>
+            <span class="pages-count">{{ extraPaths.length }}/20</span>
+          </div>
+          <form class="pages-input-row" @submit.prevent="addExtraPath">
+            <span class="pages-input-prefix" v-if="homepageOrigin">{{ homepageOrigin }}</span>
+            <input
+              v-model="extraPathInput"
+              class="form-input pages-input"
+              :placeholder="homepageOrigin ? '/pricing or full URL on same domain' : 'Add a URL'"
+              :disabled="!homepageOrigin || extraPaths.length >= 20"
+            />
+            <button
+              type="submit"
+              class="btn btn-secondary btn-sm"
+              :disabled="!extraPathInput.trim() || !homepageOrigin || extraPaths.length >= 20"
+            >Add</button>
+          </form>
+          <div v-if="!extraPaths.length" class="ov-empty-inline" style="min-height:80px">
+            <p>No additional pages yet — root URL is always included.</p>
+          </div>
+          <div v-else class="pages-list">
+            <div v-for="p in extraPaths" :key="p.url" class="pages-list-row">
+              <span class="pages-list-icon" aria-hidden="true">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <path d="M3 3h7l3 3v7H3z"/><path d="M10 3v3h3"/>
+                </svg>
+              </span>
+              <span class="pages-list-text">
+                <span class="pages-list-label">{{ p.label || p.url }}</span>
+                <a :href="p.url" target="_blank" rel="noopener" class="pages-list-url">{{ p.url }}</a>
+              </span>
+              <button
+                class="pages-list-remove"
+                aria-label="Remove page"
+                @click="removeExtraPath(p.url)"
+              >×</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- External context URLs — scanned via llmRankingApi.scanUrl so the
+             user can see what we'll send into the audit. -->
+        <div class="card ov-card">
+          <div class="ov-card-head">
+            <div>
+              <h3 class="ov-card-title">External sources</h3>
+              <p class="ov-card-sub">Press, docs, comparison sites — anything off your domain. We'll scan and summarize each.</p>
+            </div>
+            <span class="pages-count">{{ contextUrls.length }}/5</span>
+          </div>
+          <form class="pages-input-row" @submit.prevent="addContextUrl">
+            <input
+              v-model="contextUrlInput"
+              class="form-input pages-input"
+              placeholder="https://example.com/article"
+              :disabled="contextUrls.length >= 5"
+            />
+            <button
+              type="submit"
+              class="btn btn-secondary btn-sm"
+              :disabled="!contextUrlInput.trim() || contextUrls.length >= 5 || scanningContextUrl"
+            >{{ scanningContextUrl ? 'Scanning…' : 'Scan' }}</button>
+          </form>
+          <div v-if="!contextUrls.length" class="ov-empty-inline" style="min-height:80px">
+            <p>No external sources added.</p>
+          </div>
+          <div v-else class="pages-list">
+            <div
+              v-for="c in contextUrls"
+              :key="c.url"
+              class="pages-list-row pages-list-row-tall"
+              :class="{ scanning: c.scanning, errored: !c.scanning && !c.success }"
+            >
+              <span class="pages-list-icon" aria-hidden="true">
+                <span v-if="c.scanning" class="pages-list-spinner"></span>
+                <svg v-else-if="c.success" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M3 8.5l3 3 7-7"/>
+                </svg>
+                <svg v-else width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+                  <path d="M4 4l8 8M12 4l-8 8"/>
+                </svg>
+              </span>
+              <span class="pages-list-text">
+                <span class="pages-list-label">{{ c.title || c.url }}</span>
+                <a :href="c.url" target="_blank" rel="noopener" class="pages-list-url">{{ c.url }}</a>
+                <span v-if="c.summary" class="pages-list-summary">{{ c.summary }}</span>
+                <span v-if="c.error" class="pages-list-error">{{ c.error }}</span>
+              </span>
+              <button
+                class="pages-list-remove"
+                aria-label="Remove source"
+                @click="removeContextUrl(c.url)"
+              >×</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Uploaded documents card: same upload zone the wizard uses, so
+           anything dropped here is immediately queued for the next run. -->
+      <div class="card ov-card">
+        <div class="ov-card-head">
+          <div>
+            <h3 class="ov-card-title">Uploaded documents</h3>
+            <p class="ov-card-sub">Briefs, sheets, or notes you want the models to read alongside your pages.</p>
+          </div>
+          <span class="pages-count">{{ uploadedDocuments.length }} files</span>
+        </div>
+        <div
+          class="ctx-upload-zone"
+          :class="{ dragging: uploadDragging }"
+          @dragover.prevent="uploadDragging = true"
+          @dragleave="uploadDragging = false"
+          @drop.prevent="onContextFileDrop"
+          @click="triggerContextUpload"
+        >
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <path d="M17 8l-5-5-5 5"/>
+            <path d="M12 3v12"/>
+          </svg>
+          <div class="ctx-upload-zone-text">
+            <strong>Drag &amp; drop or click to upload</strong>
+            <span class="text-muted">.txt, .md, .csv, .json, .html · up to 256 KB each</span>
+          </div>
+        </div>
+        <div v-if="uploadedDocuments.length" class="ctx-uploaded-list" style="margin-top:12px">
+          <div
+            v-for="doc in uploadedDocuments"
+            :key="doc.id"
+            class="ctx-uploaded-row"
+            :class="{ errored: doc.error }"
+          >
+            <span class="ctx-uploaded-icon" aria-hidden="true">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M3 2h7l3 3v9H3z"/><path d="M10 2v3h3"/>
+              </svg>
+            </span>
+            <div class="ctx-uploaded-body">
+              <div class="ctx-uploaded-name">{{ doc.name }}</div>
+              <div class="ctx-uploaded-meta">
+                <span>{{ formatBytes(doc.size) }}</span>
+                <span v-if="doc.error" class="wizard-scan-error">· {{ doc.error }}</span>
+                <span v-else>· {{ doc.charCount }} chars extracted</span>
+              </div>
+            </div>
+            <button class="ctx-uploaded-remove" aria-label="Remove" @click.stop="removeUploadedDoc(doc.id)">×</button>
+          </div>
+        </div>
+      </div>
+
+      <label class="wizard-permission pages-permission">
+        <input type="checkbox" v-model="agentScanPermission" />
+        <span>
+          <strong>I authorize agents to scan these pages</strong> and use the extracted content as context for the next model test on this project. Without permission, only the project root URL is sent.
+        </span>
+      </label>
+
+      <p class="pages-note">
+        These pages are imported into the next model test on this project.
+        Click <strong>Run New Audit</strong> in the header to send them to Claude, GPT-4, Gemini, and Perplexity — usage and cost
+        are tracked per run on the Overview tab.
+      </p>
+    </div><!-- /pages tab -->
 
       <!-- ═══ Provider Detail Modal ═══════════════════════════════════════ -->
       <BaseModal v-model="showProviderDetail" :title="providerDetailData?.provider_display + ' — Detailed Report'" :wide="true">
@@ -1541,7 +877,7 @@
             <div class="form-group" style="margin-top:12px">
               <label class="form-label">
                 Description
-                <span class="text-muted text-xs">Who you serve and what makes you different</span>
+                <span class="text-muted text-xs">Type or upload — who you serve and what makes you different</span>
               </label>
               <textarea
                 v-model="auditForm.description"
@@ -1552,13 +888,133 @@
               ></textarea>
               <div class="wizard-textarea-meta">
                 <span class="text-xs text-muted">{{ (auditForm.description || '').length }}/500 characters</span>
-                <button class="wizard-regen-btn" @click="regenerateTopics" :disabled="generatingTopics">
-                  <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
-                    <path d="M2 8a6 6 0 0110.9-3.5M14 8A6 6 0 013.1 11.5"/>
-                    <path d="M14 2v4h-4M2 14v-4h4"/>
-                  </svg>
-                  Regenerate Description
-                </button>
+                <div class="wizard-textarea-actions">
+                  <!-- Upload a small text brief and stitch it into the
+                       description. Reads .txt / .md / .csv client-side
+                       only, capped at the same 500-char limit as the
+                       textarea so the payload stays predictable. -->
+                  <input
+                    ref="descriptionUploadInput"
+                    type="file"
+                    accept=".txt,.md,.csv,text/plain,text/markdown"
+                    class="visually-hidden"
+                    @change="onDescriptionUpload"
+                  />
+                  <button class="wizard-regen-btn" type="button" @click="triggerDescriptionUpload">
+                    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                      <path d="M8 1v10"/><path d="M4 5l4-4 4 4"/><path d="M2 13h12"/>
+                    </svg>
+                    Upload brief
+                  </button>
+                  <button class="wizard-regen-btn" type="button" @click="regenerateTopics" :disabled="generatingTopics">
+                    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                      <path d="M2 8a6 6 0 0110.9-3.5M14 8A6 6 0 013.1 11.5"/>
+                      <path d="M14 2v4h-4M2 14v-4h4"/>
+                    </svg>
+                    Regenerate Description
+                  </button>
+                </div>
+              </div>
+              <p v-if="descriptionUploadStatus" class="text-xs" :class="descriptionUploadStatus.error ? 'wizard-scan-error' : 'text-muted'" style="margin-top:6px">
+                {{ descriptionUploadStatus.message }}
+              </p>
+            </div>
+
+            <!-- Compare-against-prompts panel ──────────────────────────────
+                 Lets the user add pages for our agents to read, grant
+                 explicit scan permission, and see sample prompts the
+                 models will be asked. Writes to the same extraPaths /
+                 contextUrls refs the Pages tab and submitAudit use, so
+                 nothing is forked. -->
+            <div class="wizard-compare">
+              <div class="wizard-compare-head">
+                <h3 class="wizard-compare-title">Compare your application against the prompts</h3>
+                <p class="wizard-compare-sub">
+                  Point our agents at the pages they should learn from. We'll scan each one before sending the questions below to Claude, GPT-4, Gemini, and Perplexity, then show you where you surface.
+                </p>
+              </div>
+
+              <div class="wizard-compare-grid">
+                <!-- LEFT: pages we'll scan -->
+                <div class="wizard-compare-col">
+                  <div class="wizard-compare-col-head">
+                    <span class="wizard-compare-col-label">Pages our agents will read</span>
+                    <span class="text-xs text-muted">{{ wizardImportedCount }} queued</span>
+                  </div>
+
+                  <div class="wizard-scan-list">
+                    <div class="wizard-scan-row wizard-scan-row-root">
+                      <span class="wizard-scan-pill">Root</span>
+                      <span class="wizard-scan-url">
+                        <a v-if="homepageUrl" :href="homepageUrl" target="_blank" rel="noopener">{{ homepageUrl }}</a>
+                        <span v-else class="text-muted">No project URL on file</span>
+                      </span>
+                    </div>
+                    <div v-for="p in extraPaths" :key="p.url" class="wizard-scan-row">
+                      <span class="wizard-scan-pill wizard-scan-pill-same">Same site</span>
+                      <span class="wizard-scan-url">
+                        <a :href="p.url" target="_blank" rel="noopener">{{ p.label || p.url }}</a>
+                      </span>
+                      <button class="wizard-scan-remove" aria-label="Remove" @click="removeExtraPath(p.url)">×</button>
+                    </div>
+                    <div
+                      v-for="c in contextUrls"
+                      :key="c.url"
+                      class="wizard-scan-row"
+                      :class="{ scanning: c.scanning, errored: !c.scanning && !c.success }"
+                    >
+                      <span class="wizard-scan-pill wizard-scan-pill-ext">External</span>
+                      <span class="wizard-scan-url">
+                        <a :href="c.url" target="_blank" rel="noopener">{{ c.title || c.url }}</a>
+                        <span v-if="c.scanning" class="text-xs text-muted">· scanning…</span>
+                        <span v-else-if="c.error" class="text-xs wizard-scan-error">· {{ c.error }}</span>
+                      </span>
+                      <button class="wizard-scan-remove" aria-label="Remove" @click="removeContextUrl(c.url)">×</button>
+                    </div>
+                  </div>
+
+                  <form class="wizard-scan-add" @submit.prevent="addQuickPage">
+                    <input
+                      v-model="quickPageInput"
+                      class="form-input"
+                      :placeholder="quickPagePlaceholder"
+                    />
+                    <button
+                      type="submit"
+                      class="btn btn-secondary btn-sm"
+                      :disabled="!quickPageInput.trim() || scanningContextUrl"
+                    >{{ scanningContextUrl ? 'Scanning…' : 'Add page' }}</button>
+                  </form>
+                  <p v-if="quickPageError" class="wizard-scan-error" style="margin:6px 0 0">{{ quickPageError }}</p>
+
+                  <label class="wizard-permission">
+                    <input type="checkbox" v-model="agentScanPermission" />
+                    <span>
+                      <strong>I authorize agents to scan these pages</strong> and use the extracted content as context for this model test.
+                    </span>
+                  </label>
+                </div>
+
+                <!-- RIGHT: sample prompts we'll compare against -->
+                <div class="wizard-compare-col">
+                  <div class="wizard-compare-col-head">
+                    <span class="wizard-compare-col-label">Sample prompts we'll compare against</span>
+                    <span class="text-xs text-muted">{{ samplePrompts.length }} previews</span>
+                  </div>
+
+                  <ul class="wizard-prompt-preview-list">
+                    <li v-for="(sp, i) in samplePrompts" :key="i" class="wizard-prompt-preview-row">
+                      <span class="wizard-prompt-preview-num">{{ i + 1 }}</span>
+                      <div class="wizard-prompt-preview-body">
+                        <span class="wizard-prompt-preview-text">"{{ sp.text }}"</span>
+                        <span class="wizard-prompt-preview-meta">{{ sp.intent }} · {{ sp.funnel }}</span>
+                      </div>
+                    </li>
+                  </ul>
+                  <p class="wizard-compare-foot">
+                    The full prompt set is finalized in the <strong>Topics</strong> step. Each model's answer is then compared against your description and the pages above.
+                  </p>
+                </div>
               </div>
             </div>
           </div>
@@ -1567,9 +1023,93 @@
           <div v-if="wizardStep === 2" class="wizard-pane">
             <h2 class="wizard-pane-title">Add context sources</h2>
             <p class="wizard-pane-sub">
-              Add blog posts, product pages, or any URLs that tell the story of your business.
-              We'll scan them and feed the content to the LLMs for a more accurate ranking.
+              Connect a cloud source or paste URLs so our agents can read more about
+              what we're prompting against. The content feeds into every model
+              that answers your prompts.
             </p>
+
+            <!-- Drag-and-drop / click-to-pick upload zone. Reads each
+                 file client-side (.txt / .md / .csv / .json / .html),
+                 caps the per-file size, and adds the parsed text to
+                 uploadedDocuments. The backend receives them on submit
+                 via the inline_documents field. -->
+            <div
+              class="ctx-upload-zone"
+              :class="{ dragging: uploadDragging }"
+              @dragover.prevent="uploadDragging = true"
+              @dragleave="uploadDragging = false"
+              @drop.prevent="onContextFileDrop"
+              @click="triggerContextUpload"
+            >
+              <input
+                ref="contextUploadInput"
+                type="file"
+                multiple
+                accept=".txt,.md,.csv,.json,.html,text/plain,text/markdown,text/csv,application/json,text/html"
+                class="visually-hidden"
+                @change="onContextFilePick"
+              />
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <path d="M17 8l-5-5-5 5"/>
+                <path d="M12 3v12"/>
+              </svg>
+              <div class="ctx-upload-zone-text">
+                <strong>Drag &amp; drop files here</strong>
+                <span class="text-muted">or click to pick · .txt, .md, .csv, .json, .html · up to 256 KB each</span>
+              </div>
+            </div>
+
+            <div v-if="uploadedDocuments.length" class="ctx-uploaded-list">
+              <div
+                v-for="(doc, idx) in uploadedDocuments"
+                :key="doc.id"
+                class="ctx-uploaded-row"
+                :class="{ errored: doc.error }"
+              >
+                <span class="ctx-uploaded-icon" aria-hidden="true">
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M3 2h7l3 3v9H3z"/><path d="M10 2v3h3"/>
+                  </svg>
+                </span>
+                <div class="ctx-uploaded-body">
+                  <div class="ctx-uploaded-name">{{ doc.name }}</div>
+                  <div class="ctx-uploaded-meta">
+                    <span>{{ formatBytes(doc.size) }}</span>
+                    <span v-if="doc.error" class="wizard-scan-error">· {{ doc.error }}</span>
+                    <span v-else>· {{ doc.charCount }} chars extracted</span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  class="ctx-uploaded-remove"
+                  aria-label="Remove file"
+                  @click.stop="removeUploadedDoc(doc.id)"
+                >×</button>
+              </div>
+            </div>
+
+            <!-- Connector strip is purely informational — direct OAuth sync
+                 is on the roadmap. Clicking a card still opens the local
+                 file picker so the workflow keeps moving. -->
+            <div class="ctx-connectors">
+              <button
+                v-for="conn in cloudConnectors"
+                :key="conn.key"
+                type="button"
+                class="ctx-connector"
+                @click="onConnectorClick(conn)"
+              >
+                <span class="ctx-connector-logo" v-html="conn.logo"></span>
+                <span class="ctx-connector-body">
+                  <span class="ctx-connector-name">{{ conn.name }}</span>
+                  <span class="ctx-connector-desc">{{ conn.desc }}</span>
+                </span>
+                <span class="ctx-connector-status">Upload</span>
+              </button>
+            </div>
+
+            <div class="ctx-divider"><span>or paste a URL</span></div>
 
             <div class="ctx-url-input-row">
               <input
@@ -1676,7 +1216,28 @@
           <!-- Step 4: Competitors -->
           <div v-if="wizardStep === 4" class="wizard-pane">
             <h2 class="wizard-pane-title">Add Your Competitors</h2>
-            <p class="wizard-pane-sub">Track up to 20 competitors to monitor your relative AI visibility</p>
+            <p class="wizard-pane-sub">Track up to 20 competitors to monitor your relative AI visibility. We've surfaced names co-mentioned with you in past audits — tap to add.</p>
+
+            <!-- Auto-suggested competitors: pulled from competitors_mentioned
+                 on prior audit responses. Clicking a chip adds it to the
+                 form's competitor list and removes it from the suggestion
+                 strip so the user sees forward progress. -->
+            <div v-if="suggestedCompetitors.length" class="wc-suggestions">
+              <span class="wc-suggestions-label">Suggested from past audits:</span>
+              <div class="wc-suggestions-chips">
+                <button
+                  v-for="c in suggestedCompetitors"
+                  :key="c.name"
+                  type="button"
+                  class="wc-suggestion-chip"
+                  @click="addSuggestedCompetitor(c)"
+                  :disabled="auditForm.competitors.length >= 20"
+                >
+                  <span>+ {{ c.name }}</span>
+                  <span class="wc-suggestion-count">{{ c.count }}× mentioned</span>
+                </button>
+              </div>
+            </div>
 
             <div class="wc-header">
               <label class="form-label" style="margin:0;font-weight:700">Add New Competitor</label>
@@ -1764,7 +1325,68 @@
           <!-- Step 6: Review -->
           <div v-if="wizardStep === 6" class="wizard-pane">
             <h2 class="wizard-pane-title">Review &amp; run your audit</h2>
-            <p class="wizard-pane-sub">Everything looks good? Hit start to kick off the audit.</p>
+            <p class="wizard-pane-sub">Here's the estimated cost, how we'll run this, and how your sources connect to what we'll measure.</p>
+
+            <!-- Run flow: sources → models → prompts → results. The arrows
+                 visualise the pipeline so the user understands what
+                 happens when they hit "Start audit" instead of seeing a
+                 flat list of metadata. -->
+            <div class="wizard-flow" aria-label="Audit run flow">
+              <div class="wizard-flow-stage">
+                <div class="wizard-flow-icon wizard-flow-icon-src" aria-hidden="true">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <path d="M14 2v6h6"/>
+                  </svg>
+                </div>
+                <div class="wizard-flow-label">Sources</div>
+                <div class="wizard-flow-count">{{ 1 + extraPaths.length + contextUrls.filter(c => c.success).length + uploadedDocsReady.length }}</div>
+                <div class="wizard-flow-sub">root + {{ extraPaths.length }} pages + {{ contextUrls.filter(c => c.success).length }} external + {{ uploadedDocsReady.length }} uploads</div>
+              </div>
+              <div class="wizard-flow-arrow" aria-hidden="true">→</div>
+              <div class="wizard-flow-stage">
+                <div class="wizard-flow-icon wizard-flow-icon-prompt" aria-hidden="true">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                  </svg>
+                </div>
+                <div class="wizard-flow-label">Prompts</div>
+                <div class="wizard-flow-count">{{ flowPromptCount }}</div>
+                <div class="wizard-flow-sub">{{ auditForm.selectedTopics.length }} topics × intents</div>
+              </div>
+              <div class="wizard-flow-arrow" aria-hidden="true">→</div>
+              <div class="wizard-flow-stage">
+                <div class="wizard-flow-icon wizard-flow-icon-models" aria-hidden="true">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="3" width="7" height="7" rx="1"/>
+                    <rect x="14" y="3" width="7" height="7" rx="1"/>
+                    <rect x="3" y="14" width="7" height="7" rx="1"/>
+                    <rect x="14" y="14" width="7" height="7" rx="1"/>
+                  </svg>
+                </div>
+                <div class="wizard-flow-label">Models</div>
+                <div class="wizard-flow-count">{{ auditForm.providers.length }}</div>
+                <div class="wizard-flow-sub">{{ auditForm.providers.map(providerLabel).join(', ') || 'None selected' }}</div>
+              </div>
+              <div class="wizard-flow-arrow" aria-hidden="true">→</div>
+              <div class="wizard-flow-stage">
+                <div class="wizard-flow-icon wizard-flow-icon-result" aria-hidden="true">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 3v18h18"/>
+                    <path d="M7 14l4-4 3 3 5-6"/>
+                  </svg>
+                </div>
+                <div class="wizard-flow-label">Results</div>
+                <div class="wizard-flow-count">{{ flowQueryCount }}</div>
+                <div class="wizard-flow-sub">queries · scored &amp; trended</div>
+              </div>
+            </div>
+
+            <p class="wizard-flow-note text-xs text-muted">
+              Each source is scanned before the prompts run, so models see your
+              latest copy. Every query is logged and added to your usage on the
+              Overview tab.
+            </p>
 
             <div class="wizard-review-grid">
               <div class="wizard-review-item">
@@ -1797,7 +1419,9 @@
               </div>
               <div class="wizard-review-item">
                 <span class="wizard-review-label">Context Sources</span>
-                <span class="wizard-review-value">{{ contextUrls.filter(c => c.success).length }} URLs scanned</span>
+                <span class="wizard-review-value">
+                  {{ contextUrls.filter(c => c.success).length }} URLs · {{ uploadedDocsReady.length }} uploads
+                </span>
               </div>
               <div class="wizard-review-item wizard-review-cost" :class="{ 'over-cap': preflight && preflight.cap_status.would_exceed }">
                 <span class="wizard-review-label">Estimated cost</span>
@@ -1966,15 +1590,12 @@ import { useAppStore } from '@/stores/app'
 import llmRankingApi from '@/api/llm_ranking'
 import websitesApi from '@/api/websites'
 import BaseModal from '@/components/ui/BaseModal.vue'
-import FirstRunLLMRanking from '@/components/llm_ranking/FirstRunLLMRanking.vue'
 import PromptHeatmap from '@/components/llm_ranking/PromptHeatmap.vue'
-import FunnelRadar from '@/components/llm_ranking/FunnelRadar.vue'
 import ProviderAgreement from '@/components/llm_ranking/ProviderAgreement.vue'
 import PromptSourceToggle from '@/components/llm_ranking/PromptSourceToggle.vue'
 import PromptPreviewDrawer from '@/components/llm_ranking/PromptPreviewDrawer.vue'
 import citationsApi from '@/api/citations'
 import CitationsDrawer from '@/components/citations/CitationsDrawer.vue'
-import SourceBreakdownBar from '@/components/citations/SourceBreakdownBar.vue'
 import { Line, Bar } from 'vue-chartjs'
 import {
   Chart as ChartJS,
@@ -2336,6 +1957,263 @@ function removeExtraPath(url) {
   extraPaths.value = extraPaths.value.filter(p => p.url !== url)
 }
 
+function removeContextUrl(url) {
+  contextUrls.value = contextUrls.value.filter(c => c.url !== url)
+}
+
+// Wizard "Compare against prompts" panel ------------------------------------
+// Single-input adder that routes a raw value to either the same-domain
+// sub-paths list or the external context scanner based on its origin.
+const agentScanPermission = ref(false)
+const quickPageInput = ref('')
+const quickPageError = ref('')
+const quickPagePlaceholder = computed(() => homepageOrigin.value
+  ? `/pricing or https://blog.example.com/...`
+  : 'https://example.com/page')
+
+async function addQuickPage() {
+  const raw = (quickPageInput.value || '').trim()
+  if (!raw) return
+  quickPageError.value = ''
+
+  const origin = homepageOrigin.value
+  let isExternal = false
+  let normalized = raw
+  if (raw.startsWith('http://') || raw.startsWith('https://')) {
+    try {
+      const parsed = new URL(raw)
+      isExternal = !origin || parsed.origin !== origin
+      normalized = raw
+    } catch (_) {
+      quickPageError.value = 'That URL is not valid.'
+      return
+    }
+  } else if (!origin) {
+    quickPageError.value = 'Add the project URL first, or paste a full https:// link.'
+    return
+  }
+
+  if (isExternal) {
+    if (contextUrls.value.length >= 5) {
+      quickPageError.value = 'You can add up to 5 external sources.'
+      return
+    }
+    contextUrlInput.value = normalized
+    await addContextUrl()
+  } else {
+    if (extraPaths.value.length >= 20) {
+      quickPageError.value = 'You can add up to 20 same-site pages.'
+      return
+    }
+    extraPathInput.value = normalized
+    addExtraPath()
+  }
+  quickPageInput.value = ''
+}
+
+// Mirror importedCount for use inside the wizard so the two surfaces stay
+// in lockstep without coupling templates.
+const wizardImportedCount = computed(() =>
+  extraPaths.value.length + contextUrls.value.filter(c => c.success).length + uploadedDocsReady.value.length,
+)
+
+// Description "Upload brief" — slurps a small text/markdown file into the
+// textarea so the user doesn't have to retype an existing brief. Capped
+// at the same 500 chars the textarea enforces; anything longer is
+// truncated with a clear status line.
+const descriptionUploadInput = ref(null)
+const descriptionUploadStatus = ref(null)
+const DESCRIPTION_MAX = 500
+function triggerDescriptionUpload() {
+  descriptionUploadInput.value?.click()
+}
+async function onDescriptionUpload(event) {
+  const file = event.target?.files?.[0]
+  event.target.value = ''
+  if (!file) return
+  if (file.size > 256 * 1024) {
+    descriptionUploadStatus.value = { error: true, message: 'File is over 256 KB — paste a shorter brief.' }
+    return
+  }
+  try {
+    const text = await file.text()
+    const clean = text.replace(/\s+/g, ' ').trim()
+    const truncated = clean.length > DESCRIPTION_MAX
+    auditForm.value.description = clean.slice(0, DESCRIPTION_MAX)
+    descriptionUploadStatus.value = {
+      error: false,
+      message: truncated
+        ? `Loaded ${file.name} — trimmed to ${DESCRIPTION_MAX} characters.`
+        : `Loaded ${file.name} (${clean.length} characters).`,
+    }
+  } catch (_) {
+    descriptionUploadStatus.value = { error: true, message: 'Could not read the file.' }
+  }
+}
+
+// Context Sources — cloud connector cards. The OAuth backend isn't wired
+// yet, but the UI surfaces the roadmap so users know it's coming and we
+// have a place to attach handlers when integrations ship.
+const cloudConnectors = Object.freeze([
+  {
+    key: 'google-drive',
+    name: 'Google Drive',
+    desc: 'Docs, sheets, briefs',
+    enabled: false,
+    logo: '<svg width="20" height="20" viewBox="0 0 87 76" fill="none"><path d="M6.6 66.9l3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8H0c0 1.55.4 3.1 1.2 4.5z" fill="#0066DA"/><path d="M43.65 25l-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44A9 9 0 0 0 0 53.05h27.5z" fill="#00AC47"/><path d="M73 76.85c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.5l5.85 11.5z" fill="#EA4335"/><path d="M43.65 25L57.4 1.2A8.9 8.9 0 0 0 52.9 0h-18.5c-1.55 0-3.1.45-4.5 1.2z" fill="#00832D"/><path d="M59.75 53.05h-32.2L13.8 76.85c1.4.8 2.95 1.2 4.5 1.2h50.85c1.55 0 3.1-.45 4.5-1.2z" fill="#2684FC"/><path d="M73 26.5l-12.7-22a9 9 0 0 0-3.3-3.3l-13.75 23.8L59.75 53.05h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#FFBA00"/></svg>',
+  },
+  {
+    key: 'dropbox',
+    name: 'Dropbox',
+    desc: 'PDFs, brand kits',
+    enabled: false,
+    logo: '<svg width="20" height="20" viewBox="0 0 42 40" fill="#0061FF"><path d="M10.5 0L0 6.75l10.5 6.75L21 6.75 10.5 0zm21 0L21 6.75 31.5 13.5 42 6.75 31.5 0zM0 20.25L10.5 27l10.5-6.75-10.5-6.75L0 20.25zm31.5-6.75L21 20.25 31.5 27 42 20.25l-10.5-6.75zM10.5 28.5L21 35.25l10.5-6.75L21 21.75 10.5 28.5z"/></svg>',
+  },
+  {
+    key: 'notion',
+    name: 'Notion',
+    desc: 'Docs and wikis',
+    enabled: false,
+    logo: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M4.5 4.4l13.5-1c1.6-.1 2 0 3.1.8L24 6.4c.7.5.9.6.9 1.2v17.1c0 1.2-.4 1.9-1.9 2L8.5 27.6c-1.1.1-1.7-.1-2.3-.9L1.1 20.2C.5 19.3.2 18.7.2 17.9V6.6c0-1 .4-1.8 1.6-1.9 0 0 2.7-.3 2.7-.3z" fill="#fff" transform="scale(0.83)"/><path d="M18 3.4L4.5 4.4c-1.2.1-1.6.9-1.6 1.9l.1 11.3c0 .8.3 1.4.9 2.3l5.1 6.5c.6.8 1.2 1 2.3.9l14.5-.9c1.5-.1 1.9-.8 1.9-2V7.6c0-.6-.2-.7-.9-1.2l-2.9-2.1c-1.1-.8-1.5-.9-3.1-.9zM8.7 7.2c-1.5.1-1.8.1-2.6-.5L4 5c-.2-.2-.1-.4.4-.5L17.4 3.5c1.2-.1 1.9.4 2.4.8l2.4 1.7c.1.1.4.4 0 .4L8.7 7.2zM7.1 24V8.7c0-.7.2-1 .8-1.1l16.1-.9c.6 0 .8.3.8 1V23c0 .7-.1 1.2-1 1.3l-15.4.9c-.9 0-1.3-.3-1.3-1.2zm15.1-14.4c.1.4 0 .8-.4.8l-.7.1V21c-.6.3-1.2.5-1.7.5-.8 0-1-.3-1.6-1l-5-7.7v7.4l1.5.4s0 .8-1.2.8l-3.2.2c-.1-.2 0-.7.4-.8l1-.3V12.6l-1.4-.1c-.1-.4.1-1 .8-1.1l3.4-.2 4.7 7.1V12l-1.2-.1c-.1-.5.3-.9.8-.9l3.8-.2z" fill="#000" transform="scale(0.83)"/></svg>',
+  },
+  {
+    key: 'onedrive',
+    name: 'OneDrive',
+    desc: 'SharePoint files',
+    enabled: false,
+    logo: '<svg width="20" height="20" viewBox="0 0 32 32" fill="none"><path d="M22 13a6 6 0 0 0-11.6-2A5 5 0 0 0 6 16a4 4 0 0 0 .5 8h17.4a4.5 4.5 0 0 0 .5-9 4.6 4.6 0 0 0-2.4-2z" fill="#0364B8"/></svg>',
+  },
+])
+function onConnectorClick(conn) {
+  // OAuth-backed cloud sync is on the roadmap; for now every connector
+  // routes through the same local file picker so the user can still pull
+  // a real document into the audit.
+  toast.info(`${conn.name} OAuth sync is coming soon. Pick a local file for now.`)
+  triggerContextUpload()
+}
+
+// Context Sources: local file uploader -----------------------------------
+// Reads small text files client-side and stores the extracted body so
+// the backend can read it on the audit payload's inline_documents field.
+const uploadDragging = ref(false)
+const contextUploadInput = ref(null)
+const uploadedDocuments = ref([]) // {id, name, size, content, charCount, error}
+const UPLOAD_MAX_BYTES = 256 * 1024
+const UPLOAD_ACCEPT = /\.(txt|md|csv|json|html?)$/i
+
+let _uploadCounter = 0
+function triggerContextUpload() {
+  contextUploadInput.value?.click()
+}
+function onContextFilePick(event) {
+  const files = Array.from(event.target?.files || [])
+  event.target.value = ''
+  ingestUploadedFiles(files)
+}
+function onContextFileDrop(event) {
+  uploadDragging.value = false
+  const files = Array.from(event.dataTransfer?.files || [])
+  ingestUploadedFiles(files)
+}
+async function ingestUploadedFiles(files) {
+  for (const file of files) {
+    const id = `upload-${++_uploadCounter}-${Date.now()}`
+    const entry = { id, name: file.name, size: file.size, content: '', charCount: 0, error: '' }
+    if (!UPLOAD_ACCEPT.test(file.name)) {
+      entry.error = 'Unsupported file type'
+      uploadedDocuments.value.push(entry)
+      continue
+    }
+    if (file.size > UPLOAD_MAX_BYTES) {
+      entry.error = 'File over 256 KB'
+      uploadedDocuments.value.push(entry)
+      continue
+    }
+    try {
+      const text = await file.text()
+      entry.content = text
+      entry.charCount = text.length
+    } catch (_) {
+      entry.error = 'Could not read file'
+    }
+    uploadedDocuments.value.push(entry)
+  }
+}
+function removeUploadedDoc(id) {
+  uploadedDocuments.value = uploadedDocuments.value.filter(d => d.id !== id)
+}
+function formatBytes(n) {
+  if (!n) return '0 B'
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
+  return `${(n / 1024 / 1024).toFixed(1)} MB`
+}
+const uploadedDocsReady = computed(() => uploadedDocuments.value.filter(d => !d.error && d.content))
+
+// Competitor auto-suggestions — pulled from `competitors_mentioned` on
+// prior audit responses. Capped at 8 so the chip strip stays readable;
+// already-added competitors are filtered out so users never see "+ X"
+// for someone they already track.
+const suggestedCompetitors = computed(() => {
+  const counts = new Map()
+  const results = auditDetail.value?.results || []
+  for (const r of results) {
+    for (const c of (r.competitors_mentioned || [])) {
+      if (!c?.name) continue
+      counts.set(c.name, (counts.get(c.name) || 0) + 1)
+    }
+  }
+  const have = new Set((auditForm.value.competitors || []).map(c => (c.name || '').toLowerCase()))
+  return [...counts.entries()]
+    .map(([name, count]) => ({ name, count }))
+    .filter(c => !have.has(c.name.toLowerCase()))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 8)
+})
+function addSuggestedCompetitor(c) {
+  if (auditForm.value.competitors.length >= 20) return
+  auditForm.value.competitors.push({ name: c.name, domain: '' })
+}
+
+// Review flow stages: estimate the prompt count using preflight when we
+// have it, otherwise fall back to a simple "topics × intents" sketch so
+// the diagram never shows blank counts.
+const flowPromptCount = computed(() => {
+  if (preflight.value?.queries && auditForm.value.providers.length) {
+    return Math.max(1, Math.round(preflight.value.queries / auditForm.value.providers.length))
+  }
+  const topics = auditForm.value.selectedTopics.length || 0
+  const intents = (auditForm.value.themes || []).length || 1
+  return Math.max(topics * intents, 0)
+})
+const flowQueryCount = computed(() => {
+  if (preflight.value?.queries) return preflight.value.queries
+  return flowPromptCount.value * Math.max(auditForm.value.providers.length, 1)
+})
+
+// Sample prompts shown so the user can mentally compare their app/pages
+// against what the AIs will be asked. We surface real prompts when the
+// wizard has generated them; otherwise we synthesise three buyer-style
+// queries from the current industry/business name so the panel is never
+// empty.
+const samplePrompts = computed(() => {
+  // Real prompts (preview from the dispatcher, if any) take precedence.
+  if (previewedPrompts.value?.length) {
+    return previewedPrompts.value.slice(0, 3).map(p => ({
+      text: p.text || p.prompt || '',
+      intent: p.intent || 'recommendation',
+      funnel: p.funnel || p.funnel_stage || 'bottom funnel',
+    }))
+  }
+  const industry = (auditForm.value.industry || 'industry').toLowerCase()
+  const name = auditForm.value.business_name || 'your business'
+  return [
+    { text: `What are the best ${industry} tools available right now?`, intent: 'recommendation', funnel: 'bottom funnel' },
+    { text: `Compare the top 5 ${industry} platforms and explain their strengths.`, intent: 'comparison', funnel: 'mid funnel' },
+    { text: `I need to ${industry}. What tools should I consider for ${name.toLowerCase()}-like needs?`, intent: 'use case', funnel: 'mid funnel' },
+  ]
+})
+
 // Region catalogue mirrors apps/llm_ranking/services/regions.py. Adding a
 // new entry here requires a backend change too — kept short to make the
 // drift obvious.
@@ -2464,8 +2342,93 @@ async function loadWebsite() {
   }
 }
 
-// First-run gate: user lands here before ever running an audit.
+// First-run gate: user lands here before any audit data exists for this
+// website. The dashboard renders an empty-state card that nudges them
+// over to the Prompt Library — audits are kicked off from there, not here.
 const showFirstRun = computed(() => !loading.value && audits.value.length === 0)
+
+// Tabs split the dashboard's two roles: dense Overview (kept as-is) and
+// a chart-first Performance view for reading model-by-model results.
+const activeTab = ref('overview')
+
+// Performance tab needs a completed audit to chart against. We surface
+// whatever the latest one produced rather than guarding on `running`,
+// because a partially-failed audit still has plottable provider data.
+const perfHasData = computed(() => {
+  const a = latestAudit.value
+  if (!a) return false
+  if (a.status !== 'completed') return false
+  return latestBreakdown.value.length > 0
+})
+
+const perfKpis = computed(() => {
+  const a = latestAudit.value || {}
+  const bd = latestBreakdown.value || []
+  const succeeded = bd.filter(p => (p.succeeded || 0) > 0)
+  const top = [...bd].sort((x, y) => (y.mention_rate || 0) - (x.mention_rate || 0))[0]
+  // Trend: compare overall score to the previous completed audit so users
+  // can see whether the latest run improved or regressed.
+  const completed = (historyData.value || []).filter(h => typeof h.overall_score === 'number')
+  const prev = completed.length > 1 ? completed[completed.length - 2] : null
+  const delta = prev ? (a.overall_score || 0) - (prev.overall_score || 0) : null
+  let scoreTrendLabel = 'First completed audit'
+  let scoreTrendClass = 'perf-trend-flat'
+  if (delta !== null) {
+    if (delta > 0) { scoreTrendLabel = `+${delta.toFixed(1)} vs previous`; scoreTrendClass = 'perf-trend-up' }
+    else if (delta < 0) { scoreTrendLabel = `${delta.toFixed(1)} vs previous`; scoreTrendClass = 'perf-trend-down' }
+    else { scoreTrendLabel = 'No change vs previous' }
+  }
+  return {
+    overallScore: Math.round(a.overall_score || 0),
+    mentionRate: Math.round(a.mention_rate || 0),
+    totalQueries: a.total_queries || 0,
+    providerCount: (a.providers_queried || []).length || bd.length,
+    successfulProviders: succeeded.length,
+    topProvider: top ? (top.provider_display || providerLabel(top.provider)) : '',
+    topProviderRate: top ? Math.round(top.mention_rate || 0) : 0,
+    scoreTrendLabel,
+    scoreTrendClass,
+  }
+})
+const promptLibraryRoute = computed(() => `/llm-ranking/${websiteId}/prompts`)
+const promptLibraryRepoRoute = computed(() => `/llm-ranking/${websiteId}/prompts?tab=repository`)
+
+// Overview tab helpers ------------------------------------------------------
+const showAllAudits = ref(false)
+const visibleAudits = computed(() => showAllAudits.value ? audits.value : audits.value.slice(0, 5))
+
+function capitalize(s) {
+  if (!s) return ''
+  return String(s).charAt(0).toUpperCase() + String(s).slice(1)
+}
+
+function modelMentionRate(key) {
+  const hit = (latestBreakdown.value || []).find(p => p.provider === key)
+  if (!hit || hit.mention_rate == null) return null
+  return Math.round(hit.mention_rate)
+}
+
+function auditStatusClass(status) {
+  return {
+    pending: 'ov-status-pending',
+    running: 'ov-status-running',
+    completed: 'ov-status-success',
+    failed: 'ov-status-failed',
+  }[status] || 'ov-status-pending'
+}
+
+// Alias so the Recent Audits row can re-trigger a stuck pending/failed run
+// using the same execute path the legacy table used.
+const runAuditNow = (audit) => executeAuditJob(audit)
+
+// Pages tab: count of external sources that finished scanning successfully,
+// plus the total number of URLs the next audit will pull in (root is always
+// implicit, so the count here covers only the *additional* imports). Local
+// uploads count too once they parse cleanly.
+const scannedContextCount = computed(() => contextUrls.value.filter(c => c.success).length)
+const importedCount = computed(() =>
+  extraPaths.value.length + scannedContextCount.value + uploadedDocsReady.value.length,
+)
 
 function handleAuditStarted(audit) {
   // The new audit record is now live — add it to the list, select it, and
@@ -4311,10 +4274,22 @@ async function submitAudit() {
       // ``context_urls`` field; the audit's enrichment treats them
       // uniformly. Keep external sources first since they're often the
       // user's most curated picks; sub-paths are supplementary.
-      context_urls: [
-        ...contextUrls.value.filter(c => c.success).map(c => c.url),
-        ...extraPaths.value.map(p => p.url),
-      ],
+      // The compare-against-prompts permission gate strips the extra
+      // URLs when the user hasn't explicitly opted in — the project's
+      // root URL is always included by the backend's enrichment.
+      context_urls: agentScanPermission.value
+        ? [
+            ...contextUrls.value.filter(c => c.success).map(c => c.url),
+            ...extraPaths.value.map(p => p.url),
+          ]
+        : [],
+      // Locally-uploaded documents (.txt / .md / .csv / .json / .html)
+      // travel as their extracted text body. The backend can opt in to
+      // using these as additional grounding; unknown fields are ignored
+      // safely by the audit serializer.
+      inline_documents: agentScanPermission.value
+        ? uploadedDocsReady.value.map(d => ({ name: d.name, content: d.content }))
+        : [],
     }
     if (customPromptsText.value.trim()) {
       payload.custom_prompts = customPromptsText.value.split('\n').map(s => s.trim()).filter(Boolean)
@@ -4745,6 +4720,1208 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .loading-state { text-align: center; padding: 80px 20px; font-size: var(--font-md); color: var(--text-muted); }
+
+/* ───────────────────────────────────────────────────────────────────────────
+   Modern Overview tab
+   Clean dashboard-style layout: KPI strip, two-column main grid, recent
+   audits table, usage card. Sits inside .lr-overview.
+   ─────────────────────────────────────────────────────────────────────── */
+.lr-overview { display: flex; flex-direction: column; gap: 20px; }
+
+.ov-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: linear-gradient(90deg, rgba(255,107,53,0.07), rgba(255,107,53,0.02));
+  border: 1px solid rgba(255,107,53,0.18);
+  font-size: 0.875rem;
+  color: var(--text-primary);
+}
+.ov-banner.paused {
+  background: var(--bg-subtle, #fafafa);
+  border-color: var(--border-color, #e5e7eb);
+}
+.ov-banner-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: rgba(255,107,53,0.12);
+  color: var(--brand-accent, #ff6b35);
+  flex-shrink: 0;
+}
+.ov-banner.paused .ov-banner-icon { background: var(--border-color, #e5e7eb); color: var(--text-muted); }
+.ov-banner-text { flex: 1; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.ov-banner-text strong { color: var(--text-primary); font-weight: 600; }
+
+.ov-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 60px 20px;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+.ov-spinner {
+  width: 18px; height: 18px;
+  border: 2px solid var(--border-color, #e5e7eb);
+  border-top-color: var(--brand-accent, #ff6b35);
+  border-radius: 50%;
+  animation: ov-spin 0.8s linear infinite;
+}
+@keyframes ov-spin { to { transform: rotate(360deg); } }
+
+/* KPI cards ─────────────────────────────────────────────────────────────── */
+.ov-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+@media (max-width: 900px) { .ov-kpis { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 540px) { .ov-kpis { grid-template-columns: 1fr; } }
+.ov-kpi {
+  background: var(--bg-card, #ffffff);
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 12px;
+  padding: 18px 20px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.ov-kpi:hover {
+  border-color: var(--border-strong, #d4d4d8);
+  box-shadow: 0 6px 18px -10px rgba(20,23,24,0.10);
+}
+.ov-kpi-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  min-height: 18px;
+}
+.ov-kpi-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+.ov-kpi-badge {
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+.ov-kpi-badge.pill-green { background: rgba(16,185,129,0.12); color: #047857; }
+.ov-kpi-badge.pill-yellow { background: rgba(245,158,11,0.14); color: #b45309; }
+.ov-kpi-badge.pill-red { background: rgba(239,68,68,0.12); color: #b91c1c; }
+.ov-kpi-badge.pill-neutral { background: var(--bg-subtle, #f4f4f5); color: var(--text-muted); }
+.ov-kpi-value {
+  font-size: 1.9rem;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  color: var(--text-primary);
+  line-height: 1.05;
+}
+.ov-kpi-value-sm { font-size: 1.15rem; font-weight: 600; }
+.ov-kpi-unit { font-size: 0.85rem; font-weight: 500; color: var(--text-muted); margin-left: 2px; }
+.ov-kpi-sub { font-size: 0.78rem; color: var(--text-muted); margin-top: 8px; }
+.perf-trend-up { color: #10b981; }
+.perf-trend-down { color: #ef4444; }
+.perf-trend-flat { color: var(--text-muted); }
+
+/* Cards & grid ──────────────────────────────────────────────────────────── */
+.ov-grid { display: grid; gap: 16px; }
+.ov-grid-2 { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); }
+@media (max-width: 1024px) { .ov-grid-2 { grid-template-columns: 1fr; } }
+.ov-card { padding: 18px 22px 22px; border-radius: 14px; }
+.ov-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.ov-card-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+}
+.ov-card-sub { margin: 4px 0 0; font-size: 0.78rem; color: var(--text-muted); }
+.ov-select {
+  appearance: none;
+  background: var(--bg-input, #fff);
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 8px;
+  padding: 6px 28px 6px 10px;
+  font-size: 0.8rem;
+  color: var(--text-primary);
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' fill='%236b7280' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+}
+
+.ov-chart { position: relative; height: 260px; }
+.ov-empty-inline {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 100%;
+  min-height: 140px;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  text-align: center;
+}
+.ov-empty-inline svg { color: var(--text-muted); opacity: 0.6; }
+.ov-empty-inline p { margin: 0; }
+
+/* Model coverage list ───────────────────────────────────────────────────── */
+.ov-models { display: flex; flex-direction: column; gap: 4px; }
+.ov-model-row {
+  display: grid;
+  grid-template-columns: 12px 1fr auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 10px;
+  transition: background 0.15s ease;
+}
+.ov-model-row:hover { background: var(--bg-subtle, #fafafa); }
+.ov-model-row.off { opacity: 0.65; }
+.ov-model-dot { width: 10px; height: 10px; border-radius: 50%; }
+.ov-model-name { font-size: 0.88rem; font-weight: 500; color: var(--text-primary); }
+.ov-model-meta { font-size: 0.78rem; color: var(--text-muted); }
+.ov-model-rate {
+  font-weight: 600;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+.ov-tag {
+  font-size: 0.7rem;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.ov-tag-warn { background: rgba(245,158,11,0.14); color: #b45309; }
+.ov-tag-muted { background: var(--bg-subtle, #f4f4f5); color: var(--text-muted); }
+
+/* Recent audits table ───────────────────────────────────────────────────── */
+.ov-audit-table {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ov-audit-head, .ov-audit-row {
+  display: grid;
+  grid-template-columns: 1.2fr 0.8fr 1fr 1fr 0.9fr auto;
+  gap: 14px;
+  align-items: center;
+  padding: 10px 12px;
+  font-size: 0.85rem;
+}
+.ov-audit-head {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-color, #e5e7eb);
+  padding-bottom: 12px;
+  margin-bottom: 4px;
+}
+.ov-audit-row {
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.ov-audit-row:hover { background: var(--bg-subtle, #fafafa); }
+.ov-audit-row.selected {
+  background: rgba(255,107,53,0.06);
+  outline: 1px solid rgba(255,107,53,0.25);
+}
+.ov-audit-date { color: var(--text-primary); font-weight: 500; }
+.ov-audit-score strong {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+.ov-audit-actions { display: flex; gap: 4px; justify-content: flex-end; }
+.ov-audit-delete {
+  width: 26px;
+  height: 26px;
+  padding: 0 !important;
+  font-size: 1.1rem;
+  line-height: 1;
+  color: var(--text-muted);
+}
+.ov-audit-delete:hover { color: #ef4444; background: rgba(239,68,68,0.08); }
+
+.ov-status {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.ov-status-success { background: rgba(16,185,129,0.12); color: #047857; }
+.ov-status-running { background: rgba(245,158,11,0.14); color: #b45309; }
+.ov-status-pending { background: var(--bg-subtle, #f4f4f5); color: var(--text-muted); }
+.ov-status-failed { background: rgba(239,68,68,0.12); color: #b91c1c; }
+
+/* Usage card ────────────────────────────────────────────────────────────── */
+.ov-usage-totals {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 22px;
+}
+@media (max-width: 700px) { .ov-usage-totals { grid-template-columns: repeat(2, 1fr); } }
+.ov-usage-cell {
+  padding: 14px 16px;
+  background: var(--bg-subtle, #fafafa);
+  border-radius: 10px;
+}
+.ov-usage-val {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+.ov-usage-label {
+  font-size: 0.72rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+.ov-usage-models { display: flex; flex-direction: column; gap: 1px; }
+.ov-usage-models-head, .ov-usage-models-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr 1fr;
+  gap: 14px;
+  padding: 10px 12px;
+  font-size: 0.85rem;
+  align-items: center;
+}
+.ov-usage-models-head {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-color, #e5e7eb);
+}
+.ov-usage-models-row { border-radius: 8px; font-variant-numeric: tabular-nums; }
+.ov-usage-models-row:hover { background: var(--bg-subtle, #fafafa); }
+.ov-usage-model-name { font-weight: 500; color: var(--text-primary); }
+
+/* ───────────────────────────────────────────────────────────────────────────
+   Pages tab — same-site + external sources picker
+   ─────────────────────────────────────────────────────────────────────── */
+.lr-pages { display: flex; flex-direction: column; gap: 20px; }
+.lr-tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--brand-accent, #ff6b35);
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.pages-project {
+  padding: 18px 22px;
+  border-radius: 14px;
+}
+.pages-project-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.pages-project-icon {
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  background: rgba(255,107,53,0.10);
+  color: var(--brand-accent, #ff6b35);
+  flex-shrink: 0;
+}
+.pages-project-body { flex: 1; min-width: 0; }
+.pages-project-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+.pages-project-url {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  word-break: break-all;
+}
+.pages-project-url a {
+  color: var(--text-primary);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+}
+.pages-project-url a:hover { border-bottom-color: var(--brand-accent, #ff6b35); }
+.pages-project-meta { font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px; }
+
+.pages-summary {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  background: var(--bg-card, #ffffff);
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 12px;
+  padding: 14px 18px;
+}
+@media (max-width: 900px) {
+  .pages-summary { grid-template-columns: repeat(2, 1fr); }
+  .pages-summary-cta { grid-column: 1 / -1; }
+}
+.pages-summary-cell { display: flex; flex-direction: column; gap: 2px; }
+.pages-summary-val {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+.pages-summary-label {
+  font-size: 0.72rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+.pages-summary-cell-strong .pages-summary-val { color: var(--brand-accent, #ff6b35); }
+
+.pages-count {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: var(--bg-subtle, #fafafa);
+  padding: 4px 10px;
+  border-radius: 999px;
+}
+
+.pages-input-row {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  margin-bottom: 14px;
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 10px;
+  background: var(--bg-input, #fff);
+  padding: 4px 4px 4px 12px;
+}
+.pages-input-row:focus-within {
+  border-color: var(--text-primary);
+  box-shadow: var(--shadow-glow);
+}
+.pages-input-prefix {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.pages-input.form-input {
+  flex: 1;
+  border: none;
+  box-shadow: none;
+  padding: 8px 4px;
+  min-width: 0;
+  background: transparent;
+}
+.pages-input.form-input:focus { box-shadow: none; }
+.pages-input-row .btn { align-self: center; }
+
+.pages-list { display: flex; flex-direction: column; gap: 6px; }
+.pages-list-row {
+  display: grid;
+  grid-template-columns: 22px 1fr auto;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 10px;
+  background: var(--bg-card, #ffffff);
+  align-items: center;
+  transition: border-color 0.15s ease;
+}
+.pages-list-row:hover { border-color: var(--border-strong, #d4d4d8); }
+.pages-list-row-tall { align-items: flex-start; }
+.pages-list-row-tall .pages-list-icon { margin-top: 2px; }
+.pages-list-row.scanning { border-style: dashed; }
+.pages-list-row.errored { border-color: rgba(239,68,68,0.35); background: rgba(239,68,68,0.03); }
+.pages-list-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px; height: 22px;
+  border-radius: 6px;
+  background: var(--bg-subtle, #fafafa);
+  color: var(--text-muted);
+}
+.pages-list-row.errored .pages-list-icon { background: rgba(239,68,68,0.10); color: #b91c1c; }
+.pages-list-row:not(.scanning):not(.errored) .pages-list-icon { color: #047857; background: rgba(16,185,129,0.10); }
+.pages-list-spinner {
+  width: 12px; height: 12px;
+  border: 2px solid var(--border-color, #e5e7eb);
+  border-top-color: var(--brand-accent, #ff6b35);
+  border-radius: 50%;
+  animation: ov-spin 0.8s linear infinite;
+}
+.pages-list-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.pages-list-label {
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  word-break: break-word;
+}
+.pages-list-url {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-decoration: none;
+  word-break: break-all;
+}
+.pages-list-url:hover { color: var(--text-primary); }
+.pages-list-summary {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  margin-top: 4px;
+  line-height: 1.4;
+}
+.pages-list-error {
+  font-size: 0.78rem;
+  color: #b91c1c;
+  margin-top: 4px;
+}
+.pages-list-remove {
+  appearance: none;
+  background: transparent;
+  border: none;
+  width: 24px; height: 24px;
+  border-radius: 6px;
+  font-size: 1.1rem;
+  line-height: 1;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.pages-list-remove:hover { background: rgba(239,68,68,0.10); color: #ef4444; }
+
+.pages-note {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  background: var(--bg-subtle, #fafafa);
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 10px;
+  padding: 12px 16px;
+  margin: 0;
+  line-height: 1.5;
+}
+.pages-note strong { color: var(--text-primary); font-weight: 600; }
+
+/* ───────────────────────────────────────────────────────────────────────────
+   Wizard "Compare against prompts" panel — embedded in Step 1 so the user
+   can attach pages, grant permission, and see sample prompts side-by-side.
+   ─────────────────────────────────────────────────────────────────────── */
+.wizard-compare {
+  margin-top: 22px;
+  border-top: 1px solid var(--border-color, #e5e7eb);
+  padding-top: 20px;
+}
+.wizard-compare-head { margin-bottom: 14px; }
+.wizard-compare-title {
+  margin: 0 0 4px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.wizard-compare-sub {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+.wizard-compare-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+@media (max-width: 880px) { .wizard-compare-grid { grid-template-columns: 1fr; } }
+.wizard-compare-col {
+  background: var(--bg-subtle, #fafafa);
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 12px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.wizard-compare-col-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.wizard-compare-col-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.wizard-scan-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.wizard-scan-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+  background: var(--bg-card, #fff);
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 8px;
+  font-size: 0.82rem;
+}
+.wizard-scan-row-root { background: rgba(255,107,53,0.05); border-color: rgba(255,107,53,0.20); }
+.wizard-scan-row.scanning { border-style: dashed; opacity: 0.85; }
+.wizard-scan-row.errored { border-color: rgba(239,68,68,0.30); background: rgba(239,68,68,0.04); }
+.wizard-scan-pill {
+  font-size: 0.66rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--bg-subtle, #fafafa);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.wizard-scan-row-root .wizard-scan-pill { background: rgba(255,107,53,0.14); color: #c2410c; }
+.wizard-scan-pill-same { background: rgba(91,141,239,0.12); color: #1e40af; }
+.wizard-scan-pill-ext { background: rgba(16,185,129,0.12); color: #047857; }
+.wizard-scan-url {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+}
+.wizard-scan-url a {
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+}
+.wizard-scan-url a:hover { border-bottom-color: var(--text-muted); }
+.wizard-scan-error { color: #b91c1c; }
+.wizard-scan-remove {
+  appearance: none;
+  background: transparent;
+  border: none;
+  width: 22px; height: 22px;
+  border-radius: 6px;
+  font-size: 1rem;
+  line-height: 1;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.wizard-scan-remove:hover { background: rgba(239,68,68,0.10); color: #ef4444; }
+
+.wizard-scan-add {
+  display: flex;
+  gap: 8px;
+}
+.wizard-scan-add .form-input {
+  flex: 1;
+  padding: 8px 12px;
+  font-size: 0.85rem;
+}
+.wizard-scan-add .btn { flex-shrink: 0; }
+
+.wizard-permission {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  background: var(--bg-card, #fff);
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 10px;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.wizard-permission input[type="checkbox"] {
+  margin-top: 2px;
+  flex-shrink: 0;
+  accent-color: var(--brand-accent, #ff6b35);
+  width: 16px;
+  height: 16px;
+}
+.wizard-permission strong { color: var(--text-primary); font-weight: 600; }
+.wizard-permission:has(input:checked) {
+  background: rgba(16,185,129,0.04);
+  border-color: rgba(16,185,129,0.30);
+}
+.pages-permission { margin: 0; }
+
+.wizard-prompt-preview-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.wizard-prompt-preview-row {
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--bg-card, #fff);
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 8px;
+}
+.wizard-prompt-preview-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: var(--bg-subtle, #fafafa);
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.wizard-prompt-preview-body { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.wizard-prompt-preview-text {
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  line-height: 1.45;
+}
+.wizard-prompt-preview-meta {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+.wizard-compare-foot {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+.wizard-compare-foot strong { color: var(--text-primary); }
+
+/* Description: upload + regenerate buttons share a row */
+.wizard-textarea-actions { display: flex; gap: 8px; align-items: center; }
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Context sources: file upload zone */
+.ctx-upload-zone {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 20px;
+  border: 1.5px dashed var(--border-color, #e5e7eb);
+  border-radius: 12px;
+  background: var(--bg-subtle, #fafafa);
+  color: var(--text-muted);
+  cursor: pointer;
+  margin-bottom: 14px;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.ctx-upload-zone:hover, .ctx-upload-zone.dragging {
+  border-color: var(--brand-accent, #ff6b35);
+  background: rgba(255,107,53,0.04);
+  color: var(--text-primary);
+}
+.ctx-upload-zone-text { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+.ctx-upload-zone-text strong { color: var(--text-primary); font-weight: 600; font-size: 0.92rem; }
+.ctx-upload-zone-text span { font-size: 0.78rem; }
+
+.ctx-uploaded-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+.ctx-uploaded-row {
+  display: grid;
+  grid-template-columns: 24px 1fr auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  background: var(--bg-card, #fff);
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 10px;
+}
+.ctx-uploaded-row.errored { border-color: rgba(239,68,68,0.35); background: rgba(239,68,68,0.04); }
+.ctx-uploaded-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px; height: 24px;
+  border-radius: 6px;
+  background: rgba(91,141,239,0.10);
+  color: #1e40af;
+}
+.ctx-uploaded-row.errored .ctx-uploaded-icon { background: rgba(239,68,68,0.10); color: #b91c1c; }
+.ctx-uploaded-body { min-width: 0; }
+.ctx-uploaded-name {
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  word-break: break-word;
+}
+.ctx-uploaded-meta { font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; }
+.ctx-uploaded-remove {
+  appearance: none;
+  background: transparent;
+  border: none;
+  width: 24px; height: 24px;
+  border-radius: 6px;
+  font-size: 1.1rem;
+  line-height: 1;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.ctx-uploaded-remove:hover { background: rgba(239,68,68,0.10); color: #ef4444; }
+
+/* Context sources: cloud connectors */
+.ctx-connectors {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+@media (max-width: 640px) { .ctx-connectors { grid-template-columns: 1fr; } }
+.ctx-connector {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 12px;
+  background: var(--bg-card, #fff);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.ctx-connector:hover:not(:disabled) {
+  border-color: var(--text-primary);
+  box-shadow: 0 4px 14px -8px rgba(20,23,24,0.12);
+}
+.ctx-connector:disabled { cursor: not-allowed; opacity: 0.7; }
+.ctx-connector-logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--bg-subtle, #fafafa);
+  flex-shrink: 0;
+}
+.ctx-connector-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.ctx-connector-name { font-size: 0.88rem; font-weight: 600; color: var(--text-primary); }
+.ctx-connector-desc { font-size: 0.75rem; color: var(--text-muted); }
+.ctx-connector-status {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--bg-subtle, #fafafa);
+}
+.ctx-connector:not(:disabled) .ctx-connector-status {
+  color: #047857;
+  background: rgba(16,185,129,0.12);
+}
+.ctx-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 8px 0 16px;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+.ctx-divider::before, .ctx-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border-color, #e5e7eb);
+}
+
+/* Competitors: auto-suggestion chips */
+.wc-suggestions {
+  background: var(--bg-subtle, #fafafa);
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-bottom: 16px;
+}
+.wc-suggestions-label {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+.wc-suggestions-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.wc-suggestion-chip {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 999px;
+  background: var(--bg-card, #fff);
+  font-size: 0.8rem;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.wc-suggestion-chip:hover:not(:disabled) {
+  border-color: var(--brand-accent, #ff6b35);
+  background: rgba(255,107,53,0.05);
+}
+.wc-suggestion-chip:disabled { opacity: 0.5; cursor: not-allowed; }
+.wc-suggestion-count { font-size: 0.7rem; color: var(--text-muted); }
+
+/* Review flow visualization */
+.wizard-flow {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr auto 1fr auto 1fr;
+  gap: 8px;
+  align-items: stretch;
+  background: var(--bg-subtle, #fafafa);
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 14px;
+  padding: 16px;
+  margin-bottom: 12px;
+}
+@media (max-width: 900px) {
+  .wizard-flow {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+  .wizard-flow-arrow {
+    text-align: center;
+    transform: rotate(90deg);
+    padding: 2px 0;
+  }
+}
+.wizard-flow-stage {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--bg-card, #fff);
+  border: 1px solid var(--border-color, #e5e7eb);
+  text-align: center;
+}
+.wizard-flow-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  margin: 0 auto 4px;
+}
+.wizard-flow-icon-src { background: rgba(91,141,239,0.12); color: #1d4ed8; }
+.wizard-flow-icon-prompt { background: rgba(167,139,250,0.14); color: #6d28d9; }
+.wizard-flow-icon-models { background: rgba(255,107,53,0.12); color: #c2410c; }
+.wizard-flow-icon-result { background: rgba(16,185,129,0.14); color: #047857; }
+.wizard-flow-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+.wizard-flow-count {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+.wizard-flow-sub {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  line-height: 1.3;
+}
+.wizard-flow-arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: 1.1rem;
+  font-weight: 300;
+}
+.wizard-flow-note {
+  margin: 0 0 16px;
+  line-height: 1.5;
+}
+
+/* Empty-state shown when the website has no audit data yet. */
+.empty-dashboard {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+  padding: 40px 20px;
+}
+.empty-dashboard-card {
+  width: 100%;
+  max-width: 520px;
+  text-align: center;
+  background: var(--bg-card, #ffffff);
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 16px;
+  padding: 40px 32px;
+  box-shadow: 0 20px 50px -28px rgba(20, 23, 24, 0.18);
+}
+.empty-dashboard-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 16px;
+  background: rgba(255, 107, 53, 0.10);
+  color: var(--brand-accent, #ff6b35);
+  margin-bottom: 18px;
+}
+.empty-dashboard-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 10px;
+  letter-spacing: -0.01em;
+}
+.empty-dashboard-sub {
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin: 0 0 24px;
+}
+.empty-dashboard-sub strong { color: var(--text-primary); }
+.empty-dashboard-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+/* ── Tabs ────────────────────────────────────────────────────────────────── */
+.lr-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--border-color, #e5e7eb);
+  margin: 0 0 20px;
+}
+.lr-tab {
+  appearance: none;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 10px 16px;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-muted, #6b7280);
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.lr-tab:hover { color: var(--text-primary); }
+.lr-tab.active {
+  color: var(--text-primary);
+  border-bottom-color: var(--brand-accent, #ff6b35);
+}
+.lr-tab:focus-visible {
+  outline: 2px solid var(--brand-accent, #ff6b35);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ── Performance tab ─────────────────────────────────────────────────────── */
+.lr-performance { display: flex; flex-direction: column; gap: 20px; }
+.perf-empty {
+  text-align: center;
+  padding: 60px 20px;
+  border: 1px dashed var(--border-color, #e5e7eb);
+  border-radius: 14px;
+  color: var(--text-secondary);
+}
+.perf-empty-icon {
+  display: inline-flex;
+  width: 56px; height: 56px;
+  align-items: center; justify-content: center;
+  border-radius: 14px;
+  background: rgba(255, 107, 53, 0.10);
+  color: var(--brand-accent, #ff6b35);
+  margin-bottom: 14px;
+}
+.perf-empty h3 { margin: 0 0 6px; font-size: 1.1rem; color: var(--text-primary); }
+.perf-empty p { margin: 0; font-size: 0.9rem; }
+
+.perf-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+@media (max-width: 900px) { .perf-kpis { grid-template-columns: repeat(2, 1fr); } }
+.perf-kpi {
+  background: var(--bg-card, #ffffff);
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 12px;
+  padding: 16px 18px;
+}
+.perf-kpi-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+.perf-kpi-value {
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+  line-height: 1.1;
+}
+.perf-kpi-value-sm { font-size: 1.15rem; font-weight: 600; }
+.perf-kpi-unit { font-size: 0.85rem; font-weight: 500; color: var(--text-muted); margin-left: 2px; }
+.perf-kpi-sub { font-size: 0.78rem; color: var(--text-muted); margin-top: 6px; }
+.perf-trend-up { color: #10b981; }
+.perf-trend-down { color: #ef4444; }
+.perf-trend-flat { color: var(--text-muted); }
+
+.perf-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+@media (max-width: 1024px) { .perf-grid { grid-template-columns: 1fr; } }
+.perf-card { padding: 18px 20px 22px; }
+.perf-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.perf-card-head h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.perf-card-sub { font-size: 0.78rem; color: var(--text-muted); }
+.perf-chart { position: relative; height: 280px; }
+.perf-heatmap { min-height: 200px; }
+.perf-chart-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.perf-scorecards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+}
+.perf-scorecard {
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 10px;
+  padding: 14px 16px;
+  background: var(--bg-subtle, #fafafa);
+}
+.perf-scorecard-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.perf-scorecard-dot { width: 10px; height: 10px; border-radius: 50%; }
+.perf-scorecard-name { font-size: 0.9rem; font-weight: 600; color: var(--text-primary); }
+.perf-scorecard-metric { display: flex; align-items: baseline; gap: 6px; margin-bottom: 8px; }
+.perf-scorecard-value { font-size: 1.4rem; font-weight: 700; color: var(--text-primary); letter-spacing: -0.01em; }
+.perf-scorecard-label { font-size: 0.78rem; color: var(--text-muted); }
+.perf-scorecard-bar {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--border-color, #e5e7eb);
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+.perf-scorecard-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.4s ease;
+}
+.perf-scorecard-foot {
+  display: flex;
+  gap: 6px;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
 
 /* Top filter bar */
 .lr-topbar {

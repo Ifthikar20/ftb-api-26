@@ -38,7 +38,7 @@ class IngestURLSerializer(serializers.Serializer):
         try:
             return assert_url_safe(value)
         except UnsafeURLError as exc:
-            raise serializers.ValidationError(str(exc))
+            raise serializers.ValidationError(str(exc)) from exc
 
 
 class RetrieveSerializer(serializers.Serializer):

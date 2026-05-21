@@ -375,7 +375,7 @@ def _generate_topics_from_content(
             add(f"best {prod_clean.lower()} software")
             add(f"top {prod_clean.lower()} tools compared")
 
-    # Generate from features  
+    # Generate from features
     for feat in analysis.get("features", [])[:4]:
         feat_clean = feat.strip().rstrip(".")
         if len(feat_clean) > 6 and len(feat_clean) < 50:

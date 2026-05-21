@@ -10,8 +10,10 @@ from unittest.mock import patch
 import pytest
 
 from core.validators.url_safety import (
-    UnsafeURLError, _redact_log_message,
-    assert_url_safe, is_url_safe,
+    UnsafeURLError,
+    _redact_log_message,
+    assert_url_safe,
+    is_url_safe,
 )
 
 

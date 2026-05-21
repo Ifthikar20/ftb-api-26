@@ -27,7 +27,7 @@ import json
 import logging
 import re
 import statistics
-from typing import Callable
+from collections.abc import Callable
 
 from django.conf import settings
 

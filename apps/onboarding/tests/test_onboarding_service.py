@@ -9,7 +9,6 @@ from unittest.mock import patch
 from apps.onboarding.services import onboarding_service
 from apps.onboarding.services.onboarding_service import run_onboarding_scan
 
-
 _HEALTHY_SCAN = {
     "success": True,
     "business_name": "Acme",

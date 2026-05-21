@@ -21,9 +21,7 @@ across filled template variants.
 from __future__ import annotations
 
 import logging
-from typing import Iterable
-
-from django.db.models import Count, Q
+from collections.abc import Iterable
 
 logger = logging.getLogger("apps")
 

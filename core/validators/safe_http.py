@@ -36,7 +36,8 @@ from urllib.parse import urljoin
 import requests
 
 from core.validators.url_safety import (
-    UnsafeURLError, assert_url_safe, is_url_safe,
+    UnsafeURLError,
+    assert_url_safe,
 )
 
 logger = logging.getLogger("apps")
