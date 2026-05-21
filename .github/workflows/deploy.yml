@@ -58,7 +58,10 @@ jobs:
           REMOTE_DIR: ${{ secrets.REMOTE_DIR || '/opt/fetchbot/ftb-api-26' }}
           BRANCH: main
           PUBLIC_HOST: https://fetchbot.ai
-        run: bash scripts/deploy.sh
+        # --clean runs `docker system prune -af` on the EC2 before
+        # building so we never hit the 20 GB root volume's layer cache
+        # ceiling mid-deploy. Costs ~5 s per run, never breaks anything.
+        run: bash scripts/deploy.sh deploy --clean
 
       - name: Smoke test
         run: |

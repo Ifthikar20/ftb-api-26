@@ -340,8 +340,17 @@ dep_capture_prior() {
   ok "Remote HEAD before deploy: ${PRIOR_SHA:0:12}"
   if [[ "$PRIOR_SHA" == "$TARGET_SHA" ]]; then
     warn "Remote already at target SHA — nothing new to ship."
-    read -r -p "    Force rebuild anyway? [y/N] " ans
-    [[ "$ans" =~ ^[Yy] ]] && SKIP_BUILD=0 || SKIP_BUILD=1
+    # CI has no TTY to answer an interactive prompt. Default to a
+    # full rebuild when called non-interactively (GitHub Actions,
+    # cron, etc.) so retries after a half-failed deploy actually
+    # finish the job. Locally, prompt as before.
+    if [[ ! -t 0 ]] || [[ -n "${CI:-}" ]] || [[ "${FORCE:-0}" == "1" ]]; then
+      ok "Non-interactive run — rebuilding to recover stale containers."
+      SKIP_BUILD=0
+    else
+      read -r -p "    Force rebuild anyway? [y/N] " ans
+      [[ "$ans" =~ ^[Yy] ]] && SKIP_BUILD=0 || SKIP_BUILD=1
+    fi
   fi
 }
 
