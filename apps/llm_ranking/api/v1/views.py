@@ -1069,7 +1069,7 @@ class LLMRankingHistoryView(TenantScopedAPIView):
                 )
                 bucket["count"] += 1
                 pos = c.get("position")
-                if isinstance(pos, (int, float)) and pos is not None:
+                if isinstance(pos, int | float) and pos is not None:
                     bucket["ranks"].append(int(pos))
 
             per_audit_total_brand_mentions[aid] = (

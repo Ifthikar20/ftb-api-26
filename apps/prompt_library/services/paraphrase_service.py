@@ -32,7 +32,7 @@ def _parse_list(text: str) -> list[str]:
         items = json.loads(match.group())
     except Exception:
         return []
-    return [str(x).strip() for x in items if isinstance(x, (str, int, float)) and str(x).strip()]
+    return [str(x).strip() for x in items if isinstance(x, str | int | float) and str(x).strip()]
 
 
 def _embed(text: str) -> tuple[list[float] | None, str]:

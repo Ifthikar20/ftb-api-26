@@ -1,4 +1,4 @@
-.PHONY: help install migrate migrations test lint format shell run celery
+.PHONY: help install migrate migrations test lint format shell run celery prod-build prod-build-docker
 
 PYTHON = python
 MANAGE = $(PYTHON) manage.py
@@ -19,6 +19,8 @@ help:
 	@echo "  make celery        Start Celery worker"
 	@echo "  make seed          Seed development data"
 	@echo "  make check-all     Run lint + type check + tests"
+	@echo "  make prod-build    Ruff + Vite prod bundle (mirrors CI + EC2)"
+	@echo "  make prod-build-docker  Build prod Docker images locally"
 
 install:
 	pip install -r requirements/dev.txt
@@ -63,3 +65,22 @@ generate-key:
 
 superuser:
 	DJANGO_SETTINGS_MODULE=$(SETTINGS_DEV) $(MANAGE) createsuperuser
+
+# Mirrors what CI Lint and the EC2 build do — runs ruff and the Vite
+# production bundle. No env vars required, no Docker, no deploy.
+# Use this to catch lint/build errors before pushing to main.
+prod-build:
+	@echo "▶ Ruff (same gate as CI Lint)"
+	ruff check .
+	@echo ""
+	@echo "▶ Vite production bundle (same as docker/Dockerfile.frontend)"
+	cd frontend && npm install && npm run build
+	@echo ""
+	@echo "✓ Prod build OK. Output: frontend/dist/"
+
+# Heavier: builds the actual prod Docker images locally. Needs
+# .env.prod on disk. Use this when you want to verify Dockerfile or
+# compose changes won't break the EC2 build.
+prod-build-docker:
+	@test -f .env.prod || (echo "✗ .env.prod missing — copy .env.prod.example and fill it in" && exit 1)
+	docker compose -f docker/docker-compose.prod.yml build

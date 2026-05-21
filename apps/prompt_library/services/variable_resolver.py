@@ -35,7 +35,7 @@ def _auto_variables(website) -> dict:
     locations = getattr(website, "locations", None)
     if locations:
         try:
-            first = locations[0] if isinstance(locations, (list, tuple)) else None
+            first = locations[0] if isinstance(locations, list | tuple) else None
             if first:
                 if isinstance(first, dict):
                     loc = first.get("city") or first.get("name") or ""
