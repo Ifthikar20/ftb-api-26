@@ -1042,10 +1042,10 @@
           <p class="mt-card-sub">
             <span v-if="activeEnv">
               Loaded from <strong>{{ activeEnv.name }}</strong>. Click any prompt
-              to edit — changes save to the environment.
+              to edit — changes save to the bundle.
             </span>
             <span v-else>
-              Add prompts to run an ad-hoc test, or pick an environment above.
+              Add prompts to run an ad-hoc test, or pick a prompt bundle above.
             </span>
             <span class="mt-counter">{{ selectedPrompts.length }} / 25</span>
           </p>
@@ -1097,8 +1097,8 @@
         </li>
       </ul>
       <div v-else class="mt-empty">
-        No prompts yet. Add one below, import a markdown file, or pick an
-        environment above.
+        No prompts yet. Add one below, import a markdown file, or pick a
+        prompt bundle above.
       </div>
 
       <!-- inline add -->
@@ -1201,6 +1201,7 @@
       <button
         class="mt-btn-run"
         :disabled="!canRun || running"
+        :title="canRun ? '' : runDisabledReason"
         @click="runProbe"
       >
         <span v-if="running">
@@ -1210,6 +1211,12 @@
         <span v-else>Run audit</span>
       </button>
     </section>
+    <p v-if="!canRun && runDisabledReason && !running" class="mt-run-warning">
+      {{ runDisabledReason }}
+      <router-link v-if="!anyVariantsConfigured" to="/settings" class="mt-run-warning-link">
+        Open Settings →
+      </router-link>
+    </p>
 
     <div class="mt-runmode">
       <span class="mt-runmode-tag">Run mode</span>
@@ -1797,7 +1804,7 @@ async function deleteActiveEnv() {
     const removed = activeEnv.value.id
     envs.value = envs.value.filter((e) => e.id !== removed)
     clearActiveEnv()
-    toast.success('Environment deleted.')
+    toast.success('Bundle deleted.')
   } catch (e) {
     toast.error('Could not delete.')
   }
@@ -2105,7 +2112,29 @@ async function loadModelVariants() {
 }
 
 const totalQueries = computed(() => promptCount.value * (selectedVariantIds.value.length || 0))
-const canRun = computed(() => totalQueries.value > 0)
+
+// How many of the selected variants actually have an API key on file.
+// In prod the user can select Gemini / Perplexity without keys, then
+// hit Run and get a server-side error; this gate stops them upfront.
+// (`variantsById` is defined earlier in the script for the provider
+// picker; reuse it here to avoid double-iteration.)
+const configuredSelectedCount = computed(() =>
+  selectedVariantIds.value.filter((id) => variantsById.value.get(id)?.configured).length,
+)
+const anyVariantsConfigured = computed(() =>
+  modelVariants.value.some((v) => v.configured),
+)
+const canRun = computed(() =>
+  promptCount.value > 0 && configuredSelectedCount.value > 0,
+)
+const runDisabledReason = computed(() => {
+  if (!modelVariants.value.length) return 'Loading available models…'
+  if (!anyVariantsConfigured.value) return 'No provider keys configured. Add an API key in Settings → Providers to run a test.'
+  if (!promptCount.value) return 'Add at least one prompt above.'
+  if (!selectedVariantIds.value.length) return 'Select at least one model.'
+  if (!configuredSelectedCount.value) return 'All selected models are missing API keys. Pick a configured one or add keys in Settings.'
+  return ''
+})
 // Rough sequential ETA: ~3s per upstream call. Inter-call pacing
 // is now 250ms (kept in sync with MODEL_TEST_INTER_CALL_SLEEP_MS on
 // the backend) so it doesn't materially shift the estimate.
@@ -3403,6 +3432,30 @@ onBeforeUnmount(() => document.removeEventListener('click', _closeDropdownOnDocC
   gap: 24px;
 }
 .mt-run-info { display: flex; align-items: center; gap: 16px; }
+.mt-run-warning {
+  margin: 8px 0 0;
+  padding: 10px 14px;
+  background: rgba(245, 158, 11, 0.10);
+  border: 1px solid rgba(245, 158, 11, 0.28);
+  border-radius: 10px;
+  font-size: 13px;
+  color: #b45309;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.mt-run-warning-link {
+  color: #92400e;
+  font-weight: 600;
+  text-decoration: underline;
+}
+[data-theme="dark"] .mt-run-warning {
+  background: rgba(245, 158, 11, 0.10);
+  border-color: rgba(245, 158, 11, 0.40);
+  color: #fcd34d;
+}
+[data-theme="dark"] .mt-run-warning-link { color: #fde68a; }
 .mt-run-num {
   font-size: 32px; font-weight: 500; color: #0f172a;
   letter-spacing: -0.025em; line-height: 1;
