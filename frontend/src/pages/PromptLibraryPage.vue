@@ -1,41 +1,18 @@
 <template>
   <div class="pl-page">
-    <!-- Compact page header — small eyebrow + one-line title + tab
-         row. Replaces the giant rotating hero that ate half the
-         viewport before. -->
-    <header class="pl-mini-head">
-      <div class="pl-mini-titles">
-        <div class="pl-mini-eyebrow">
-          <BookMarked :size="12" :stroke-width="2"/>
-          <span>Prompt library</span>
-        </div>
-        <h1 class="pl-mini-title">{{ activeTab === 'saved' ? 'Your prompts' : 'Add a prompt' }}</h1>
+    <!-- Tiny page chip — matches the reference's '[icon] Prompts' bar.
+         Just an anchor for the breadcrumb / title; no big hero. -->
+    <header class="pl-chip-head">
+      <div class="pl-chip">
+        <BookMarked :size="14" :stroke-width="2"/>
+        <span>Prompts</span>
       </div>
-      <div class="pl-mini-tabs" role="tablist">
-        <button
-          class="pl-mini-tab"
-          :class="{ 'is-on': activeTab === 'saved' }"
-          role="tab"
-          :aria-selected="activeTab === 'saved'"
-          @click="activeTab = 'saved'"
-        >
-          <Bookmark :size="13" :stroke-width="2"/>
-          Saved
-          <span v-if="savedTableRef && savedTableRef.count" class="pl-mini-tab-count">
-            {{ savedTableRef.count }}
-          </span>
-        </button>
-        <button
-          class="pl-mini-tab"
-          :class="{ 'is-on': activeTab === 'search' }"
-          role="tab"
-          :aria-selected="activeTab === 'search'"
-          @click="activeTab = 'search'"
-        >
-          <Search :size="13" :stroke-width="2"/>
-          Search
-        </button>
-      </div>
+      <button
+        v-if="activeTab === 'search'"
+        type="button"
+        class="pl-chip-back"
+        @click="activeTab = 'saved'"
+      >← Back to prompts</button>
     </header>
 
     <!-- SAVED dashboard — primary surface -->
@@ -446,7 +423,7 @@
 
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, watch, h } from 'vue'
-import { Bookmark, BookMarked, Search } from '@lucide/vue'
+import { BookMarked } from '@lucide/vue'
 import { useRoute } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useToast } from '@/composables/useToast'
@@ -1382,82 +1359,38 @@ watch(websiteId, loadVariables)
   font-variant-numeric: tabular-nums;
 }
 
-.pl-mini-head {
+.pl-chip-head {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  margin: 4px 0 18px;
-  flex-wrap: wrap;
+  gap: 10px;
+  margin: 0 0 14px;
 }
-.pl-mini-titles { min-width: 0; }
-.pl-mini-eyebrow {
+.pl-chip {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 3px 9px;
-  background: rgba(255, 107, 53, 0.10);
-  color: var(--brand-accent, #ff6b35);
-  border-radius: 999px;
-  font-size: 10.5px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  margin-bottom: 6px;
-}
-.pl-mini-title {
-  margin: 0;
-  font-size: 1.25rem;
-  font-weight: 700;
-  letter-spacing: -0.015em;
-  color: var(--text-primary);
-  line-height: 1.2;
-}
-.pl-mini-tabs {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  padding: 4px;
+  gap: 7px;
+  padding: 6px 12px;
   background: var(--bg-card, #fff);
   border: 1px solid var(--border-color, #e5e7eb);
   border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
-.pl-mini-tab {
+.pl-chip svg { color: var(--text-muted); }
+.pl-chip-back {
   appearance: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
   background: transparent;
   border: none;
-  border-radius: 7px;
   font: inherit;
-  font-size: 13px;
-  font-weight: 500;
+  font-size: 12.5px;
   color: var(--text-muted);
   cursor: pointer;
+  padding: 4px 8px;
 }
-.pl-mini-tab:hover { color: var(--text-primary); }
-.pl-mini-tab.is-on {
-  background: var(--bg-subtle, #fafafa);
-  color: var(--text-primary);
-  font-weight: 600;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
-}
-.pl-mini-tab-count {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 6px;
-  border-radius: 999px;
-  background: var(--brand-accent, #ff6b35);
-  color: #fff;
-  font-size: 10.5px;
-  font-weight: 700;
-}
+.pl-chip-back:hover { color: var(--text-primary); }
 
 .pl-search-helper {
   margin: 0 auto 20px;
