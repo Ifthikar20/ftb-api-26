@@ -40,7 +40,7 @@
       </button>
       <button
         class="pl-tab"
-        :class="{ 'is-active': activeTab === 'saved', 'is-bumping': savedJustBumped }"
+        :class="{ 'is-active': activeTab === 'saved' }"
         role="tab"
         :aria-selected="activeTab === 'saved'"
         @click="activeTab = 'saved'"
@@ -52,24 +52,6 @@
         <span v-if="savedTableRef && savedTableRef.count" class="pl-tab-count">
           {{ savedTableRef.count }}
         </span>
-
-        <!-- Save-confirmation popover. Anchored to the Saved tab so the
-             user sees exactly where the prompt landed. Auto-dismisses
-             after a few seconds, or clicking it switches to the tab. -->
-        <Transition name="pl-saved-pop">
-          <span
-            v-if="savedPopVisible"
-            class="pl-saved-pop"
-            role="status"
-            @click.stop="onOpenSavedFromPop"
-          >
-            <span class="pl-saved-pop-dot" aria-hidden="true"></span>
-            <span class="pl-saved-pop-text">
-              <strong>{{ savedJustBumped > 1 ? `${savedJustBumped} prompts saved` : 'Prompt saved' }}</strong>
-              <span class="pl-saved-pop-cta">View →</span>
-            </span>
-          </span>
-        </Transition>
       </button>
     </div>
 
@@ -921,34 +903,6 @@ function regenerate() {
   onGenerate(contextInput.value.trim())
 }
 
-// Saved-tab pop indicator state. Each successful save from the Search
-// tab pulses the tab and surfaces a small popover anchored to it.
-// `savedJustBumped` is the count of saves in the current burst so
-// rapid clicks collapse into a single "N prompts saved" pop rather
-// than stacking N popovers.
-const savedPopVisible = ref(false)
-const savedJustBumped = ref(0)
-let savedPopTimer = null
-
-function flashSavedTab() {
-  savedJustBumped.value += 1
-  savedPopVisible.value = true
-  if (savedPopTimer) clearTimeout(savedPopTimer)
-  savedPopTimer = setTimeout(() => {
-    savedPopVisible.value = false
-    // Reset the count once the pop has faded out so the next save
-    // starts fresh ("Prompt saved") instead of continuing the tally.
-    setTimeout(() => { if (!savedPopVisible.value) savedJustBumped.value = 0 }, 400)
-  }, 3500)
-}
-
-function onOpenSavedFromPop() {
-  savedPopVisible.value = false
-  savedJustBumped.value = 0
-  if (savedPopTimer) { clearTimeout(savedPopTimer); savedPopTimer = null }
-  activeTab.value = 'saved'
-}
-
 async function onSaveGenerated(prompt) {
   if (!websiteId.value) {
     toast.error('Pick a website first to save prompts.')
@@ -966,14 +920,7 @@ async function onSaveGenerated(prompt) {
     const saved = data?.data || data
     prompt._saved = true
     prompt._savedId = saved?.id || null
-    // The toast is redundant once the tab-anchored pop appears; keep
-    // it as a quiet success message only when the user is already on
-    // the Saved tab so the popover wouldn't be visible.
-    if (activeTab.value === 'saved') {
-      toast.success('Saved')
-    } else {
-      flashSavedTab()
-    }
+    toast.success('Saved')
     loadPrompts()
     // If the saved-tab table is mounted, refresh its count + list
     if (savedTableRef.value?.load) savedTableRef.value.load()
@@ -1445,76 +1392,6 @@ watch(websiteId, loadVariables)
   font-size: 11px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-}
-
-/* Save-confirmation popover anchored to the Saved tab. -------------- */
-.pl-tab.is-bumping .pl-tab-count {
-  animation: pl-tab-bump 0.5s ease;
-}
-@keyframes pl-tab-bump {
-  0%   { transform: scale(1); }
-  40%  { transform: scale(1.35); }
-  100% { transform: scale(1); }
-}
-
-.pl-saved-pop {
-  position: absolute;
-  top: calc(100% + 10px);
-  left: 50%;
-  transform: translateX(-50%);
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 14px 8px 12px;
-  border-radius: 999px;
-  background: var(--text-primary, #131718);
-  color: var(--text-inverse, #ffffff);
-  font-size: 12px;
-  font-weight: 500;
-  letter-spacing: 0;
-  white-space: nowrap;
-  box-shadow: 0 12px 28px -10px rgba(20, 23, 24, 0.35);
-  cursor: pointer;
-  z-index: 5;
-}
-.pl-saved-pop::before {
-  content: '';
-  position: absolute;
-  top: -5px;
-  left: 50%;
-  width: 10px;
-  height: 10px;
-  background: inherit;
-  transform: translateX(-50%) rotate(45deg);
-  border-radius: 2px;
-}
-.pl-saved-pop-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #10b981;
-  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.22);
-}
-.pl-saved-pop-text { display: inline-flex; align-items: baseline; gap: 8px; }
-.pl-saved-pop-text strong { font-weight: 600; }
-.pl-saved-pop-cta {
-  font-size: 11px;
-  font-weight: 600;
-  opacity: 0.7;
-}
-.pl-saved-pop:hover .pl-saved-pop-cta { opacity: 1; }
-
-.pl-saved-pop-enter-active,
-.pl-saved-pop-leave-active {
-  transition: opacity 0.18s ease, transform 0.18s ease;
-}
-.pl-saved-pop-enter-from {
-  opacity: 0;
-  transform: translateX(-50%) translateY(-6px);
-}
-.pl-saved-pop-leave-to {
-  opacity: 0;
-  transform: translateX(-50%) translateY(-2px);
 }
 
 .pl-section { margin-bottom: 32px; }
