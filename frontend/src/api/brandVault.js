@@ -28,6 +28,8 @@ export default {
     api.get(`/brand-vault/websites/${websiteId}/revisions/`, { params }),
   backlinks: (websiteId) =>
     api.get(`/brand-vault/websites/${websiteId}/backlinks/`),
+  keywords: (websiteId) =>
+    api.get(`/brand-vault/websites/${websiteId}/keywords/`),
 
   // Imports ---------------------------------------------------------------
   importJson: (websiteId, facts) =>

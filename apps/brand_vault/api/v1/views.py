@@ -564,6 +564,90 @@ class WebsiteToneSampleCreateView(TenantScopedAPIView):
                         status=status.HTTP_201_CREATED)
 
 
+class WebsiteKeywordsView(TenantScopedAPIView):
+    """
+    Aggregate keyword / topic repository for the Brand Vault widget.
+
+    For every distinct ``topic`` value across this website's approved
+    + auto current facts we return a row with mention_count (facts in
+    that topic), avg_confidence, first/last_seen, share_pct, and an
+    8-bucket timeline (fact creations per week) that the UI renders
+    as a sparkline. Topics with zero current facts are excluded.
+    """
+
+    def get(self, request, website_id):
+        website = self.get_website(website_id)
+        qs = BrandFact.objects.filter(
+            website=website,
+            status__in=[FactStatus.APPROVED, FactStatus.AUTO],
+            version_to__isnull=True,
+        ).exclude(topic="")
+
+        rows = list(qs.values("topic", "confidence", "created_at", "product_line"))
+        if not rows:
+            return Response({
+                "website_id": str(website.id),
+                "items": [],
+                "total_mentions": 0,
+            })
+
+        total = len(rows)
+
+        # 8 weekly buckets ending now — gives the sparkline a stable
+        # length regardless of how thin a topic is.
+        now = timezone.now()
+        bucket_count = 8
+
+        groups: dict[str, dict] = {}
+        for r in rows:
+            topic = (r["topic"] or "").strip()
+            if not topic:
+                continue
+            entry = groups.setdefault(topic, {
+                "topic": topic,
+                "mention_count": 0,
+                "_conf_sum": 0.0,
+                "first_seen": None,
+                "last_seen": None,
+                "product_lines": set(),
+                "timeline": [0] * bucket_count,
+            })
+            entry["mention_count"] += 1
+            entry["_conf_sum"] += float(r["confidence"] or 0)
+            ts = r["created_at"]
+            if entry["first_seen"] is None or ts < entry["first_seen"]:
+                entry["first_seen"] = ts
+            if entry["last_seen"] is None or ts > entry["last_seen"]:
+                entry["last_seen"] = ts
+            if r["product_line"]:
+                entry["product_lines"].add(r["product_line"])
+            age_days = (now - ts).days
+            bucket_idx = bucket_count - 1 - min(bucket_count - 1, age_days // 7)
+            if bucket_idx >= 0:
+                entry["timeline"][bucket_idx] += 1
+
+        items = []
+        for entry in groups.values():
+            mc = entry["mention_count"] or 1
+            items.append({
+                "topic": entry["topic"],
+                "mention_count": entry["mention_count"],
+                "avg_confidence": round(entry["_conf_sum"] / mc, 3),
+                "first_seen": entry["first_seen"].isoformat() if entry["first_seen"] else None,
+                "last_seen": entry["last_seen"].isoformat() if entry["last_seen"] else None,
+                "share_pct": round(100 * entry["mention_count"] / total, 1),
+                "product_lines": sorted(entry["product_lines"]),
+                "timeline": entry["timeline"],
+            })
+
+        items.sort(key=lambda e: (-e["mention_count"], e["topic"]))
+        return Response({
+            "website_id": str(website.id),
+            "items": items,
+            "total_mentions": total,
+        })
+
+
 class WebsiteBacklinksView(TenantScopedAPIView):
     """
     "Where was your brand mentioned" — aggregate of third-party domains

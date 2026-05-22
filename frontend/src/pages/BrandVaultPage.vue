@@ -37,13 +37,30 @@
       class="mb-4"
     />
 
-    <!-- Brand backlinks card — where AI models cite your brand from. -->
-    <BrandBacklinksCard
-      :items="backlinks.items"
-      :total-mentions="backlinks.total"
-      :loading="loadingBacklinks"
-      :brand-name="websiteName"
-      class="mb-4"
+    <!-- Two-up widget grid. Each widget is a self-contained card and
+         drills into a fuller view on click. -->
+    <div class="bv-widget-grid mb-4">
+      <BrandBacklinksCard
+        :items="backlinks.items"
+        :total-mentions="backlinks.total"
+        :loading="loadingBacklinks"
+        :brand-name="websiteName"
+      />
+      <KeywordRepositoryWidget
+        :items="keywords.items"
+        :total-mentions="keywords.total"
+        :loading="loadingKeywords"
+        @expand="keywordsOpen = true"
+      />
+    </div>
+
+    <KeywordRepositoryModal
+      v-model:open="keywordsOpen"
+      :items="keywords.items"
+      :total-mentions="keywords.total"
+      @analyze="onAnalyzeTopic"
+      @edit="onEditTopic"
+      @delete="onDeleteTopic"
     />
 
     <!-- Contradictions banner ---------------------------------------- -->
@@ -146,6 +163,8 @@ import brandVaultApi from '@/api/brandVault'
 
 import BrandVaultStatsStrip from '@/components/brand_vault/BrandVaultStatsStrip.vue'
 import BrandBacklinksCard from '@/components/brand_vault/BrandBacklinksCard.vue'
+import KeywordRepositoryWidget from '@/components/brand_vault/KeywordRepositoryWidget.vue'
+import KeywordRepositoryModal from '@/components/brand_vault/KeywordRepositoryModal.vue'
 import FactReviewQueue from '@/components/brand_vault/FactReviewQueue.vue'
 import KnowledgeMap from '@/components/brand_vault/KnowledgeMap.vue'
 import ToneOfVoicePanel from '@/components/brand_vault/ToneOfVoicePanel.vue'
@@ -168,6 +187,9 @@ const coverage = reactive({ score: 0, buckets: [] })
 const contradictions = ref([])
 const backlinks = reactive({ items: [], total: 0 })
 const loadingBacklinks = ref(false)
+const keywords = reactive({ items: [], total: 0 })
+const loadingKeywords = ref(false)
+const keywordsOpen = ref(false)
 const productLines = ref([])
 const topics = ref([])
 const lastExtractedAt = ref(null)
@@ -221,6 +243,7 @@ function startExtractPolling() {
         loadContradictions()
         loadCoverage()
         loadBacklinks()
+        loadKeywords()
       }
     } catch (_) {
       // ignore polling errors — next tick tries again
@@ -314,6 +337,49 @@ async function loadBacklinks() {
   } finally {
     loadingBacklinks.value = false
   }
+}
+
+async function loadKeywords() {
+  loadingKeywords.value = true
+  try {
+    const { data } = await brandVaultApi.keywords(websiteId)
+    const body = data?.data || data || {}
+    keywords.items = body.items || []
+    keywords.total = body.total_mentions || 0
+  } catch (_) {
+    keywords.items = []
+    keywords.total = 0
+  } finally {
+    loadingKeywords.value = false
+  }
+}
+
+// Filter the Knowledge map to facts with a given topic. Mirrors the
+// contradiction-link UX so the menu actions in the keyword modal
+// have real destinations.
+function onAnalyzeTopic(row) {
+  keywordsOpen.value = false
+  activeTab.value = 'map'
+  mapFilter.value = row.topic
+}
+
+// Edit nudges the user toward the Knowledge map view so they can
+// pick the fact they actually want to mutate; we don't (yet)
+// support topic-level rename atomically because every fact's topic
+// is a free-text field.
+function onEditTopic(row) {
+  onAnalyzeTopic(row)
+}
+
+// "Delete topic" is a soft operation — Brand Vault has no topic
+// entity per se; archiving the underlying facts is what really
+// happens. Tell the user what's about to happen so they don't
+// expect a hard delete.
+function onDeleteTopic(row) {
+  keywordsOpen.value = false
+  toast.info(`Open the Knowledge map and archive the "${row.topic}" facts you no longer want.`)
+  activeTab.value = 'map'
+  mapFilter.value = row.topic
 }
 
 async function loadContradictions() {
@@ -488,6 +554,7 @@ onMounted(() => {
   loadContradictions()
   loadCoverage()
   loadBacklinks()
+  loadKeywords()
 })
 
 watch(activeTab, (tab) => {
@@ -613,4 +680,13 @@ onBeforeUnmount(() => {
 
 .text-muted { color: var(--text-muted); }
 .mb-4 { margin-bottom: 16px; }
+
+.bv-widget-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+@media (max-width: 960px) {
+  .bv-widget-grid { grid-template-columns: 1fr; }
+}
 </style>
