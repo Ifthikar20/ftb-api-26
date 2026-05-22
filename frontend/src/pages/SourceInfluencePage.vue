@@ -34,11 +34,23 @@
                 {{ auditTypeLabel }}
               </span>
             </div>
-            <div class="mt-status-headline-sub">{{ statusSub }}</div>
+            <Transition name="mt-hint-fade" mode="out-in">
+              <div :key="statusSub" class="mt-status-headline-sub">{{ statusSub }}</div>
+            </Transition>
           </div>
           <div class="mt-status-meta">
-            <div class="mt-status-meta-num">{{ liveCompleted }}/{{ liveTotal || totalQueries }}</div>
-            <div class="mt-status-meta-cap">calls done</div>
+            <template v-if="isPendingState">
+              <div class="mt-status-meta-num mt-status-meta-dots" aria-label="Working">
+                <span></span><span></span><span></span>
+              </div>
+              <div class="mt-status-meta-cap">
+                {{ etaHint || (liveTotal || totalQueries) + ' calls queued' }}
+              </div>
+            </template>
+            <template v-else>
+              <div class="mt-status-meta-num">{{ liveCompleted }}/{{ liveTotal || totalQueries }}</div>
+              <div class="mt-status-meta-cap">calls done</div>
+            </template>
           </div>
           <button
             v-if="!running"
@@ -2140,6 +2152,17 @@ const runDisabledReason = computed(() => {
 // the backend) so it doesn't materially shift the estimate.
 const etaSeconds = computed(() => Math.max(1, totalQueries.value * 3))
 
+const etaHint = computed(() => {
+  // Show a friendly "~Nm remaining" while we're still waiting to
+  // dispatch the first call. Falls back to seconds for short runs.
+  const total = liveTotal.value || totalQueries.value
+  if (!total) return ''
+  const sec = Math.max(1, total * 3)
+  if (sec < 60) return `~${sec}s · ${total} calls queued`
+  const mins = Math.round(sec / 60)
+  return `~${mins} min · ${total} calls queued`
+})
+
 // ── Run + poll ───────────────────────────────────────────────────
 const running = ref(false)
 const errorMsg = ref('')
@@ -2292,8 +2315,8 @@ const statusLabel = computed(() => STATUS_LABELS[displayRun.value?.status] || 'P
 
 const statusHeadline = computed(() => {
   const s = displayRun.value
-  if (!s) return 'Preparing your audit…'
-  if (s.status === 'queued') return 'Waiting for a worker to pick this up.'
+  if (!s) return 'Warming up your model audit…'
+  if (s.status === 'queued') return 'Spinning up Claude, GPT-4, Gemini & Perplexity…'
   if (s.status === 'running') {
     const pIdx = (s.current_prompt_index ?? 0) + 1
     const pCount = s.prompts?.length || 0
@@ -2309,8 +2332,55 @@ const statusHeadline = computed(() => {
   return ''
 })
 
+// ── Hints shown while the run is queued or hasn't dispatched its
+// first call yet. Cycled through one-at-a-time so the user has
+// something useful to read instead of a bare "0/N" counter.
+const PENDING_HINTS = Object.freeze([
+  'Each prompt is sent to every selected model — usually 3–5 s per call.',
+  'Brands cited in the first sentence of a response tend to be repeated 4× more often in follow-ups.',
+  'Sentiment is graded on every response — green / amber / red dots appear in the matrix below.',
+  'Competitors are tracked too. If a rival shows up next to you, you\'ll see them as separate cells.',
+  'Results stream in cell-by-cell — no need to refresh.',
+  'When this finishes, any new sources the models cited will land in your Brand Vault automatically.',
+  'Every run is saved to history so you can compare today\'s answers against last week\'s.',
+  'Models that timeout don\'t fail the audit — they show up as a separate "failed" cell so the rest still scores.',
+])
+const pendingHintIndex = ref(0)
+let pendingHintTimer = null
+const pendingHint = computed(() => PENDING_HINTS[pendingHintIndex.value % PENDING_HINTS.length])
+
+const isPendingState = computed(() => {
+  const s = displayRun.value
+  if (!s) return true
+  if (s.status === 'queued') return true
+  // Brief "we've started but no calls finished yet" window — treat as
+  // pending so the user gets hints instead of a blinking 0.
+  if (s.status === 'running' && (liveCompleted.value || 0) === 0) return true
+  return false
+})
+
+watch(isPendingState, (pending) => {
+  if (pending) {
+    if (pendingHintTimer) clearInterval(pendingHintTimer)
+    pendingHintTimer = setInterval(() => {
+      pendingHintIndex.value = (pendingHintIndex.value + 1) % PENDING_HINTS.length
+    }, 4500)
+  } else if (pendingHintTimer) {
+    clearInterval(pendingHintTimer)
+    pendingHintTimer = null
+  }
+}, { immediate: true })
+onBeforeUnmount(() => {
+  if (pendingHintTimer) clearInterval(pendingHintTimer)
+})
+
 const statusSub = computed(() => {
   const s = displayRun.value
+  if (isPendingState.value) {
+    // Tips rotate; pair each tip with a faint "Did you know" prefix
+    // so the user knows it's an aside and not a status update.
+    return `Did you know? ${pendingHint.value}`
+  }
   if (!s) return ''
   if (s.status === 'running') {
     const pText = (s.prompts?.[s.current_prompt_index] || '').slice(0, 90)
@@ -3498,10 +3568,39 @@ onBeforeUnmount(() => document.removeEventListener('click', _closeDropdownOnDocC
 .mt-status-tag.is-failed { background: #fee2e2; color: #991b1b; }
 .mt-status-headline { min-width: 0; }
 .mt-status-headline-main { font-size: 15px; font-weight: 600; color: #0f172a; }
-.mt-status-headline-sub { font-size: 12.5px; color: #64748b; margin-top: 2px; }
+.mt-status-headline-sub { font-size: 12.5px; color: #64748b; margin-top: 2px; min-height: 18px; }
+.mt-hint-fade-enter-active,
+.mt-hint-fade-leave-active { transition: opacity 0.2s ease, transform 0.2s ease; }
+.mt-hint-fade-enter-from { opacity: 0; transform: translateY(4px); }
+.mt-hint-fade-leave-to { opacity: 0; transform: translateY(-4px); }
+[data-theme="dark"] .mt-status-headline-sub { color: var(--text-muted); }
 .mt-status-meta { text-align: right; }
 .mt-status-meta-num { font-size: 22px; font-weight: 500; color: #0f172a; font-variant-numeric: tabular-nums; line-height: 1; letter-spacing: -0.02em; }
 .mt-status-meta-cap { font-size: 10.5px; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.06em; margin-top: 2px; }
+
+/* Bouncing-dot indicator that replaces the bare "0/N" while a run
+   is queued and no calls have completed yet. */
+.mt-status-meta-dots {
+  display: inline-flex;
+  gap: 6px;
+  height: 22px;
+  align-items: center;
+}
+.mt-status-meta-dots span {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--brand-accent, #ff6b35);
+  opacity: 0.7;
+  animation: mt-dot-bounce 1.1s infinite ease-in-out both;
+}
+.mt-status-meta-dots span:nth-child(2) { animation-delay: 0.16s; }
+.mt-status-meta-dots span:nth-child(3) { animation-delay: 0.32s; }
+@keyframes mt-dot-bounce {
+  0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
+  40%          { transform: translateY(-3px); opacity: 1; }
+}
+[data-theme="dark"] .mt-status-meta-num { color: var(--text-primary); }
 
 /* Live "Just in" peek — shows the most recent cell's content
    during a streaming run so the user doesn't need to click. */
