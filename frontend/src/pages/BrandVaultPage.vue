@@ -125,8 +125,6 @@
       v-model:open="detailOpen"
       :fact="detailFact"
     />
-
-    <OnboardingTooltip storage-key="fb_tour_brand_vault_v2" :steps="tourSteps" />
   </div>
 </template>
 
@@ -145,7 +143,6 @@ import RevisionTimeline from '@/components/brand_vault/RevisionTimeline.vue'
 import FactDetailDrawer from '@/components/brand_vault/FactDetailDrawer.vue'
 import EditFactModal from '@/components/brand_vault/EditFactModal.vue'
 import ImportFactsModal from '@/components/brand_vault/ImportFactsModal.vue'
-import OnboardingTooltip from '@/components/OnboardingTooltip.vue'
 import AirButton from '@/components/ui/AirButton.vue'
 
 const route = useRoute()
@@ -456,11 +453,6 @@ function relativeTime(iso) {
 }
 
 // ── Tour ─────────────────────────────────────────────────────────────
-const tourSteps = [
-  { target: '#bv-header', title: 'Brand Vault', message: 'Every fact AI agents should know about your brand lives here.', position: 'bottom' },
-  { target: '.bv-tabs', title: 'Four views, one source of truth', message: 'Approve pending facts, browse the knowledge map, manage tone, and audit every change.', position: 'bottom' },
-]
-
 // ── Lifecycle ────────────────────────────────────────────────────────
 onMounted(() => {
   loadStats()

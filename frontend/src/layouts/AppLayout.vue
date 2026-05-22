@@ -123,24 +123,6 @@
         </div>
 
         <div class="topbar-actions">
-          <!-- Take a tour: opens the cross-page product walkthrough.
-               Visible to everyone so even returning users can re-launch
-               it (the store remembers completion in localStorage but
-               this button explicitly resets that flag). -->
-          <button
-            class="topbar-btn tour-launcher"
-            type="button"
-            :title="tourStore.active ? 'Tour in progress' : 'Take a product tour'"
-            @click="onLaunchTour"
-            :disabled="tourStore.active"
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="8" cy="8" r="6"/>
-              <path d="M8 5v3l2 1"/>
-            </svg>
-            <span class="tour-launcher-label">Tour</span>
-          </button>
-
           <!-- Theme Toggle -->
           <button class="theme-toggle" @click="appStore.toggleTheme" :title="appStore.theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'">
             <svg v-if="appStore.theme === 'light'" width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M15 10A7 7 0 1 1 8 3a5 5 0 0 0 7 7z"/></svg>
@@ -166,18 +148,6 @@
 
     <!-- Toast Notifications (global) -->
     <ToastContainer />
-
-    <!-- Cross-page guided product tour. Mounted once at the layout
-         root so the tooltip persists across route changes. -->
-    <ProductTour v-if="!sessionNeedsOnboarding" />
-    <!-- Product tour tooltips for first-time visitors. Hidden while the
-         account-onboarding modal is open so the two flows don't
-         visually overlap. -->
-    <OnboardingTooltip
-      v-if="!sessionNeedsOnboarding"
-      :steps="onboardingSteps"
-      :storage-key="onboardingStorageKey"
-    />
     <!-- Add Project Modal -->
     <div v-if="showAddProject" class="modal-overlay" @click.self="showAddProject = false">
       <div class="modal-card">
@@ -271,10 +241,7 @@ import { useToast } from '@/composables/useToast'
 import websitesApi from '@/api/websites'
 import billingApi from '@/api/billing'
 import HelpButton from '@/components/HelpButton.vue'
-import OnboardingTooltip from '@/components/OnboardingTooltip.vue'
-import ProductTour from '@/components/ProductTour.vue'
 import ToastContainer from '@/components/ToastContainer.vue'
-import { useTourStore } from '@/stores/tour'
 
 const toast = useToast()
 
@@ -282,18 +249,6 @@ const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
 const appStore = useAppStore()
-const tourStore = useTourStore()
-
-// Resolve the project the tour should jump into. If the user has no
-// projects yet the tour falls back to dashboard-only and tells them
-// to create one first.
-function _resolveTourWebsiteId() {
-  return appStore.activeWebsite?.id || appStore.websites?.[0]?.id || null
-}
-
-function onLaunchTour() {
-  tourStore.reset(_resolveTourWebsiteId())
-}
 
 // Add project modal state
 const showAddProject = ref(false)
@@ -418,61 +373,15 @@ function handleGlobalKeydown(e) {
 watch(searchQuery, () => {
   highlightIdx.value = 0
 })
-// Onboarding steps for first-time users
-const onboardingSteps = [
-  {
-    target: '.project-select',
-    title: 'Your Projects',
-    message: 'This is the project selector. Each project tracks one website. Switch between them or add new ones with the + button.',
-    position: 'right',
-  },
-  {
-    target: '.nav-link[href*="analytics"], a.nav-link.active',
-    title: 'Analytics Dashboard',
-    message: 'View real-time visitor data, traffic sources, and engagement. Install the tracking pixel to start collecting data.',
-    position: 'right',
-  },
-  {
-    target: '.help-trigger',
-    title: 'Need Help?',
-    message: 'Click the ? button anytime for quick start guides, page-specific help, and setup instructions.',
-    position: 'bottom',
-  },
-]
-
 const userInitials = computed(() => {
   const name = authStore.user?.full_name || ''
   return name.split(' ').map(n => n[0]).filter(Boolean).join('').toUpperCase().slice(0, 2)
 })
 
-// Per-user onboarding key — each user independently tracks their own onboarding state.
-// Logging out and back in (same user) will NOT re-show the tooltip.
-// A different user on the same browser WILL see their own onboarding tour.
-const onboardingStorageKey = computed(() => {
-  const uid = authStore.user?.id
-  return uid ? `fb_onboarding_done_${uid}` : 'fb_onboarding_done'
-})
-
-// Suppress the product tour while the first-run onboarding modal is
-// open on the dashboard — the two overlap visually and conflate two
-// different flows (account setup vs. UI introduction).
+// Drives the visibility of the sidebar / topbar while the account
+// onboarding modal is in front of everything.
 const sessionNeedsOnboarding = computed(
   () => authStore.session?.onboarding?.needs_onboarding === true,
-)
-
-// Auto-start the product tour the first time a logged-in user lands
-// on a project page. Defined here so sessionNeedsOnboarding is
-// already initialised when the watch fires immediately.
-watch(
-  () => [authStore.user?.id, appStore.activeWebsite?.id, sessionNeedsOnboarding.value],
-  ([uid, wid, needsOnb]) => {
-    if (!uid) return
-    if (needsOnb) return
-    if (tourStore.active) return
-    if (tourStore.isDone()) return
-    setTimeout(() => tourStore.start(wid || null), 600)
-  },
-  { immediate: true },
 )
 
 const websiteId = computed(() => appStore.activeWebsite?.id)
@@ -771,22 +680,6 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   transition: color var(--transition-fast);
-}
-
-.tour-launcher {
-  gap: 6px;
-  padding: 6px 10px;
-  border-radius: 8px;
-  font-size: 0.8rem;
-  font-weight: 500;
-}
-.tour-launcher:hover { color: var(--text-primary); background: var(--bg-subtle, #fafafa); }
-.tour-launcher:disabled { opacity: 0.5; cursor: not-allowed; }
-.tour-launcher-label {
-  display: inline-block;
-}
-@media (max-width: 720px) {
-  .tour-launcher-label { display: none; }
 }
 
 .topbar-btn:hover { color: var(--text-primary); }

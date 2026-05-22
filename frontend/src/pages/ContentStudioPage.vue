@@ -136,8 +136,6 @@
       />
     </div>
 
-    <!-- Onboarding tour -->
-    <OnboardingTooltip :steps="tourSteps" :storage-key="'fb_tour_content_studio_v1'" />
   </div>
 </template>
 
@@ -147,7 +145,6 @@ import { useRoute, useRouter } from 'vue-router'
 import { useToast } from '@/composables/useToast'
 import contentStudioApi from '@/api/contentStudio'
 import BriefCard from '@/components/content_studio/BriefCard.vue'
-import OnboardingTooltip from '@/components/OnboardingTooltip.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -181,13 +178,6 @@ const formatFilters = [
   { value: 'reddit', label: 'Reddit' },
   { value: 'json_ld', label: 'JSON-LD' },
   { value: 'landing', label: 'Landing' },
-]
-
-const tourSteps = [
-  { target: '#cs-header', title: 'Welcome to Content Studio', message: 'AI drafts content to fix the gaps your audits surface — visibility, accuracy, and citations.', position: 'bottom' },
-  { target: '#cs-stats', title: 'Your gaps, ranked by impact', message: 'These are the briefs waiting on you, drafts in flight, and what shipped this month.', position: 'bottom' },
-  { target: '#cs-filters', title: 'Focus on what matters', message: 'Filter to focus on visibility, accuracy, or citation gaps — and on the format you care about.', position: 'bottom' },
-  { target: '#cs-grid', title: 'One click to start', message: 'Click "Create draft" on any card and we\'ll write the first version using your Brand Vault facts.', position: 'top' },
 ]
 
 const filteredBriefs = computed(() => {

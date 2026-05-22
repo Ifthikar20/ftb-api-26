@@ -472,7 +472,6 @@
       <div v-else class="text-sm" style="color: var(--text-muted)">Running…</div>
     </BaseModal>
 
-    <OnboardingTooltip storage-key="fb_tour_prompt_library_v2" :steps="tourSteps" />
   </div>
 </template>
 
@@ -483,7 +482,6 @@ import { storeToRefs } from 'pinia'
 import { useToast } from '@/composables/useToast'
 import { useAppStore } from '@/stores/app'
 import promptLibrary from '@/api/promptLibrary'
-import OnboardingTooltip from '@/components/OnboardingTooltip.vue'
 import AirCard from '@/components/ui/AirCard.vue'
 import AirCardSubtitle from '@/components/ui/AirCardSubtitle.vue'
 import AirChip from '@/components/ui/AirChip.vue'
@@ -1015,33 +1013,6 @@ const effFilters = [
   { value: 'top', label: 'Top' },
   { value: 'underperforming', label: 'Underperforming' },
   { value: 'untested', label: 'Untested' },
-]
-
-const tourSteps = [
-  {
-    target: '#pl-header',
-    title: 'Demand-side prompts',
-    message: 'These are the real questions users ask AI assistants in your category.',
-    position: 'bottom',
-  },
-  {
-    target: '#pl-first-card',
-    title: 'Effectiveness score',
-    message: "Computed from past audits. Untested means we need 3+ runs to give a reliable number.",
-    position: 'top',
-  },
-  {
-    target: '#pl-first-card',
-    title: 'Variables',
-    message: "Slots like {{ industry }} are filled with your business data. Click 'Edit variables' to manage them.",
-    position: 'top',
-  },
-  {
-    target: '#pl-new-btn',
-    title: 'Add your own',
-    message: 'Add custom templates or generate 50 starter prompts with DeepSeek.',
-    position: 'left',
-  },
 ]
 
 const activeIndustryName = computed(
