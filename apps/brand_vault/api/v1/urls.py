@@ -10,9 +10,19 @@ urlpatterns = [
         name="brand-vault-website-facts",
     ),
     path(
+        "websites/<uuid:website_id>/facts/bulk/",
+        views.WebsiteBulkFactActionView.as_view(),
+        name="brand-vault-website-facts-bulk",
+    ),
+    path(
         "websites/<uuid:website_id>/extract/",
         views.WebsiteExtractView.as_view(),
         name="brand-vault-website-extract",
+    ),
+    path(
+        "websites/<uuid:website_id>/extract/status/",
+        views.WebsiteExtractStatusView.as_view(),
+        name="brand-vault-website-extract-status",
     ),
     path(
         "websites/<uuid:website_id>/stats/",
@@ -20,9 +30,29 @@ urlpatterns = [
         name="brand-vault-website-stats",
     ),
     path(
+        "websites/<uuid:website_id>/contradictions/",
+        views.WebsiteContradictionsView.as_view(),
+        name="brand-vault-website-contradictions",
+    ),
+    path(
+        "websites/<uuid:website_id>/coverage/",
+        views.WebsiteCoverageView.as_view(),
+        name="brand-vault-website-coverage",
+    ),
+    path(
+        "websites/<uuid:website_id>/revisions/",
+        views.WebsiteRevisionsView.as_view(),
+        name="brand-vault-website-revisions",
+    ),
+    path(
         "facts/<uuid:fact_id>/",
         views.FactDetailView.as_view(),
         name="brand-vault-fact-detail",
+    ),
+    path(
+        "facts/<uuid:fact_id>/usage/",
+        views.FactUsageView.as_view(),
+        name="brand-vault-fact-usage",
     ),
     path(
         "facts/<uuid:fact_id>/approve/",
@@ -53,5 +83,15 @@ urlpatterns = [
         "websites/<uuid:website_id>/tone-samples/",
         views.WebsiteToneSamplesView.as_view(),
         name="brand-vault-website-tone-samples",
+    ),
+    path(
+        "websites/<uuid:website_id>/tone-samples/create/",
+        views.WebsiteToneSampleCreateView.as_view(),
+        name="brand-vault-website-tone-sample-create",
+    ),
+    path(
+        "tone-samples/<uuid:sample_id>/",
+        views.ToneSampleDeleteView.as_view(),
+        name="brand-vault-tone-sample-delete",
     ),
 ]
