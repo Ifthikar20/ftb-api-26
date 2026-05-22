@@ -728,3 +728,197 @@ class TestEnvironmentPromptsView(_EnvViewMixin, APIView):
         bps = BrandPrompt.objects.filter(website=env.website, id__in=ids)
         env.prompts.remove(*bps)
         return Response(TestEnvironmentSerializer(env).data)
+
+
+class BrandPromptDetailAggView(APIView):
+    """
+    Per-prompt analytics drilldown — what every model said about the
+    brand when asked this exact prompt, aggregated across every audit
+    that has run it on this website.
+
+    Returns:
+      - prompt: text, intent, topic, demand_score, runs_count
+      - status: "active" / "inactive" based on Prompt.is_active and
+        whether the brand currently has it via BrandPrompt
+      - per-brand visibility, sov, sentiment, position
+      - top domains cited in matching responses with citation rates
+      - domain type breakdown
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    @staticmethod
+    def _normalise(text: str) -> str:
+        return " ".join((text or "").split()).lower()
+
+    def get(self, request, website_id, prompt_id):
+        from collections import Counter, defaultdict
+
+        from django.db.models import Q
+
+        from apps.citations.models import Citation
+        from apps.llm_ranking.models import LLMRankingResult
+
+        website = WebsiteService.get_for_user(user=request.user, website_id=website_id)
+
+        try:
+            prompt = Prompt.objects.select_related("industry").get(id=prompt_id)
+        except Prompt.DoesNotExist:
+            return Response({"detail": "Prompt not found."},
+                            status=status.HTTP_404_NOT_FOUND)
+
+        bp_exists = BrandPrompt.objects.filter(website=website, prompt=prompt).exists()
+
+        # Match every LLMRankingResult on this website whose prompt text
+        # equals the prompt's text OR template_text. The audit serializer
+        # stores the resolved text on the result, so we compare against
+        # both shapes to catch templated variants.
+        norm_text = self._normalise(prompt.text)
+        norm_template = self._normalise(prompt.template_text or "")
+        candidates = (
+            LLMRankingResult.objects
+            .filter(audit__website=website)
+            .filter(Q(prompt__icontains=prompt.text[:80]) | Q(prompt__icontains=(prompt.template_text or "")[:80]))
+            .only(
+                "id", "provider", "prompt", "response_text",
+                "is_mentioned", "mention_rank", "sentiment",
+                "competitors_mentioned", "created_at",
+            )
+        )
+
+        results = []
+        for r in candidates:
+            rn = self._normalise(r.prompt)
+            if rn == norm_text or (norm_template and rn == norm_template):
+                results.append(r)
+
+        total_results = len(results)
+
+        # ── Per-brand visibility / SOV / sentiment / position ──────────
+        brand_label = website.business_name or website.name or "your brand"
+        brand_label_lower = brand_label.lower()
+
+        brand_stats: dict[str, dict] = {}
+
+        def _ensure(name: str) -> dict:
+            key = name.strip().lower()
+            if not key:
+                return {}
+            row = brand_stats.get(key)
+            if row is None:
+                row = {
+                    "key": key,
+                    "name": name.strip(),
+                    "mentions": 0,
+                    "responses_with_mention": 0,
+                    "sentiments": [],
+                    "positions": [],
+                }
+                brand_stats[key] = row
+            return row
+
+        for r in results:
+            if r.is_mentioned:
+                row = _ensure(brand_label)
+                row["responses_with_mention"] += 1
+                row["mentions"] += 1
+                if r.mention_rank is not None:
+                    row["positions"].append(r.mention_rank)
+                if r.sentiment and r.sentiment != "not_mentioned":
+                    row["sentiments"].append(r.sentiment)
+            for comp in (r.competitors_mentioned or []):
+                name = (comp.get("name") if isinstance(comp, dict) else None) or ""
+                if not name:
+                    continue
+                if name.strip().lower() == brand_label_lower:
+                    continue
+                row = _ensure(name)
+                row["responses_with_mention"] += 1
+                row["mentions"] += 1
+
+        total_mentions = sum(row["mentions"] for row in brand_stats.values()) or 1
+        brands_out = []
+        for row in brand_stats.values():
+            avg_pos = round(sum(row["positions"]) / len(row["positions"]), 1) if row["positions"] else None
+            # Map sentiment strings to a 0..100 scale for the display:
+            # positive=85, neutral=55, negative=25. Averages produce a
+            # rough indicator the UI shows as a small "•" pill value.
+            smap = {"positive": 85, "neutral": 55, "negative": 25}
+            scores = [smap.get(s, 50) for s in row["sentiments"]]
+            sentiment_score = round(sum(scores) / len(scores), 1) if scores else None
+            vis_pct = round(100 * row["responses_with_mention"] / total_results, 1) if total_results else 0.0
+            sov_pct = round(100 * row["mentions"] / total_mentions, 1)
+            brands_out.append({
+                "name": row["name"],
+                "is_self": row["key"] == brand_label_lower,
+                "visibility_pct": vis_pct,
+                "sov_pct": sov_pct,
+                "sentiment_score": sentiment_score,
+                "avg_position": avg_pos,
+                "mentions": row["mentions"],
+            })
+        brands_out.sort(key=lambda x: (-x["visibility_pct"], -x["mentions"]))
+
+        # ── Top domains + type breakdown from citations on these results
+        result_ids = [r.id for r in results]
+        citations_qs = Citation.objects.filter(result_id__in=result_ids).only(
+            "apex_domain", "domain", "source_class", "result_id",
+        )
+        per_domain: dict[str, dict] = {}
+        responses_with_citation: dict[str, set] = defaultdict(set)
+        for c in citations_qs:
+            apex = c.apex_domain or c.domain
+            if not apex:
+                continue
+            entry = per_domain.setdefault(apex, {
+                "domain": c.domain,
+                "apex_domain": apex,
+                "source_class": c.source_class,
+                "count": 0,
+            })
+            entry["count"] += 1
+            responses_with_citation[apex].add(c.result_id)
+
+        top_domains = []
+        for apex, entry in per_domain.items():
+            unique_responses = len(responses_with_citation[apex])
+            entry["citation_rate"] = (
+                round(unique_responses / total_results, 2) if total_results else 0.0
+            )
+            entry["retrieved_pct"] = (
+                round(100 * unique_responses / total_results, 1) if total_results else 0.0
+            )
+            top_domains.append(entry)
+        top_domains.sort(key=lambda e: (-e["count"], e["apex_domain"]))
+        top_domains = top_domains[:25]
+
+        type_counter: Counter = Counter()
+        for entry in per_domain.values():
+            type_counter[entry["source_class"] or "other"] += entry["count"]
+        total_citations = sum(type_counter.values()) or 1
+        type_breakdown = [
+            {"key": key, "count": cnt, "pct": round(100 * cnt / total_citations, 1)}
+            for key, cnt in type_counter.most_common()
+        ]
+
+        return Response({
+            "prompt": {
+                "id": str(prompt.id),
+                "text": prompt.text,
+                "template_text": prompt.template_text or "",
+                "intent_bucket": prompt.intent_bucket,
+                "topic": prompt.industry.name if prompt.industry_id else "",
+                "demand_score": prompt.demand_score,
+                "runs_count": prompt.runs_count,
+                "effectiveness_score": prompt.effectiveness_score,
+                "created_at": prompt.created_at.isoformat() if prompt.created_at else None,
+            },
+            "is_brand_prompt": bp_exists,
+            "status": "active" if (prompt.is_active and bp_exists) else "inactive",
+            "total_responses": total_results,
+            "brand_label": brand_label,
+            "brands": brands_out,
+            "top_domains": top_domains,
+            "domain_types": type_breakdown,
+            "total_retrievals": sum(type_counter.values()),
+        })

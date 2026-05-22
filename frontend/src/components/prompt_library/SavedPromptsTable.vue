@@ -118,7 +118,13 @@
             </td>
             <td><span class="spt-id-pill">{{ formatId(row._brand_prompt_id) }}</span></td>
             <td><AirChip size="xs" variant="neutral">{{ titleCase(row.style) }}</AirChip></td>
-            <td class="spt-prompt-cell"><div class="spt-prompt-text">{{ row.text || row.template_text }}</div></td>
+            <td class="spt-prompt-cell">
+              <button
+                type="button"
+                class="spt-prompt-link"
+                @click="openPromptDetail(row)"
+              >{{ row.text || row.template_text }}</button>
+            </td>
             <td>
               <div v-if="envsForPrompt(row).length" class="spt-envtags">
                 <span
@@ -483,6 +489,15 @@ async function runSmoke(promptId, provider = 'claude') {
 }
 function onTest(row) { runSmoke(row.id, 'claude') }
 
+function openPromptDetail(row) {
+  // row.id on saved-prompt rows is the underlying Prompt id (set on
+  // the brand-prompt serializer); navigate to the per-prompt
+  // analytics drilldown for this website.
+  const promptId = row.id || row.prompt_id
+  if (!promptId) return
+  router.push(`/llm-ranking/${props.websiteId}/prompts/${promptId}/detail`)
+}
+
 async function onRemove(row) {
   if (!row._brand_prompt_id) return
   if (!window.confirm('Remove this prompt from your saved set?')) return
@@ -694,6 +709,18 @@ defineExpose({ load, count: computed(() => prompts.value.length) })
 .spt-row.is-selected td { background: rgba(91, 141, 239, 0.06); }
 .spt-row:hover td { background: var(--bg-surface, rgba(0, 0, 0, 0.02)); }
 .spt-prompt-cell { max-width: 56rem; }
+.spt-prompt-link {
+  appearance: none;
+  background: transparent;
+  border: none;
+  padding: 0;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+  width: 100%;
+}
+.spt-prompt-link:hover { color: var(--brand-accent, #ff6b35); text-decoration: underline; }
 .spt-prompt-text {
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
   overflow: hidden; line-height: 1.5;

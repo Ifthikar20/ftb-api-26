@@ -89,6 +89,11 @@ urlpatterns = [
         name="prompt-library-website-variables",
     ),
     path(
+        "websites/<uuid:website_id>/prompts/<uuid:prompt_id>/detail/",
+        views.BrandPromptDetailAggView.as_view(),
+        name="prompt-library-website-prompt-detail",
+    ),
+    path(
         "brand-prompts/<uuid:brand_prompt_id>/",
         views.BrandPromptDetailView.as_view(),
         name="prompt-library-brand-prompt-detail",

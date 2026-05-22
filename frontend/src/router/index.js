@@ -133,6 +133,7 @@ const routes = [
     protect('/analytics/:websiteId', 'analytics', () => import('@/pages/AnalyticsPage.vue'), true),
     protect('/llm-ranking/:websiteId', 'llm-ranking', () => import('@/pages/LLMRankingPage.vue'), true),
     protect('/llm-ranking/:websiteId/prompts', 'prompt-library', () => import('@/pages/PromptLibraryPage.vue'), true),
+    protect('/llm-ranking/:websiteId/prompts/:promptId/detail', 'prompt-detail', () => import('@/pages/PromptDetailPage.vue'), true),
     // /saved-prompts is preserved as a redirect to the Prompt Library 'Saved' tab
     {
         path: '/llm-ranking/:websiteId/saved-prompts',
