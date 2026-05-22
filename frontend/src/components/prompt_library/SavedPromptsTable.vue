@@ -41,15 +41,17 @@
         <button class="spt-envchip is-add" @click="openCreateEnv">+ New environment</button>
       </div>
 
-      <!-- Env-level actions appear only when a specific env is selected. -->
+      <!-- Env-level actions appear only when a specific env is selected.
+           Run-as-Model-Test removed; tests are kicked off from the LLM
+           Dashboard now. -->
       <div v-if="activeEnv" class="spt-envactions">
-        <button class="spt-envaction" @click="runEnvAsTest(activeEnv)">Run as Model Test</button>
         <button class="spt-envaction" @click="renameEnv(activeEnv)">Rename</button>
         <button class="spt-envaction is-danger" @click="deleteEnv(activeEnv)">Delete</button>
       </div>
     </div>
 
-    <!-- Search + style + run-audit shortcut -->
+    <!-- Search + style filters. Run-audit shortcut removed — audits live
+         on the LLM Dashboard, not here. -->
     <div v-if="prompts.length" class="spt-filters">
       <input v-model="search" type="search" class="spt-search" placeholder="Filter prompts…" />
       <label class="spt-select-wrap">
@@ -59,9 +61,6 @@
           <option v-for="s in styleOptions" :key="s.value" :value="s.value">{{ s.label }}</option>
         </select>
       </label>
-      <AirButton variant="primary" size="sm" :as="'router-link'" :to="`/llm-ranking/${websiteId}`">
-        Run audit
-      </AirButton>
     </div>
 
     <AirCard size="md" :padded="false">
@@ -100,7 +99,7 @@
             <th>Prompt</th>
             <th style="width: 200px">Environments</th>
             <th style="width: 130px">Status</th>
-            <th style="width: 110px" class="text-right">Action</th>
+            <th style="width: 44px" class="text-right" aria-label="Remove"></th>
           </tr>
         </thead>
         <tbody>
@@ -137,10 +136,6 @@
               <span v-else class="spt-status spt-status-low">Underperforming</span>
             </td>
             <td class="text-right">
-              <button class="spt-action-btn" :disabled="testingId === row.id" @click="onTest(row)" title="Smoke test against Claude">
-                <span v-if="testingId === row.id" class="spt-spinner"></span>
-                <span v-else>Test</span>
-              </button>
               <button class="spt-action-btn spt-action-btn-ghost" @click="onRemove(row)" title="Remove from saved">×</button>
             </td>
           </tr>
@@ -173,7 +168,6 @@
             </div>
           </div>
           <button class="spt-bar-btn" :disabled="!canBulkRemove" @click="bulkRemoveFromEnv">Remove from env</button>
-          <button class="spt-bar-btn is-primary" @click="runSelectionAsTest">Run as Model Test</button>
         </div>
       </div>
     </transition>
