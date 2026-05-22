@@ -24,6 +24,9 @@ export default {
     promptDetailAgg: (websiteId, promptId) =>
         api.get(`/prompt-library/websites/${websiteId}/prompts/${promptId}/detail/`),
 
+    savedPromptsAgg: (websiteId) =>
+        api.get(`/prompt-library/websites/${websiteId}/saved-prompts/agg/`),
+
     addBrandPrompt: (websiteId, promptId, notes = '') =>
         api.post(`/prompt-library/websites/${websiteId}/brand-prompts/`, {
             prompt_id: promptId,

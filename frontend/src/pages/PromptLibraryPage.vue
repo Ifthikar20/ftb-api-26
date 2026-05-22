@@ -57,9 +57,8 @@
 
     <!-- SAVED tab -->
     <section v-if="activeTab === 'saved'" class="pl-section">
-      <SavedPromptsTable
+      <SavedPromptsDashboard
         ref="savedTableRef"
-        :website-id="websiteId"
         @go-search="activeTab = 'search'"
       />
     </section>
@@ -475,7 +474,7 @@ import VariablesPanel from '@/components/prompt_library/VariablesPanel.vue'
 import NewPromptModal from '@/components/prompt_library/NewPromptModal.vue'
 import SmokeTestResult from '@/components/prompt_library/SmokeTestResult.vue'
 import SortIcon from '@/components/prompt_library/SortIcon.vue'
-import SavedPromptsTable from '@/components/prompt_library/SavedPromptsTable.vue'
+import SavedPromptsDashboard from '@/components/prompt_library/SavedPromptsDashboard.vue'
 
 const route = useRoute()
 const toast = useToast()

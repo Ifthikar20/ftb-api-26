@@ -922,3 +922,146 @@ class BrandPromptDetailAggView(APIView):
             "domain_types": type_breakdown,
             "total_retrievals": sum(type_counter.values()),
         })
+
+
+class WebsiteSavedPromptsAggView(APIView):
+    """
+    Saved-prompts dashboard payload — every saved prompt for the
+    website plus aggregated metrics ready for the Saved tab table
+    (visibility %, sentiment, position, models that mentioned, runs
+    count, intent/style tags, volume bucket, topic).
+
+    Heavier than the brand-prompts list endpoint but materialised in a
+    single query pass plus a per-prompt response scan. Topics are
+    derived from each prompt's industry name; intent + style are
+    surfaced as tag chips.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, website_id):
+        from collections import Counter, defaultdict
+
+        from apps.llm_ranking.models import LLMRankingResult
+
+        website = WebsiteService.get_for_user(user=request.user, website_id=website_id)
+
+        bps = (
+            BrandPrompt.objects
+            .filter(website=website)
+            .select_related("prompt", "prompt__industry")
+            .order_by("-created_at")
+        )
+        prompts_by_norm: dict[str, list] = defaultdict(list)
+        rows = []
+        for bp in bps:
+            p = bp.prompt
+            norm = " ".join((p.text or "").split()).lower()
+            prompts_by_norm[norm].append(bp.id)
+            rows.append({
+                "_norm": norm,
+                "id": str(p.id),
+                "brand_prompt_id": str(bp.id),
+                "text": p.text,
+                "template_text": p.template_text or "",
+                "topic": p.industry.name if p.industry_id else "",
+                "topic_slug": p.industry.slug if p.industry_id else "",
+                "intent_bucket": p.intent_bucket,
+                "style": p.style,
+                "demand_score": p.demand_score,
+                "runs_count": p.runs_count,
+                "is_active": p.is_active,
+                "created_at": p.created_at.isoformat() if p.created_at else None,
+                "visibility_pct": 0,
+                "sentiment_score": None,
+                "avg_position": None,
+                "models_mentioned": [],
+                "total_mentions": 0,
+                "responses_seen": 0,
+            })
+
+        # Pull every LLMRankingResult for this website's audits once.
+        # Then bucket per normalised prompt text — fast even with
+        # thousands of results because we hold them in memory.
+        all_results = list(
+            LLMRankingResult.objects
+            .filter(audit__website=website)
+            .only(
+                "provider", "prompt", "is_mentioned", "mention_rank",
+                "sentiment",
+            ),
+        )
+
+        smap = {"positive": 85, "neutral": 55, "negative": 25}
+        agg: dict[str, dict] = {}
+        for r in all_results:
+            key = " ".join((r.prompt or "").split()).lower()
+            if key not in prompts_by_norm:
+                continue
+            entry = agg.setdefault(key, {
+                "responses": 0,
+                "mentioned": 0,
+                "positions": [],
+                "sentiments": [],
+                "providers_mentioned": set(),
+            })
+            entry["responses"] += 1
+            if r.is_mentioned:
+                entry["mentioned"] += 1
+                if r.mention_rank is not None:
+                    entry["positions"].append(r.mention_rank)
+                if r.sentiment and r.sentiment != "not_mentioned":
+                    entry["sentiments"].append(r.sentiment)
+                if r.provider:
+                    entry["providers_mentioned"].add(r.provider)
+
+        for row in rows:
+            stats = agg.get(row["_norm"])
+            if not stats:
+                continue
+            responses = stats["responses"]
+            if responses:
+                row["responses_seen"] = responses
+                row["visibility_pct"] = round(100 * stats["mentioned"] / responses, 0)
+            row["total_mentions"] = stats["mentioned"]
+            if stats["positions"]:
+                row["avg_position"] = round(sum(stats["positions"]) / len(stats["positions"]), 1)
+            if stats["sentiments"]:
+                scores = [smap.get(s, 50) for s in stats["sentiments"]]
+                row["sentiment_score"] = round(sum(scores) / len(scores), 0)
+            row["models_mentioned"] = sorted(stats["providers_mentioned"])
+
+        # Drop the helper key before responding.
+        for row in rows:
+            row.pop("_norm", None)
+
+        # Topic summary for the left rail.
+        topic_counter: Counter = Counter()
+        for row in rows:
+            t = row.get("topic") or ""
+            if t:
+                topic_counter[t] += 1
+        topics = [
+            {"name": name, "count": count}
+            for name, count in topic_counter.most_common()
+        ]
+
+        # Aggregate KPI for the strip above the table.
+        with_vis = [r for r in rows if r["responses_seen"]]
+        avg_vis = round(sum(r["visibility_pct"] for r in with_vis) / len(with_vis), 0) if with_vis else 0
+        with_sent = [r for r in rows if r["sentiment_score"] is not None]
+        avg_sent = round(sum(r["sentiment_score"] for r in with_sent) / len(with_sent), 0) if with_sent else None
+        with_pos = [r for r in rows if r["avg_position"] is not None]
+        avg_pos = round(sum(r["avg_position"] for r in with_pos) / len(with_pos), 1) if with_pos else None
+
+        return Response({
+            "website_id": str(website.id),
+            "rows": rows,
+            "total": len(rows),
+            "topics": topics,
+            "kpi": {
+                "visibility_pct": avg_vis,
+                "sentiment_score": avg_sent,
+                "avg_position": avg_pos,
+            },
+        })
