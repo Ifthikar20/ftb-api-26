@@ -756,6 +756,34 @@
                 <tr v-if="promptOpen[m.index]" class="mt-pm-detail-row">
                   <td colspan="9" class="mt-pm-detail">
                     <div class="mt-pm-detail-inner">
+                    <!-- "Testing against" strip: makes it obvious what the
+                         response is being graded on for THIS prompt — the
+                         brand name, any aliases on the run, user-added
+                         extra terms, and any competitors we're also
+                         watching for in the answer. -->
+                    <div class="mt-pm-criteria">
+                      <div class="mt-pm-criteria-row">
+                        <span class="mt-pm-criteria-label">Testing for</span>
+                        <span class="mt-pm-criteria-chip is-primary">{{ brandLabel }}</span>
+                        <template v-for="alias in promptCriteria.aliases" :key="`a-${alias}`">
+                          <span class="mt-pm-criteria-chip is-alias">{{ alias }}</span>
+                        </template>
+                        <template v-for="t in promptCriteria.extra" :key="`e-${t}`">
+                          <span class="mt-pm-criteria-chip is-extra">{{ t }}</span>
+                        </template>
+                      </div>
+                      <div v-if="promptCriteria.competitors.length" class="mt-pm-criteria-row">
+                        <span class="mt-pm-criteria-label">Also watching</span>
+                        <template v-for="c in promptCriteria.competitors" :key="`c-${c}`">
+                          <span class="mt-pm-criteria-chip is-competitor">{{ c }}</span>
+                        </template>
+                      </div>
+                      <div class="mt-pm-criteria-row mt-pm-criteria-prompt">
+                        <span class="mt-pm-criteria-label">Prompt</span>
+                        <span class="mt-pm-criteria-q">"{{ m.prompt }}"</span>
+                      </div>
+                    </div>
+
                     <!-- Per-model performance breakdown for THIS prompt -->
                     <table class="mt-pm-perf">
                       <thead>
@@ -1355,6 +1383,42 @@ const websiteId = route.params.websiteId
 const brandLabel = computed(() => {
   const w = appStore.activeWebsite
   return (w?.business_name || w?.name || 'your brand').trim()
+})
+
+// What every per-prompt response is graded against. Pulled from the
+// active run (canonical brand_terms + competitors saved when the
+// audit started) plus any extra terms the user has piled on via the
+// 'Compare against' editor. Deduped case-insensitively and minus the
+// brand label itself which is rendered separately as the primary chip.
+const promptCriteria = computed(() => {
+  const brand = brandLabel.value.toLowerCase()
+  const seen = new Set([brand])
+  const aliases = []
+  for (const t of (displayRun.value?.brand_terms || [])) {
+    const v = (t || '').trim()
+    if (!v) continue
+    const k = v.toLowerCase()
+    if (seen.has(k)) continue
+    seen.add(k)
+    aliases.push(v)
+  }
+  const extra = []
+  for (const t of (extraTerms.value || [])) {
+    const v = (t || '').trim()
+    if (!v) continue
+    const k = v.toLowerCase()
+    if (seen.has(k)) continue
+    seen.add(k)
+    extra.push(v)
+  }
+  const competitors = []
+  for (const c of (displayRun.value?.competitors || [])) {
+    const name = typeof c === 'string' ? c : (c?.name || '')
+    const v = name.trim()
+    if (!v) continue
+    competitors.push(v)
+  }
+  return { aliases, extra, competitors }
 })
 
 // ── "Compare against" editor ──────────────────────────────────────
@@ -4581,6 +4645,83 @@ onBeforeUnmount(() => document.removeEventListener('click', _closeDropdownOnDocC
   min-width: 0;
   max-width: 100%;
   overflow-x: auto;
+}
+
+/* "Testing against" criteria strip rendered above the per-model
+   metrics table inside every expanded prompt row. */
+.mt-pm-criteria {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  background: var(--bg-subtle, #fafafa);
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 10px;
+}
+.mt-pm-criteria-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  min-height: 22px;
+}
+.mt-pm-criteria-label {
+  flex-shrink: 0;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted, #64748b);
+  width: 100px;
+}
+.mt-pm-criteria-chip {
+  display: inline-flex;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.mt-pm-criteria-chip.is-primary {
+  background: var(--text-primary, #0f172a);
+  color: var(--bg-card, #fff);
+  font-weight: 600;
+}
+.mt-pm-criteria-chip.is-alias {
+  background: var(--bg-card, #fff);
+  border-color: var(--border-color, #e5e7eb);
+  color: var(--text-primary, #0f172a);
+}
+.mt-pm-criteria-chip.is-extra {
+  background: rgba(255, 107, 53, 0.10);
+  border-color: rgba(255, 107, 53, 0.30);
+  color: #c2410c;
+}
+.mt-pm-criteria-chip.is-competitor {
+  background: rgba(99, 102, 241, 0.10);
+  border-color: rgba(99, 102, 241, 0.28);
+  color: #4338ca;
+}
+.mt-pm-criteria-prompt .mt-pm-criteria-q {
+  font-size: 12.5px;
+  color: var(--text-secondary, #475569);
+  font-style: italic;
+  line-height: 1.45;
+}
+
+[data-theme="dark"] .mt-pm-criteria {
+  background: var(--bg-card-hover);
+  border-color: var(--border-color);
+}
+[data-theme="dark"] .mt-pm-criteria-chip.is-alias {
+  background: var(--bg-card);
+  border-color: var(--border-color);
+  color: var(--text-primary);
+}
+[data-theme="dark"] .mt-pm-criteria-prompt .mt-pm-criteria-q {
+  color: var(--text-secondary);
 }
 .mt-pm-detail-inner .mt-pm-perf {
   table-layout: auto;
