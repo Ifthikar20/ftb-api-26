@@ -70,7 +70,7 @@
 
       <!-- Main column -->
       <section class="spd-main">
-        <!-- Sub-tabs + count badge + add prompt -->
+        <!-- Sub-tabs + count badge + actions -->
         <div class="spd-subtabs">
           <div class="spd-subtab-row">
             <button
@@ -80,16 +80,28 @@
               class="spd-subtab"
               :class="{ 'is-on': activeSub === t.id }"
               @click="activeSub = t.id"
-            >{{ t.label }}</button>
+            >
+              {{ t.label }}
+              <span v-if="t.id === 'suggested' && suggestedRows.length" class="spd-subtab-count">
+                {{ suggestedRows.length }}
+              </span>
+            </button>
           </div>
           <div class="spd-head-actions">
             <span class="spd-head-count">
               <Check :size="13" :stroke-width="2.4"/>
-              {{ filtered.length }} / 50
+              {{ rows.length }} / 50
             </span>
-            <button type="button" class="spd-add" @click="$emit('go-search')">
-              <Plus :size="14" :stroke-width="2"/>
-              Add Prompt
+            <button
+              v-if="activeSub === 'suggested'"
+              type="button"
+              class="spd-suggest"
+              :disabled="suggestLoading"
+              @click="loadSuggested"
+              title="Pull a fresh batch of suggestions"
+            >
+              <Sparkles :size="14" :stroke-width="2"/>
+              {{ suggestLoading ? 'Suggesting…' : 'Suggest more' }}
             </button>
           </div>
         </div>
@@ -124,8 +136,8 @@
           </div>
         </div>
 
-        <!-- Table -->
-        <div class="spd-table-wrap">
+        <!-- Active / Archived table -->
+        <div v-if="activeSub !== 'suggested'" class="spd-table-wrap">
           <table v-if="filtered.length" class="spd-table">
             <thead>
               <tr>
@@ -211,20 +223,92 @@
           <div v-else class="spd-empty">
             <Inbox :size="36" :stroke-width="1.5"/>
             <h3>No saved prompts yet</h3>
-            <p>Search the library above and click <strong>Save</strong> on any prompt to add it here.</p>
-            <button class="spd-add spd-add-empty" @click="$emit('go-search')">
-              <Plus :size="14" :stroke-width="2"/>
-              Browse prompts
+            <p>Switch to <strong>Suggested</strong> to pick prompts from the library.</p>
+            <button class="spd-add spd-add-empty" @click="activeSub = 'suggested'">
+              <Sparkles :size="14" :stroke-width="2"/>
+              See suggestions
             </button>
           </div>
         </div>
 
+        <!-- Suggested table -->
+        <div v-else class="spd-table-wrap">
+          <table v-if="suggestedRows.length" class="spd-table">
+            <thead>
+              <tr>
+                <th class="spd-th-check">
+                  <input
+                    type="checkbox"
+                    :checked="allSuggestedSelected"
+                    @change="toggleAllSuggested"
+                  />
+                </th>
+                <th class="spd-th-prompt">Prompt</th>
+                <th>Volume</th>
+                <th>Tags</th>
+                <th class="num">Suggested at</th>
+                <th class="num">Location</th>
+                <th class="spd-th-act"></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in suggestedFiltered" :key="row.id" class="spd-suggested-row">
+                <td @click.stop>
+                  <input
+                    type="checkbox"
+                    :checked="selectedSuggested.has(row.id)"
+                    @change="toggleSuggested(row)"
+                  />
+                </td>
+                <td class="spd-td-prompt">{{ row.text }}</td>
+                <td>
+                  <span class="spd-volume" :title="`Demand ${row.demand_score}`">
+                    <span v-for="i in 4" :key="i" class="spd-vol-bar" :class="{ 'is-on': demandBars(row.demand_score) >= i }"></span>
+                  </span>
+                </td>
+                <td>
+                  <span class="spd-tag is-nonbranded">non-branded</span>
+                  <span class="spd-tag" :class="`is-${row.intent_bucket}`">{{ row.intent_bucket }}</span>
+                </td>
+                <td class="num spd-mute">{{ relTime(row.suggested_at) }}</td>
+                <td class="num spd-loc"><span aria-hidden="true">🇺🇸</span> US</td>
+                <td class="spd-act">
+                  <button class="spd-act-btn spd-act-reject" title="Reject" @click.stop="rejectOne(row)">
+                    <X :size="14" :stroke-width="2.2"/>
+                  </button>
+                  <button class="spd-act-btn spd-act-accept" title="Track this prompt" @click.stop="acceptOne(row)">
+                    <Check :size="14" :stroke-width="2.4"/>
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div v-else-if="suggestLoading" class="spd-empty">
+            <div class="spd-spinner" aria-hidden="true"></div>
+            <p>Pulling suggestions from the library…</p>
+          </div>
+
+          <div v-else class="spd-empty">
+            <Sparkles :size="36" :stroke-width="1.5"/>
+            <h3>No suggestions right now</h3>
+            <p>Try <strong>Suggest more</strong> to pull a fresh batch from the library.</p>
+          </div>
+        </div>
+
         <footer class="spd-foot">
-          <span>{{ filtered.length }} Prompts</span>
-          <button class="spd-archive" type="button">
-            <Power :size="13" :stroke-width="1.8"/>
-            Archive all
-          </button>
+          <span v-if="activeSub === 'suggested'">{{ suggestedFiltered.length }} suggestions</span>
+          <span v-else>{{ filtered.length }} Prompts</span>
+          <div v-if="activeSub === 'suggested' && suggestedRows.length" class="spd-foot-actions">
+            <button class="spd-archive" type="button" @click="rejectAll" :disabled="bulkPending">
+              <X :size="13" :stroke-width="2"/>
+              Reject all
+            </button>
+            <button class="spd-track-all" type="button" @click="trackAll" :disabled="bulkPending">
+              <Check :size="13" :stroke-width="2.4"/>
+              Track all
+            </button>
+          </div>
         </footer>
       </section>
     </div>
@@ -232,14 +316,16 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/app'
 import promptLibrary from '@/api/promptLibrary'
 import {
   ArrowUpDown, Bot, Building, Calendar, Check, ChevronDown, ChevronsUpDown,
-  CloudOff, Folder, Inbox, Plus, Power, Search, Tag,
+  CloudOff, Folder, Inbox, Plus, Search, Sparkles, Tag, X,
 } from '@lucide/vue'
+// Plus stays imported even though it's only referenced from the
+// 'New topic' rail button; keeping it next to the other rail icons.
 
 const route = useRoute()
 const router = useRouter()
@@ -326,6 +412,107 @@ function demandBars(score) {
   if (v >= 0.25) return 2
   if (v > 0)     return 1
   return 0
+}
+
+// ── Suggested-tab state + handlers ───────────────────────────────
+const suggestedRows = ref([])
+const suggestLoading = ref(false)
+const bulkPending = ref(false)
+const selectedSuggested = ref(new Set())
+
+async function loadSuggested() {
+  suggestLoading.value = true
+  try {
+    const { data } = await promptLibrary.suggestedPrompts(websiteId)
+    const body = data?.data || data || {}
+    suggestedRows.value = body.rows || []
+  } catch (_) {
+    suggestedRows.value = []
+  } finally {
+    suggestLoading.value = false
+  }
+}
+
+// Fetch suggestions the first time the user clicks into the tab.
+watch(() => activeSub.value, (tab) => {
+  if (tab === 'suggested' && !suggestedRows.value.length && !suggestLoading.value) {
+    loadSuggested()
+  }
+})
+
+const suggestedFiltered = computed(() => {
+  if (!activeTopic.value) return suggestedRows.value
+  return suggestedRows.value.filter((r) => r.topic === activeTopic.value)
+})
+const allSuggestedSelected = computed(() =>
+  suggestedFiltered.value.length > 0 &&
+  suggestedFiltered.value.every((r) => selectedSuggested.value.has(r.id)),
+)
+function toggleSuggested(row) {
+  const next = new Set(selectedSuggested.value)
+  if (next.has(row.id)) next.delete(row.id); else next.add(row.id)
+  selectedSuggested.value = next
+}
+function toggleAllSuggested() {
+  if (allSuggestedSelected.value) {
+    selectedSuggested.value = new Set()
+  } else {
+    selectedSuggested.value = new Set(suggestedFiltered.value.map((r) => r.id))
+  }
+}
+
+async function acceptOne(row) {
+  try {
+    await promptLibrary.actSuggestion(websiteId, 'accept', row.id)
+    suggestedRows.value = suggestedRows.value.filter((r) => r.id !== row.id)
+    selectedSuggested.value.delete(row.id)
+    load() // refresh the saved-prompts aggregate
+  } catch (_) { /* surface via toast in the parent if needed */ }
+}
+async function rejectOne(row) {
+  try {
+    await promptLibrary.actSuggestion(websiteId, 'reject', row.id)
+    suggestedRows.value = suggestedRows.value.filter((r) => r.id !== row.id)
+    selectedSuggested.value.delete(row.id)
+  } catch (_) {}
+}
+async function trackAll() {
+  const ids = suggestedFiltered.value.map((r) => r.id)
+  if (!ids.length) return
+  bulkPending.value = true
+  try {
+    await promptLibrary.bulkSuggestion(websiteId, 'accept', ids)
+    suggestedRows.value = suggestedRows.value.filter((r) => !ids.includes(r.id))
+    selectedSuggested.value = new Set()
+    load()
+  } finally {
+    bulkPending.value = false
+  }
+}
+async function rejectAll() {
+  const ids = suggestedFiltered.value.map((r) => r.id)
+  if (!ids.length) return
+  bulkPending.value = true
+  try {
+    await promptLibrary.bulkSuggestion(websiteId, 'reject', ids)
+    suggestedRows.value = suggestedRows.value.filter((r) => !ids.includes(r.id))
+    selectedSuggested.value = new Set()
+  } finally {
+    bulkPending.value = false
+  }
+}
+
+function relTime(iso) {
+  if (!iso) return '—'
+  const diff = Date.now() - new Date(iso).getTime()
+  const s = Math.floor(diff / 1000)
+  if (s < 60) return `${s} sec. ago`
+  const m = Math.floor(s / 60)
+  if (m < 60) return `${m} min. ago`
+  const h = Math.floor(m / 60)
+  if (h < 24) return `${h} hr. ago`
+  const d = Math.floor(h / 24)
+  return `${d}d ago`
 }
 
 defineEmits(['go-search'])
@@ -666,6 +853,81 @@ defineEmits(['go-search'])
   cursor: pointer;
 }
 .spd-archive:hover { color: var(--text-primary); }
+.spd-archive:disabled { opacity: 0.5; cursor: progress; }
+
+.spd-foot-actions { display: inline-flex; gap: 8px; }
+.spd-track-all {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  background: var(--text-primary, #131718);
+  color: var(--text-inverse, #fff);
+  border: none;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.spd-track-all:hover { opacity: 0.92; }
+.spd-track-all:disabled { opacity: 0.5; cursor: progress; }
+
+/* Suggested-row accept / reject icon buttons */
+.spd-th-act { width: 96px; }
+.spd-act { white-space: nowrap; text-align: right; }
+.spd-act-btn {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: var(--bg-card, #fff);
+  border: 1px solid var(--border-color, #e5e7eb);
+  color: var(--text-muted);
+  cursor: pointer;
+  margin-left: 4px;
+}
+.spd-act-btn:hover { color: var(--text-primary); border-color: var(--text-muted); }
+.spd-act-accept:hover { color: #047857; border-color: rgba(16,185,129,0.4); background: rgba(16,185,129,0.06); }
+.spd-act-reject:hover { color: #b91c1c; border-color: rgba(239,68,68,0.36); background: rgba(239,68,68,0.06); }
+
+/* 'Suggest more' top-right button */
+.spd-suggest {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--text-primary, #131718);
+  color: var(--text-inverse, #fff);
+  border: none;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.spd-suggest:hover { opacity: 0.92; }
+.spd-suggest:disabled { opacity: 0.55; cursor: progress; }
+
+.spd-subtab-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--brand-accent, #ff6b35);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  margin-left: 6px;
+}
 
 [data-theme="dark"] .spd-chip,
 [data-theme="dark"] .spd-rail,

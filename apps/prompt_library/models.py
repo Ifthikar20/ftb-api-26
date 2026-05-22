@@ -190,6 +190,28 @@ class BrandPrompt(TimestampMixin):
         return f"BrandPrompt(website={self.website_id}, prompt={self.prompt_id})"
 
 
+class RejectedBrandPrompt(TimestampMixin):
+    """A library prompt the user explicitly dismissed from the
+    Suggested view. Keeps it out of future suggestions so the page
+    doesn't keep recommending what they've already said no to."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    website = models.ForeignKey(
+        "websites.Website",
+        related_name="rejected_prompts",
+        on_delete=models.CASCADE,
+    )
+    prompt = models.ForeignKey(
+        Prompt, related_name="rejections", on_delete=models.CASCADE,
+    )
+
+    class Meta:
+        db_table = "prompt_library_rejectedbrandprompt"
+        unique_together = [("website", "prompt")]
+        indexes = [models.Index(fields=["website", "-created_at"])]
+        ordering = ["-created_at"]
+
+
 class PromptSampleRun(TimestampMixin):
     """Per-audit snapshot: which prompts were sampled and how. The
     ``seed`` field makes the sample reproducible — re-running the

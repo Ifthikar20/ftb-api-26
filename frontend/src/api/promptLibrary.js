@@ -27,6 +27,17 @@ export default {
     savedPromptsAgg: (websiteId) =>
         api.get(`/prompt-library/websites/${websiteId}/saved-prompts/agg/`),
 
+    suggestedPrompts: (websiteId) =>
+        api.get(`/prompt-library/websites/${websiteId}/saved-prompts/suggested/`),
+
+    actSuggestion: (websiteId, action, promptId) =>
+        api.post(`/prompt-library/websites/${websiteId}/saved-prompts/${action}/${promptId}/`),
+
+    bulkSuggestion: (websiteId, action, promptIds) =>
+        api.post(`/prompt-library/websites/${websiteId}/saved-prompts/bulk/${action}/`, {
+            prompt_ids: promptIds,
+        }),
+
     addBrandPrompt: (websiteId, promptId, notes = '') =>
         api.post(`/prompt-library/websites/${websiteId}/brand-prompts/`, {
             prompt_id: promptId,

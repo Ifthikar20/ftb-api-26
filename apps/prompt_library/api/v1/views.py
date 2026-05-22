@@ -40,6 +40,7 @@ from apps.prompt_library.models import (
     Prompt,
     PromptSource,
     PromptVariableSet,
+    RejectedBrandPrompt,
     TestEnvironment,
 )
 from apps.prompt_library.services.sampler_service import sample_prompts_for_audit
@@ -1106,3 +1107,139 @@ class WebsiteSavedPromptsAggView(APIView):
                 "avg_position": avg_pos,
             },
         })
+
+
+class WebsiteSuggestedPromptsView(APIView):
+    """
+    Suggested-prompts view for the Prompt-library dashboard's
+    'Suggested' subtab.
+
+    Returns library prompts that:
+      - Are active
+      - Match the website's industry (when we can resolve it)
+      - Are NOT already saved as BrandPrompts on this website
+      - Have NOT been explicitly rejected via the × button
+
+    Each row carries the same shape the saved-aggregate endpoint
+    returns minus the per-prompt response metrics — visibility /
+    sentiment / position aren't computed because suggestions haven't
+    been audited yet.
+    """
+
+    permission_classes = [IsAuthenticated]
+    LIMIT = 25
+
+    def _resolve_industry(self, website):
+        slug = (website.industry or "").strip().lower()
+        if not slug:
+            return None
+        return (
+            Industry.objects.filter(is_active=True, slug__iexact=slug).first()
+            or Industry.objects.filter(is_active=True, name__iexact=website.industry).first()
+        )
+
+    def get(self, request, website_id):
+        website = WebsiteService.get_for_user(user=request.user, website_id=website_id)
+
+        saved_ids = BrandPrompt.objects.filter(website=website).values_list("prompt_id", flat=True)
+        rejected_ids = RejectedBrandPrompt.objects.filter(website=website).values_list("prompt_id", flat=True)
+
+        qs = Prompt.objects.filter(is_active=True).exclude(id__in=list(saved_ids)).exclude(id__in=list(rejected_ids))
+        industry = self._resolve_industry(website)
+        if industry is not None:
+            qs = qs.filter(industry=industry)
+
+        suggestions = list(
+            qs.select_related("industry")
+            .order_by("-demand_score", "-created_at")[: self.LIMIT]
+        )
+
+        rows = []
+        for p in suggestions:
+            rows.append({
+                "id": str(p.id),
+                "text": p.text,
+                "template_text": p.template_text or "",
+                "topic": p.industry.name if p.industry_id else "",
+                "intent_bucket": p.intent_bucket,
+                "style": p.style,
+                "demand_score": p.demand_score,
+                "suggested_at": p.created_at.isoformat() if p.created_at else None,
+            })
+
+        # Topics summary for the rail's 'Suggested Topics' section —
+        # only include topics that actually have suggestions waiting.
+        topic_counts = (
+            qs.values_list("industry__name", flat=True)
+        )
+        from collections import Counter
+        counter = Counter(t for t in topic_counts if t)
+        topics = [{"name": n, "count": c} for n, c in counter.most_common()]
+
+        return Response({
+            "website_id": str(website.id),
+            "rows": rows,
+            "topics": topics,
+            "total": len(rows),
+        })
+
+
+class WebsiteSuggestionActionView(APIView):
+    """
+    Accept or reject a single suggested prompt.
+
+    POST .../accept/{prompt_id}/  → creates a BrandPrompt row
+    POST .../reject/{prompt_id}/  → creates a RejectedBrandPrompt row
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, website_id, prompt_id, action):
+        website = WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        try:
+            prompt = Prompt.objects.get(id=prompt_id, is_active=True)
+        except Prompt.DoesNotExist:
+            return Response({"detail": "Prompt not found."},
+                            status=status.HTTP_404_NOT_FOUND)
+        if action == "accept":
+            bp, _ = BrandPrompt.objects.get_or_create(website=website, prompt=prompt)
+            # If the user had previously rejected this one, lift the
+            # rejection so it doesn't keep being filtered out elsewhere.
+            RejectedBrandPrompt.objects.filter(website=website, prompt=prompt).delete()
+            return Response({"saved": True, "brand_prompt_id": str(bp.id)})
+        if action == "reject":
+            RejectedBrandPrompt.objects.get_or_create(website=website, prompt=prompt)
+            return Response({"rejected": True})
+        return Response({"detail": "action must be 'accept' or 'reject'."},
+                        status=status.HTTP_400_BAD_REQUEST)
+
+
+class WebsiteSuggestionBulkView(APIView):
+    """Accept or reject every prompt id passed in the body in one shot."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, website_id, action):
+        website = WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        ids = request.data.get("prompt_ids") or []
+        if not isinstance(ids, list) or not ids:
+            return Response({"detail": "prompt_ids must be a non-empty array."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        if action not in ("accept", "reject"):
+            return Response({"detail": "action must be 'accept' or 'reject'."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        prompts = list(Prompt.objects.filter(is_active=True, id__in=ids))
+        if action == "accept":
+            BrandPrompt.objects.bulk_create(
+                [BrandPrompt(website=website, prompt=p) for p in prompts],
+                ignore_conflicts=True,
+            )
+            RejectedBrandPrompt.objects.filter(website=website, prompt__in=prompts).delete()
+            return Response({"accepted": len(prompts)})
+
+        RejectedBrandPrompt.objects.bulk_create(
+            [RejectedBrandPrompt(website=website, prompt=p) for p in prompts],
+            ignore_conflicts=True,
+        )
+        return Response({"rejected": len(prompts)})

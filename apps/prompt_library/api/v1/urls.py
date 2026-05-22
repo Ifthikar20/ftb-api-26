@@ -99,6 +99,21 @@ urlpatterns = [
         name="prompt-library-website-saved-prompts-agg",
     ),
     path(
+        "websites/<uuid:website_id>/saved-prompts/suggested/",
+        views.WebsiteSuggestedPromptsView.as_view(),
+        name="prompt-library-website-suggested-prompts",
+    ),
+    path(
+        "websites/<uuid:website_id>/saved-prompts/<str:action>/<uuid:prompt_id>/",
+        views.WebsiteSuggestionActionView.as_view(),
+        name="prompt-library-website-suggestion-action",
+    ),
+    path(
+        "websites/<uuid:website_id>/saved-prompts/bulk/<str:action>/",
+        views.WebsiteSuggestionBulkView.as_view(),
+        name="prompt-library-website-suggestion-bulk",
+    ),
+    path(
         "brand-prompts/<uuid:brand_prompt_id>/",
         views.BrandPromptDetailView.as_view(),
         name="prompt-library-brand-prompt-detail",
