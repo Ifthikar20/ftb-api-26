@@ -3,12 +3,19 @@
     <!-- Header -->
     <header id="pl-header" class="page-header pl-hero">
       <span class="pl-hero-eyebrow">Prompt library</span>
-      <Transition name="pl-hero-fade" mode="out-in">
-        <h1 :key="heroIndex" class="pl-hero-title">{{ heroLine.title }}</h1>
-      </Transition>
-      <Transition name="pl-hero-fade" mode="out-in">
-        <p :key="`s-${heroIndex}`" class="pl-hero-sub">{{ heroLine.sub }}</p>
-      </Transition>
+      <!-- Fixed-height slots so the rotating headline/subhead never
+           change the hero's vertical size — keeps the table below
+           pinned regardless of which line is showing. -->
+      <div class="pl-hero-title-slot">
+        <Transition name="pl-hero-fade" mode="out-in">
+          <h1 :key="heroIndex" class="pl-hero-title">{{ heroLine.title }}</h1>
+        </Transition>
+      </div>
+      <div class="pl-hero-sub-slot">
+        <Transition name="pl-hero-fade" mode="out-in">
+          <p :key="`s-${heroIndex}`" class="pl-hero-sub">{{ heroLine.sub }}</p>
+        </Transition>
+      </div>
     </header>
 
     <!-- Tab toggle: Search vs Saved -->
@@ -1262,13 +1269,41 @@ watch(websiteId, loadVariables)
   margin-bottom: 14px;
   font-weight: 600;
 }
+/* Fixed-height containers around each rotating line. The Transition's
+   mode="out-in" briefly unmounts the inner element between fades; if
+   the height lived on .pl-hero-title / .pl-hero-sub the parent would
+   collapse during that gap and the page below would shift. Reserving
+   enough vertical space here (two-line title, three-line subhead at
+   their widest) keeps the layout pinned. */
+.pl-hero-title-slot {
+  width: 100%;
+  /* Two lines of the largest headline (~40px × 1.08 line-height). */
+  min-height: 96px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 12px;
+}
+.pl-hero-sub-slot {
+  width: 100%;
+  /* Three lines of 15px text at 1.55 line-height. */
+  min-height: 72px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+}
+@media (max-width: 720px) {
+  /* Smaller headline at narrower viewports — only one line wraps to two. */
+  .pl-hero-title-slot { min-height: 76px; }
+  .pl-hero-sub-slot { min-height: 96px; }
+}
 .pl-hero-title {
   font-size: clamp(28px, 3.4vw, 40px);
   line-height: 1.08;
   font-weight: 600;
   letter-spacing: -0.025em;
   color: var(--text-primary);
-  margin: 0 0 12px;
+  margin: 0;
 }
 .pl-hero-sub {
   font-size: 15px;
