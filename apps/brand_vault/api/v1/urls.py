@@ -55,6 +55,11 @@ urlpatterns = [
         name="brand-vault-website-keywords",
     ),
     path(
+        "websites/<uuid:website_id>/check/",
+        views.WebsiteFactCheckView.as_view(),
+        name="brand-vault-website-check",
+    ),
+    path(
         "facts/<uuid:fact_id>/",
         views.FactDetailView.as_view(),
         name="brand-vault-fact-detail",

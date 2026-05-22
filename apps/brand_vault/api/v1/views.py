@@ -564,6 +564,101 @@ class WebsiteToneSampleCreateView(TenantScopedAPIView):
                         status=status.HTTP_201_CREATED)
 
 
+class WebsiteFactCheckView(TenantScopedAPIView):
+    """
+    Compare a piece of free text (typically an LLM response) against
+    the website's approved + auto current facts.
+
+    Body: ``{"text": "..."}``
+
+    For each fact we classify the response as:
+      - corroborated: object substring is present (case-insensitive)
+      - contradicted: subject + predicate substrings both present but
+        object missing (the model is talking about the same attribute
+        but with a different value)
+      - missed:       neither subject nor object substring is present
+      - implicit:     subject substring present, object not present,
+                      and the predicate isn't either — not used as a
+                      contradiction but worth flagging that the
+                      response touches the entity at all
+
+    The classification is intentionally conservative — the goal is to
+    surface gaps for the user to scan visually, not to score the
+    model. A fact is matched against the lowercased response with
+    naive substring containment; in practice that catches roughly all
+    direct mentions and avoids false positives from word fragments
+    because subjects/objects in BrandFact are usually multi-word.
+    """
+
+    parser_classes = [JSONParser]
+
+    def post(self, request, website_id):
+        website = self.get_website(website_id)
+        text = (request.data.get("text") or "")
+        if not text:
+            return Response({
+                "website_id": str(website.id),
+                "corroborated": [],
+                "contradicted": [],
+                "missed": [],
+                "total": 0,
+            })
+
+        lowered = text.lower()
+        facts = list(BrandFact.objects.filter(
+            website=website,
+            status__in=[FactStatus.APPROVED, FactStatus.AUTO],
+            version_to__isnull=True,
+        ))
+
+        corroborated: list[dict] = []
+        contradicted: list[dict] = []
+        missed: list[dict] = []
+
+        for f in facts:
+            subj = (f.subject or "").strip().lower()
+            pred = (f.predicate or "").strip().lower()
+            obj = (f.object or "").strip().lower()
+            if not obj:
+                continue
+            row = {
+                "id": str(f.id),
+                "subject": f.subject,
+                "predicate": f.predicate,
+                "object": f.object,
+                "topic": f.topic or "",
+                "confidence": f.confidence,
+            }
+            obj_hit = obj in lowered
+            subj_hit = bool(subj) and subj in lowered
+            pred_hit = bool(pred) and pred in lowered
+            if obj_hit:
+                corroborated.append(row)
+            elif subj_hit and pred_hit:
+                # The response is talking about the same attribute of the
+                # same entity but with a different value — flag it.
+                contradicted.append(row)
+            elif subj_hit or pred_hit:
+                # Touches the entity / attribute but doesn't say the
+                # canonical value. Bucket with missed so the user sees
+                # it as "model didn't surface this".
+                missed.append(row)
+            else:
+                missed.append(row)
+
+        # Cap missed at 50 so we don't dump every fact in the vault on
+        # a response that says nothing relevant.
+        missed = missed[:50]
+
+        return Response({
+            "website_id": str(website.id),
+            "corroborated": corroborated,
+            "contradicted": contradicted,
+            "missed": missed,
+            "total": len(facts),
+        })
+
+
 class WebsiteKeywordsView(TenantScopedAPIView):
     """
     Aggregate keyword / topic repository for the Brand Vault widget.

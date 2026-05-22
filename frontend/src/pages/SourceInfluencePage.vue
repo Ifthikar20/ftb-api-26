@@ -85,6 +85,11 @@
           <div v-else-if="latestCompletedResponse.error" class="mt-livepeek-err">
             {{ latestCompletedResponse.error }}
           </div>
+          <BrandVaultCheckPanel
+            v-if="latestCompletedResponse.text && websiteId"
+            :website-id="websiteId"
+            :text="latestCompletedResponse.text"
+          />
         </div>
 
         <!-- Verbose run log: every (prompt, model) cell as a line item -->
@@ -840,6 +845,11 @@
                         <span v-html="renderResponse(r.response_text, r)"></span>
                       </div>
                       <div v-else-if="r.error" class="mt-pm-resp-err">{{ r.error }}</div>
+                      <BrandVaultCheckPanel
+                        v-if="r.response_text && websiteId"
+                        :website-id="websiteId"
+                        :text="r.response_text"
+                      />
                     </div>
                     </div>
                   </td>
@@ -1334,6 +1344,7 @@ import { useAppStore } from '@/stores/app'
 import { useToast } from '@/composables/useToast'
 import llmRanking from '@/api/llm_ranking'
 import promptLibrary from '@/api/promptLibrary'
+import BrandVaultCheckPanel from '@/components/brand_vault/BrandVaultCheckPanel.vue'
 
 const route = useRoute()
 const router = useRouter()

@@ -30,6 +30,8 @@ export default {
     api.get(`/brand-vault/websites/${websiteId}/backlinks/`),
   keywords: (websiteId) =>
     api.get(`/brand-vault/websites/${websiteId}/keywords/`),
+  factCheck: (websiteId, text) =>
+    api.post(`/brand-vault/websites/${websiteId}/check/`, { text }),
 
   // Imports ---------------------------------------------------------------
   importJson: (websiteId, facts) =>
