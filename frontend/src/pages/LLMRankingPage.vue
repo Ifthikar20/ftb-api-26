@@ -1,23 +1,48 @@
 <template>
   <div class="llm-ranking-page fade-in">
+    <!-- First-run gate: split into two states. If the user has no saved
+         prompts, push them to the Prompt Library. If they have prompts
+         but no audits, surface a clear "kick off the first audit" CTA
+         so the dashboard isn't a dead end after they finish step one. -->
     <div v-if="showFirstRun" class="empty-dashboard">
       <div class="empty-dashboard-card">
         <div class="empty-dashboard-icon" aria-hidden="true">
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <svg v-if="!savedPromptsCount" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="11" cy="11" r="7"/>
             <path d="M21 21l-4.3-4.3"/>
           </svg>
+          <svg v-else width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="5 3 19 12 5 21 5 3"/>
+          </svg>
         </div>
-        <h1 class="empty-dashboard-title">Your LLM Dashboard is empty</h1>
-        <p class="empty-dashboard-sub">
-          Nothing has been measured yet for <strong>{{ websiteName || 'this website' }}</strong>.
-          Add a prompt of your own or pull one from the prompt repository to start tracking how
-          AI assistants talk about your brand.
-        </p>
-        <div class="empty-dashboard-actions">
-          <router-link :to="promptLibraryRoute" class="btn btn-primary">Create a prompt</router-link>
-          <router-link :to="promptLibraryRepoRoute" class="btn btn-secondary">Browse the prompt repository</router-link>
-        </div>
+
+        <template v-if="!savedPromptsCount">
+          <h1 class="empty-dashboard-title">Your LLM Dashboard is empty</h1>
+          <p class="empty-dashboard-sub">
+            Nothing has been measured yet for <strong>{{ websiteName || 'this website' }}</strong>.
+            Add a prompt of your own or pull one from the prompt repository to start tracking how
+            AI assistants talk about your brand.
+          </p>
+          <div class="empty-dashboard-actions">
+            <router-link :to="promptLibraryRoute" class="btn btn-primary">Create a prompt</router-link>
+            <router-link :to="promptLibraryRepoRoute" class="btn btn-secondary">Browse the prompt repository</router-link>
+          </div>
+        </template>
+
+        <template v-else>
+          <h1 class="empty-dashboard-title">Ready to run your first audit</h1>
+          <p class="empty-dashboard-sub">
+            <strong>{{ savedPromptsCount }} prompt{{ savedPromptsCount === 1 ? '' : 's' }}</strong> saved for
+            <strong>{{ websiteName || 'this website' }}</strong>. Kick off an audit and we'll send them to
+            Claude, GPT-4, Gemini, and Perplexity, then chart how often you surface.
+          </p>
+          <div class="empty-dashboard-actions">
+            <button class="btn btn-primary" :disabled="running" @click="openRunAudit">
+              {{ running ? 'Running audit…' : 'Run my first audit' }}
+            </button>
+            <router-link :to="promptLibraryRoute" class="btn btn-secondary">Edit my prompts</router-link>
+          </div>
+        </template>
       </div>
     </div>
     <template v-else>
@@ -1589,6 +1614,7 @@ import { useToast } from '@/composables/useToast'
 import { useAppStore } from '@/stores/app'
 import llmRankingApi from '@/api/llm_ranking'
 import websitesApi from '@/api/websites'
+import promptLibraryApi from '@/api/promptLibrary'
 import BaseModal from '@/components/ui/BaseModal.vue'
 import PromptHeatmap from '@/components/llm_ranking/PromptHeatmap.vue'
 import ProviderAgreement from '@/components/llm_ranking/ProviderAgreement.vue'
@@ -2343,9 +2369,32 @@ async function loadWebsite() {
 }
 
 // First-run gate: user lands here before any audit data exists for this
-// website. The dashboard renders an empty-state card that nudges them
-// over to the Prompt Library — audits are kicked off from there, not here.
+// website. The empty-state card now branches on whether they've already
+// saved prompts — if yes, push the Run-Audit CTA; if no, push the
+// Prompt Library.
 const showFirstRun = computed(() => !loading.value && audits.value.length === 0)
+const savedPromptsCount = ref(0)
+async function loadSavedPromptsCount() {
+  try {
+    const { data } = await promptLibraryApi.listBrandPrompts(websiteId)
+    const rows = data?.data || data?.results || data || []
+    savedPromptsCount.value = Array.isArray(rows) ? rows.length : (rows?.count || 0)
+  } catch (_) {
+    savedPromptsCount.value = 0
+  }
+}
+
+// Re-check when this route becomes active again (e.g. after the user
+// saves a prompt in the Library tab — keep-alive may keep this page
+// mounted, so onMounted alone is not enough).
+watch(
+  () => route.fullPath,
+  (path) => {
+    if (path && path.startsWith(`/llm-ranking/${websiteId}`) && !path.includes('/prompts')) {
+      loadSavedPromptsCount()
+    }
+  },
+)
 
 // Tabs split the dashboard's two roles: dense Overview (kept as-is) and
 // a chart-first Performance view for reading model-by-model results.
@@ -4705,16 +4754,22 @@ onMounted(() => {
   // Load the website object first so the audit form is pre-filled
   // before the user opens the wizard.
   loadWebsite()
+  loadSavedPromptsCount()
   Promise.all([fetchData(), fetchHistory(), fetchSchedule()]).then(() => {
     loadPromptResults()
     loadUsage()
   })
   document.addEventListener('click', onDocClick)
+  // If the user creates prompts in another tab then comes back, refresh
+  // the count so the empty state flips to the Run-audit CTA.
+  window.addEventListener('focus', loadSavedPromptsCount)
 })
+
 onBeforeUnmount(() => {
   stopPolling()
   stopScheduleETAPolling()
   document.removeEventListener('click', onDocClick)
+  window.removeEventListener('focus', loadSavedPromptsCount)
 })
 </script>
 
