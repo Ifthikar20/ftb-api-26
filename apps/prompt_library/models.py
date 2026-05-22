@@ -190,6 +190,112 @@ class BrandPrompt(TimestampMixin):
         return f"BrandPrompt(website={self.website_id}, prompt={self.prompt_id})"
 
 
+class RejectedBrandPrompt(TimestampMixin):
+    """A library prompt the user explicitly dismissed from the
+    Suggested view. Keeps it out of future suggestions so the page
+    doesn't keep recommending what they've already said no to."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    website = models.ForeignKey(
+        "websites.Website",
+        related_name="rejected_prompts",
+        on_delete=models.CASCADE,
+    )
+    prompt = models.ForeignKey(
+        Prompt, related_name="rejections", on_delete=models.CASCADE,
+    )
+
+    class Meta:
+        db_table = "prompt_library_rejectedbrandprompt"
+        unique_together = [("website", "prompt")]
+        indexes = [models.Index(fields=["website", "-created_at"])]
+        ordering = ["-created_at"]
+
+
+class PromptFanout(TimestampMixin):
+    """A sub-query an AI engine ran while answering a saved prompt.
+
+    Stored per-(website, prompt) so the Prompt-detail page can show
+    'what the model researched' alongside the main prompt response.
+    A crawler task fans out the prompt into 4-8 sub-queries before
+    hitting each provider, captures them, and writes them here so
+    the UI can list them without re-running the prompt.
+    """
+
+    SOURCE_CRAWLER = "crawler"
+    SOURCE_MANUAL = "manual"
+    SOURCE_CHOICES = [
+        (SOURCE_CRAWLER, "Crawler"),
+        (SOURCE_MANUAL, "Manual"),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    website = models.ForeignKey(
+        "websites.Website",
+        related_name="prompt_fanouts",
+        on_delete=models.CASCADE,
+    )
+    prompt = models.ForeignKey(
+        Prompt, related_name="fanouts", on_delete=models.CASCADE,
+    )
+    text = models.TextField()
+    provider = models.CharField(max_length=24, blank=True)
+    source = models.CharField(max_length=16, choices=SOURCE_CHOICES, default=SOURCE_CRAWLER)
+    confidence = models.FloatField(default=0.5)
+
+    class Meta:
+        db_table = "prompt_library_promptfanout"
+        indexes = [
+            models.Index(fields=["website", "prompt", "-created_at"]),
+        ]
+        ordering = ["-created_at"]
+
+
+class PromptCrawlRun(TimestampMixin):
+    """One per attempt to crawl a saved prompt across the providers.
+
+    Tracks status + summary counts so the UI can show 'last crawled
+    N min ago, found M sources' without joining four tables.
+    """
+
+    STATUS_PENDING = "pending"
+    STATUS_RUNNING = "running"
+    STATUS_COMPLETE = "complete"
+    STATUS_FAILED = "failed"
+    STATUS_CHOICES = [
+        (STATUS_PENDING, "Pending"),
+        (STATUS_RUNNING, "Running"),
+        (STATUS_COMPLETE, "Complete"),
+        (STATUS_FAILED, "Failed"),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    website = models.ForeignKey(
+        "websites.Website",
+        related_name="prompt_crawl_runs",
+        on_delete=models.CASCADE,
+    )
+    prompt = models.ForeignKey(
+        Prompt, related_name="crawl_runs", on_delete=models.CASCADE,
+    )
+    status = models.CharField(
+        max_length=12, choices=STATUS_CHOICES, default=STATUS_PENDING,
+    )
+    providers = models.JSONField(default=list, blank=True)
+    fanout_count = models.IntegerField(default=0)
+    source_count = models.IntegerField(default=0)
+    error = models.TextField(blank=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "prompt_library_promptcrawlrun"
+        indexes = [
+            models.Index(fields=["website", "prompt", "-created_at"]),
+        ]
+        ordering = ["-created_at"]
+
+
 class PromptSampleRun(TimestampMixin):
     """Per-audit snapshot: which prompts were sampled and how. The
     ``seed`` field makes the sample reproducible — re-running the

@@ -388,8 +388,8 @@ dep_deploy() {
   remote_compose "up -d web celery"
   ok "Backend rebuilt and restarted"
 
-  step "Rebuild frontend bundle (no-cache)"
-  remote_compose "build --no-cache --build-arg CACHE_DATE=$cache_bust frontend"
+  step "Pull frontend image from GHCR and refresh bundle"
+  remote_compose "pull frontend"
   remote_compose "rm -f frontend" >/dev/null 2>&1 || true
   remote_compose "run --rm frontend"
   remote_compose "restart nginx"

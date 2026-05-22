@@ -89,6 +89,41 @@ urlpatterns = [
         name="prompt-library-website-variables",
     ),
     path(
+        "websites/<uuid:website_id>/prompts/<uuid:prompt_id>/detail/",
+        views.BrandPromptDetailAggView.as_view(),
+        name="prompt-library-website-prompt-detail",
+    ),
+    path(
+        "websites/<uuid:website_id>/prompts/<uuid:prompt_id>/fanouts/",
+        views.PromptFanoutsView.as_view(),
+        name="prompt-library-website-prompt-fanouts",
+    ),
+    path(
+        "websites/<uuid:website_id>/prompts/<uuid:prompt_id>/crawl/",
+        views.PromptCrawlTriggerView.as_view(),
+        name="prompt-library-website-prompt-crawl",
+    ),
+    path(
+        "websites/<uuid:website_id>/saved-prompts/agg/",
+        views.WebsiteSavedPromptsAggView.as_view(),
+        name="prompt-library-website-saved-prompts-agg",
+    ),
+    path(
+        "websites/<uuid:website_id>/saved-prompts/suggested/",
+        views.WebsiteSuggestedPromptsView.as_view(),
+        name="prompt-library-website-suggested-prompts",
+    ),
+    path(
+        "websites/<uuid:website_id>/saved-prompts/<str:action>/<uuid:prompt_id>/",
+        views.WebsiteSuggestionActionView.as_view(),
+        name="prompt-library-website-suggestion-action",
+    ),
+    path(
+        "websites/<uuid:website_id>/saved-prompts/bulk/<str:action>/",
+        views.WebsiteSuggestionBulkView.as_view(),
+        name="prompt-library-website-suggestion-bulk",
+    ),
+    path(
         "brand-prompts/<uuid:brand_prompt_id>/",
         views.BrandPromptDetailView.as_view(),
         name="prompt-library-brand-prompt-detail",
