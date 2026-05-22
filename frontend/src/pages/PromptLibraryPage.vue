@@ -1,8 +1,44 @@
 <template>
   <div class="pl-page">
-    <!-- SAVED dashboard is the primary surface for the Prompt library
-         now. The legacy 'Search' tab is reached via the dashboard's
-         + Add Prompt button when the user wants to add new prompts. -->
+    <!-- Compact page header — small eyebrow + one-line title + tab
+         row. Replaces the giant rotating hero that ate half the
+         viewport before. -->
+    <header class="pl-mini-head">
+      <div class="pl-mini-titles">
+        <div class="pl-mini-eyebrow">
+          <BookMarked :size="12" :stroke-width="2"/>
+          <span>Prompt library</span>
+        </div>
+        <h1 class="pl-mini-title">{{ activeTab === 'saved' ? 'Your prompts' : 'Add a prompt' }}</h1>
+      </div>
+      <div class="pl-mini-tabs" role="tablist">
+        <button
+          class="pl-mini-tab"
+          :class="{ 'is-on': activeTab === 'saved' }"
+          role="tab"
+          :aria-selected="activeTab === 'saved'"
+          @click="activeTab = 'saved'"
+        >
+          <Bookmark :size="13" :stroke-width="2"/>
+          Saved
+          <span v-if="savedTableRef && savedTableRef.count" class="pl-mini-tab-count">
+            {{ savedTableRef.count }}
+          </span>
+        </button>
+        <button
+          class="pl-mini-tab"
+          :class="{ 'is-on': activeTab === 'search' }"
+          role="tab"
+          :aria-selected="activeTab === 'search'"
+          @click="activeTab = 'search'"
+        >
+          <Search :size="13" :stroke-width="2"/>
+          Search
+        </button>
+      </div>
+    </header>
+
+    <!-- SAVED dashboard — primary surface -->
     <section v-if="activeTab === 'saved'" class="pl-section">
       <SavedPromptsDashboard
         ref="savedTableRef"
@@ -11,18 +47,10 @@
     </section>
 
     <template v-else>
-    <header class="pl-search-head">
-      <button class="pl-back" type="button" @click="activeTab = 'saved'">
-        <ChevronLeft :size="14" :stroke-width="2"/>
-        Back to Prompts
-      </button>
-      <h1 class="pl-search-title">Add a prompt</h1>
-      <p class="pl-search-sub">
-        Describe a scenario and we'll surface the prompts buyers are typing into
-        Claude, GPT-4, and Perplexity right now. Save the ones that match your
-        category.
-      </p>
-    </header>
+    <p class="pl-search-helper">
+      Describe a scenario and we'll surface the prompts buyers are typing into
+      Claude, GPT-4, and Perplexity right now. Save the ones that match your category.
+    </p>
 
     <!-- Context input -->
     <section class="pl-section pl-section-search">
@@ -418,7 +446,7 @@
 
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, watch, h } from 'vue'
-import { ChevronLeft } from '@lucide/vue'
+import { Bookmark, BookMarked, Search } from '@lucide/vue'
 import { useRoute } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useToast } from '@/composables/useToast'
@@ -1354,35 +1382,88 @@ watch(websiteId, loadVariables)
   font-variant-numeric: tabular-nums;
 }
 
-.pl-search-head { margin: 0 auto 20px; max-width: 720px; text-align: center; }
-.pl-back {
+.pl-mini-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 4px 0 18px;
+  flex-wrap: wrap;
+}
+.pl-mini-titles { min-width: 0; }
+.pl-mini-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  background: rgba(255, 107, 53, 0.10);
+  color: var(--brand-accent, #ff6b35);
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 6px;
+}
+.pl-mini-title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  color: var(--text-primary);
+  line-height: 1.2;
+}
+.pl-mini-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  background: var(--bg-card, #fff);
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 10px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+.pl-mini-tab {
   appearance: none;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 6px 12px 6px 8px;
-  margin-bottom: 14px;
-  background: var(--bg-card, #fff);
-  border: 1px solid var(--border-color, #e5e7eb);
-  border-radius: 999px;
+  gap: 6px;
+  padding: 6px 12px;
+  background: transparent;
+  border: none;
+  border-radius: 7px;
   font: inherit;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
   color: var(--text-muted);
   cursor: pointer;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
-.pl-back:hover { color: var(--text-primary); border-color: var(--border-hover, #d4d4d8); }
-.pl-search-title {
-  margin: 0 0 8px;
-  font-size: 1.75rem;
-  font-weight: 700;
-  letter-spacing: -0.025em;
+.pl-mini-tab:hover { color: var(--text-primary); }
+.pl-mini-tab.is-on {
+  background: var(--bg-subtle, #fafafa);
   color: var(--text-primary);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
 }
-.pl-search-sub {
-  margin: 0;
-  font-size: 0.92rem;
+.pl-mini-tab-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--brand-accent, #ff6b35);
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
+.pl-search-helper {
+  margin: 0 auto 20px;
+  max-width: 640px;
+  text-align: center;
+  font-size: 0.88rem;
   line-height: 1.55;
   color: var(--text-secondary);
 }
