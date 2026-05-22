@@ -45,9 +45,7 @@ services:
     restart: unless-stopped
 
   frontend:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile.frontend
+    image: ghcr.io/ifthikar20/ftb-ui:${UI_VERSION:-latest}
     volumes:
       - frontend_dist:/app/dist
 

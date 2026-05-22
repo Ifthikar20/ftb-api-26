@@ -66,17 +66,13 @@ generate-key:
 superuser:
 	DJANGO_SETTINGS_MODULE=$(SETTINGS_DEV) $(MANAGE) createsuperuser
 
-# Mirrors what CI Lint and the EC2 build do — runs ruff and the Vite
-# production bundle. No env vars required, no Docker, no deploy.
-# Use this to catch lint/build errors before pushing to main.
+# Mirrors what CI Lint and the EC2 build do — runs ruff only now that the
+# frontend lives in the ftb-ui repo and is built by its own GitHub Action.
 prod-build:
 	@echo "▶ Ruff (same gate as CI Lint)"
 	ruff check .
 	@echo ""
-	@echo "▶ Vite production bundle (same as docker/Dockerfile.frontend)"
-	cd frontend && npm install && npm run build
-	@echo ""
-	@echo "✓ Prod build OK. Output: frontend/dist/"
+	@echo "✓ Prod build OK. UI bundle is built and published by ftb-ui CI."
 
 # Heavier: builds the actual prod Docker images locally. Needs
 # .env.prod on disk. Use this when you want to verify Dockerfile or
