@@ -47,3 +47,33 @@ def refresh_effectiveness_scores() -> int:
     )
 
     return refresh_all_effectiveness_scores()
+
+
+@shared_task(name="apps.prompt_library.tasks.crawl_prompt_for_website",
+             bind=True, max_retries=0)
+def crawl_prompt_for_website(self, website_id: str, prompt_id: str) -> dict:
+    """Fan out + query providers for a single saved prompt.
+
+    Invoked from the Prompt-detail page's 'Run crawler' button. We
+    don't retry on failure — the crawler service updates the
+    PromptCrawlRun row with whatever it managed to capture, so the
+    UI can show partial results plus per-provider error notes.
+    """
+    from apps.prompt_library.models import Prompt
+    from apps.prompt_library.services.prompt_crawler import crawl_prompt
+    from apps.websites.models import Website
+
+    try:
+        website = Website.objects.get(id=website_id)
+        prompt = Prompt.objects.get(id=prompt_id)
+    except (Website.DoesNotExist, Prompt.DoesNotExist) as exc:
+        logger.warning("crawl_prompt_for_website: %s", exc)
+        return {"ok": False, "error": str(exc)}
+
+    outcome = crawl_prompt(website, prompt)
+    return {
+        "ok": True,
+        "fanouts": len(outcome.fanouts),
+        "responses": outcome.responses,
+        "errors": outcome.errors,
+    }

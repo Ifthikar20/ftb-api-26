@@ -24,6 +24,12 @@ export default {
     promptDetailAgg: (websiteId, promptId) =>
         api.get(`/prompt-library/websites/${websiteId}/prompts/${promptId}/detail/`),
 
+    promptFanouts: (websiteId, promptId) =>
+        api.get(`/prompt-library/websites/${websiteId}/prompts/${promptId}/fanouts/`),
+
+    crawlPrompt: (websiteId, promptId) =>
+        api.post(`/prompt-library/websites/${websiteId}/prompts/${promptId}/crawl/`),
+
     savedPromptsAgg: (websiteId) =>
         api.get(`/prompt-library/websites/${websiteId}/saved-prompts/agg/`),
 

@@ -1243,3 +1243,79 @@ class WebsiteSuggestionBulkView(APIView):
             ignore_conflicts=True,
         )
         return Response({"rejected": len(prompts)})
+
+
+class PromptFanoutsView(APIView):
+    """List fan-out sub-queries the crawler captured for a saved prompt."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, website_id, prompt_id):
+        from apps.prompt_library.models import PromptCrawlRun, PromptFanout
+
+        website = WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        try:
+            prompt = Prompt.objects.get(id=prompt_id)
+        except Prompt.DoesNotExist:
+            return Response({"detail": "Prompt not found."},
+                            status=status.HTTP_404_NOT_FOUND)
+
+        fanouts = list(
+            PromptFanout.objects
+            .filter(website=website, prompt=prompt)
+            .values("id", "text", "provider", "source", "confidence", "created_at")
+            .order_by("-created_at")[:50]
+        )
+        last_run = (
+            PromptCrawlRun.objects
+            .filter(website=website, prompt=prompt)
+            .order_by("-created_at")
+            .first()
+        )
+
+        return Response({
+            "website_id": str(website.id),
+            "prompt_id": str(prompt.id),
+            "fanouts": [
+                {**f, "id": str(f["id"]),
+                 "created_at": f["created_at"].isoformat() if f["created_at"] else None}
+                for f in fanouts
+            ],
+            "last_run": {
+                "id": str(last_run.id),
+                "status": last_run.status,
+                "fanout_count": last_run.fanout_count,
+                "source_count": last_run.source_count,
+                "providers": last_run.providers,
+                "started_at": last_run.started_at.isoformat() if last_run.started_at else None,
+                "completed_at": last_run.completed_at.isoformat() if last_run.completed_at else None,
+                "error": last_run.error or "",
+            } if last_run else None,
+        })
+
+
+class PromptCrawlTriggerView(APIView):
+    """Kick off a Celery task to crawl this prompt across providers."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, website_id, prompt_id):
+        website = WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        try:
+            prompt = Prompt.objects.get(id=prompt_id)
+        except Prompt.DoesNotExist:
+            return Response({"detail": "Prompt not found."},
+                            status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            from apps.prompt_library.tasks import crawl_prompt_for_website
+            crawl_prompt_for_website.delay(str(website.id), str(prompt.id))
+            queued = True
+        except Exception:
+            # Celery worker not running — fall back to sync so the
+            # button still does something useful in dev.
+            from apps.prompt_library.services.prompt_crawler import crawl_prompt
+            crawl_prompt(website, prompt)
+            queued = False
+        return Response({"queued": queued, "website_id": str(website.id),
+                         "prompt_id": str(prompt.id)})

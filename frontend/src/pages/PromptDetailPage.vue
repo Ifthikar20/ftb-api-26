@@ -200,6 +200,62 @@
       </div>
     </div>
 
+    <!-- Fanout Queries — sub-queries the AI engines run to gather
+         context for this prompt. Populated by the crawler. -->
+    <section class="pd-overview-head" style="margin-top: 28px">
+      <h2 class="pd-section-title">
+        <Workflow :size="16" :stroke-width="2"/>
+        Fanout queries
+      </h2>
+      <p class="pd-section-sub">Additional queries AI engines run to gather context for this prompt.</p>
+    </section>
+
+    <div class="pd-card pd-fanout-card">
+      <div class="pd-card-head">
+        <h3>
+          <Sparkles :size="14" :stroke-width="2"/>
+          Captured sub-queries
+        </h3>
+        <div class="pd-fanout-meta">
+          <span v-if="fanoutLastRun" class="pd-card-meta">
+            Last crawled {{ relativeTime(fanoutLastRun.completed_at || fanoutLastRun.started_at) }}
+            · {{ fanoutLastRun.source_count }} model {{ fanoutLastRun.source_count === 1 ? 'response' : 'responses' }}
+          </span>
+          <button
+            class="pd-crawl-btn"
+            type="button"
+            :disabled="crawling"
+            @click="onRunCrawler"
+          >
+            <Radar :size="14" :stroke-width="2"/>
+            {{ crawling ? 'Crawling…' : (fanoutLastRun ? 'Re-crawl' : 'Run crawler') }}
+          </button>
+        </div>
+      </div>
+
+      <div v-if="fanouts.length" class="pd-fanout-list">
+        <div
+          v-for="f in fanouts"
+          :key="f.id"
+          class="pd-fanout-row"
+        >
+          <span class="pd-fanout-dot" aria-hidden="true"></span>
+          <span class="pd-fanout-text">{{ f.text }}</span>
+          <span v-if="f.provider" class="pd-fanout-prov">{{ f.provider }}</span>
+        </div>
+      </div>
+
+      <div v-else-if="crawling" class="pd-empty-inline">
+        <div class="pd-spinner" aria-hidden="true"></div>
+        <p>Running the crawler — sub-queries will land here as each model responds.</p>
+      </div>
+
+      <div v-else class="pd-empty-inline">
+        <Workflow :size="32" :stroke-width="1.5"/>
+        <p>No fanout captured yet. Click <strong>Run crawler</strong> to fan this prompt out across every configured model.</p>
+      </div>
+    </div>
+
     <div v-if="loading && !detail" class="pd-loading">Loading prompt analytics…</div>
     <div v-if="error" class="pd-error">{{ error }}</div>
   </div>
@@ -215,7 +271,8 @@ import {
 } from 'chart.js'
 import {
   Activity, BarChart3, ChartLine, ChevronLeft, CircleDot, Clock,
-  Globe, Inbox, Link2, PieChart, Repeat, Sparkles, Tag, Trophy,
+  Globe, Inbox, Link2, PieChart, Radar, Repeat, Sparkles, Tag, Trophy,
+  Workflow,
 } from '@lucide/vue'
 import promptLibrary from '@/api/promptLibrary'
 
@@ -241,7 +298,62 @@ async function load() {
     loading.value = false
   }
 }
-onMounted(load)
+const fanouts = ref([])
+const fanoutLastRun = ref(null)
+const crawling = ref(false)
+let crawlPoll = null
+
+async function loadFanouts() {
+  try {
+    const { data } = await promptLibrary.promptFanouts(websiteId, promptId)
+    const body = data?.data || data || {}
+    fanouts.value = body.fanouts || []
+    fanoutLastRun.value = body.last_run || null
+    // Keep polling while the run is still in flight.
+    if (fanoutLastRun.value && fanoutLastRun.value.status === 'running') {
+      crawling.value = true
+      if (!crawlPoll) crawlPoll = setInterval(loadFanouts, 4000)
+    } else {
+      crawling.value = false
+      if (crawlPoll) { clearInterval(crawlPoll); crawlPoll = null }
+    }
+  } catch (_) {
+    /* leave previous state in place */
+  }
+}
+
+async function onRunCrawler() {
+  crawling.value = true
+  try {
+    await promptLibrary.crawlPrompt(websiteId, promptId)
+    // The crawler can run sync if Celery isn't up; either way we
+    // re-poll to pick up whatever it produced.
+    await loadFanouts()
+    await load()
+    if (!crawlPoll) crawlPoll = setInterval(async () => {
+      await loadFanouts()
+      await load()
+    }, 4000)
+  } catch (e) {
+    error.value = e?.displayMessage || 'Could not start the crawler.'
+    crawling.value = false
+  }
+}
+
+function relativeTime(iso) {
+  if (!iso) return '—'
+  const diff = Date.now() - new Date(iso).getTime()
+  const s = Math.floor(diff / 1000)
+  if (s < 60) return `${s} sec ago`
+  const m = Math.floor(s / 60)
+  if (m < 60) return `${m} min ago`
+  const h = Math.floor(m / 60)
+  if (h < 24) return `${h} hr ago`
+  const d = Math.floor(h / 24)
+  return `${d}d ago`
+}
+
+onMounted(() => { load(); loadFanouts() })
 
 const promptText = computed(() => detail.value?.prompt?.text || '')
 const promptTextShort = computed(() => {
@@ -319,17 +431,6 @@ function onFaviconError(ev, d) {
   ev.target.src = `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20'%3E%3Crect width='20' height='20' rx='5' fill='%23e5e7eb'/%3E%3Ctext x='10' y='14' text-anchor='middle' font-size='10' font-family='sans-serif' fill='%236b7280' font-weight='600'%3E${letter}%3C/text%3E%3C/svg%3E`
 }
 
-function relativeTime(iso) {
-  if (!iso) return '—'
-  const diff = Date.now() - new Date(iso).getTime()
-  const m = Math.floor(diff / 60000)
-  if (m < 60) return `${m} min ago`
-  const h = Math.floor(m / 60)
-  if (h < 24) return `${h} hr ago`
-  const d = Math.floor(h / 24)
-  if (d < 30) return `${d}d ago`
-  return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
-}
 </script>
 
 <style scoped>
@@ -597,6 +698,63 @@ function relativeTime(iso) {
 .pd-type-pct { font-variant-numeric: tabular-nums; color: var(--text-muted); }
 
 .pd-loading { padding: 40px 0; text-align: center; color: var(--text-muted); }
+
+/* Fanout queries card */
+.pd-fanout-card { padding-bottom: 8px; }
+.pd-fanout-meta { display: flex; align-items: center; gap: 12px; }
+.pd-crawl-btn {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--text-primary, #131718);
+  color: var(--text-inverse, #fff);
+  border: none;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.pd-crawl-btn:hover { opacity: 0.92; }
+.pd-crawl-btn:disabled { opacity: 0.55; cursor: progress; }
+
+.pd-fanout-list { display: flex; flex-direction: column; gap: 2px; }
+.pd-fanout-row {
+  display: grid;
+  grid-template-columns: 14px 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 8px;
+  border-bottom: 1px solid var(--border-color, #e5e7eb);
+}
+.pd-fanout-row:last-child { border-bottom: none; }
+.pd-fanout-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--brand-accent, #ff6b35);
+  opacity: 0.85;
+}
+.pd-fanout-text { font-size: 0.92rem; line-height: 1.4; color: var(--text-primary); }
+.pd-fanout-prov {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  padding: 2px 8px;
+  background: var(--bg-subtle, #fafafa);
+  border-radius: 999px;
+}
+
+.pd-spinner {
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  border: 2px solid var(--border-color, #e5e7eb);
+  border-top-color: var(--text-primary);
+  animation: pd-spin 0.9s linear infinite;
+}
+@keyframes pd-spin { to { transform: rotate(360deg); } }
+[data-theme="dark"] .pd-fanout-prov { background: var(--bg-card-hover); }
 .pd-error { padding: 20px; text-align: center; color: #b91c1c; }
 .text-muted { color: var(--text-muted); }
 
