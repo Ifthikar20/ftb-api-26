@@ -37,6 +37,15 @@
       class="mb-4"
     />
 
+    <!-- Brand backlinks card — where AI models cite your brand from. -->
+    <BrandBacklinksCard
+      :items="backlinks.items"
+      :total-mentions="backlinks.total"
+      :loading="loadingBacklinks"
+      :brand-name="websiteName"
+      class="mb-4"
+    />
+
     <!-- Contradictions banner ---------------------------------------- -->
     <div v-if="contradictions.length" class="bv-contradiction">
       <div class="bv-contradiction-icon" aria-hidden="true">!</div>
@@ -136,6 +145,7 @@ import { useToast } from '@/composables/useToast'
 import brandVaultApi from '@/api/brandVault'
 
 import BrandVaultStatsStrip from '@/components/brand_vault/BrandVaultStatsStrip.vue'
+import BrandBacklinksCard from '@/components/brand_vault/BrandBacklinksCard.vue'
 import FactReviewQueue from '@/components/brand_vault/FactReviewQueue.vue'
 import KnowledgeMap from '@/components/brand_vault/KnowledgeMap.vue'
 import ToneOfVoicePanel from '@/components/brand_vault/ToneOfVoicePanel.vue'
@@ -156,6 +166,8 @@ const websiteName = computed(() => appStore.activeWebsite?.name || '')
 const stats = reactive({ pending: 0, approved: 0, rejected: 0, auto: 0, total: 0, stale: 0 })
 const coverage = reactive({ score: 0, buckets: [] })
 const contradictions = ref([])
+const backlinks = reactive({ items: [], total: 0 })
+const loadingBacklinks = ref(false)
 const productLines = ref([])
 const topics = ref([])
 const lastExtractedAt = ref(null)
@@ -208,6 +220,7 @@ function startExtractPolling() {
         loadPending()
         loadContradictions()
         loadCoverage()
+        loadBacklinks()
       }
     } catch (_) {
       // ignore polling errors — next tick tries again
@@ -285,6 +298,21 @@ async function loadMap() {
     mapFacts.value = []
   } finally {
     loadingMap.value = false
+  }
+}
+
+async function loadBacklinks() {
+  loadingBacklinks.value = true
+  try {
+    const { data } = await brandVaultApi.backlinks(websiteId)
+    const body = data?.data || data || {}
+    backlinks.items = body.items || []
+    backlinks.total = body.total_mentions || 0
+  } catch (_) {
+    backlinks.items = []
+    backlinks.total = 0
+  } finally {
+    loadingBacklinks.value = false
   }
 }
 
@@ -459,6 +487,7 @@ onMounted(() => {
   loadPending()
   loadContradictions()
   loadCoverage()
+  loadBacklinks()
 })
 
 watch(activeTab, (tab) => {

@@ -45,6 +45,11 @@ urlpatterns = [
         name="brand-vault-website-revisions",
     ),
     path(
+        "websites/<uuid:website_id>/backlinks/",
+        views.WebsiteBacklinksView.as_view(),
+        name="brand-vault-website-backlinks",
+    ),
+    path(
         "facts/<uuid:fact_id>/",
         views.FactDetailView.as_view(),
         name="brand-vault-fact-detail",

@@ -564,6 +564,103 @@ class WebsiteToneSampleCreateView(TenantScopedAPIView):
                         status=status.HTTP_201_CREATED)
 
 
+class WebsiteBacklinksView(TenantScopedAPIView):
+    """
+    "Where was your brand mentioned" — aggregate of third-party domains
+    cited by LLM models in responses that named your brand.
+
+    A backlink here means: a citation URL that appeared inside an
+    LLMRankingResult whose ``is_mentioned`` flag is True, that does
+    NOT point at your own site (``is_target=False``). One row per
+    apex_domain with first/last-seen timestamps and a recency flag so
+    the UI can pill the freshly-detected ones.
+    """
+
+    def get(self, request, website_id):
+        website = self.get_website(website_id)
+        try:
+            from apps.citations.models import Citation
+        except Exception:
+            return Response({"website_id": str(website.id), "items": [], "total_mentions": 0})
+
+        cutoff_recent = timezone.now() - timezone.timedelta(days=7)
+        rows = (
+            Citation.objects.filter(
+                audit__website=website,
+                result__is_mentioned=True,
+                is_target=False,
+            )
+            .values(
+                "apex_domain", "domain", "source_class",
+                "is_competitor", "title",
+            )
+            .order_by()
+        )
+        # Aggregate per apex_domain in Python — the dataset is small
+        # per website (hundreds of citations max) and Postgres-side
+        # MIN/MAX with the same group-by is more brittle across the
+        # multiple title/domain variants. We materialise the queryset
+        # once and walk it; collect first/last seen separately.
+        rows = list(rows)
+        if not rows:
+            return Response({"website_id": str(website.id), "items": [], "total_mentions": 0})
+
+        # Need created_at too — re-query lightweight.
+        ts_rows = list(
+            Citation.objects.filter(
+                audit__website=website,
+                result__is_mentioned=True,
+                is_target=False,
+            ).values("apex_domain", "created_at"),
+        )
+
+        bucket: dict[str, dict] = {}
+        for r in rows:
+            apex = r["apex_domain"] or r["domain"]
+            if not apex:
+                continue
+            entry = bucket.setdefault(apex, {
+                "apex_domain": apex,
+                "domain": r["domain"],
+                "source_class": r["source_class"],
+                "is_competitor_source": False,
+                "title": r.get("title") or "",
+                "mention_count": 0,
+                "first_seen": None,
+                "last_seen": None,
+                "recent": False,
+            })
+            entry["mention_count"] += 1
+            if r["is_competitor"]:
+                entry["is_competitor_source"] = True
+
+        for r in ts_rows:
+            apex = r["apex_domain"]
+            if not apex or apex not in bucket:
+                continue
+            ts = r["created_at"]
+            entry = bucket[apex]
+            if entry["first_seen"] is None or ts < entry["first_seen"]:
+                entry["first_seen"] = ts
+            if entry["last_seen"] is None or ts > entry["last_seen"]:
+                entry["last_seen"] = ts
+
+        items = []
+        for entry in bucket.values():
+            entry["recent"] = bool(entry["last_seen"] and entry["last_seen"] >= cutoff_recent)
+            entry["first_seen"] = entry["first_seen"].isoformat() if entry["first_seen"] else None
+            entry["last_seen"] = entry["last_seen"].isoformat() if entry["last_seen"] else None
+            items.append(entry)
+
+        items.sort(key=lambda e: (-e["mention_count"], e["apex_domain"]))
+        return Response({
+            "website_id": str(website.id),
+            "items": items[:50],
+            "total_mentions": sum(e["mention_count"] for e in items),
+            "unique_domains": len(items),
+        })
+
+
 class ToneSampleDeleteView(APIView):
     """Remove one tone sample. Scoped to the user's own websites."""
 

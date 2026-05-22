@@ -26,6 +26,8 @@ export default {
     api.get(`/brand-vault/websites/${websiteId}/coverage/`),
   revisions: (websiteId, params = {}) =>
     api.get(`/brand-vault/websites/${websiteId}/revisions/`, { params }),
+  backlinks: (websiteId) =>
+    api.get(`/brand-vault/websites/${websiteId}/backlinks/`),
 
   // Imports ---------------------------------------------------------------
   importJson: (websiteId, facts) =>
