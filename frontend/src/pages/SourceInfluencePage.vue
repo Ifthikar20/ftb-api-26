@@ -1377,7 +1377,7 @@ import { useToast } from '@/composables/useToast'
 import llmRanking from '@/api/llm_ranking'
 import promptLibrary from '@/api/promptLibrary'
 import BrandVaultCheckPanel from '@/components/brand_vault/BrandVaultCheckPanel.vue'
-import { FlaskConical } from 'lucide-vue-next'
+import { FlaskConical } from '@lucide/vue'
 
 const route = useRoute()
 const router = useRouter()

@@ -216,7 +216,7 @@ import {
 import {
   Activity, BarChart3, ChartLine, ChevronLeft, CircleDot, Clock,
   Globe, Inbox, Link2, PieChart, Repeat, Sparkles, Tag, Trophy,
-} from 'lucide-vue-next'
+} from '@lucide/vue'
 import promptLibrary from '@/api/promptLibrary'
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend)

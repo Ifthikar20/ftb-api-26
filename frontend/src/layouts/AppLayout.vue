@@ -242,7 +242,7 @@ import websitesApi from '@/api/websites'
 import billingApi from '@/api/billing'
 import HelpButton from '@/components/HelpButton.vue'
 import ToastContainer from '@/components/ToastContainer.vue'
-import { Moon, Search, Sun } from 'lucide-vue-next'
+import { Moon, Search, Sun } from '@lucide/vue'
 
 const toast = useToast()
 

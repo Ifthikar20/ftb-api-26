@@ -239,7 +239,7 @@ import promptLibrary from '@/api/promptLibrary'
 import {
   ArrowUpDown, Bot, Building, Calendar, Check, ChevronDown, ChevronsUpDown,
   CloudOff, Folder, Inbox, Plus, Power, Search, Tag,
-} from 'lucide-vue-next'
+} from '@lucide/vue'
 
 const route = useRoute()
 const router = useRouter()

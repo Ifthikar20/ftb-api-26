@@ -1618,7 +1618,7 @@ import { ref, shallowRef, computed, onMounted, onBeforeUnmount, markRaw, nextTic
 import {
   Activity, Bot, CalendarClock, Coins, FileText, Globe, History,
   Link2, Play, TrendingUp, UploadCloud,
-} from 'lucide-vue-next'
+} from '@lucide/vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from '@/composables/useToast'
 import { useAppStore } from '@/stores/app'

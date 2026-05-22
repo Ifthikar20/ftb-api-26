@@ -162,7 +162,7 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue'
-import { RefreshCcw, Upload, Vault } from 'lucide-vue-next'
+import { RefreshCcw, Upload, Vault } from '@lucide/vue'
 import { useRoute } from 'vue-router'
 import { useAppStore } from '@/stores/app'
 import { useToast } from '@/composables/useToast'
