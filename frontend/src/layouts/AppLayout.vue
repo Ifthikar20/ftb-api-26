@@ -150,11 +150,6 @@
           <!-- Help Button -->
           <HelpButton />
 
-          <!-- Notifications -->
-          <button class="topbar-btn" title="Notifications">
-            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13 6a4 4 0 0 0-8 0c0 5-2 6-2 6h12s-2-1-2-6M7 15a2 2 0 0 0 4 0"/></svg>
-            <span v-if="appStore.unreadCount" class="notif-dot"></span>
-          </button>
         </div>
       </header>
 
@@ -795,16 +790,6 @@ onUnmounted(() => {
 }
 
 .topbar-btn:hover { color: var(--text-primary); }
-
-.notif-dot {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  width: 7px;
-  height: 7px;
-  background: var(--color-danger);
-  border-radius: 50%;
-}
 
 /* Page Content */
 .page-content {
