@@ -3,6 +3,10 @@
     <!-- Header --------------------------------------------------------- -->
     <header id="bv-header" class="bv-header">
       <div class="bv-header-titles">
+        <div class="bv-eyebrow">
+          <Vault :size="12" :stroke-width="2"/>
+          <span>Source of truth</span>
+        </div>
         <h1 class="bv-title">Brand Vault</h1>
         <p class="bv-subtitle">
           The single source of truth our AI agents read when they answer
@@ -15,6 +19,7 @@
       </div>
       <div class="bv-header-actions">
         <AirButton variant="outline" size="md" @click="importOpen = true">
+          <Upload :size="14" :stroke-width="1.8"/>
           Import facts
         </AirButton>
         <AirButton
@@ -24,6 +29,7 @@
           :disabled="extracting"
           @click="onReExtract"
         >
+          <RefreshCcw v-if="!extracting" :size="14" :stroke-width="1.8"/>
           {{ extracting ? 'Queuing…' : 'Re-scan from sources' }}
         </AirButton>
       </div>
@@ -156,6 +162,7 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue'
+import { RefreshCcw, Upload, Vault } from 'lucide-vue-next'
 import { useRoute } from 'vue-router'
 import { useAppStore } from '@/stores/app'
 import { useToast } from '@/composables/useToast'
@@ -584,6 +591,20 @@ onBeforeUnmount(() => {
   flex-wrap: wrap;
 }
 .bv-header-titles { min-width: 0; }
+.bv-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  background: rgba(255, 107, 53, 0.10);
+  color: var(--brand-accent, #ff6b35);
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 10px;
+}
 .bv-title {
   margin: 0;
   font-size: 1.5rem;

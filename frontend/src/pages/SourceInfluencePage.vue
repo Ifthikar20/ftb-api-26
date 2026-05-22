@@ -3,6 +3,10 @@
     <!-- ── Hero ──────────────────────────────────────────────────── -->
     <div class="page-header">
       <div>
+        <div class="mt-eyebrow">
+          <FlaskConical :size="12" :stroke-width="2"/>
+          <span>Model Test</span>
+        </div>
         <div class="mt-title-line">
           <h1 class="page-title">Model Test</h1>
           <span class="mt-audit-type" :title="auditTypeBlurb">
@@ -1373,6 +1377,7 @@ import { useToast } from '@/composables/useToast'
 import llmRanking from '@/api/llm_ranking'
 import promptLibrary from '@/api/promptLibrary'
 import BrandVaultCheckPanel from '@/components/brand_vault/BrandVaultCheckPanel.vue'
+import { FlaskConical } from 'lucide-vue-next'
 
 const route = useRoute()
 const router = useRouter()
@@ -3200,6 +3205,20 @@ onBeforeUnmount(() => document.removeEventListener('click', _closeDropdownOnDocC
 
 /* Audit-type chip — page title + status headline. */
 .mt-title-line { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.mt-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  background: rgba(255, 107, 53, 0.10);
+  color: var(--brand-accent, #ff6b35);
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 10px;
+}
 .mt-audit-type {
   display: inline-flex; align-items: center; gap: 6px;
   font-size: 10.5px; font-weight: 600; letter-spacing: 0.10em;

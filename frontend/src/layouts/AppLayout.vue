@@ -116,7 +116,7 @@
 
         <div class="topbar-search" @click="openSearch">
           <div class="search-trigger">
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="6" cy="6" r="4.5"/><line x1="9.5" y1="9.5" x2="13" y2="13"/></svg>
+            <Search :size="14" :stroke-width="1.8"/>
             <span class="search-placeholder">Search pages...</span>
             <span class="search-shortcut">{{ isMac ? '⌘' : 'Ctrl' }}+K</span>
           </div>
@@ -125,8 +125,8 @@
         <div class="topbar-actions">
           <!-- Theme Toggle -->
           <button class="theme-toggle" @click="appStore.toggleTheme" :title="appStore.theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'">
-            <svg v-if="appStore.theme === 'light'" width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M15 10A7 7 0 1 1 8 3a5 5 0 0 0 7 7z"/></svg>
-            <svg v-else width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="9" cy="9" r="4"/><path d="M9 1v2M9 15v2M1 9h2M15 9h2M3.3 3.3l1.4 1.4M13.3 13.3l1.4 1.4M14.7 3.3l-1.4 1.4M4.7 13.3l-1.4 1.4"/></svg>
+            <Moon v-if="appStore.theme === 'light'" :size="18" :stroke-width="1.6"/>
+            <Sun v-else :size="18" :stroke-width="1.6"/>
           </button>
 
           <!-- Help Button -->
@@ -242,6 +242,7 @@ import websitesApi from '@/api/websites'
 import billingApi from '@/api/billing'
 import HelpButton from '@/components/HelpButton.vue'
 import ToastContainer from '@/components/ToastContainer.vue'
+import { Moon, Search, Sun } from 'lucide-vue-next'
 
 const toast = useToast()
 

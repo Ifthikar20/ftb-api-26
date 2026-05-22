@@ -48,12 +48,17 @@
     <template v-else>
     <div class="page-header">
       <div>
+        <div class="page-eyebrow">
+          <Activity :size="12" :stroke-width="2"/>
+          <span>AI Visibility</span>
+        </div>
         <h1 class="page-title">LLM Dashboard</h1>
         <p class="page-subtitle">
           See how AI tools like Claude, GPT-4, Gemini, and Perplexity rank your business
           when users ask them to find a service like yours.
         </p>
         <p v-if="currentWebsite" class="page-context">
+          <Globe :size="12" :stroke-width="1.8"/>
           Auditing <strong>{{ websiteName }}</strong>
           <span v-if="homepageUrl" class="text-muted">· {{ homepageUrl }}</span>
           <a href="/websites/" class="page-context-link">change website</a>
@@ -61,10 +66,11 @@
       </div>
       <div class="header-actions">
         <button class="btn btn-secondary btn-sm" @click="showScheduleModal = true">
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-right:4px"><circle cx="8" cy="8" r="6"/><path d="M8 4v4l3 2"/></svg>
+          <CalendarClock :size="14" :stroke-width="1.8"/>
           {{ schedule ? 'Edit Schedule' : 'Schedule' }}
         </button>
         <button class="btn btn-primary btn-sm" @click="openRunAudit" :disabled="running">
+          <Play v-if="!running" :size="13" :stroke-width="2.2" fill="currentColor"/>
           {{ running ? 'Running audit...' : 'Run New Audit' }}
         </button>
       </div>
@@ -176,7 +182,7 @@
         <div class="card ov-card">
           <div class="ov-card-head">
             <div>
-              <h3 class="ov-card-title">Visibility Over Time</h3>
+              <h3 class="ov-card-title"><TrendingUp :size="14" :stroke-width="2"/>Visibility Over Time</h3>
               <p class="ov-card-sub">{{ historyData.length || 0 }} completed audits</p>
             </div>
           </div>
@@ -194,7 +200,7 @@
         <div class="card ov-card">
           <div class="ov-card-head">
             <div>
-              <h3 class="ov-card-title">Model Coverage</h3>
+              <h3 class="ov-card-title"><Bot :size="14" :stroke-width="2"/>Model Coverage</h3>
               <p class="ov-card-sub">{{ providerHealth.configured_count }}/{{ providerHealth.total }} configured</p>
             </div>
           </div>
@@ -221,7 +227,7 @@
       <div class="card ov-card">
         <div class="ov-card-head">
           <div>
-            <h3 class="ov-card-title">Recent Audits</h3>
+            <h3 class="ov-card-title"><History :size="14" :stroke-width="2"/>Recent Audits</h3>
             <p class="ov-card-sub">{{ audits.length }} {{ audits.length === 1 ? 'run' : 'runs' }}</p>
           </div>
           <button v-if="audits.length > 5" class="btn btn-ghost btn-sm" @click="showAllAudits = !showAllAudits">
@@ -281,7 +287,7 @@
       <div v-if="usageData" class="card ov-card">
         <div class="ov-card-head">
           <div>
-            <h3 class="ov-card-title">Usage</h3>
+            <h3 class="ov-card-title"><Coins :size="14" :stroke-width="2"/>Usage</h3>
             <p class="ov-card-sub">Last {{ usageDays }} days</p>
           </div>
           <select v-model.number="usageDays" class="ov-select" @change="loadUsage">
@@ -525,7 +531,7 @@
         <div class="card ov-card">
           <div class="ov-card-head">
             <div>
-              <h3 class="ov-card-title">Pages on your site</h3>
+              <h3 class="ov-card-title"><FileText :size="14" :stroke-width="2"/>Pages on your site</h3>
               <p class="ov-card-sub">
                 Pull in any path on <strong v-if="homepageOrigin">{{ homepageOrigin }}</strong><span v-else>this domain</span> so models see them when answering buyer-style questions.
               </p>
@@ -574,7 +580,7 @@
         <div class="card ov-card">
           <div class="ov-card-head">
             <div>
-              <h3 class="ov-card-title">External sources</h3>
+              <h3 class="ov-card-title"><Link2 :size="14" :stroke-width="2"/>External sources</h3>
               <p class="ov-card-sub">Press, docs, comparison sites — anything off your domain. We'll scan and summarize each.</p>
             </div>
             <span class="pages-count">{{ contextUrls.length }}/5</span>
@@ -632,7 +638,7 @@
       <div class="card ov-card">
         <div class="ov-card-head">
           <div>
-            <h3 class="ov-card-title">Uploaded documents</h3>
+            <h3 class="ov-card-title"><UploadCloud :size="14" :stroke-width="2"/>Uploaded documents</h3>
             <p class="ov-card-sub">Briefs, sheets, or notes you want the models to read alongside your pages.</p>
           </div>
           <span class="pages-count">{{ uploadedDocuments.length }} files</span>
@@ -1609,6 +1615,10 @@
 
 <script setup>
 import { ref, shallowRef, computed, onMounted, onBeforeUnmount, markRaw, nextTick, watch } from 'vue'
+import {
+  Activity, Bot, CalendarClock, Coins, FileText, Globe, History,
+  Link2, Play, TrendingUp, UploadCloud,
+} from 'lucide-vue-next'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from '@/composables/useToast'
 import { useAppStore } from '@/stores/app'
@@ -4894,7 +4904,29 @@ onBeforeUnmount(() => {
 .ov-grid { display: grid; gap: 16px; }
 .ov-grid-2 { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); }
 @media (max-width: 1024px) { .ov-grid-2 { grid-template-columns: 1fr; } }
-.ov-card { padding: 18px 22px 22px; border-radius: 14px; }
+.ov-card {
+  padding: 18px 22px 22px;
+  border-radius: 14px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  transition: box-shadow 0.18s ease, border-color 0.18s ease;
+}
+.ov-card:hover { box-shadow: 0 4px 16px -8px rgba(15, 23, 42, 0.12), 0 1px 2px rgba(15, 23, 42, 0.04); }
+.page-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  background: rgba(255, 107, 53, 0.10);
+  color: var(--brand-accent, #ff6b35);
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 10px;
+}
+.page-context { display: inline-flex; align-items: center; gap: 6px; }
+.page-context svg { color: var(--text-muted); }
 .ov-card-head {
   display: flex;
   align-items: flex-start;
@@ -4903,6 +4935,9 @@ onBeforeUnmount(() => {
   margin-bottom: 16px;
 }
 .ov-card-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   margin: 0;
   font-size: 0.95rem;
   font-weight: 600;
