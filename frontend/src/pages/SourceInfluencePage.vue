@@ -4674,4 +4674,120 @@ onBeforeUnmount(() => document.removeEventListener('click', _closeDropdownOnDocC
 .mt-matrix-cell.is-pos-hot { background: #0f172a; color: #fff; }
 .mt-matrix-cell.is-neg     { background: #f1f5f9; color: #64748b; }
 .mt-matrix-cell.is-neg-hot { background: #e2e8f0; color: #0f172a; }
+
+/* ───────────────────────────────────────────────────────────────────────────
+   Dark-mode overrides. The Model Test page predates the theme tokens and
+   hardcodes light-mode colors throughout. Rather than refactor 1600 lines
+   of CSS we override the surfaces that matter when [data-theme="dark"] is
+   active on <html>.
+   ─────────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .mt-page,
+[data-theme="dark"] .mt-page .page-subtitle,
+[data-theme="dark"] .mt-page .page-subtitle strong { color: var(--text-primary); }
+
+/* Cards + sections */
+[data-theme="dark"] .mt-card {
+  background: var(--bg-card);
+  border-color: var(--border-color);
+}
+[data-theme="dark"] .mt-card-eyebrow { color: var(--text-muted); }
+[data-theme="dark"] .mt-card-h,
+[data-theme="dark"] .mt-card-h * { color: var(--text-primary); }
+[data-theme="dark"] .mt-card-sub { color: var(--text-secondary); }
+[data-theme="dark"] .mt-card-head { border-bottom-color: var(--border-color); }
+
+/* Inputs / selects / textareas */
+[data-theme="dark"] .mt-input,
+[data-theme="dark"] .mt-prompt-edit,
+[data-theme="dark"] .mt-env-select {
+  background: var(--bg-input);
+  color: var(--text-primary);
+  border-color: var(--border-color);
+}
+[data-theme="dark"] .mt-env-select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%23cbd5e1' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10z'/%3E%3C/svg%3E");
+}
+[data-theme="dark"] .mt-input::placeholder,
+[data-theme="dark"] .mt-prompt-edit::placeholder { color: var(--text-muted); }
+[data-theme="dark"] .mt-input:focus,
+[data-theme="dark"] .mt-prompt-edit:focus,
+[data-theme="dark"] .mt-env-select:focus {
+  border-color: var(--brand-accent, #ff6b35);
+  box-shadow: 0 0 0 3px rgba(255, 107, 53, 0.18);
+}
+
+/* Buttons */
+[data-theme="dark"] .mt-btn-primary,
+[data-theme="dark"] .mt-btn-run {
+  background: var(--brand-accent, #ff6b35);
+  color: #fff;
+}
+[data-theme="dark"] .mt-btn-primary:hover:not(:disabled),
+[data-theme="dark"] .mt-btn-run:hover:not(:disabled) { background: #e85a2a; }
+[data-theme="dark"] .mt-btn-primary:disabled,
+[data-theme="dark"] .mt-btn-run:disabled {
+  background: var(--bg-card-hover);
+  color: var(--text-muted);
+}
+[data-theme="dark"] .mt-btn-soft {
+  background: var(--bg-card-hover);
+  color: var(--text-primary);
+  border-color: var(--border-color);
+}
+[data-theme="dark"] .mt-btn-soft:hover { background: var(--border-color); }
+
+[data-theme="dark"] .mt-link { color: var(--text-secondary); }
+[data-theme="dark"] .mt-link:hover { color: var(--text-primary); }
+[data-theme="dark"] .mt-link.is-danger { color: #f87171; }
+
+/* Bundle (env) picker */
+[data-theme="dark"] .mt-env-empty { color: var(--text-muted); }
+[data-theme="dark"] .mt-env-empty a { color: var(--text-primary); }
+[data-theme="dark"] .mt-env-chip {
+  background: var(--bg-card);
+  color: var(--text-primary);
+  border-color: var(--border-color);
+}
+[data-theme="dark"] .mt-env-chip:hover { border-color: var(--text-secondary); }
+[data-theme="dark"] .mt-env-chip.is-on {
+  background: var(--text-primary);
+  color: var(--bg-card);
+  border-color: var(--text-primary);
+}
+[data-theme="dark"] .mt-env-chip-count {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-secondary);
+}
+
+/* Prompt list rows */
+[data-theme="dark"] .mt-prompt-row {
+  background: var(--bg-card-hover);
+  border-color: var(--border-color);
+}
+[data-theme="dark"] .mt-prompt-row.is-editing { background: var(--bg-input); }
+[data-theme="dark"] .mt-prompt-text { color: var(--text-primary); }
+[data-theme="dark"] .mt-prompt-icon { color: var(--text-secondary); }
+[data-theme="dark"] .mt-prompt-icon:hover {
+  background: var(--bg-card-hover);
+  color: var(--text-primary);
+}
+
+/* Stat / history / labels */
+[data-theme="dark"] .mt-muted,
+[data-theme="dark"] .mt-stat-label,
+[data-theme="dark"] .mt-history-meta,
+[data-theme="dark"] .mt-env-step { color: var(--text-muted); }
+[data-theme="dark"] .mt-stat-val,
+[data-theme="dark"] .mt-history-title { color: var(--text-primary); }
+
+/* Tables + matrix */
+[data-theme="dark"] .mt-table th,
+[data-theme="dark"] .mt-table td { border-color: var(--border-color); }
+[data-theme="dark"] .mt-table th { color: var(--text-muted); background: var(--bg-card-hover); }
+[data-theme="dark"] .mt-table td { color: var(--text-primary); }
+[data-theme="dark"] .mt-matrix-cell.is-empty { background: var(--bg-card-hover); color: var(--text-muted); }
+[data-theme="dark"] .mt-matrix-cell.is-pos { background: rgba(16, 185, 129, 0.15); color: #6ee7b7; }
+[data-theme="dark"] .mt-matrix-cell.is-pos-hot { background: #10b981; color: #ffffff; }
+[data-theme="dark"] .mt-matrix-cell.is-neg { background: var(--bg-card-hover); color: var(--text-muted); }
+[data-theme="dark"] .mt-matrix-cell.is-neg-hot { background: var(--border-color); color: var(--text-primary); }
 </style>
