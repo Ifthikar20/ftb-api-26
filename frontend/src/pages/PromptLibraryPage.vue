@@ -1151,29 +1151,16 @@ watch(websiteId, loadVariables)
   position: relative;
   width: 100%;
   max-width: none;
-  padding: 32px 40px 48px;
+  padding: 20px 24px 40px;
   margin: 0;
   background: var(--bg-root, var(--bg-page, #fafafa));
   min-height: 100%;
   overflow-x: hidden;
 }
-/* Ambient hero glow behind the header — same trick used in the
-   onboarding modal and paywall so the search bar feels like the
-   focal point of a real library/search app. */
-.pl-page::before {
-  content: '';
-  position: absolute;
-  top: -120px;
-  left: 50%;
-  width: 820px;
-  height: 480px;
-  transform: translateX(-50%);
-  background: radial-gradient(ellipse at center, var(--pl-accent-soft) 0%, transparent 65%);
-  filter: blur(48px);
-  pointer-events: none;
-  opacity: 0.7;
-  z-index: 0;
-}
+/* Ambient hero glow removed — the giant hero it was decorating is
+   gone, so the blur just left an unexplained orange smudge above the
+   filter chips. */
+.pl-page::before { content: none; }
 .pl-page > * { position: relative; z-index: 1; }
 
 .pl-page-header {
