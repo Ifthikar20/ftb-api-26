@@ -1,61 +1,8 @@
 <template>
   <div class="pl-page">
-    <!-- Header -->
-    <header id="pl-header" class="page-header pl-hero">
-      <span class="pl-hero-eyebrow">Prompt library</span>
-      <!-- Fixed-height slots so the rotating headline/subhead never
-           change the hero's vertical size — keeps the table below
-           pinned regardless of which line is showing. -->
-      <div class="pl-hero-title-slot">
-        <Transition name="pl-hero-fade" mode="out-in">
-          <h1 :key="heroIndex" class="pl-hero-title">{{ heroLine.title }}</h1>
-        </Transition>
-      </div>
-      <div class="pl-hero-sub-slot">
-        <Transition name="pl-hero-fade" mode="out-in">
-          <p :key="`s-${heroIndex}`" class="pl-hero-sub">{{ heroLine.sub }}</p>
-        </Transition>
-      </div>
-    </header>
-
-    <!-- Tab toggle: Search vs Saved -->
-    <div class="pl-tabs" role="tablist">
-      <span
-        class="pl-tab-indicator"
-        :style="{ transform: `translateX(${activeTab === 'saved' ? '100%' : '0%'})` }"
-        aria-hidden="true"
-      ></span>
-      <button
-        class="pl-tab"
-        :class="{ 'is-active': activeTab === 'search' }"
-        role="tab"
-        :aria-selected="activeTab === 'search'"
-        @click="activeTab = 'search'"
-      >
-        <svg class="pl-tab-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="11" cy="11" r="7" stroke-linecap="round"/>
-          <path d="M21 21l-4.35-4.35" stroke-linecap="round"/>
-        </svg>
-        <span>Search</span>
-      </button>
-      <button
-        class="pl-tab"
-        :class="{ 'is-active': activeTab === 'saved' }"
-        role="tab"
-        :aria-selected="activeTab === 'saved'"
-        @click="activeTab = 'saved'"
-      >
-        <svg class="pl-tab-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-        <span>Saved</span>
-        <span v-if="savedTableRef && savedTableRef.count" class="pl-tab-count">
-          {{ savedTableRef.count }}
-        </span>
-      </button>
-    </div>
-
-    <!-- SAVED tab -->
+    <!-- SAVED dashboard is the primary surface for the Prompt library
+         now. The legacy 'Search' tab is reached via the dashboard's
+         + Add Prompt button when the user wants to add new prompts. -->
     <section v-if="activeTab === 'saved'" class="pl-section">
       <SavedPromptsDashboard
         ref="savedTableRef"
@@ -64,6 +11,19 @@
     </section>
 
     <template v-else>
+    <header class="pl-search-head">
+      <button class="pl-back" type="button" @click="activeTab = 'saved'">
+        <ChevronLeft :size="14" :stroke-width="2"/>
+        Back to Prompts
+      </button>
+      <h1 class="pl-search-title">Add a prompt</h1>
+      <p class="pl-search-sub">
+        Describe a scenario and we'll surface the prompts buyers are typing into
+        Claude, GPT-4, and Perplexity right now. Save the ones that match your
+        category.
+      </p>
+    </header>
+
     <!-- Context input -->
     <section class="pl-section pl-section-search">
       <ContextInputCard
@@ -458,6 +418,7 @@
 
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, watch, h } from 'vue'
+import { ChevronLeft } from '@lucide/vue'
 import { useRoute } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useToast } from '@/composables/useToast'
@@ -484,7 +445,7 @@ const { activeWebsite } = storeToRefs(appStore)
 const websiteId = computed(() => route.params.websiteId || activeWebsite.value?.id || null)
 
 // ── Tab state (Search vs Saved) ──
-const activeTab = ref(route?.query?.tab === 'saved' ? 'saved' : 'search')
+const activeTab = ref(route?.query?.tab === 'search' ? 'search' : 'saved')
 const savedTableRef = ref(null)
 watch(activeTab, (v) => {
   if (v === 'saved' && savedTableRef.value?.load) savedTableRef.value.load()
@@ -1391,6 +1352,39 @@ watch(websiteId, loadVariables)
   font-size: 11px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
+}
+
+.pl-search-head { margin: 0 auto 20px; max-width: 720px; text-align: center; }
+.pl-back {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px 6px 8px;
+  margin-bottom: 14px;
+  background: var(--bg-card, #fff);
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 999px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+.pl-back:hover { color: var(--text-primary); border-color: var(--border-hover, #d4d4d8); }
+.pl-search-title {
+  margin: 0 0 8px;
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  color: var(--text-primary);
+}
+.pl-search-sub {
+  margin: 0;
+  font-size: 0.92rem;
+  line-height: 1.55;
+  color: var(--text-secondary);
 }
 
 .pl-section { margin-bottom: 32px; }
