@@ -11,7 +11,7 @@
           </span>
         </div>
         <p class="page-subtitle">
-          Pick an environment, edit the prompts, choose the models, and run.
+          Pick a prompt bundle, edit the prompts, choose the models, and run.
           See whether <strong>{{ brandLabel }}</strong> surfaces — and compare
           how each model performs side by side.
         </p>
@@ -985,31 +985,38 @@
          them back. -->
     <template v-if="!hasActiveRun">
 
-    <!-- ── 1. Environment picker (compact strip) ────────────────── -->
+    <!-- ── 1. Prompt-bundle picker (dropdown) ────────────────────
+         Bundles are created from the Prompt Library's saved view.
+         This page just selects an existing one or stays ad-hoc. -->
     <section class="mt-card mt-env-card">
       <div class="mt-env-line">
-        <span class="mt-env-step">Step 1 · Environment</span>
+        <span class="mt-env-step">Step 1 · Prompt bundle</span>
 
         <div class="mt-env-strip">
-          <button
-            type="button"
-            class="mt-env-chip"
-            :class="{ 'is-on': !selectedEnvId }"
-            @click="clearActiveEnv"
-          >Ad-hoc</button>
-          <button
-            v-for="env in envs"
-            :key="env.id"
-            type="button"
-            class="mt-env-chip"
-            :class="{ 'is-on': selectedEnvId === env.id }"
-            @click="applyEnvSelection(env)"
-            :title="`${env.prompt_count ?? (env.prompt_ids || []).length} prompts`"
+          <select
+            class="mt-env-select"
+            :value="selectedEnvId || ''"
+            :disabled="loadingEnvs"
+            @change="onBundleSelect(($event.target).value)"
           >
-            {{ env.name }}
-            <span class="mt-env-chip-count">
-              {{ env.prompt_count ?? (env.prompt_ids || []).length }}
-            </span>
+            <option value="">Ad-hoc (no bundle)</option>
+            <option v-for="env in envs" :key="env.id" :value="env.id">
+              {{ env.name }} · {{ env.prompt_count ?? (env.prompt_ids || []).length }} prompts
+            </option>
+          </select>
+          <button
+            type="button"
+            class="mt-link"
+            :disabled="loadingEnvs"
+            @click="loadEnvs"
+            :title="loadingEnvs ? 'Loading…' : 'Refresh bundles'"
+          >
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M2 8a6 6 0 0 1 10.9-3.5"/>
+              <path d="M14 8A6 6 0 0 1 3.1 11.5"/>
+              <path d="M14 2v4h-4M2 14v-4h4"/>
+            </svg>
+            Refresh
           </button>
           <span v-if="loadingEnvs" class="mt-muted">Loading…</span>
         </div>
@@ -1017,9 +1024,13 @@
         <div class="mt-env-actions">
           <button v-if="activeEnv" class="mt-link" @click="renameActiveEnv">Rename</button>
           <button v-if="activeEnv" class="mt-link is-danger" @click="deleteActiveEnv">Delete</button>
-          <button class="mt-btn-soft mt-btn-sm" @click="promptCreateEnv">+ New</button>
         </div>
       </div>
+      <p v-if="!envs.length && !loadingEnvs" class="mt-env-empty">
+        No prompt bundles yet — group prompts from the
+        <router-link :to="`/llm-ranking/${websiteId}/prompts`">Prompt Library</router-link>
+        and they'll appear here.
+      </p>
     </section>
 
     <!-- ── 2. Prompts — auto-loaded, editable ───────────────────── -->
@@ -1736,6 +1747,14 @@ function _setEnvPromptIds(envId, ids) {
 function clearActiveEnv() {
   selectedEnvId.value = null
   selectedPrompts.value = []
+}
+
+// Single handler for the bundle dropdown — empty value clears the
+// selection, otherwise resolve the env by id and apply it.
+function onBundleSelect(value) {
+  if (!value) { clearActiveEnv(); return }
+  const env = envs.value.find(e => String(e.id) === String(value))
+  if (env) applyEnvSelection(env)
 }
 
 async function promptCreateEnv() {
@@ -2971,6 +2990,13 @@ function applyQueryPreselect() {
 }
 
 function _closeDropdownOnDocClick() { dropdownOpen.value = null }
+// Refresh the bundle dropdown when the tab regains focus — covers the
+// flow where the user creates a bundle in another tab (Prompt Library)
+// and comes straight back here. Cheap call, idempotent.
+function _onWindowFocus() {
+  loadEnvs()
+}
+
 onMounted(async () => {
   await Promise.all([loadSaved(), loadEnvs(), loadModelVariants(), loadHistory()])
   applyQueryPreselect()
@@ -2978,6 +3004,11 @@ onMounted(async () => {
   // refetch and re-render so the user stays where they were.
   await hydrateRunFromUrl()
   document.addEventListener('click', _closeDropdownOnDocClick)
+  window.addEventListener('focus', _onWindowFocus)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('focus', _onWindowFocus)
 })
 
 // Refresh history whenever a run reaches a terminal state so the
@@ -3097,13 +3128,37 @@ onBeforeUnmount(() => document.removeEventListener('click', _closeDropdownOnDocC
   flex: none;
 }
 .mt-env-strip {
-  display: flex; align-items: center; gap: 6px;
+  display: flex; align-items: center; gap: 10px;
   flex: 1; min-width: 0;
-  overflow-x: auto;
   padding: 2px 0;
 }
-.mt-env-strip::-webkit-scrollbar { height: 4px; }
-.mt-env-strip::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 4px; }
+.mt-env-select {
+  flex: 1;
+  min-width: 240px;
+  max-width: 420px;
+  appearance: none;
+  background: #fff
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%23475569' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10z'/%3E%3C/svg%3E")
+    no-repeat right 12px center;
+  border: 1px solid rgba(15, 23, 42, 0.18);
+  border-radius: 10px;
+  padding: 8px 34px 8px 14px;
+  font: inherit;
+  font-size: 13px;
+  color: #0f172a;
+  cursor: pointer;
+}
+.mt-env-select:disabled { opacity: 0.6; cursor: progress; }
+.mt-env-empty {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: #64748b;
+}
+.mt-env-empty a {
+  color: #0f172a;
+  font-weight: 600;
+  text-decoration: underline;
+}
 .mt-env-chip {
   flex: none;
   display: inline-flex; align-items: center; gap: 6px;

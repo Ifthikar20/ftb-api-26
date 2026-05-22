@@ -38,7 +38,7 @@
           :class="{ 'is-on': envFilter === '__unassigned__' }"
           @click="envFilter = '__unassigned__'"
         >Unassigned <span class="spt-envchip-count">{{ unassignedCount }}</span></button>
-        <button class="spt-envchip is-add" @click="openCreateEnv">+ New environment</button>
+        <button class="spt-envchip is-add" @click="openCreateEnv">+ New prompt bundle</button>
       </div>
 
       <!-- Env-level actions appear only when a specific env is selected.
@@ -74,7 +74,7 @@
         <div class="spt-empty-title">No saved prompts yet</div>
         <p class="spt-empty-sub">
           Run a search and click <strong>Save</strong> on any prompt to add it
-          here, then group prompts into a <strong>test environment</strong> to
+          here, then group prompts into a <strong>prompt bundle</strong> to
           run as a batch on the Model Test page.
         </p>
         <AirButton variant="primary" size="sm" @click="$emit('go-search')">
@@ -97,7 +97,7 @@
             <th style="width: 110px">ID</th>
             <th style="width: 120px">Style</th>
             <th>Prompt</th>
-            <th style="width: 200px">Environments</th>
+            <th style="width: 200px">Bundles</th>
             <th style="width: 130px">Status</th>
             <th style="width: 44px" class="text-right" aria-label="Remove"></th>
           </tr>
@@ -156,18 +156,18 @@
         <div class="spt-bar-actions">
           <div class="spt-add-wrap" @click.stop>
             <button class="spt-bar-btn" @click="addMenuOpen = !addMenuOpen">
-              Add to env
+              Add to bundle
               <svg width="10" height="6" viewBox="0 0 10 6" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M1 1l4 4 4-4" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </button>
             <div v-if="addMenuOpen" class="spt-add-menu">
               <button v-for="env in envs" :key="env.id" class="spt-add-item"
                       @click="bulkAddToEnv(env)">{{ env.name }}</button>
-              <div v-if="!envs.length" class="spt-add-empty">No envs yet</div>
+              <div v-if="!envs.length" class="spt-add-empty">No bundles yet</div>
               <div class="spt-add-divider"></div>
-              <button class="spt-add-item is-primary" @click="bulkCreateEnvFromSelection">+ Create new env from selection</button>
+              <button class="spt-add-item is-primary" @click="bulkCreateEnvFromSelection">+ Create new bundle from selection</button>
             </div>
           </div>
-          <button class="spt-bar-btn" :disabled="!canBulkRemove" @click="bulkRemoveFromEnv">Remove from env</button>
+          <button class="spt-bar-btn" :disabled="!canBulkRemove" @click="bulkRemoveFromEnv">Remove from bundle</button>
         </div>
       </div>
     </transition>
@@ -389,7 +389,7 @@ async function bulkCreateEnvFromSelection() {
   addMenuOpen.value = false
   const ids = Array.from(selectedIds.value)
   if (!ids.length) return
-  const name = window.prompt('Name this environment:', `Env ${envs.value.length + 1}`)
+  const name = window.prompt('Name this prompt bundle:', `Bundle ${envs.value.length + 1}`)
   if (!name || !name.trim()) return
   try {
     const { data } = await promptLibrary.createTestEnvironment(
@@ -402,8 +402,8 @@ async function bulkCreateEnvFromSelection() {
     clearSelection()
   } catch (e) {
     const msg = e.response?.status === 409
-      ? 'An environment with that name already exists.'
-      : (e.displayMessage || 'Could not create env.')
+      ? 'A bundle with that name already exists.'
+      : (e.displayMessage || 'Could not create bundle.')
     toast.error(msg)
   }
 }
@@ -418,7 +418,7 @@ function runSelectionAsTest() {
 
 // ── Env CRUD from group headers ─────────────────────────────────
 async function openCreateEnv() {
-  const name = window.prompt('Name this environment:', `Env ${envs.value.length + 1}`)
+  const name = window.prompt('Name this prompt bundle:', `Bundle ${envs.value.length + 1}`)
   if (!name || !name.trim()) return
   try {
     const { data } = await promptLibrary.createTestEnvironment(props.websiteId, name.trim(), [])
@@ -427,8 +427,8 @@ async function openCreateEnv() {
     envFilter.value = env.id
   } catch (e) {
     const msg = e.response?.status === 409
-      ? 'An environment with that name already exists.'
-      : (e.displayMessage || 'Could not create env.')
+      ? 'A bundle with that name already exists.'
+      : (e.displayMessage || 'Could not create bundle.')
     toast.error(msg)
   }
 }
