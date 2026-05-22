@@ -1,44 +1,49 @@
 <template>
   <div class="pd-page fade-in">
-    <!-- Breadcrumb + filters -->
+    <!-- Breadcrumb chip -->
     <div class="pd-breadcrumb">
       <router-link :to="`/llm-ranking/${websiteId}/prompts`" class="pd-bc-link">
+        <ChevronLeft :size="14" :stroke-width="2" />
         Prompts
       </router-link>
-      <span class="pd-bc-sep">›</span>
+      <span class="pd-bc-sep">/</span>
       <span class="pd-bc-current">{{ promptTextShort }}</span>
     </div>
 
     <!-- Header -->
     <header class="pd-header">
-      <div class="pd-header-eyebrow">Prompt</div>
+      <div class="pd-header-eyebrow">
+        <Sparkles :size="12" :stroke-width="2" />
+        <span>Prompt</span>
+      </div>
       <h1 class="pd-title">{{ promptText || 'Loading…' }}</h1>
     </header>
 
     <!-- Metadata strip -->
     <div class="pd-meta-grid">
       <div class="pd-meta">
-        <div class="pd-meta-label">Date added</div>
+        <div class="pd-meta-label"><Clock :size="12" :stroke-width="2"/>Date added</div>
         <div class="pd-meta-val">{{ relativeTime(detail?.prompt?.created_at) }}</div>
       </div>
       <div class="pd-meta">
-        <div class="pd-meta-label">Topic</div>
+        <div class="pd-meta-label"><Tag :size="12" :stroke-width="2"/>Topic</div>
         <div class="pd-meta-val">{{ detail?.prompt?.topic || '—' }}</div>
       </div>
       <div class="pd-meta">
-        <div class="pd-meta-label">Demand</div>
+        <div class="pd-meta-label"><Activity :size="12" :stroke-width="2"/>Demand</div>
         <div class="pd-meta-val pd-meta-bars">
           <span v-for="i in 4" :key="i" class="pd-bar" :class="{ 'is-on': demandLevel >= i }"></span>
         </div>
       </div>
       <div class="pd-meta">
-        <div class="pd-meta-label">Runs</div>
+        <div class="pd-meta-label"><Repeat :size="12" :stroke-width="2"/>Runs</div>
         <div class="pd-meta-val">{{ detail?.prompt?.runs_count || 0 }}</div>
       </div>
       <div class="pd-meta">
-        <div class="pd-meta-label">Status</div>
+        <div class="pd-meta-label"><CircleDot :size="12" :stroke-width="2"/>Status</div>
         <div class="pd-meta-val">
           <span class="pd-status" :class="`is-${detail?.status || 'inactive'}`">
+            <span class="pd-status-dot"></span>
             {{ detail?.status === 'active' ? 'Active' : 'Inactive' }}
           </span>
         </div>
@@ -47,27 +52,39 @@
 
     <!-- Overview: Visibility chart + Top brands table -->
     <section class="pd-overview-head">
-      <h2 class="pd-section-title">Overview</h2>
+      <h2 class="pd-section-title">
+        <BarChart3 :size="16" :stroke-width="2"/>
+        Overview
+      </h2>
       <p class="pd-section-sub">How often each brand appears in AI-generated discussions of this prompt.</p>
     </section>
 
     <div class="pd-grid pd-grid-2">
       <div class="pd-card">
         <div class="pd-card-head">
-          <h3>Visibility</h3>
+          <h3>
+            <ChartLine :size="14" :stroke-width="2"/>
+            Visibility
+          </h3>
           <span class="pd-card-meta">
-            Showing data across {{ detail?.total_responses || 0 }} model responses
+            Across {{ detail?.total_responses || 0 }} model responses
           </span>
         </div>
         <div class="pd-chart">
           <Bar v-if="chartData" :data="chartData" :options="chartOptions" />
-          <div v-else class="pd-empty-inline">No model responses yet for this prompt.</div>
+          <div v-else class="pd-empty-inline">
+            <Inbox :size="32" :stroke-width="1.5"/>
+            <p>No model responses yet for this prompt.</p>
+          </div>
         </div>
       </div>
 
       <div class="pd-card">
         <div class="pd-card-head">
-          <h3>Top {{ Math.min(7, topBrands.length || 0) }} brands</h3>
+          <h3>
+            <Trophy :size="14" :stroke-width="2"/>
+            Top {{ Math.min(7, topBrands.length || 0) }} brands
+          </h3>
         </div>
         <div class="pd-table-wrap">
           <table class="pd-table">
@@ -113,14 +130,20 @@
 
     <!-- Top Domains + Domain type breakdown -->
     <section class="pd-overview-head" style="margin-top: 28px">
-      <h2 class="pd-section-title">Top domains</h2>
+      <h2 class="pd-section-title">
+        <Globe :size="16" :stroke-width="2"/>
+        Top domains
+      </h2>
       <p class="pd-section-sub">Domains AI models retrieved when answering this prompt.</p>
     </section>
 
     <div class="pd-grid pd-grid-2">
       <div class="pd-card">
         <div class="pd-card-head">
-          <h3>By citation count</h3>
+          <h3>
+            <Link2 :size="14" :stroke-width="2"/>
+            By citation count
+          </h3>
         </div>
         <div class="pd-table-wrap">
           <table class="pd-table">
@@ -158,8 +181,11 @@
 
       <div class="pd-card">
         <div class="pd-card-head">
-          <h3>Domain types</h3>
-          <span class="pd-card-meta">Total retrievals: {{ detail?.total_retrievals || 0 }}</span>
+          <h3>
+            <PieChart :size="14" :stroke-width="2"/>
+            Domain types
+          </h3>
+          <span class="pd-card-meta">{{ detail?.total_retrievals || 0 }} retrievals</span>
         </div>
         <ul class="pd-types">
           <li v-for="t in domainTypes" :key="t.key">
@@ -187,6 +213,10 @@ import {
   Chart as ChartJS,
   CategoryScale, LinearScale, BarElement, Tooltip, Legend,
 } from 'chart.js'
+import {
+  Activity, BarChart3, ChartLine, ChevronLeft, CircleDot, Clock,
+  Globe, Inbox, Link2, PieChart, Repeat, Sparkles, Tag, Trophy,
+} from 'lucide-vue-next'
 import promptLibrary from '@/api/promptLibrary'
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend)
@@ -308,64 +338,106 @@ function relativeTime(iso) {
 .pd-breadcrumb {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
+  gap: 8px;
+  padding: 6px 12px 6px 8px;
+  background: var(--bg-card, #fff);
   border: 1px solid var(--border-color, #e5e7eb);
   border-radius: 999px;
   font-size: 12px;
   color: var(--text-muted);
-  margin-bottom: 20px;
+  margin-bottom: 24px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
-.pd-bc-link { color: var(--text-muted); text-decoration: none; }
+.pd-bc-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-muted);
+  text-decoration: none;
+  font-weight: 500;
+}
 .pd-bc-link:hover { color: var(--text-primary); }
 .pd-bc-sep { color: var(--border-color); }
 .pd-bc-current { color: var(--text-primary); font-weight: 500; }
 
-.pd-header { margin-bottom: 24px; }
+.pd-header { margin-bottom: 28px; }
 .pd-header-eyebrow {
-  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  background: rgba(255, 107, 53, 0.10);
+  color: var(--brand-accent, #ff6b35);
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-muted);
-  margin-bottom: 6px;
+  letter-spacing: 0.08em;
+  margin-bottom: 12px;
 }
 .pd-title {
   margin: 0;
   font-size: 2rem;
   font-weight: 700;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.025em;
   color: var(--text-primary);
-  line-height: 1.1;
+  line-height: 1.15;
+  max-width: 56rem;
 }
 
 .pd-meta-grid {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 0;
-  padding: 16px 0 24px;
-  border-bottom: 1px solid var(--border-color, #e5e7eb);
+  padding: 18px 22px;
+  background: var(--bg-card, #fff);
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 14px;
   margin-bottom: 28px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
-@media (max-width: 900px) { .pd-meta-grid { grid-template-columns: repeat(2, 1fr); row-gap: 18px; } }
-.pd-meta { padding: 0 16px; border-left: 1px solid var(--border-color, #e5e7eb); }
+@media (max-width: 900px) { .pd-meta-grid { grid-template-columns: repeat(2, 1fr); row-gap: 18px; padding: 16px; } }
+.pd-meta { padding: 0 18px; border-left: 1px solid var(--border-color, #e5e7eb); }
 .pd-meta:first-child { border-left: none; padding-left: 0; }
-.pd-meta-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); margin-bottom: 8px; }
-.pd-meta-val { font-size: 14px; color: var(--text-primary); font-weight: 500; }
+.pd-meta-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+.pd-meta-label svg { color: var(--text-muted); }
+.pd-meta-val { font-size: 14px; color: var(--text-primary); font-weight: 500; line-height: 1.3; }
 .pd-meta-bars { display: inline-flex; gap: 3px; }
 .pd-bar { width: 5px; height: 14px; border-radius: 2px; background: var(--border-color, #e5e7eb); }
 .pd-bar.is-on { background: #10b981; }
 .pd-status {
-  display: inline-flex; align-items: center;
-  padding: 3px 10px;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 10px 3px 8px;
   border-radius: 999px;
   font-size: 12px; font-weight: 600;
 }
-.pd-status.is-active { background: rgba(16,185,129,0.14); color: #047857; }
+.pd-status-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.pd-status.is-active { background: rgba(16,185,129,0.12); color: #047857; }
 .pd-status.is-inactive { background: var(--bg-subtle, #fafafa); color: var(--text-muted); }
 
-.pd-overview-head { margin-bottom: 12px; }
-.pd-section-title { margin: 0 0 4px; font-size: 1.15rem; font-weight: 700; color: var(--text-primary); letter-spacing: -0.01em; }
-.pd-section-sub { margin: 0; font-size: 0.85rem; color: var(--text-secondary); }
+.pd-overview-head { margin-bottom: 14px; }
+.pd-section-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 4px;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.015em;
+}
+.pd-section-title svg { color: var(--text-muted); }
+.pd-section-sub { margin: 0; font-size: 0.86rem; color: var(--text-secondary); }
 
 .pd-grid { display: grid; gap: 18px; }
 .pd-grid-2 { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); }
@@ -375,20 +447,53 @@ function relativeTime(iso) {
   background: var(--bg-card, #fff);
   border: 1px solid var(--border-color, #e5e7eb);
   border-radius: 14px;
-  padding: 18px 20px;
+  padding: 20px 22px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  transition: box-shadow 0.18s ease, transform 0.18s ease, border-color 0.18s ease;
+}
+.pd-card:hover {
+  box-shadow: 0 4px 16px -8px rgba(15, 23, 42, 0.12), 0 1px 2px rgba(15, 23, 42, 0.04);
+  border-color: var(--border-hover, #d4d4d8);
 }
 .pd-card-head {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 8px;
-  margin-bottom: 12px;
+  margin-bottom: 14px;
 }
-.pd-card-head h3 { margin: 0; font-size: 0.95rem; font-weight: 600; color: var(--text-primary); }
-.pd-card-meta { font-size: 0.78rem; color: var(--text-muted); }
+.pd-card-head h3 {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.pd-card-head h3 svg { color: var(--text-muted); }
+.pd-card-meta {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  background: var(--bg-subtle, #fafafa);
+  padding: 3px 10px;
+  border-radius: 999px;
+}
 
-.pd-chart { height: 280px; }
-.pd-empty-inline { text-align: center; padding: 60px 20px; color: var(--text-muted); font-size: 0.88rem; }
+.pd-chart { height: 280px; position: relative; }
+.pd-empty-inline {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 100%;
+  min-height: 200px;
+  color: var(--text-muted);
+  font-size: 0.88rem;
+}
+.pd-empty-inline svg { color: var(--text-muted); opacity: 0.55; }
+.pd-empty-inline p { margin: 0; }
 
 .pd-table-wrap { overflow-x: auto; }
 .pd-table {
