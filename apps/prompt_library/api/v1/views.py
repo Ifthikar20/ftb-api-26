@@ -795,6 +795,7 @@ class BrandPromptDetailAggView(APIView):
                 "id", "provider", "prompt", "response_text",
                 "is_mentioned", "mention_rank", "sentiment",
                 "competitors_mentioned", "created_at",
+                "citation_countries", "query_succeeded",
             )
         )
 
@@ -878,6 +879,7 @@ class BrandPromptDetailAggView(APIView):
         )
         per_domain: dict[str, dict] = {}
         responses_with_citation: dict[str, set] = defaultdict(set)
+        sources_by_result: dict[str, list] = defaultdict(list)
         for c in citations_qs:
             apex = c.apex_domain or c.domain
             if not apex:
@@ -890,6 +892,7 @@ class BrandPromptDetailAggView(APIView):
             })
             entry["count"] += 1
             responses_with_citation[apex].add(c.result_id)
+            sources_by_result[c.result_id].append(apex)
 
         top_domains = []
         for apex, entry in per_domain.items():
@@ -913,6 +916,35 @@ class BrandPromptDetailAggView(APIView):
             for key, cnt in type_counter.most_common()
         ]
 
+        # ── Recent chats (one row per matching result, newest first) ──
+        from apps.citations.services.url_analytics import model_key
+
+        ordered = sorted(
+            results, key=lambda r: r.created_at or prompt.created_at, reverse=True,
+        )[:100]
+        recent_chats = []
+        for r in ordered:
+            srcs, seen = [], set()
+            for d in sources_by_result.get(r.id, []):
+                if d and d not in seen:
+                    seen.add(d)
+                    srcs.append(d)
+            cc = r.citation_countries or {}
+            country = max(cc.items(), key=lambda kv: kv[1])[0] if isinstance(cc, dict) and cc else None
+            has_response = bool((r.response_text or "").strip())
+            recent_chats.append({
+                "result_id": str(r.id),
+                "prompt": r.prompt,
+                "response_preview": (r.response_text or "")[:200],
+                "brand_mentioned": r.is_mentioned,
+                "position": r.mention_rank,
+                "models": [model_key(r.provider)],
+                "sources": srcs[:6],
+                "country": country,
+                "status": "complete" if has_response else "pending",
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+            })
+
         return Response({
             "prompt": {
                 "id": str(prompt.id),
@@ -933,6 +965,7 @@ class BrandPromptDetailAggView(APIView):
             "top_domains": top_domains,
             "domain_types": type_breakdown,
             "total_retrievals": sum(type_counter.values()),
+            "recent_chats": recent_chats,
         })
 
 

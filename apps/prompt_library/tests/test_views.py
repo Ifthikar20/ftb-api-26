@@ -222,3 +222,38 @@ def test_create_prompt_requires_text(auth):
         format="json",
     )
     assert resp.status_code == 400
+
+
+@pytest.mark.django_db
+def test_prompt_detail_returns_recent_chats(auth):
+    from apps.citations.services.extraction_service import extract_for_result
+    from apps.llm_ranking.models import LLMRankingResult
+    from apps.llm_ranking.tests.factories import LLMRankingResultFactory
+
+    client, user, website = auth
+    industry = IndustryFactory(name="ALi", slug="ali")
+    p = PromptFactory(industry=industry, text="best budgeting apps in 2026")
+    BrandPrompt.objects.create(website=website, prompt=p)
+    audit = LLMRankingAuditFactory(website=website, created_by=user)
+    r = LLMRankingResultFactory(
+        audit=audit, provider=LLMRankingResult.PROVIDER_PERPLEXITY, prompt_index=0,
+        prompt="best budgeting apps in 2026", response_text="Here are some apps...",
+        is_mentioned=True, mention_rank=2,
+        citations=[{"url": "https://reddit.com/r/x"}],
+    )
+    extract_for_result(str(r.id))
+
+    resp = client.get(
+        f"/api/v1/prompt-library/websites/{website.id}/prompts/{p.id}/detail/"
+    )
+    assert resp.status_code == 200, resp.content
+    body = resp.json()
+    assert body["prompt"]["topic"] == "ALi"
+    chats = body["recent_chats"]
+    assert len(chats) == 1
+    chat = chats[0]
+    assert chat["result_id"] == str(r.id)
+    assert chat["brand_mentioned"] is True
+    assert chat["position"] == 2
+    assert chat["models"] == ["perplexity"]
+    assert "reddit.com" in chat["sources"]
