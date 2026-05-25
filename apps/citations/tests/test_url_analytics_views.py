@@ -181,6 +181,48 @@ class TestAccurateMetrics:
         assert row["gap_score"] == 0
 
 
+class TestChatDetail:
+    def test_returns_full_conversation(self, auth_client):
+        client, user = auth_client
+        website, audit, result = _seed(user)
+        url = reverse("citations-website-chat-detail", args=[website.id, result.id])
+        resp = client.get(url)
+        assert resp.status_code == 200
+        body = resp.data
+        assert body["result_id"] == str(result.id)
+        assert body["model"] == "perplexity"
+        assert body["prompt"] == "best treasury management software"
+        assert body["response_text"] == "Some answer text."
+        # Both seeded citations show up as sources.
+        domains = {s["apex_domain"] for s in body["sources"]}
+        assert {"reddit.com", "techcrunch.com"} <= domains
+
+    def test_brands_include_competitors(self, auth_client):
+        client, user = auth_client
+        website = WebsiteFactory(user=user)
+        audit = LLMRankingAuditFactory(website=website, created_by=user)
+        r = LLMRankingResultFactory(
+            audit=audit, provider=LLMRankingResult.PROVIDER_PERPLEXITY, prompt_index=0,
+            prompt="p", citations=[{"url": "https://a.com/x"}], response_text="ans",
+            is_mentioned=True, mention_rank=1,
+            competitors_mentioned=[{"name": "Acme", "position": 3}],
+        )
+        extract_for_result(str(r.id))
+        url = reverse("citations-website-chat-detail", args=[website.id, r.id])
+        body = client.get(url).data
+        names = {b["name"] for b in body["brands"]}
+        assert website.name in names
+        assert "Acme" in names
+
+    def test_unknown_or_foreign_chat_404(self, auth_client):
+        client, user = auth_client
+        other = UserFactory()
+        _, _, foreign = _seed(other)
+        website = WebsiteFactory(user=user)
+        url = reverse("citations-website-chat-detail", args=[website.id, foreign.id])
+        assert client.get(url).status_code == 404
+
+
 class TestTopicScoping:
     def test_topics_listed_and_filtered(self, auth_client):
         client, user = auth_client

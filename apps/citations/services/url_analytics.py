@@ -556,3 +556,85 @@ def build_url_detail(website, *, normalized_url: str, start: date, end: date,
         "brands_mentioned": brands_mentioned,
         "chats": chats,
     }
+
+
+def build_chat_detail(website, *, result_id: str) -> dict | None:
+    """Full conversation payload for one chat (LLMRankingResult).
+
+    Used by the chat modal: the prompt + full answer, the brands mentioned,
+    the model's fan-out sub-queries, and every source cited in the answer.
+    Returns None if the result does not belong to this website.
+    """
+    from apps.citations.models import Citation
+    from apps.llm_ranking.models import LLMRankingResult
+
+    try:
+        result = (
+            LLMRankingResult.objects
+            .select_related("audit", "source_prompt")
+            .get(id=result_id, audit__website=website)
+        )
+    except LLMRankingResult.DoesNotExist:
+        return None
+
+    # Sources: every URL cited in this answer, in citation order.
+    source_rows = (
+        Citation.objects.filter(result=result)
+        .order_by("position", "id")
+        .only("url", "title", "apex_domain", "position", "source_class")
+    )
+    sources = [
+        {
+            "url": c.url,
+            "title": c.title or c.apex_domain,
+            "apex_domain": c.apex_domain,
+            "position": c.position,
+        }
+        for c in source_rows
+    ]
+
+    # Brands: tracked brand (if mentioned) + competitors named in the answer.
+    brands = []
+    if result.is_mentioned:
+        brands.append({"name": website.name, "position": result.mention_rank})
+    for comp in (result.competitors_mentioned or []):
+        if isinstance(comp, dict):
+            name = (comp.get("name") or "").strip()
+            pos = comp.get("position")
+        else:
+            name, pos = str(comp).strip(), None
+        if name:
+            brands.append({"name": name, "position": pos})
+
+    # Fan-out sub-queries the model researched (per saved prompt).
+    fanout_queries: list[str] = []
+    if result.source_prompt_id:
+        from apps.prompt_library.models import PromptFanout
+
+        fanout_queries = list(
+            PromptFanout.objects
+            .filter(website=website, prompt_id=result.source_prompt_id)
+            .order_by("-confidence", "created_at")
+            .values_list("text", flat=True)[:12]
+        )
+
+    # Country hint for the flag chip (top of the per-result breakdown).
+    country = None
+    cc = result.citation_countries or {}
+    if isinstance(cc, dict) and cc:
+        country = max(cc.items(), key=lambda kv: kv[1])[0]
+
+    return {
+        "result_id": str(result.id),
+        "provider": result.provider,
+        "model": model_key(result.provider),
+        "country": country,
+        "prompt": result.prompt,
+        "response_text": result.response_text or "",
+        "brand": website.name,
+        "brand_mentioned": result.is_mentioned,
+        "brands": brands,
+        "fanout_queries": fanout_queries,
+        "sources": sources,
+        "created_at": result.created_at.isoformat(),
+    }

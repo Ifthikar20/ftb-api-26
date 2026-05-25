@@ -301,6 +301,19 @@ class WebsiteUrlDetailView(TenantScopedAPIView):
         return Response(payload)
 
 
+class WebsiteChatDetailView(TenantScopedAPIView):
+    """Full conversation detail for one chat (LLMRankingResult) on a website."""
+
+    def get(self, request, website_id, result_id):
+        from apps.citations.services.url_analytics import build_chat_detail
+
+        website = self.get_website(website_id)
+        payload = build_chat_detail(website, result_id=result_id)
+        if payload is None:
+            return Response({"detail": "Chat not found for this website."}, status=404)
+        return Response(payload)
+
+
 class GlobalSourceInfluenceView(APIView):
     """Global (cross-tenant) rollup for benchmarking. No PII; safe to expose."""
 
