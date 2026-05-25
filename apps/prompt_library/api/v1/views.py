@@ -9,6 +9,7 @@ The API has two audiences:
 """
 from __future__ import annotations
 
+import logging
 import random
 
 from django.shortcuts import get_object_or_404
@@ -46,6 +47,8 @@ from apps.prompt_library.models import (
 from apps.prompt_library.services.sampler_service import sample_prompts_for_audit
 from apps.websites.services.website_service import WebsiteService
 from core.interceptors.pagination import StandardPagination
+
+logger = logging.getLogger("apps")
 
 
 class IndustryListView(ListAPIView):
@@ -259,35 +262,99 @@ class WebsitePromptCreateView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        template_text = (data.get("template_text") or "").strip()
-        body_for_text = (data.get("text") or "").strip() or template_text
-        template_text = template_text or body_for_text
-        variables = extract_variables(template_text)
-        # Reuse a prompt with the same canonical text if it already exists,
-        # otherwise create one. This keeps the Prompt table de-duped while
-        # still letting every website link its own copy via BrandPrompt.
-        canonical_hash = text_hash(template_text or body_for_text)
-        prompt, _ = Prompt.objects.get_or_create(
-            text_hash=canonical_hash,
-            defaults=dict(
-                industry=industry,
-                text=body_for_text,
-                template_text=template_text,
-                template_variables=variables,
-                intent_bucket=data.get("intent_bucket") or "category",
-                style=data.get("style") or "question",
-                source=PromptSource.MANUAL,
-            ),
+        tags = [t.strip() for t in (data.get("tags") or []) if t and t.strip()]
+        location = (data.get("location") or "").strip()
+
+        # Each non-empty line becomes a separate prompt (matches the modal's
+        # "every line is a prompt" + bulk-upload behaviour). Template-only
+        # payloads (no newlines) collapse to a single prompt as before.
+        raw = (data.get("text") or "").strip()
+        template_text_in = (data.get("template_text") or "").strip()
+        lines = [ln.strip() for ln in raw.splitlines() if ln.strip()]
+        if not lines:
+            lines = [template_text_in] if template_text_in else []
+
+        created_prompts = []
+        brand_prompt_ids = []
+        for line in lines:
+            template_text = template_text_in or line
+            body_for_text = line or template_text
+            variables = extract_variables(template_text)
+            canonical_hash = text_hash(template_text or body_for_text)
+            prompt, _ = Prompt.objects.get_or_create(
+                text_hash=canonical_hash,
+                defaults=dict(
+                    industry=industry,
+                    text=body_for_text,
+                    template_text=template_text,
+                    template_variables=variables,
+                    intent_bucket=data.get("intent_bucket") or "category",
+                    style=data.get("style") or "question",
+                    source=PromptSource.MANUAL,
+                ),
+            )
+            brand_prompt, _ = BrandPrompt.objects.get_or_create(
+                website=website, prompt=prompt,
+            )
+            changed = []
+            if tags and brand_prompt.tags != tags:
+                brand_prompt.tags = tags
+                changed.append("tags")
+            if location and brand_prompt.location != location:
+                brand_prompt.location = location
+                changed.append("location")
+            if changed:
+                brand_prompt.save(update_fields=[*changed, "updated_at"])
+            created_prompts.append(prompt)
+            brand_prompt_ids.append(str(brand_prompt.id))
+
+        if not created_prompts:
+            return Response({"error": "no_prompts"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Auto-scan: run the new prompts through the ranking pipeline so they
+        # start collecting mentions/citations. Best-effort — never blocks or
+        # fails the create if the queue or provider keys are unavailable.
+        scan_audit_id = self._trigger_scan(
+            website, request.user, [p.text for p in created_prompts], location,
         )
-        # Link the prompt to the website so it shows in the Saved tab.
-        # The Saved tab reads BrandPrompt rows, not Prompt rows directly.
-        brand_prompt, _ = BrandPrompt.objects.get_or_create(
-            website=website, prompt=prompt,
-        )
-        payload = PromptSerializer(prompt).data
-        # FE needs the BrandPrompt id to chain into "add to env" calls.
-        payload["brand_prompt_id"] = str(brand_prompt.id)
+
+        payload = PromptSerializer(created_prompts[0]).data
+        payload["brand_prompt_id"] = brand_prompt_ids[0]
+        payload["brand_prompt_ids"] = brand_prompt_ids
+        payload["created_count"] = len(created_prompts)
+        payload["scan_audit_id"] = scan_audit_id
         return Response(payload, status=status.HTTP_201_CREATED)
+
+    @staticmethod
+    def _trigger_scan(website, user, prompts, location):
+        """Kick off an LLM ranking audit for freshly added prompts."""
+        try:
+            from django.conf import settings as dj_settings
+
+            from apps.llm_ranking.models import LLMRankingAudit
+            from apps.llm_ranking.providers import PROVIDERS as PROV_REGISTRY
+            from apps.llm_ranking.tasks import run_llm_ranking_audit
+
+            selected = [
+                k for k, prov in PROV_REGISTRY.items()
+                if getattr(dj_settings, prov.api_key_setting, "")
+            ] or ["claude"]
+            audit = LLMRankingAudit.objects.create(
+                website=website,
+                created_by=user,
+                business_name=website.business_name or website.name or "",
+                business_description=getattr(website, "description", "") or "",
+                industry=getattr(website, "industry", "") or "",
+                location=location or "",
+                region=(location or "global").lower() or "global",
+                prompts=list(prompts),
+                providers_queried=selected,
+            )
+            run_llm_ranking_audit.delay(audit_id=str(audit.id))
+            return str(audit.id)
+        except Exception:  # pragma: no cover - scan is best-effort
+            logger.exception("auto-scan dispatch failed")
+            return None
 
 
 class PromptPreviewView(APIView):
@@ -1054,6 +1121,8 @@ class WebsiteSavedPromptsAggView(APIView):
                 "topic_slug": p.industry.slug if p.industry_id else "",
                 "intent_bucket": p.intent_bucket,
                 "style": p.style,
+                "tags": bp.tags or [],
+                "location": bp.location or "",
                 "demand_score": p.demand_score,
                 "runs_count": p.runs_count,
                 "is_active": p.is_active,

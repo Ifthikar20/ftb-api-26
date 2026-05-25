@@ -179,6 +179,12 @@ class BrandPrompt(TimestampMixin):
         Prompt, related_name="brand_prompts", on_delete=models.CASCADE
     )
     notes = models.TextField(blank=True)
+    # User-assigned classification chips (e.g. branded, non-branded,
+    # informational, transactional). Free-form so the UI can create new ones.
+    tags = models.JSONField(default=list, blank=True)
+    # ISO-2 country the prompt is scanned from; routes web-search geo when
+    # the prompt is run in an audit. Empty == global/default.
+    location = models.CharField(max_length=8, blank=True, default="")
 
     class Meta:
         db_table = "prompt_library_brandprompt"

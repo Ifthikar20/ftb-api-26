@@ -257,3 +257,51 @@ def test_prompt_detail_returns_recent_chats(auth):
     assert chat["position"] == 2
     assert chat["models"] == ["perplexity"]
     assert "reddit.com" in chat["sources"]
+
+
+@pytest.mark.django_db
+def test_create_prompts_multiline_with_tags_and_location(auth, monkeypatch):
+    import apps.llm_ranking.tasks as lr_tasks
+    monkeypatch.setattr(lr_tasks.run_llm_ranking_audit, "delay", lambda **k: None)
+
+    client, _, website = auth
+    resp = client.post(
+        f"/api/v1/prompt-library/websites/{website.id}/prompts/",
+        {
+            "text": "best budgeting apps\nalternatives to rocket money\n",
+            "topic": "ALi",
+            "location": "US",
+            "tags": ["branded", "transactional"],
+        },
+        format="json",
+    )
+    assert resp.status_code == 201, resp.content
+    body = resp.json()
+    assert body["created_count"] == 2
+    assert len(body["brand_prompt_ids"]) == 2
+
+    bps = BrandPrompt.objects.filter(website=website).select_related("prompt__industry")
+    assert bps.count() == 2
+    for bp in bps:
+        assert bp.tags == ["branded", "transactional"]
+        assert bp.location == "US"
+        assert bp.prompt.industry.name == "ALi"
+
+
+@pytest.mark.django_db
+def test_create_prompt_scan_failure_does_not_break_create(auth, monkeypatch):
+    import apps.llm_ranking.tasks as lr_tasks
+
+    def boom(**k):
+        raise RuntimeError("queue down")
+    monkeypatch.setattr(lr_tasks.run_llm_ranking_audit, "delay", boom)
+
+    client, _, website = auth
+    resp = client.post(
+        f"/api/v1/prompt-library/websites/{website.id}/prompts/",
+        {"text": "a resilient prompt", "topic": "ALi"},
+        format="json",
+    )
+    assert resp.status_code == 201, resp.content
+    assert resp.json()["scan_audit_id"] is None
+    assert BrandPrompt.objects.filter(website=website).count() == 1
