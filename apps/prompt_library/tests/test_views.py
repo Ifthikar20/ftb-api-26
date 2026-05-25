@@ -347,3 +347,12 @@ def test_saved_agg_tag_filter_and_all_tags(auth, monkeypatch):
     filtered = client.get(agg, {"tag": "branded"}).json()
     assert filtered["total"] == 1
     assert all("branded" in r["tags"] for r in filtered["rows"])
+
+
+@pytest.mark.django_db
+def test_regions_endpoint(auth):
+    client, _, _ = auth
+    resp = client.get("/api/v1/prompt-library/regions/")
+    assert resp.status_code == 200
+    codes = {c["code"] for c in resp.json()["countries"]}
+    assert {"US", "RU", "UA", "GB"} <= codes

@@ -53,3 +53,25 @@ class TestFlavorPrompt:
         once = flavor_prompt("Best tools?", REGION_IN)
         twice = flavor_prompt(once, REGION_IN)
         assert twice.count("?") == 1
+
+
+class TestCountryMapping:
+    def test_region_for_country(self):
+        from apps.llm_ranking.services.regions import region_for_country
+        assert region_for_country("US") == "us"
+        assert region_for_country("RU") == "ru"
+        assert region_for_country("UA") == "ua"
+        assert region_for_country("GB") == "gb"
+        assert region_for_country("uk") == "gb"
+        assert region_for_country("ZZ") == "global"
+        assert region_for_country("") == "global"
+        assert region_for_country(None) == "global"
+
+    def test_supported_countries(self):
+        from apps.llm_ranking.services.regions import supported_countries
+        cs = supported_countries()
+        codes = {c["code"] for c in cs}
+        assert {"US", "RU", "UA", "IN", "GB"} <= codes
+        assert "global" not in codes and "" not in codes
+        # sorted by name, each has code + name
+        assert all(c["code"] and c["name"] for c in cs)

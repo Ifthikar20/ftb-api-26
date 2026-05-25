@@ -54,6 +54,30 @@ REGIONS: dict[str, Region] = {
                       "popular with Australian teams", "AU"),
 }
 
+# Broader country catalog. The original six above keep their hand-written
+# flavours (tests depend on them); the rest are added generically. Each is
+# keyed by its ISO-2 code (lower-case) and routes Perplexity web search to
+# that country, so selecting e.g. Russia or Ukraine mimics a local user.
+_EXTRA_COUNTRIES = [
+    ("gb", "United Kingdom"), ("fr", "France"), ("es", "Spain"),
+    ("it", "Italy"), ("nl", "Netherlands"), ("se", "Sweden"),
+    ("ie", "Ireland"), ("ru", "Russia"), ("ua", "Ukraine"),
+    ("pl", "Poland"), ("br", "Brazil"), ("mx", "Mexico"),
+    ("ar", "Argentina"), ("jp", "Japan"), ("kr", "South Korea"),
+    ("cn", "China"), ("sg", "Singapore"), ("hk", "Hong Kong"),
+    ("ae", "United Arab Emirates"), ("sa", "Saudi Arabia"),
+    ("za", "South Africa"), ("ng", "Nigeria"), ("id", "Indonesia"),
+    ("ph", "Philippines"), ("my", "Malaysia"), ("th", "Thailand"),
+    ("vn", "Vietnam"), ("tr", "Turkey"), ("il", "Israel"),
+    ("nz", "New Zealand"), ("ch", "Switzerland"), ("at", "Austria"),
+    ("be", "Belgium"), ("pt", "Portugal"), ("no", "Norway"),
+    ("dk", "Denmark"), ("fi", "Finland"),
+]
+for _code, _label in _EXTRA_COUNTRIES:
+    REGIONS.setdefault(
+        _code, Region(_code, _label, f"popular in {_label}", _code.upper()),
+    )
+
 REGION_CHOICES = [(r.code, r.label) for r in REGIONS.values()]
 
 
@@ -62,17 +86,33 @@ def get_region(code: str) -> Region:
     return REGIONS.get((code or "").lower(), REGIONS[REGION_GLOBAL])
 
 
-# ISO-2 country code (as picked in the Add Prompt modal) -> region code.
-# Note the UK uses region code "uk" while its ISO-2 is "GB".
-_COUNTRY_TO_REGION = {
-    "US": REGION_US, "CA": REGION_CA, "IN": REGION_IN,
-    "GB": REGION_UK, "UK": REGION_UK, "DE": REGION_DE, "AU": REGION_AU,
-}
-
-
 def region_for_country(code: str) -> str:
-    """Map an ISO-2 country code to a supported region code (else GLOBAL)."""
-    return _COUNTRY_TO_REGION.get((code or "").upper(), REGION_GLOBAL)
+    """Map an ISO-2 country code to a supported region code (else GLOBAL).
+
+    ``GB``/``UK`` both resolve to the British region. Any country present in
+    the catalog routes to itself; unknown codes fall back to GLOBAL.
+    """
+    c = (code or "").strip().lower()
+    if c == "uk":
+        c = "gb"
+    return c if c in REGIONS and c != REGION_GLOBAL else REGION_GLOBAL
+
+
+def supported_countries() -> list[dict]:
+    """Country options for the Add Prompt location picker.
+
+    Returns ``[{"code": ISO-2, "name": label}]`` (no GLOBAL), de-duplicated
+    by ISO-2 and sorted by name, so backend and frontend stay in sync.
+    """
+    by_iso: dict[str, str] = {}
+    for r in REGIONS.values():
+        iso = r.perplexity_country
+        if iso:
+            by_iso[iso] = r.label
+    return sorted(
+        ({"code": iso, "name": name} for iso, name in by_iso.items()),
+        key=lambda c: c["name"],
+    )
 
 
 def flavor_prompt(prompt_text: str, region_code: str) -> str:

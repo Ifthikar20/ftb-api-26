@@ -221,6 +221,16 @@ class BrandPromptDetailView(APIView):
 
 # ── Phase 3: templated prompts, effectiveness, variables, smoke test ──
 
+class RegionsListView(APIView):
+    """GET — country options for the Add Prompt location picker."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from apps.llm_ranking.services.regions import supported_countries
+        return Response({"countries": supported_countries()})
+
+
 class WebsitePromptCreateView(APIView):
     """Create a manual templated prompt for a website."""
 
@@ -847,7 +857,10 @@ class BrandPromptDetailAggView(APIView):
             return Response({"detail": "Prompt not found."},
                             status=status.HTTP_404_NOT_FOUND)
 
-        bp_exists = BrandPrompt.objects.filter(website=website, prompt=prompt).exists()
+        bp = BrandPrompt.objects.filter(website=website, prompt=prompt).first()
+        bp_exists = bp is not None
+        bp_location = bp.location if bp else ""
+        bp_tags = bp.tags if bp else []
 
         # Match every LLMRankingResult on this website whose prompt text
         # equals the prompt's text OR template_text. The audit serializer
@@ -1020,6 +1033,8 @@ class BrandPromptDetailAggView(APIView):
                 "template_text": prompt.template_text or "",
                 "intent_bucket": prompt.intent_bucket,
                 "topic": prompt.industry.name if prompt.industry_id else "",
+                "location": bp_location,
+                "tags": bp_tags,
                 "demand_score": prompt.demand_score,
                 "runs_count": prompt.runs_count,
                 "effectiveness_score": prompt.effectiveness_score,
