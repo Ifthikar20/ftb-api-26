@@ -173,3 +173,52 @@ def test_brand_prompt_other_user_blocked():
         format="json",
     )
     assert resp.status_code in (403, 404)
+
+
+@pytest.mark.django_db
+def test_create_prompt_with_new_topic(auth):
+    client, _, website = auth
+    # Need at least one active industry so the no-topic default path exists,
+    # but here we pass an explicit new topic name.
+    resp = client.post(
+        f"/api/v1/prompt-library/websites/{website.id}/prompts/",
+        {"text": "What are the best budgeting apps in 2026?", "topic": "ALi"},
+        format="json",
+    )
+    assert resp.status_code == 201, resp.content
+    body = resp.json()
+    assert body.get("brand_prompt_id")
+    # A BrandPrompt linked to a Prompt filed under the new "ALi" topic.
+    bp = BrandPrompt.objects.select_related("prompt__industry").get(
+        id=body["brand_prompt_id"],
+    )
+    assert bp.website_id == website.id
+    assert bp.prompt.industry.name == "ALi"
+    assert bp.prompt.text == "What are the best budgeting apps in 2026?"
+
+
+@pytest.mark.django_db
+def test_create_prompt_reuses_existing_topic(auth):
+    client, _, website = auth
+    industry = IndustryFactory(name="ALi", slug="ali")
+    resp = client.post(
+        f"/api/v1/prompt-library/websites/{website.id}/prompts/",
+        {"text": "How do I automate cash flow?", "topic": "ALi"},
+        format="json",
+    )
+    assert resp.status_code == 201, resp.content
+    bp = BrandPrompt.objects.select_related("prompt__industry").get(
+        id=resp.json()["brand_prompt_id"],
+    )
+    assert bp.prompt.industry_id == industry.id
+
+
+@pytest.mark.django_db
+def test_create_prompt_requires_text(auth):
+    client, _, website = auth
+    resp = client.post(
+        f"/api/v1/prompt-library/websites/{website.id}/prompts/",
+        {"topic": "ALi"},
+        format="json",
+    )
+    assert resp.status_code == 400

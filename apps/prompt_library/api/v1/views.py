@@ -233,7 +233,17 @@ class WebsitePromptCreateView(APIView):
         data = serializer.validated_data
 
         industry = None
-        if data.get("industry_id"):
+        topic_name = (data.get("topic") or "").strip()
+        if topic_name:
+            # Topic == bundle. Resolve or create the matching Industry so the
+            # prompt (and any citations it later produces) file under it.
+            from django.utils.text import slugify
+            slug = slugify(topic_name)[:64] or "topic"
+            industry, _ = Industry.objects.get_or_create(
+                slug=slug,
+                defaults={"name": topic_name, "is_active": True},
+            )
+        elif data.get("industry_id"):
             industry = get_object_or_404(Industry, id=data["industry_id"], is_active=True)
         else:
             # Pick a sensible default — the website's industry name maps
@@ -249,8 +259,9 @@ class WebsitePromptCreateView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        template_text = data["template_text"].strip()
-        body_for_text = data.get("text") or template_text
+        template_text = (data.get("template_text") or "").strip()
+        body_for_text = (data.get("text") or "").strip() or template_text
+        template_text = template_text or body_for_text
         variables = extract_variables(template_text)
         # Reuse a prompt with the same canonical text if it already exists,
         # otherwise create one. This keeps the Prompt table de-duped while

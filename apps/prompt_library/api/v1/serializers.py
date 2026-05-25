@@ -68,10 +68,18 @@ class PromptCreateSerializer(serializers.Serializer):
     """Payload for the per-website "new prompt" endpoint."""
 
     industry_id = serializers.UUIDField(required=False)
-    template_text = serializers.CharField()
+    template_text = serializers.CharField(required=False, allow_blank=True)
     intent_bucket = serializers.CharField(required=False, default="category")
     style = serializers.CharField(required=False, default="question")
     text = serializers.CharField(required=False, allow_blank=True)
+    # Topic == prompt bundle (Industry). When provided as a name, the view
+    # resolves or creates the matching Industry and files the prompt under it.
+    topic = serializers.CharField(required=False, allow_blank=True)
+
+    def validate(self, attrs):
+        if not (attrs.get("template_text") or "").strip() and not (attrs.get("text") or "").strip():
+            raise serializers.ValidationError({"text": "Provide the prompt text."})
+        return attrs
 
 
 class PreviewSampleRequestSerializer(serializers.Serializer):
