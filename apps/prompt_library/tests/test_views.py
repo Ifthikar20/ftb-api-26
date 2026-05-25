@@ -356,3 +356,36 @@ def test_regions_endpoint(auth):
     assert resp.status_code == 200
     codes = {c["code"] for c in resp.json()["countries"]}
     assert {"US", "RU", "UA", "GB"} <= codes
+
+
+@pytest.mark.django_db
+def test_prompt_detail_by_model_visibility(auth, settings):
+    from apps.llm_ranking.models import LLMRankingResult
+    from apps.llm_ranking.tests.factories import LLMRankingResultFactory
+
+    settings.PERPLEXITY_API_KEY = "configured-key"
+    settings.XAI_API_KEY = ""  # Grok not configured
+
+    client, user, website = auth
+    industry = IndustryFactory(name="ALi", slug="ali")
+    p = PromptFactory(industry=industry, text="best money apps")
+    BrandPrompt.objects.create(website=website, prompt=p)
+    audit = LLMRankingAuditFactory(website=website, created_by=user)
+    LLMRankingResultFactory(
+        audit=audit, provider=LLMRankingResult.PROVIDER_PERPLEXITY, prompt_index=0,
+        prompt="best money apps", response_text="...", is_mentioned=True,
+    )
+
+    resp = client.get(
+        f"/api/v1/prompt-library/websites/{website.id}/prompts/{p.id}/detail/"
+    )
+    assert resp.status_code == 200, resp.content
+    by_model = {m["provider"]: m for m in resp.json()["by_model"]}
+    # Every implemented provider is represented.
+    assert {"claude", "gpt4", "gemini", "perplexity", "grok"} <= set(by_model)
+    assert by_model["perplexity"]["configured"] is True
+    assert by_model["perplexity"]["responses"] == 1
+    assert by_model["perplexity"]["visibility_pct"] == 100.0
+    # No key -> flagged not configured (so the UI shows "Not configured").
+    assert by_model["grok"]["configured"] is False
+    assert by_model["grok"]["responses"] == 0

@@ -997,8 +997,42 @@ class BrandPromptDetailAggView(APIView):
             for key, cnt in type_counter.most_common()
         ]
 
-        # ── Recent chats (one row per matching result, newest first) ──
-        from apps.citations.services.url_analytics import model_key
+        # ── Brand visibility per model for this prompt ──
+        # Every implemented provider appears: unconfigured ones are flagged
+        # so the UI shows "Not configured" instead of a misleading 0%.
+        from django.conf import settings as dj_settings
+
+        from apps.llm_ranking.providers import PROVIDERS
+        from apps.llm_ranking.services.url_analytics import model_key
+
+        model_labels = {
+            "claude": "Claude", "gpt4": "ChatGPT", "gemini": "Gemini",
+            "perplexity": "Perplexity", "grok": "Grok",
+        }
+        per_model: dict[str, dict] = {}
+        for r in results:
+            m = per_model.setdefault(r.provider, {"responses": 0, "mentioned": 0})
+            m["responses"] += 1
+            if r.is_mentioned:
+                m["mentioned"] += 1
+        by_model = []
+        for key, cls in PROVIDERS.items():
+            configured = bool(getattr(dj_settings, cls.api_key_setting, ""))
+            stat = per_model.get(key, {"responses": 0, "mentioned": 0})
+            responses = stat["responses"]
+            by_model.append({
+                "provider": key,
+                "model": model_key(key),
+                "label": model_labels.get(key, key),
+                "configured": configured,
+                "responses": responses,
+                "mentioned": stat["mentioned"],
+                "visibility_pct": (
+                    round(100 * stat["mentioned"] / responses, 1) if responses else 0.0
+                ),
+            })
+        # Configured-with-data first, then by visibility, unconfigured last.
+        by_model.sort(key=lambda m: (not m["configured"], -m["responses"], -m["visibility_pct"]))
 
         ordered = sorted(
             results, key=lambda r: r.created_at or prompt.created_at, reverse=True,
@@ -1045,6 +1079,7 @@ class BrandPromptDetailAggView(APIView):
             "total_responses": total_results,
             "brand_label": brand_label,
             "brands": brands_out,
+            "by_model": by_model,
             "top_domains": top_domains,
             "domain_types": type_breakdown,
             "total_retrievals": sum(type_counter.values()),
