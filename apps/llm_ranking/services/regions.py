@@ -54,28 +54,35 @@ REGIONS: dict[str, Region] = {
                       "popular with Australian teams", "AU"),
 }
 
-# Broader country catalog. The original six above keep their hand-written
-# flavours (tests depend on them); the rest are added generically. Each is
-# keyed by its ISO-2 code (lower-case) and routes Perplexity web search to
-# that country, so selecting e.g. Russia or Ukraine mimics a local user.
-_EXTRA_COUNTRIES = [
-    ("gb", "United Kingdom"), ("fr", "France"), ("es", "Spain"),
-    ("it", "Italy"), ("nl", "Netherlands"), ("se", "Sweden"),
-    ("ie", "Ireland"), ("ru", "Russia"), ("ua", "Ukraine"),
-    ("pl", "Poland"), ("br", "Brazil"), ("mx", "Mexico"),
-    ("ar", "Argentina"), ("jp", "Japan"), ("kr", "South Korea"),
-    ("cn", "China"), ("sg", "Singapore"), ("hk", "Hong Kong"),
-    ("ae", "United Arab Emirates"), ("sa", "Saudi Arabia"),
-    ("za", "South Africa"), ("ng", "Nigeria"), ("id", "Indonesia"),
-    ("ph", "Philippines"), ("my", "Malaysia"), ("th", "Thailand"),
-    ("vn", "Vietnam"), ("tr", "Turkey"), ("il", "Israel"),
-    ("nz", "New Zealand"), ("ch", "Switzerland"), ("at", "Austria"),
-    ("be", "Belgium"), ("pt", "Portugal"), ("no", "Norway"),
-    ("dk", "Denmark"), ("fi", "Finland"),
-]
-for _code, _label in _EXTRA_COUNTRIES:
+# Broad ISO-3166 country catalog. The original six above keep their
+# hand-written flavours (tests depend on them); every other country is added
+# generically, keyed by its ISO-2 code (lower-case). Native geo (Perplexity /
+# Claude / GPT user_location) uses ``perplexity_country``; models without a
+# geo parameter (Gemini, Grok) instead get the location injected into their
+# system instruction via :func:`region_system_instruction`.
+_COUNTRY_NAMES = {
+    "GB": "United Kingdom", "FR": "France", "ES": "Spain", "IT": "Italy",
+    "NL": "Netherlands", "SE": "Sweden", "IE": "Ireland", "RU": "Russia",
+    "UA": "Ukraine", "PL": "Poland", "BR": "Brazil", "MX": "Mexico",
+    "AR": "Argentina", "CL": "Chile", "CO": "Colombia", "PE": "Peru",
+    "JP": "Japan", "KR": "South Korea", "CN": "China", "TW": "Taiwan",
+    "SG": "Singapore", "HK": "Hong Kong", "AE": "United Arab Emirates",
+    "SA": "Saudi Arabia", "QA": "Qatar", "KW": "Kuwait", "BH": "Bahrain",
+    "OM": "Oman", "JO": "Jordan", "LB": "Lebanon", "EG": "Egypt",
+    "MA": "Morocco", "ZA": "South Africa", "NG": "Nigeria", "KE": "Kenya",
+    "GH": "Ghana", "ID": "Indonesia", "PH": "Philippines", "MY": "Malaysia",
+    "TH": "Thailand", "VN": "Vietnam", "PK": "Pakistan", "BD": "Bangladesh",
+    "LK": "Sri Lanka", "NP": "Nepal", "TR": "Turkey", "IL": "Israel",
+    "NZ": "New Zealand", "CH": "Switzerland", "AT": "Austria",
+    "BE": "Belgium", "PT": "Portugal", "NO": "Norway", "DK": "Denmark",
+    "FI": "Finland", "GR": "Greece", "CZ": "Czechia", "RO": "Romania",
+    "HU": "Hungary", "BG": "Bulgaria", "HR": "Croatia", "SK": "Slovakia",
+    "RS": "Serbia", "IS": "Iceland", "LU": "Luxembourg", "EE": "Estonia",
+    "LV": "Latvia", "LT": "Lithuania",
+}
+for _iso, _label in _COUNTRY_NAMES.items():
     REGIONS.setdefault(
-        _code, Region(_code, _label, f"popular in {_label}", _code.upper()),
+        _iso.lower(), Region(_iso.lower(), _label, f"popular in {_label}", _iso),
     )
 
 REGION_CHOICES = [(r.code, r.label) for r in REGIONS.values()]
@@ -96,6 +103,26 @@ def region_for_country(code: str) -> str:
     if c == "uk":
         c = "gb"
     return c if c in REGIONS and c != REGION_GLOBAL else REGION_GLOBAL
+
+
+def region_system_instruction(region_code: str) -> str:
+    """A system-prompt sentence that localizes a model to the region.
+
+    For providers without a native geo parameter (Gemini, Grok), and as a
+    reinforcement for those that do, stating the user's location in the
+    system instruction makes the model shift its frame of reference and its
+    web-search sub-queries to that market. Empty for GLOBAL/unknown.
+    """
+    region = get_region(region_code)
+    if not region or region.code == REGION_GLOBAL or not region.label:
+        return ""
+    country = region.label
+    return (
+        f"The user is located in {country}. Tailor every answer, "
+        f"recommendation, brand, price, and local detail specifically to "
+        f"{country}, focusing on services and options actually available "
+        f"there. When you search the web, scope queries to {country}."
+    )
 
 
 def supported_countries() -> list[dict]:

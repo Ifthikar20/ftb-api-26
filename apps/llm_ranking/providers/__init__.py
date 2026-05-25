@@ -56,8 +56,8 @@ MODEL_VARIANTS: dict[str, list[tuple[str, str, bool]]] = {
         ("Sonar Large (web)", "llama-3.1-sonar-large-128k-online", False),
     ],
     "grok": [
-        ("Grok 3", "grok-3", True),
-        ("Grok 4", "grok-4", False),
+        ("Grok 4", "grok-4", True),
+        ("Grok 3", "grok-3", False),
     ],
     # DeepSeek is excluded from the main audit registry (PROVIDERS) but
     # surfaced in the Model Test picker because it's a cheap, useful
