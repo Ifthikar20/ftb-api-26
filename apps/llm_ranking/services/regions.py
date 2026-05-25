@@ -62,6 +62,19 @@ def get_region(code: str) -> Region:
     return REGIONS.get((code or "").lower(), REGIONS[REGION_GLOBAL])
 
 
+# ISO-2 country code (as picked in the Add Prompt modal) -> region code.
+# Note the UK uses region code "uk" while its ISO-2 is "GB".
+_COUNTRY_TO_REGION = {
+    "US": REGION_US, "CA": REGION_CA, "IN": REGION_IN,
+    "GB": REGION_UK, "UK": REGION_UK, "DE": REGION_DE, "AU": REGION_AU,
+}
+
+
+def region_for_country(code: str) -> str:
+    """Map an ISO-2 country code to a supported region code (else GLOBAL)."""
+    return _COUNTRY_TO_REGION.get((code or "").upper(), REGION_GLOBAL)
+
+
 def flavor_prompt(prompt_text: str, region_code: str) -> str:
     """
     Append the region's prompt flavour to a prompt without breaking the

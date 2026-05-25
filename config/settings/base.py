@@ -246,6 +246,12 @@ CELERY_TASK_TRACK_STARTED = True
 CELERY_TASK_TIME_LIMIT = 300
 CELERY_TASK_SOFT_TIME_LIMIT = 240
 
+# How newly-added prompts get scanned. "celery" enqueues the chord task
+# (production); "inline" runs the audit in a background thread so a dev
+# server with no broker/worker still scans. See apps.llm_ranking.services
+# .scan_dispatch.
+LLM_SCAN_MODE = env("LLM_SCAN_MODE", default="celery")
+
 # ── SECURITY ──
 SECURE_SSL_REDIRECT = True
 SECURE_HSTS_SECONDS = 31536000

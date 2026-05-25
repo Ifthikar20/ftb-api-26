@@ -333,7 +333,8 @@ class WebsitePromptCreateView(APIView):
 
             from apps.llm_ranking.models import LLMRankingAudit
             from apps.llm_ranking.providers import PROVIDERS as PROV_REGISTRY
-            from apps.llm_ranking.tasks import run_llm_ranking_audit
+            from apps.llm_ranking.services.regions import region_for_country
+            from apps.llm_ranking.services.scan_dispatch import dispatch_scan
 
             selected = [
                 k for k, prov in PROV_REGISTRY.items()
@@ -346,11 +347,11 @@ class WebsitePromptCreateView(APIView):
                 business_description=getattr(website, "description", "") or "",
                 industry=getattr(website, "industry", "") or "",
                 location=location or "",
-                region=(location or "global").lower() or "global",
+                region=region_for_country(location),
                 prompts=list(prompts),
                 providers_queried=selected,
             )
-            run_llm_ranking_audit.delay(audit_id=str(audit.id))
+            dispatch_scan(str(audit.id))
             return str(audit.id)
         except Exception:  # pragma: no cover - scan is best-effort
             logger.exception("auto-scan dispatch failed")
@@ -1190,6 +1191,20 @@ class WebsiteSavedPromptsAggView(APIView):
         for row in rows:
             row.pop("_norm", None)
 
+        # Tag summary (over the full set, so the filter list is stable) and
+        # optional ?tag= filter applied to the rows.
+        tag_counter: Counter = Counter()
+        for row in rows:
+            for t in (row.get("tags") or []):
+                tag_counter[t] += 1
+        all_tags = [
+            {"name": name, "count": count}
+            for name, count in tag_counter.most_common()
+        ]
+        tag_filter = (request.query_params.get("tag") or "").strip()
+        if tag_filter:
+            rows = [r for r in rows if tag_filter in (r.get("tags") or [])]
+
         # Topic summary for the left rail.
         topic_counter: Counter = Counter()
         for row in rows:
@@ -1214,6 +1229,7 @@ class WebsiteSavedPromptsAggView(APIView):
             "rows": rows,
             "total": len(rows),
             "topics": topics,
+            "all_tags": all_tags,
             "kpi": {
                 "visibility_pct": avg_vis,
                 "sentiment_score": avg_sent,

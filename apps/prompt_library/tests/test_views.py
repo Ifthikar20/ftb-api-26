@@ -305,3 +305,45 @@ def test_create_prompt_scan_failure_does_not_break_create(auth, monkeypatch):
     assert resp.status_code == 201, resp.content
     assert resp.json()["scan_audit_id"] is None
     assert BrandPrompt.objects.filter(website=website).count() == 1
+
+
+@pytest.mark.django_db
+def test_create_prompt_routes_region_from_location(auth, monkeypatch):
+    import apps.llm_ranking.services.scan_dispatch as sd
+    monkeypatch.setattr(sd, "dispatch_scan", lambda audit_id: "noop")
+
+    from apps.llm_ranking.models import LLMRankingAudit
+
+    client, _, website = auth
+    resp = client.post(
+        f"/api/v1/prompt-library/websites/{website.id}/prompts/",
+        {"text": "best UK current accounts", "topic": "ALi", "location": "GB"},
+        format="json",
+    )
+    assert resp.status_code == 201, resp.content
+    audit = LLMRankingAudit.objects.filter(website=website).latest("created_at")
+    assert audit.region == "uk"      # GB -> uk region
+    assert audit.location == "GB"
+
+
+@pytest.mark.django_db
+def test_saved_agg_tag_filter_and_all_tags(auth, monkeypatch):
+    import apps.llm_ranking.services.scan_dispatch as sd
+    monkeypatch.setattr(sd, "dispatch_scan", lambda audit_id: "noop")
+
+    client, _, website = auth
+    base = f"/api/v1/prompt-library/websites/{website.id}/prompts/"
+    client.post(base, {"text": "branded prompt one", "topic": "ALi",
+                       "tags": ["branded"]}, format="json")
+    client.post(base, {"text": "txn prompt two", "topic": "ALi",
+                       "tags": ["transactional"]}, format="json")
+
+    agg = f"/api/v1/prompt-library/websites/{website.id}/saved-prompts/agg/"
+    full = client.get(agg).json()
+    tag_names = {t["name"]: t["count"] for t in full["all_tags"]}
+    assert tag_names.get("branded") == 1
+    assert tag_names.get("transactional") == 1
+
+    filtered = client.get(agg, {"tag": "branded"}).json()
+    assert filtered["total"] == 1
+    assert all("branded" in r["tags"] for r in filtered["rows"])

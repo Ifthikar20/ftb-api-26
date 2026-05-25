@@ -913,6 +913,32 @@ class LLMRankingService:
             queries_completed=F("queries_completed") + 1,
         )
 
+    @classmethod
+    def run_audit_sync(cls, *, audit_id: str) -> None:
+        """Run a whole audit inline (no Celery chord).
+
+        Mirrors the chord pipeline — prepare, run every (prompt, provider)
+        cell, then finalise — but in-process. Used by the inline scan
+        dispatcher so a plain dev server (no broker/worker) can still scan
+        newly added prompts. Each cell is isolated so one failure does not
+        abort the run.
+        """
+        plan = cls.prepare_audit(audit_id=audit_id)
+        if not plan:
+            return
+        for p_idx in range(len(plan["prompts"])):
+            for provider in plan["providers"]:
+                try:
+                    cls.run_audit_cell(
+                        audit_id=audit_id, prompt_index=p_idx, provider=provider,
+                    )
+                except Exception:
+                    logger.exception(
+                        "inline scan cell failed (audit=%s, prompt=%s, provider=%s)",
+                        audit_id, p_idx, provider,
+                    )
+        cls.finalise_audit(audit_id=audit_id)
+
     @staticmethod
     def finalise_audit(*, audit_id: str) -> None:
         """Chord callback — compute aggregates, roll up cost, mark completed."""
