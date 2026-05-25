@@ -25,6 +25,16 @@ urlpatterns = [
         name="citations-website-list",
     ),
     path(
+        "websites/<uuid:website_id>/urls/",
+        views.WebsiteUrlsView.as_view(),
+        name="citations-website-urls",
+    ),
+    path(
+        "websites/<uuid:website_id>/urls/detail/",
+        views.WebsiteUrlDetailView.as_view(),
+        name="citations-website-url-detail",
+    ),
+    path(
         "source-influence/global/",
         views.GlobalSourceInfluenceView.as_view(),
         name="citations-global-influence",
