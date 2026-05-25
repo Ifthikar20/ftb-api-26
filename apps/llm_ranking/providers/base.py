@@ -196,4 +196,5 @@ class LLMProvider:
             "gemini": "google",
             "perplexity": "perplexity",
             "deepseek": "deepseek",
+            "grok": "xai",
         }.get(self.name, self.name)

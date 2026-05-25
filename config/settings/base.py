@@ -364,6 +364,13 @@ CANVA_CLIENT_ID = env("CANVA_CLIENT_ID", default="")
 CANVA_CLIENT_SECRET = env("CANVA_CLIENT_SECRET", default="")
 GEMINI_API_KEY = env("GEMINI_API_KEY", default="")
 PERPLEXITY_API_KEY = env("PERPLEXITY_API_KEY", default="")
+XAI_API_KEY = env("XAI_API_KEY", default="")
+
+# When True, web-search-capable providers (Claude, GPT, Gemini, Grok) run
+# with their web-search tool enabled and pass the audit region as the search
+# user_location, so non-Perplexity models also answer as a local user.
+# Off by default because web-grounded calls cost more and are slower.
+LLM_WEBSEARCH_ENABLED = env.bool("LLM_WEBSEARCH_ENABLED", default=False)
 
 # Google Programmable Search (Custom Search JSON API). Used by the
 # Model Test pipeline to fetch real publisher URLs for the citations

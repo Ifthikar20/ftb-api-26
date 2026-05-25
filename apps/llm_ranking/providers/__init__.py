@@ -15,6 +15,7 @@ from .base import LLMProvider, ProviderResult
 from .claude import ClaudeProvider
 from .deepseek import DeepSeekProvider
 from .gemini import GeminiProvider
+from .grok import GrokProvider
 from .openai import OpenAIProvider
 from .perplexity import PerplexityProvider
 
@@ -23,6 +24,7 @@ PROVIDERS: dict[str, type[LLMProvider]] = {
     "gpt4": OpenAIProvider,
     "gemini": GeminiProvider,
     "perplexity": PerplexityProvider,
+    "grok": GrokProvider,
 }
 
 
@@ -52,6 +54,10 @@ MODEL_VARIANTS: dict[str, list[tuple[str, str, bool]]] = {
     "perplexity": [
         ("Sonar Small (web)", "llama-3.1-sonar-small-128k-online", True),
         ("Sonar Large (web)", "llama-3.1-sonar-large-128k-online", False),
+    ],
+    "grok": [
+        ("Grok 3", "grok-3", True),
+        ("Grok 4", "grok-4", False),
     ],
     # DeepSeek is excluded from the main audit registry (PROVIDERS) but
     # surfaced in the Model Test picker because it's a cheap, useful
@@ -206,5 +212,6 @@ __all__ = [
     "OpenAIProvider",
     "GeminiProvider",
     "PerplexityProvider",
+    "GrokProvider",
     "DeepSeekProvider",
 ]
