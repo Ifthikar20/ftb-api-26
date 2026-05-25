@@ -353,7 +353,7 @@ class WebsitePromptCreateView(APIView):
             audit = LLMRankingAudit.objects.create(
                 website=website,
                 created_by=user,
-                business_name=website.business_name or website.name or "",
+                business_name=getattr(website, "business_name", None) or website.name or "",
                 business_description=getattr(website, "description", "") or "",
                 industry=getattr(website, "industry", "") or "",
                 location=location or "",
@@ -889,7 +889,7 @@ class BrandPromptDetailAggView(APIView):
         total_results = len(results)
 
         # ── Per-brand visibility / SOV / sentiment / position ──────────
-        brand_label = website.business_name or website.name or "your brand"
+        brand_label = getattr(website, "business_name", None) or website.name or "your brand"
         brand_label_lower = brand_label.lower()
 
         brand_stats: dict[str, dict] = {}

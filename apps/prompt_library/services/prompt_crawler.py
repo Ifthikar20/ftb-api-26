@@ -134,7 +134,7 @@ def crawl_prompt(website: Website, prompt: Prompt) -> CrawlOutcome:
     errors: list[str] = []
     responses_logged = 0
 
-    brand_name = website.business_name or website.name or "your brand"
+    brand_name = getattr(website, "business_name", None) or website.name or "your brand"
     fanouts = _llm_fanout(prompt.text or prompt.template_text or "", brand_name)
 
     # Persist fan-out rows. Bulk create with ignore_conflicts so a
