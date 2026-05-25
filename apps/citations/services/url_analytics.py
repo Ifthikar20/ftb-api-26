@@ -86,6 +86,20 @@ def domain_type_for(source_class: str) -> str:
     return _DOMAIN_TYPE_BY_CLASS.get(source_class, "Reference")
 
 
+def topic_of(result) -> str | None:
+    """The dashboard "topic" for a result == the source prompt's industry name.
+
+    This is the prompt bundle the user organises prompts under on the Prompts
+    page (e.g. "ALi"). Results whose prompt text could not be linked back to a
+    library Prompt have no topic.
+    """
+    sp = getattr(result, "source_prompt", None)
+    if sp is not None and getattr(sp, "industry_id", None):
+        return sp.industry.name
+    return None
+
+
+
 def classify_url_type(url: str, title: str = "") -> str:
     """Heuristic page-type classifier from the URL path + title."""
     try:
@@ -195,25 +209,35 @@ def _row_payload(agg: dict) -> dict:
     }
 
 
-def build_urls_overview(website, *, start: date, end: date, provider: str | None = None) -> dict:
-    """Full payload for the URLs list view."""
+def build_urls_overview(website, *, start: date, end: date, provider: str | None = None,
+                        topic: str | None = None) -> dict:
+    """Full payload for the URLs list view, optionally scoped to one topic."""
     qs = (
         Citation.objects.filter(
             audit__website=website,
             created_at__date__gte=start,
             created_at__date__lte=end,
         )
-        .select_related("result")
-        .only(
-            "url", "normalized_url", "domain", "apex_domain", "source_class",
-            "position", "title", "is_target", "is_competitor", "created_at",
-            "result__provider", "result__prompt", "result__prompt_index",
-            "result__is_mentioned", "result__competitors_mentioned",
-        )
+        .select_related("result", "result__source_prompt__industry")
     )
     if provider:
         qs = qs.filter(result__provider=provider)
     citations = list(qs)
+
+    # Topics dropdown reflects every topic in the (period + provider) scope,
+    # regardless of the currently selected topic, so the user can switch.
+    topic_counter: Counter = Counter()
+    for c in citations:
+        t = topic_of(c.result)
+        if t:
+            topic_counter[t] += 1
+    topics = [
+        {"name": name, "count": count}
+        for name, count in topic_counter.most_common()
+    ]
+
+    if topic:
+        citations = [c for c in citations if topic_of(c.result) == topic]
 
     by_url = _aggregate_rows(citations)
     rows = [_row_payload(a) for a in by_url.values()]
@@ -268,6 +292,8 @@ def build_urls_overview(website, *, start: date, end: date, provider: str | None
         "period_end": end.isoformat(),
         "total_retrievals": total_retrievals,
         "unique_urls": len(rows),
+        "topics": topics,
+        "selected_topic": topic or None,
         "overview": overview,
         "movers": movers,
         "url_types": url_types,
@@ -339,7 +365,7 @@ def _build_movers(citations, rows, start: date, end: date) -> dict:
 
 
 def build_url_detail(website, *, normalized_url: str, start: date, end: date,
-                     provider: str | None = None) -> dict | None:
+                     provider: str | None = None, topic: str | None = None) -> dict | None:
     """Detail payload for a single cited URL. Returns None if not found."""
     prev_start, prev_end = _prev_window(start, end)
 
@@ -350,11 +376,13 @@ def build_url_detail(website, *, normalized_url: str, start: date, end: date,
             created_at__date__gte=prev_start,
             created_at__date__lte=end,
         )
-        .select_related("result")
+        .select_related("result", "result__source_prompt__industry")
     )
     if provider:
         qs = qs.filter(result__provider=provider)
     citations = list(qs)
+    if topic:
+        citations = [c for c in citations if topic_of(c.result) == topic]
     if not citations:
         return None
 
@@ -418,7 +446,7 @@ def build_url_detail(website, *, normalized_url: str, start: date, end: date,
         r = c.result
         p = prompt_acc.setdefault(r.prompt, {
             "prompt": r.prompt,
-            "topic": r.get_prompt_type_display(),
+            "topic": topic_of(r) or r.get_prompt_type_display(),
             "retrieved": 0,
             "_prompts": set(),
         })

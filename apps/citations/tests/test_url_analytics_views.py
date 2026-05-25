@@ -10,6 +10,7 @@ from apps.llm_ranking.tests.factories import (
     LLMRankingAuditFactory,
     LLMRankingResultFactory,
 )
+from apps.prompt_library.tests.factories import IndustryFactory, PromptFactory
 from apps.websites.tests.factories import WebsiteFactory
 
 pytestmark = pytest.mark.django_db
@@ -90,6 +91,59 @@ class TestWebsiteUrls:
         other_website = WebsiteFactory(user=other)
         url = reverse("citations-website-urls", args=[other_website.id])
         assert client.get(url).status_code in (403, 404)
+
+
+class TestTopicScoping:
+    def test_topics_listed_and_filtered(self, auth_client):
+        client, user = auth_client
+        website = WebsiteFactory(user=user)
+        audit = LLMRankingAuditFactory(website=website, created_by=user)
+
+        industry = IndustryFactory(name="ALi")
+        prompt = PromptFactory(industry=industry, text="best ai tools to organize life")
+        # Result whose prompt is linked to the "ALi" topic.
+        r1 = LLMRankingResultFactory(
+            audit=audit, provider=LLMRankingResult.PROVIDER_PERPLEXITY, prompt_index=0,
+            prompt=prompt.text, source_prompt=prompt,
+            citations=[{"url": "https://youtube.com/watch?v=1"}], response_text="",
+        )
+        # Result with no linked prompt -> no topic.
+        r2 = LLMRankingResultFactory(
+            audit=audit, provider=LLMRankingResult.PROVIDER_CLAUDE, prompt_index=1,
+            prompt="unlinked prompt", source_prompt=None,
+            citations=[{"url": "https://reddit.com/r/x"}], response_text="",
+        )
+        extract_for_result(str(r1.id))
+        extract_for_result(str(r2.id))
+
+        url = reverse("citations-website-urls", args=[website.id])
+        resp = client.get(url)
+        assert resp.status_code == 200
+        topics = {t["name"]: t["count"] for t in resp.data["topics"]}
+        assert topics.get("ALi") == 1
+        assert resp.data["unique_urls"] == 2  # unfiltered
+
+        scoped = client.get(url, {"topic": "ALi"})
+        assert scoped.data["selected_topic"] == "ALi"
+        assert scoped.data["unique_urls"] == 1
+        assert scoped.data["urls"][0]["apex_domain"] == "youtube.com"
+
+    def test_detail_topic_column_uses_industry_name(self, auth_client):
+        client, user = auth_client
+        website = WebsiteFactory(user=user)
+        audit = LLMRankingAuditFactory(website=website, created_by=user)
+        industry = IndustryFactory(name="ALi")
+        prompt = PromptFactory(industry=industry, text="organize my life prompt")
+        r = LLMRankingResultFactory(
+            audit=audit, provider=LLMRankingResult.PROVIDER_PERPLEXITY, prompt_index=0,
+            prompt=prompt.text, source_prompt=prompt,
+            citations=[{"url": "https://youtube.com/watch?v=2"}], response_text="",
+        )
+        extract_for_result(str(r.id))
+        url = reverse("citations-website-url-detail", args=[website.id])
+        resp = client.get(url, {"url": "https://youtube.com/watch?v=2"})
+        assert resp.status_code == 200
+        assert resp.data["prompts"][0]["topic"] == "ALi"
 
 
 class TestWebsiteUrlDetail:

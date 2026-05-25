@@ -259,11 +259,14 @@ class WebsiteUrlsView(TenantScopedAPIView):
         website = self.get_website(website_id)
         period_days = int(request.query_params.get("period_days", 30) or 30)
         provider = request.query_params.get("provider") or None
+        topic = request.query_params.get("topic") or None
 
         end = timezone.now().date()
         start = end - timedelta(days=period_days)
         return Response(
-            build_urls_overview(website, start=start, end=end, provider=provider)
+            build_urls_overview(
+                website, start=start, end=end, provider=provider, topic=topic
+            )
         )
 
 
@@ -285,11 +288,13 @@ class WebsiteUrlDetailView(TenantScopedAPIView):
 
         period_days = int(request.query_params.get("period_days", 30) or 30)
         provider = request.query_params.get("provider") or None
+        topic = request.query_params.get("topic") or None
         end = timezone.now().date()
         start = end - timedelta(days=period_days)
 
         payload = build_url_detail(
-            website, normalized_url=normalized, start=start, end=end, provider=provider
+            website, normalized_url=normalized, start=start, end=end,
+            provider=provider, topic=topic,
         )
         if payload is None:
             return Response({"detail": "URL not found for this website."}, status=404)
