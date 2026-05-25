@@ -8,6 +8,7 @@ constraint on ``(result, normalized_url)`` collapses repeat inserts).
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import Iterable
 
 from apps.citations.models import (
@@ -57,6 +58,27 @@ def _dedupe_candidates(candidates: Iterable[CitationCandidate]) -> list[Citation
         if existing is None or cand.confidence > existing.confidence:
             by_url[normalised] = cand
     return list(by_url.values())
+
+
+def count_references(text: str, *, url: str, method: str, position: int | None) -> int:
+    """Count how many times a retrieved source is explicitly cited in ``text``.
+
+    Two complementary signals (a retrieval is only a *citation* when one of
+    these fires; otherwise the page was merely a candidate source):
+
+    * Native / grounding sources are referenced by numbered markers. The
+      source at 0-based ``position`` is cited as ``[position + 1]``.
+    * Regex hits are URLs the model wrote into the prose, so the literal URL
+      occurrence count is the reference count.
+    """
+    if not text:
+        return 0
+    count = 0
+    if method in ("native", "grounding") and position is not None:
+        count += len(re.findall(re.escape(f"[{position + 1}]"), text))
+    if url:
+        count += text.count(url)
+    return count
 
 
 def extract_for_result(result_id: str) -> int:
@@ -115,6 +137,10 @@ def extract_for_result(result_id: str) -> int:
             source_class = SourceClass.OTHER
 
         method = cand.extraction_method if cand.extraction_method in method_choices else "regex"
+        pos = cand.position if cand.position is not None else position
+        references = count_references(
+            result.response_text or "", url=cand.url, method=method, position=pos,
+        )
 
         _, was_created = Citation.objects.update_or_create(
             result=result,
@@ -127,7 +153,8 @@ def extract_for_result(result_id: str) -> int:
                 "source_class": source_class,
                 "extraction_method": method,
                 "confidence": float(cand.confidence),
-                "position": cand.position if cand.position is not None else position,
+                "position": pos,
+                "reference_count": references,
                 "title": (cand.title or "")[:500],
                 "snippet": cand.snippet or "",
                 "is_target": source_class == SourceClass.YOUR_SITE,

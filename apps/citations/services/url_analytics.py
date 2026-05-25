@@ -12,12 +12,16 @@ domain_type, gap_score) are not stored on the row.
 
 Defined metrics (documented here so the frontend/product stay in sync):
 
-* retrievals      -- number of Citation rows for a URL in the window.
-* prompts         -- distinct prompts whose answer cited the URL.
-* citation_rate   -- retrievals / prompts, rounded to 1 dp. 0 when no prompts.
-* gap_score       -- count of results citing the URL where a competitor was
-                     mentioned but the tracked brand was not. High == the
-                     source helps competitors while you are absent.
+* retrievals      -- number of Citation rows for a URL in the window (the
+                     page appeared as a candidate source this many times).
+* citations       -- sum of reference_count: how many times the URL was
+                     explicitly referenced in answer text (a subset signal of
+                     retrievals).
+* prompts         -- distinct prompts whose answer retrieved the URL.
+* citation_rate   -- citations / retrievals, rounded to 1 dp (Peec: how often
+                     a retrieved source is actually cited, averaged per use).
+* gap_score       -- (distinct tracked competitors appearing in answers that
+                     used the URL) x retrievals (Peec source-gap priority).
 """
 from __future__ import annotations
 
@@ -137,8 +141,26 @@ def _prev_window(start: date, end: date) -> tuple[date, date]:
     return start - timedelta(days=span), start - timedelta(days=1)
 
 
-def _aggregate_rows(citations) -> dict[str, dict]:
-    """Group citations by normalized_url into per-URL accumulators."""
+def tracked_competitors(website) -> set[str]:
+    """Lower-cased names of the website's tracked competitors."""
+    out: set[str] = set()
+    for comp in (getattr(website, "competitors", None) or []):
+        if isinstance(comp, dict):
+            name = (comp.get("name") or "").strip().lower()
+        else:
+            name = str(comp).strip().lower()
+        if name:
+            out.add(name)
+    return out
+
+
+def _aggregate_rows(citations, competitors: set[str] | None = None) -> dict[str, dict]:
+    """Group citations by normalized_url into per-URL accumulators.
+
+    ``competitors`` is the set of tracked competitor names (lower-cased) used
+    to compute the gap score.
+    """
+    competitors = competitors or set()
     by_url: dict[str, dict] = {}
     for c in citations:
         key = c.normalized_url or c.url
@@ -152,16 +174,18 @@ def _aggregate_rows(citations) -> dict[str, dict]:
                 "apex_domain": c.apex_domain,
                 "source_class": c.source_class,
                 "retrievals": 0,
+                "references": 0,
                 "prompts": set(),
                 "providers": set(),
                 "positions": [],
-                "gap": 0,
+                "competitors": set(),
                 "is_target": False,
                 "is_competitor": False,
                 "first_seen": c.created_at,
                 "last_seen": c.created_at,
             }
         agg["retrievals"] += 1
+        agg["references"] += getattr(c, "reference_count", 0) or 0
         if not agg["title"] and c.title:
             agg["title"] = c.title
         result = c.result
@@ -175,16 +199,23 @@ def _aggregate_rows(citations) -> dict[str, dict]:
             agg["first_seen"] = c.created_at
         if c.created_at > agg["last_seen"]:
             agg["last_seen"] = c.created_at
-        # Gap: competitor mentioned in this answer but the brand was not.
-        if not result.is_mentioned and result.competitors_mentioned:
-            agg["gap"] += 1
+        # Gap: which tracked competitors appear in answers that used this URL.
+        for comp in (result.competitors_mentioned or []):
+            name = (comp.get("name") if isinstance(comp, dict) else str(comp)) or ""
+            name = name.strip().lower()
+            if name and name in competitors:
+                agg["competitors"].add(name)
     return by_url
 
 
 def _row_payload(agg: dict) -> dict:
-    prompts = len(agg["prompts"])
     retrievals = agg["retrievals"]
-    citation_rate = round(retrievals / prompts, 1) if prompts else 0.0
+    references = agg["references"]
+    # Citation rate (Peec): how often a retrieved source is actually
+    # referenced in the answer text, averaged over retrievals.
+    citation_rate = round(references / retrievals, 1) if retrievals else 0.0
+    # Gap score (Peec): tracked competitors present in the source x usage.
+    gap_score = len(agg["competitors"]) * retrievals
     parts = urlsplit(agg["url"])
     path = f"{parts.netloc}{parts.path}".rstrip("/")
     return {
@@ -199,9 +230,10 @@ def _row_payload(agg: dict) -> dict:
         "source_class": agg["source_class"],
         "models": sorted({model_key(p) for p in agg["providers"]}),
         "retrievals": retrievals,
-        "prompts": prompts,
+        "citations": references,
+        "prompts": len(agg["prompts"]),
         "citation_rate": citation_rate,
-        "gap_score": agg["gap"],
+        "gap_score": gap_score,
         "is_target": agg["is_target"],
         "is_competitor": agg["is_competitor"],
         "first_seen": agg["first_seen"].isoformat(),
@@ -239,7 +271,7 @@ def build_urls_overview(website, *, start: date, end: date, provider: str | None
     if topic:
         citations = [c for c in citations if topic_of(c.result) == topic]
 
-    by_url = _aggregate_rows(citations)
+    by_url = _aggregate_rows(citations, tracked_competitors(website))
     rows = [_row_payload(a) for a in by_url.values()]
     rows.sort(key=lambda r: r["retrievals"], reverse=True)
 
@@ -392,15 +424,17 @@ def build_url_detail(website, *, normalized_url: str, start: date, end: date,
         current = citations  # fall back so the page still renders
 
     sample = current[0]
-    agg = _aggregate_rows(current)
+    agg = _aggregate_rows(current, tracked_competitors(website))
     row = _row_payload(next(iter(agg.values())))
 
     cur_retr = len(current)
     prev_retr = len(previous)
     cur_prompts = len({(c.result.prompt_index, c.result.prompt) for c in current})
     prev_prompts = len({(c.result.prompt_index, c.result.prompt) for c in previous})
-    cur_rate = round(cur_retr / cur_prompts, 1) if cur_prompts else 0.0
-    prev_rate = round(prev_retr / prev_prompts, 1) if prev_prompts else 0.0
+    cur_refs = sum(getattr(c, "reference_count", 0) or 0 for c in current)
+    prev_refs = sum(getattr(c, "reference_count", 0) or 0 for c in previous)
+    cur_rate = round(cur_refs / cur_retr, 1) if cur_retr else 0.0
+    prev_rate = round(prev_refs / prev_retr, 1) if prev_retr else 0.0
     first_seen = min(c.created_at for c in citations)
     last_seen = max(c.created_at for c in citations)
 
@@ -448,18 +482,17 @@ def build_url_detail(website, *, normalized_url: str, start: date, end: date,
             "prompt": r.prompt,
             "topic": topic_of(r) or r.get_prompt_type_display(),
             "retrieved": 0,
-            "_prompts": set(),
+            "references": 0,
         })
         p["retrieved"] += 1
-        p["_prompts"].add(r.prompt_index)
+        p["references"] += getattr(c, "reference_count", 0) or 0
     prompts_table = []
     for p in sorted(prompt_acc.values(), key=lambda x: x["retrieved"], reverse=True):
-        n = len(p["_prompts"]) or 1
         prompts_table.append({
             "prompt": p["prompt"],
             "topic": p["topic"],
             "retrieved": p["retrieved"],
-            "citation_rate": round(p["retrieved"] / n, 1),
+            "citation_rate": round(p["references"] / p["retrieved"], 1) if p["retrieved"] else 0.0,
         })
 
     # ── Brands mentioned (target + competitors across the citing answers) ──

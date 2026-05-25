@@ -93,6 +93,94 @@ class TestWebsiteUrls:
         assert client.get(url).status_code in (403, 404)
 
 
+class TestAccurateMetrics:
+    def _row(self, body, apex):
+        return {r["apex_domain"]: r for r in body["urls"]}[apex]
+
+    def test_citation_rate_from_native_markers(self, auth_client):
+        client, user = auth_client
+        website = WebsiteFactory(user=user)
+        audit = LLMRankingAuditFactory(website=website, created_by=user)
+        # Native source at position 0 -> referenced in prose as "[1]".
+        r = LLMRankingResultFactory(
+            audit=audit, provider=LLMRankingResult.PROVIDER_PERPLEXITY, prompt_index=0,
+            prompt="p", citations=[{"url": "https://a.com/x"}],
+            response_text="According to the data [1], savings grow.",
+        )
+        extract_for_result(str(r.id))
+        body = client.get(reverse("citations-website-urls", args=[website.id])).data
+        row = self._row(body, "a.com")
+        assert row["retrievals"] == 1
+        assert row["citations"] == 1
+        assert row["citation_rate"] == 1.0
+
+    def test_retrieved_but_not_cited_is_zero(self, auth_client):
+        client, user = auth_client
+        website = WebsiteFactory(user=user)
+        audit = LLMRankingAuditFactory(website=website, created_by=user)
+        # Source retrieved but never referenced in the prose.
+        r = LLMRankingResultFactory(
+            audit=audit, provider=LLMRankingResult.PROVIDER_PERPLEXITY, prompt_index=0,
+            prompt="p", citations=[{"url": "https://a.com/x"}],
+            response_text="A generic answer with no markers.",
+        )
+        extract_for_result(str(r.id))
+        body = client.get(reverse("citations-website-urls", args=[website.id])).data
+        row = self._row(body, "a.com")
+        assert row["retrievals"] == 1
+        assert row["citations"] == 0
+        assert row["citation_rate"] == 0.0
+
+    def test_citation_rate_from_regex_prose(self, auth_client):
+        client, user = auth_client
+        website = WebsiteFactory(user=user)
+        audit = LLMRankingAuditFactory(website=website, created_by=user)
+        r = LLMRankingResultFactory(
+            audit=audit, provider=LLMRankingResult.PROVIDER_CLAUDE, prompt_index=0,
+            prompt="p",
+            response_text="See https://b.com/y and again https://b.com/y here.",
+        )
+        extract_for_result(str(r.id))
+        body = client.get(reverse("citations-website-urls", args=[website.id])).data
+        row = self._row(body, "b.com")
+        assert row["retrievals"] == 1
+        assert row["citations"] == 2
+        assert row["citation_rate"] == 2.0
+
+    def test_gap_score_competitors_times_usage(self, auth_client):
+        client, user = auth_client
+        website = WebsiteFactory(
+            user=user, competitors=[{"name": "Acme", "domain": "acme.com"}],
+        )
+        audit = LLMRankingAuditFactory(website=website, created_by=user)
+        # Same source cited in two answers; both mention tracked competitor Acme.
+        for idx in range(2):
+            r = LLMRankingResultFactory(
+                audit=audit, provider=LLMRankingResult.PROVIDER_PERPLEXITY, prompt_index=idx,
+                prompt=f"p{idx}", citations=[{"url": "https://src.com/x"}],
+                response_text="", competitors_mentioned=[{"name": "Acme", "position": 1}],
+            )
+            extract_for_result(str(r.id))
+        body = client.get(reverse("citations-website-urls", args=[website.id])).data
+        row = self._row(body, "src.com")
+        assert row["retrievals"] == 2
+        assert row["gap_score"] == 2  # 1 distinct competitor x 2 retrievals
+
+    def test_gap_score_zero_without_tracked_competitor(self, auth_client):
+        client, user = auth_client
+        website = WebsiteFactory(user=user, competitors=[])
+        audit = LLMRankingAuditFactory(website=website, created_by=user)
+        r = LLMRankingResultFactory(
+            audit=audit, provider=LLMRankingResult.PROVIDER_PERPLEXITY, prompt_index=0,
+            prompt="p", citations=[{"url": "https://src.com/x"}],
+            response_text="", competitors_mentioned=[{"name": "Unknown Co"}],
+        )
+        extract_for_result(str(r.id))
+        body = client.get(reverse("citations-website-urls", args=[website.id])).data
+        row = self._row(body, "src.com")
+        assert row["gap_score"] == 0
+
+
 class TestTopicScoping:
     def test_topics_listed_and_filtered(self, auth_client):
         client, user = auth_client
