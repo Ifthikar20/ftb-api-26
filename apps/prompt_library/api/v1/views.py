@@ -1002,8 +1002,8 @@ class BrandPromptDetailAggView(APIView):
         # so the UI shows "Not configured" instead of a misleading 0%.
         from django.conf import settings as dj_settings
 
+        from apps.citations.services.url_analytics import model_key
         from apps.llm_ranking.providers import PROVIDERS
-        from apps.llm_ranking.services.url_analytics import model_key
 
         model_labels = {
             "claude": "Claude", "gpt4": "ChatGPT", "gemini": "Gemini",
