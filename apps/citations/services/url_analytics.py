@@ -536,7 +536,7 @@ def build_url_detail(website, *, normalized_url: str, start: date, end: date,
             if oc.result_id == r.id and oc.normalized_url != normalized_url
         ]
         chats.append({
-            "result_id": str(r.id),
+            "result_id": str(r.public_id),
             "prompt": r.prompt,
             "response_preview": (r.response_text or "")[:180],
             "brand_mentioned": r.is_mentioned,
@@ -572,7 +572,7 @@ def build_chat_detail(website, *, result_id: str) -> dict | None:
         result = (
             LLMRankingResult.objects
             .select_related("audit", "source_prompt")
-            .get(id=result_id, audit__website=website)
+            .get(public_id=result_id, audit__website=website)
         )
     except LLMRankingResult.DoesNotExist:
         return None
@@ -625,7 +625,7 @@ def build_chat_detail(website, *, result_id: str) -> dict | None:
         country = max(cc.items(), key=lambda kv: kv[1])[0]
 
     return {
-        "result_id": str(result.id),
+        "result_id": str(result.public_id),
         "provider": result.provider,
         "model": model_key(result.provider),
         "country": country,

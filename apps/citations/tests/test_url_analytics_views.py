@@ -185,11 +185,11 @@ class TestChatDetail:
     def test_returns_full_conversation(self, auth_client):
         client, user = auth_client
         website, audit, result = _seed(user)
-        url = reverse("citations-website-chat-detail", args=[website.id, result.id])
+        url = reverse("citations-website-chat-detail", args=[website.id, result.public_id])
         resp = client.get(url)
         assert resp.status_code == 200
         body = resp.data
-        assert body["result_id"] == str(result.id)
+        assert body["result_id"] == str(result.public_id)
         assert body["model"] == "perplexity"
         assert body["prompt"] == "best treasury management software"
         assert body["response_text"] == "Some answer text."
@@ -208,7 +208,7 @@ class TestChatDetail:
             competitors_mentioned=[{"name": "Acme", "position": 3}],
         )
         extract_for_result(str(r.id))
-        url = reverse("citations-website-chat-detail", args=[website.id, r.id])
+        url = reverse("citations-website-chat-detail", args=[website.id, r.public_id])
         body = client.get(url).data
         names = {b["name"] for b in body["brands"]}
         assert website.name in names
@@ -219,7 +219,7 @@ class TestChatDetail:
         other = UserFactory()
         _, _, foreign = _seed(other)
         website = WebsiteFactory(user=user)
-        url = reverse("citations-website-chat-detail", args=[website.id, foreign.id])
+        url = reverse("citations-website-chat-detail", args=[website.id, foreign.public_id])
         assert client.get(url).status_code == 404
 
 

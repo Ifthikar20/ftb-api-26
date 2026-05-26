@@ -873,7 +873,7 @@ class BrandPromptDetailAggView(APIView):
             .filter(audit__website=website)
             .filter(Q(prompt__icontains=prompt.text[:80]) | Q(prompt__icontains=(prompt.template_text or "")[:80]))
             .only(
-                "id", "provider", "prompt", "response_text",
+                "id", "public_id", "provider", "prompt", "response_text",
                 "is_mentioned", "mention_rank", "sentiment",
                 "competitors_mentioned", "created_at",
                 "citation_countries", "query_succeeded",
@@ -1048,7 +1048,7 @@ class BrandPromptDetailAggView(APIView):
             country = max(cc.items(), key=lambda kv: kv[1])[0] if isinstance(cc, dict) and cc else None
             has_response = bool((r.response_text or "").strip())
             recent_chats.append({
-                "result_id": str(r.id),
+                "result_id": str(r.public_id),
                 "prompt": r.prompt,
                 "response_preview": (r.response_text or "")[:200],
                 "brand_mentioned": r.is_mentioned,

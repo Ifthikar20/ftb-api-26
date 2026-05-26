@@ -252,7 +252,7 @@ def test_prompt_detail_returns_recent_chats(auth):
     chats = body["recent_chats"]
     assert len(chats) == 1
     chat = chats[0]
-    assert chat["result_id"] == str(r.id)
+    assert chat["result_id"] == str(r.public_id)
     assert chat["brand_mentioned"] is True
     assert chat["position"] == 2
     assert chat["models"] == ["perplexity"]
