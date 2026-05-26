@@ -25,6 +25,7 @@ Defined metrics (documented here so the frontend/product stay in sync):
 """
 from __future__ import annotations
 
+import re
 from collections import Counter, defaultdict
 from datetime import date, timedelta
 from urllib.parse import urlsplit
@@ -558,6 +559,43 @@ def build_url_detail(website, *, normalized_url: str, start: date, end: date,
     }
 
 
+_LIST_ITEM = re.compile(r"^\s*(?:\d+[.)]|[-*•])\s+(.*\S)\s*$")
+_BOLD = re.compile(r"\*\*([^*\n]{1,60}?)\*\*")
+_LEAD_SPLIT = re.compile(r"\s+[—:\-–]\s+|[:(]| - ")
+
+
+def extract_response_brands(text: str, limit: int = 25) -> list[dict]:
+    """Pull the ranked entity/brand names a list-style answer recommends.
+
+    Models answer "best X" prompts as a numbered or bulleted list where each
+    item leads with the brand name (often bold). We capture that lead name and
+    its list position so the chat panel can show the brands the model named,
+    even when none are tracked competitors. Best-effort and heuristic.
+    """
+    if not text:
+        return []
+    out: list[dict] = []
+    seen: set[str] = set()
+    for raw in text.splitlines():
+        m = _LIST_ITEM.match(raw)
+        if not m:
+            continue
+        item = m.group(1).strip()
+        bold = _BOLD.search(item)
+        name = bold.group(1) if bold else _LEAD_SPLIT.split(item, 1)[0]
+        name = name.strip().strip("*\"'.,").strip()
+        if not (1 < len(name) <= 60):
+            continue
+        key = name.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append({"name": name, "position": len(out) + 1})
+        if len(out) >= limit:
+            break
+    return out
+
+
 def build_chat_detail(website, *, result_id: str) -> dict | None:
     """Full conversation payload for one chat (LLMRankingResult).
 
@@ -593,18 +631,29 @@ def build_chat_detail(website, *, result_id: str) -> dict | None:
         for c in source_rows
     ]
 
-    # Brands: tracked brand (if mentioned) + competitors named in the answer.
+    # Brands named in this answer: the tracked brand (if mentioned), any
+    # tracked competitors, and every brand the model listed in its response.
     brands = []
+    seen_brands: set[str] = set()
+
+    def _add_brand(name, position):
+        name = (name or "").strip()
+        key = name.lower()
+        if not name or key in seen_brands:
+            return
+        seen_brands.add(key)
+        brands.append({"name": name, "position": position})
+
     if result.is_mentioned:
-        brands.append({"name": website.name, "position": result.mention_rank})
+        _add_brand(website.name, result.mention_rank)
     for comp in (result.competitors_mentioned or []):
         if isinstance(comp, dict):
-            name = (comp.get("name") or "").strip()
-            pos = comp.get("position")
+            _add_brand(comp.get("name"), comp.get("position"))
         else:
-            name, pos = str(comp).strip(), None
-        if name:
-            brands.append({"name": name, "position": pos})
+            _add_brand(str(comp), None)
+    # Capture brands straight from the model's recommendation list.
+    for entry in extract_response_brands(result.response_text or ""):
+        _add_brand(entry["name"], entry["position"])
 
     # Fan-out sub-queries the model researched (per saved prompt).
     fanout_queries: list[str] = []

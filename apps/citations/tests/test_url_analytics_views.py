@@ -303,3 +303,39 @@ class TestWebsiteUrlDetail:
         assert any(m["model"] == "perplexity" for m in body["retrievals_by_model"])
         assert len(body["prompts"]) == 1
         assert isinstance(body["chats"], list)
+
+
+class TestResponseBrandExtraction:
+    def test_extracts_bold_numbered_list(self):
+        from apps.citations.services.url_analytics import extract_response_brands
+        text = "1. **Domino's Pizza**\n   desc\n2. **Pizza Hut**\n   desc\n"
+        names = [b["name"] for b in extract_response_brands(text)]
+        assert names == ["Domino's Pizza", "Pizza Hut"]
+
+    def test_extracts_dashed_list_with_separators(self):
+        from apps.citations.services.url_analytics import extract_response_brands
+        text = "- Qapital — automates savings.\n- Digit — analyzes spending."
+        out = extract_response_brands(text)
+        assert [b["name"] for b in out] == ["Qapital", "Digit"]
+        assert out[0]["position"] == 1 and out[1]["position"] == 2
+
+    def test_empty_text(self):
+        from apps.citations.services.url_analytics import extract_response_brands
+        assert extract_response_brands("") == []
+        assert extract_response_brands("a paragraph with no list") == []
+
+    def test_chat_detail_surfaces_listed_brands(self, auth_client):
+        client, user = auth_client
+        website = WebsiteFactory(user=user)
+        audit = LLMRankingAuditFactory(website=website, created_by=user)
+        r = LLMRankingResultFactory(
+            audit=audit, provider=LLMRankingResult.PROVIDER_GPT4, prompt_index=0,
+            prompt="pizza ordering app in dfw",
+            response_text="1. **Domino's Pizza**\n2. **Pizza Hut**\n3. **Papa John's**",
+            citations=[],
+        )
+        extract_for_result(str(r.id))
+        url = reverse("citations-website-chat-detail", args=[website.id, r.public_id])
+        body = client.get(url).data
+        names = {b["name"] for b in body["brands"]}
+        assert {"Domino's Pizza", "Pizza Hut", "Papa John's"} <= names
