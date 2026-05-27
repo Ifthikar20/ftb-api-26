@@ -866,24 +866,36 @@ class BrandPromptDetailAggView(APIView):
         # equals the prompt's text OR template_text. The audit serializer
         # stores the resolved text on the result, so we compare against
         # both shapes to catch templated variants.
+        # Match results to this prompt by the source_prompt FK (set when the
+        # cell ran) OR by exact text. The FK is the reliable link — it catches
+        # region-flavored or whitespace-different prompt text that pure string
+        # matching would miss.
         norm_text = self._normalise(prompt.text)
         norm_template = self._normalise(prompt.template_text or "")
         candidates = (
             LLMRankingResult.objects
             .filter(audit__website=website)
-            .filter(Q(prompt__icontains=prompt.text[:80]) | Q(prompt__icontains=(prompt.template_text or "")[:80]))
+            .filter(
+                Q(source_prompt_id=prompt.id)
+                | Q(prompt__icontains=prompt.text[:80])
+                | Q(prompt__icontains=(prompt.template_text or "")[:80])
+            )
             .only(
                 "id", "public_id", "provider", "prompt", "response_text",
                 "is_mentioned", "mention_rank", "sentiment",
                 "competitors_mentioned", "created_at",
-                "citation_countries", "query_succeeded",
+                "citation_countries", "query_succeeded", "source_prompt_id",
             )
         )
 
         results = []
         for r in candidates:
             rn = self._normalise(r.prompt)
-            if rn == norm_text or (norm_template and rn == norm_template):
+            if (
+                r.source_prompt_id == prompt.id
+                or rn == norm_text
+                or (norm_template and rn == norm_template)
+            ):
                 results.append(r)
 
         total_results = len(results)
