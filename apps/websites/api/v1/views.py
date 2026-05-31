@@ -1,6 +1,3 @@
-from datetime import timedelta
-
-from django.utils import timezone
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -126,35 +123,15 @@ class DashboardView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        from apps.analytics.models import PageEvent, Visitor
         from apps.notifications.models import Notification
+        from apps.llm_ranking.services.geo_stats import build_kpis_for_user
 
         websites = Website.objects.filter(user=request.user)
         website = websites.first()
-        now = timezone.now()
-        thirty_days_ago = now - timedelta(days=30)
-        now - timedelta(days=7)
 
-        # Stats
-        total_visitors = 0
-        conversion_rate = 0
-        visitors_prev = 0
-
-        if website:
-            total_visitors = Visitor.objects.filter(website=website, first_seen__gte=thirty_days_ago).count()
-            visitors_prev = Visitor.objects.filter(website=website, first_seen__gte=thirty_days_ago - timedelta(days=30), first_seen__lt=thirty_days_ago).count()
-            total_events = PageEvent.objects.filter(website=website, timestamp__gte=thirty_days_ago).count()
-            form_events = PageEvent.objects.filter(website=website, event_type='form_submit', timestamp__gte=thirty_days_ago).count()
-            conversion_rate = round((form_events / max(total_events, 1)) * 100, 1)
-
-        visitor_change = 0
-        if visitors_prev > 0:
-            visitor_change = round(((total_visitors - visitors_prev) / visitors_prev) * 100, 1)
-
-        stats = [
-            {'label': 'Total Visitors', 'value': f'{total_visitors:,}', 'change': f'{abs(visitor_change)}% vs last month', 'direction': 'up' if visitor_change >= 0 else 'down'},
-            {'label': 'Conversion Rate', 'value': f'{conversion_rate}%', 'change': 'form submissions / events', 'direction': 'up' if conversion_rate >= 2 else 'down'},
-        ]
+        # GEO KPI tiles — Visibility, Position, Sentiment — computed from
+        # the user's completed LLM ranking audits. None when there's no data.
+        stats = build_kpis_for_user(request.user) or []
 
         # Recent activity (from notifications)
         activity = []
