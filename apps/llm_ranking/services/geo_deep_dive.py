@@ -21,9 +21,11 @@ import json
 import logging
 import re
 from datetime import timedelta
+from typing import Optional
 
 from django.conf import settings
 from django.core.cache import cache
+from django.db.models import Count
 from django.utils import timezone
 
 from apps.llm_ranking.models import LLMRankingAudit, LLMRankingResult
@@ -32,6 +34,7 @@ logger = logging.getLogger("apps")
 
 PERIOD_DAYS = 30
 MAX_PROMPTS = 30
+MAX_AVAILABLE_PROMPTS = 200
 MIN_QUOTES_FOR_THEMES = 5
 MAX_QUOTES_PER_CALL = 50
 THEMES_CACHE_TTL = 60 * 60  # 1 hour
@@ -40,43 +43,73 @@ POSITION_BUCKETS = ("1", "2-3", "4-10", "11+")
 SENTIMENTS = ("positive", "neutral", "negative")
 
 
-def build_for_user(user) -> dict | None:
+def build_for_user(
+    user,
+    *,
+    start=None,
+    end=None,
+    prompts: Optional[list[str]] = None,
+) -> dict | None:
     """Return the deep-dive payload for a user, or None if no data."""
-    now = timezone.now()
-    start = now - timedelta(days=PERIOD_DAYS)
-    audits = list(
-        LLMRankingAudit.objects
-        .filter(
-            created_by=user,
-            status=LLMRankingAudit.STATUS_COMPLETED,
-            completed_at__gte=start,
-            completed_at__lt=now,
-        )
-        .order_by("-completed_at")
-        .values_list("id", flat=True)
+    end = end or timezone.now()
+    base_qs = LLMRankingAudit.objects.filter(
+        created_by=user, status=LLMRankingAudit.STATUS_COMPLETED,
     )
-    if not audits:
+    qs = base_qs
+    if start is not None:
+        qs = qs.filter(completed_at__gte=start)
+    if end is not None:
+        qs = qs.filter(completed_at__lt=end)
+    audit_ids = list(qs.order_by("-completed_at").values_list("id", flat=True))
+    if not audit_ids:
         return None
     return {
-        "visibility_matrix": _visibility_matrix(audits),
-        "position_by_provider": _position_by_provider(audits),
-        "sentiment_by_provider": _sentiment_by_provider(audits),
-        "sentiment_themes": _sentiment_themes(audits),
+        "visibility_matrix": _visibility_matrix(audit_ids, prompts),
+        "position_by_provider": _position_by_provider(audit_ids, prompts),
+        "sentiment_by_provider": _sentiment_by_provider(audit_ids, prompts),
+        "sentiment_themes": _sentiment_themes(audit_ids, prompts),
+        "available_prompts": _available_prompts(user),
     }
+
+
+def _filter_results(audit_ids: list, prompts: Optional[list[str]]):
+    qs = LLMRankingResult.objects.filter(
+        audit_id__in=audit_ids, query_succeeded=True,
+    )
+    if prompts:
+        qs = qs.filter(prompt__in=prompts)
+    return qs
+
+
+def _available_prompts(user) -> list[dict]:
+    """Distinct prompts the user has audited, ranked by recent volume."""
+    user_audit_ids = LLMRankingAudit.objects.filter(
+        created_by=user, status=LLMRankingAudit.STATUS_COMPLETED,
+    ).values_list("id", flat=True)
+    rows = (
+        LLMRankingResult.objects.filter(audit_id__in=user_audit_ids)
+        .values("prompt")
+        .annotate(count=Count("id"))
+        .order_by("-count")[:MAX_AVAILABLE_PROMPTS]
+    )
+    return [
+        {"value": r["prompt"], "label": r["prompt"], "count": r["count"]}
+        for r in rows
+    ]
 
 
 # ── visibility ─────────────────────────────────────────────────────────────
 
-def _visibility_matrix(audit_ids: list) -> dict:
+def _visibility_matrix(audit_ids: list, prompts: Optional[list[str]] = None) -> dict:
     """One row per distinct prompt, one column per provider seen.
 
     When the same (prompt, provider) appears in multiple audits the most
     recent audit wins, since audit_ids is ordered by completed_at desc.
     """
     audit_rank = {aid: i for i, aid in enumerate(audit_ids)}
-    rows = LLMRankingResult.objects.filter(
-        audit_id__in=audit_ids, query_succeeded=True,
-    ).values("audit_id", "prompt", "provider", "is_mentioned", "mention_rank")
+    rows = _filter_results(audit_ids, prompts).values(
+        "audit_id", "prompt", "provider", "is_mentioned", "mention_rank",
+    )
     rows = sorted(rows, key=lambda r: audit_rank[r["audit_id"]])
 
     prompts: dict[str, dict] = {}
@@ -102,11 +135,12 @@ def _visibility_matrix(audit_ids: list) -> dict:
 
 # ── position ───────────────────────────────────────────────────────────────
 
-def _position_by_provider(audit_ids: list) -> list[dict]:
-    rows = LLMRankingResult.objects.filter(
-        audit_id__in=audit_ids, query_succeeded=True,
-        is_mentioned=True, mention_rank__isnull=False,
-    ).values("provider", "mention_rank")
+def _position_by_provider(audit_ids: list, prompts: Optional[list[str]] = None) -> list[dict]:
+    rows = (
+        _filter_results(audit_ids, prompts)
+        .filter(is_mentioned=True, mention_rank__isnull=False)
+        .values("provider", "mention_rank")
+    )
 
     by_provider: dict[str, dict[str, int]] = {}
     for r in rows:
@@ -143,10 +177,12 @@ def _position_by_provider(audit_ids: list) -> list[dict]:
 
 # ── sentiment ──────────────────────────────────────────────────────────────
 
-def _sentiment_by_provider(audit_ids: list) -> list[dict]:
-    rows = LLMRankingResult.objects.filter(
-        audit_id__in=audit_ids, query_succeeded=True, is_mentioned=True,
-    ).values("provider", "sentiment")
+def _sentiment_by_provider(audit_ids: list, prompts: Optional[list[str]] = None) -> list[dict]:
+    rows = (
+        _filter_results(audit_ids, prompts)
+        .filter(is_mentioned=True)
+        .values("provider", "sentiment")
+    )
 
     by_provider: dict[str, dict[str, int]] = {}
     for r in rows:
@@ -177,7 +213,7 @@ def _sentiment_by_provider(audit_ids: list) -> list[dict]:
 
 # ── sentiment themes (LLM-clustered, cached) ───────────────────────────────
 
-def _sentiment_themes(audit_ids: list) -> dict:
+def _sentiment_themes(audit_ids: list, prompts: Optional[list[str]] = None) -> dict:
     """Cluster positive and negative quote contexts into named themes.
 
     Returns {"positive": [...], "negative": [...]}. Each list is at most
@@ -189,28 +225,27 @@ def _sentiment_themes(audit_ids: list) -> dict:
     if not enabled:
         return {"positive": [], "negative": []}
 
-    cache_key = _themes_cache_key(audit_ids)
+    cache_key = _themes_cache_key(audit_ids, prompts)
     cached = cache.get(cache_key)
     if cached is not None:
         return cached
 
     out = {
-        "positive": _cluster_one(audit_ids, LLMRankingResult.SENTIMENT_POSITIVE),
-        "negative": _cluster_one(audit_ids, LLMRankingResult.SENTIMENT_NEGATIVE),
+        "positive": _cluster_one(audit_ids, prompts, LLMRankingResult.SENTIMENT_POSITIVE),
+        "negative": _cluster_one(audit_ids, prompts, LLMRankingResult.SENTIMENT_NEGATIVE),
     }
     cache.set(cache_key, out, THEMES_CACHE_TTL)
     return out
 
 
-def _cluster_one(audit_ids: list, sentiment_label: str) -> list[dict]:
-    quotes = list(
-        LLMRankingResult.objects.filter(
-            audit_id__in=audit_ids, query_succeeded=True, is_mentioned=True,
-            sentiment=sentiment_label,
-        )
+def _cluster_one(audit_ids: list, prompts: Optional[list[str]], sentiment_label: str) -> list[dict]:
+    qs = (
+        _filter_results(audit_ids, prompts)
+        .filter(is_mentioned=True, sentiment=sentiment_label)
         .exclude(mention_context="")
-        .order_by("-confidence_score")
-        .values_list("mention_context", flat=True)[:MAX_QUOTES_PER_CALL]
+    )
+    quotes = list(
+        qs.order_by("-confidence_score").values_list("mention_context", flat=True)[:MAX_QUOTES_PER_CALL]
     )
     if len(quotes) < MIN_QUOTES_FOR_THEMES:
         return []
@@ -269,8 +304,8 @@ def _parse_themes(text: str) -> list[dict]:
     return cleaned
 
 
-def _themes_cache_key(audit_ids: list) -> str:
-    digest = hashlib.sha1(
-        ",".join(str(a) for a in sorted(audit_ids)).encode()
-    ).hexdigest()[:16]
+def _themes_cache_key(audit_ids: list, prompts: Optional[list[str]] = None) -> str:
+    audit_part = ",".join(str(a) for a in sorted(audit_ids))
+    prompt_part = "|".join(sorted(prompts)) if prompts else ""
+    digest = hashlib.sha1(f"{audit_part}::{prompt_part}".encode()).hexdigest()[:16]
     return f"geo:deep_dive:themes:{digest}"

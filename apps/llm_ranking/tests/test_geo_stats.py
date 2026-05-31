@@ -113,6 +113,41 @@ class TestBuildKpisForUser:
 
 
 @pytest.mark.django_db
+class TestFilters:
+    def test_prompts_filter_narrows_visibility(self):
+        user = UserFactory()
+        audit = LLMRankingAuditFactory(
+            created_by=user, status=LLMRankingAudit.STATUS_COMPLETED,
+            mention_rate=99.0, completed_at=timezone.now(),
+        )
+        LLMRankingResultFactory(audit=audit, prompt="A", query_succeeded=True, is_mentioned=True)
+        LLMRankingResultFactory(audit=audit, prompt="A", query_succeeded=True, is_mentioned=False)
+        LLMRankingResultFactory(audit=audit, prompt="B", query_succeeded=True, is_mentioned=True)
+        LLMRankingResultFactory(audit=audit, prompt="B", query_succeeded=True, is_mentioned=True)
+        tile = _by_label(build_kpis_for_user(user, prompts=["A"]), "Visibility")
+        # Only A's two cells: 1 mention out of 2 -> 50%
+        assert tile["value"] == "50.0%"
+
+    def test_explicit_start_end_window(self):
+        user = UserFactory()
+        now = timezone.now()
+        LLMRankingAuditFactory(
+            created_by=user, status=LLMRankingAudit.STATUS_COMPLETED,
+            mention_rate=80.0, completed_at=now - timedelta(days=2),
+        )
+        LLMRankingAuditFactory(
+            created_by=user, status=LLMRankingAudit.STATUS_COMPLETED,
+            mention_rate=20.0, completed_at=now - timedelta(days=60),
+        )
+        tile = _by_label(
+            build_kpis_for_user(user, start=now - timedelta(days=7), end=now),
+            "Visibility",
+        )
+        # Only the recent 80% audit lands in the requested window.
+        assert tile["value"] == "80.0%"
+
+
+@pytest.mark.django_db
 class TestBuildBreakdownsForUser:
     def test_returns_none_with_no_audits(self):
         user = UserFactory()

@@ -124,6 +124,10 @@ class DashboardView(APIView):
 
     def get(self, request):
         from apps.notifications.models import Notification
+        from apps.llm_ranking.services._window import (
+            parse_prompt_filter,
+            resolve_window,
+        )
         from apps.llm_ranking.services.geo_stats import (
             build_breakdowns_for_user,
             build_kpis_for_user,
@@ -135,11 +139,33 @@ class DashboardView(APIView):
         websites = Website.objects.filter(user=request.user)
         website = websites.first()
 
-        # GEO KPI tiles — Visibility, Position, Sentiment — computed from
-        # the user's completed LLM ranking audits. None when there's no data.
-        stats = build_kpis_for_user(request.user) or []
-        analytics_breakdowns = build_breakdowns_for_user(request.user)
-        analytics_deep_dive = build_deep_dive(request.user)
+        # Filters: ?range=overall|7d|30d|90d|1y|custom plus optional
+        # ?start=YYYY-MM-DD&end=YYYY-MM-DD&prompts=text1\ntext2.
+        range_key = request.query_params.get("range") or "30d"
+        start_dt, end_dt = resolve_window(
+            range_key,
+            request.query_params.get("start"),
+            request.query_params.get("end"),
+        )
+        prompt_filter = parse_prompt_filter(
+            request.query_params.getlist("prompts") or request.query_params.get("prompts"),
+        )
+        applied_filter = {
+            "range": range_key,
+            "start": start_dt.isoformat() if start_dt else None,
+            "end": end_dt.isoformat() if end_dt else None,
+            "prompts": prompt_filter or [],
+        }
+
+        stats = build_kpis_for_user(
+            request.user, start=start_dt, end=end_dt, prompts=prompt_filter,
+        ) or []
+        analytics_breakdowns = build_breakdowns_for_user(
+            request.user, start=start_dt, end=end_dt, prompts=prompt_filter,
+        )
+        analytics_deep_dive = build_deep_dive(
+            request.user, start=start_dt, end=end_dt, prompts=prompt_filter,
+        )
 
         # Recent activity (from notifications)
         activity = []
@@ -192,6 +218,7 @@ class DashboardView(APIView):
             'visibility_series': visibility_series,
             'analytics_breakdowns': analytics_breakdowns,
             'analytics_deep_dive': analytics_deep_dive,
+            'applied_filter': applied_filter,
         })
 
 

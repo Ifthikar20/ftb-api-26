@@ -158,6 +158,34 @@ class TestBuildForUser:
         themes = build_for_user(user)["sentiment_themes"]
         assert themes == {"positive": [], "negative": []}
 
+    def test_prompts_filter_narrows_matrix(self):
+        user = UserFactory()
+        audit = _completed_audit(user)
+        LLMRankingResultFactory(
+            audit=audit, prompt="A", provider="claude",
+            query_succeeded=True, is_mentioned=True, mention_rank=1,
+        )
+        LLMRankingResultFactory(
+            audit=audit, prompt="B", provider="claude",
+            query_succeeded=True, is_mentioned=False,
+        )
+        with patch("apps.llm_ranking.providers.get_provider", return_value=None):
+            matrix = build_for_user(user, prompts=["A"])["visibility_matrix"]
+        prompts_seen = [r["prompt"] for r in matrix["prompts"]]
+        assert prompts_seen == ["A"]
+
+    def test_available_prompts_ranked_by_volume(self):
+        user = UserFactory()
+        audit = _completed_audit(user)
+        for _ in range(3):
+            LLMRankingResultFactory(audit=audit, prompt="popular", query_succeeded=True)
+        LLMRankingResultFactory(audit=audit, prompt="rare", query_succeeded=True)
+        with patch("apps.llm_ranking.providers.get_provider", return_value=None):
+            available = build_for_user(user)["available_prompts"]
+        labels = [p["label"] for p in available]
+        assert labels[0] == "popular"
+        assert "rare" in labels
+
     def test_visibility_matrix_caps_at_max_prompts(self):
         user = UserFactory()
         audit = _completed_audit(user)
