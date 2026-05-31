@@ -1,4 +1,6 @@
 """Google Gemini provider."""
+from django.conf import settings
+
 from .base import LLMProvider, ProviderResult
 from .claude import DEFAULT_SYSTEM
 
@@ -15,10 +17,32 @@ class GeminiProvider(LLMProvider):
               region: str = "") -> ProviderResult:
         import google.generativeai as genai
 
+        from apps.llm_ranking.services.regions import region_system_instruction
+
         genai.configure(api_key=self.api_key)
-        model = genai.GenerativeModel(self.model)
-        full_prompt = f"{system_prompt or DEFAULT_SYSTEM}\n\n{prompt}"
-        resp = model.generate_content(full_prompt)
+        # Gemini grounding has no country parameter, so localize by stating
+        # the user's location in the system instruction.
+        sys_prompt = system_prompt or DEFAULT_SYSTEM
+        loc = region_system_instruction(region)
+        if loc:
+            sys_prompt = f"{sys_prompt}\n\n{loc}"
+        full_prompt = f"{sys_prompt}\n\n{prompt}"
+
+        # Gemini's grounding tool has no per-request country parameter, so the
+        # geo signal here comes from the region-flavoured prompt text; enabling
+        # Google Search grounding still makes the answer web-fresh.
+        use_search = getattr(settings, "LLM_WEBSEARCH_ENABLED", False)
+        resp = None
+        if use_search:
+            try:
+                model = genai.GenerativeModel(self.model, tools="google_search_retrieval")
+                resp = model.generate_content(full_prompt)
+            except Exception:
+                resp = None
+        if resp is None:
+            model = genai.GenerativeModel(self.model)
+            resp = model.generate_content(full_prompt)
+
         usage = getattr(resp, "usage_metadata", None)
         return ProviderResult(
             succeeded=True,

@@ -9,6 +9,7 @@ The API has two audiences:
 """
 from __future__ import annotations
 
+import logging
 import random
 
 from django.shortcuts import get_object_or_404
@@ -46,6 +47,8 @@ from apps.prompt_library.models import (
 from apps.prompt_library.services.sampler_service import sample_prompts_for_audit
 from apps.websites.services.website_service import WebsiteService
 from core.interceptors.pagination import StandardPagination
+
+logger = logging.getLogger("apps")
 
 
 class IndustryListView(ListAPIView):
@@ -218,6 +221,16 @@ class BrandPromptDetailView(APIView):
 
 # ── Phase 3: templated prompts, effectiveness, variables, smoke test ──
 
+class RegionsListView(APIView):
+    """GET — country options for the Add Prompt location picker."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from apps.llm_ranking.services.regions import supported_countries
+        return Response({"countries": supported_countries()})
+
+
 class WebsitePromptCreateView(APIView):
     """Create a manual templated prompt for a website."""
 
@@ -233,7 +246,17 @@ class WebsitePromptCreateView(APIView):
         data = serializer.validated_data
 
         industry = None
-        if data.get("industry_id"):
+        topic_name = (data.get("topic") or "").strip()
+        if topic_name:
+            # Topic == bundle. Resolve or create the matching Industry so the
+            # prompt (and any citations it later produces) file under it.
+            from django.utils.text import slugify
+            slug = slugify(topic_name)[:64] or "topic"
+            industry, _ = Industry.objects.get_or_create(
+                slug=slug,
+                defaults={"name": topic_name, "is_active": True},
+            )
+        elif data.get("industry_id"):
             industry = get_object_or_404(Industry, id=data["industry_id"], is_active=True)
         else:
             # Pick a sensible default — the website's industry name maps
@@ -249,34 +272,100 @@ class WebsitePromptCreateView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        template_text = data["template_text"].strip()
-        body_for_text = data.get("text") or template_text
-        variables = extract_variables(template_text)
-        # Reuse a prompt with the same canonical text if it already exists,
-        # otherwise create one. This keeps the Prompt table de-duped while
-        # still letting every website link its own copy via BrandPrompt.
-        canonical_hash = text_hash(template_text or body_for_text)
-        prompt, _ = Prompt.objects.get_or_create(
-            text_hash=canonical_hash,
-            defaults=dict(
-                industry=industry,
-                text=body_for_text,
-                template_text=template_text,
-                template_variables=variables,
-                intent_bucket=data.get("intent_bucket") or "category",
-                style=data.get("style") or "question",
-                source=PromptSource.MANUAL,
-            ),
+        tags = [t.strip() for t in (data.get("tags") or []) if t and t.strip()]
+        location = (data.get("location") or "").strip()
+
+        # Each non-empty line becomes a separate prompt (matches the modal's
+        # "every line is a prompt" + bulk-upload behaviour). Template-only
+        # payloads (no newlines) collapse to a single prompt as before.
+        raw = (data.get("text") or "").strip()
+        template_text_in = (data.get("template_text") or "").strip()
+        lines = [ln.strip() for ln in raw.splitlines() if ln.strip()]
+        if not lines:
+            lines = [template_text_in] if template_text_in else []
+
+        created_prompts = []
+        brand_prompt_ids = []
+        for line in lines:
+            template_text = template_text_in or line
+            body_for_text = line or template_text
+            variables = extract_variables(template_text)
+            canonical_hash = text_hash(template_text or body_for_text)
+            prompt, _ = Prompt.objects.get_or_create(
+                text_hash=canonical_hash,
+                defaults=dict(
+                    industry=industry,
+                    text=body_for_text,
+                    template_text=template_text,
+                    template_variables=variables,
+                    intent_bucket=data.get("intent_bucket") or "category",
+                    style=data.get("style") or "question",
+                    source=PromptSource.MANUAL,
+                ),
+            )
+            brand_prompt, _ = BrandPrompt.objects.get_or_create(
+                website=website, prompt=prompt,
+            )
+            changed = []
+            if tags and brand_prompt.tags != tags:
+                brand_prompt.tags = tags
+                changed.append("tags")
+            if location and brand_prompt.location != location:
+                brand_prompt.location = location
+                changed.append("location")
+            if changed:
+                brand_prompt.save(update_fields=[*changed, "updated_at"])
+            created_prompts.append(prompt)
+            brand_prompt_ids.append(str(brand_prompt.id))
+
+        if not created_prompts:
+            return Response({"error": "no_prompts"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Auto-scan: run the new prompts through the ranking pipeline so they
+        # start collecting mentions/citations. Best-effort — never blocks or
+        # fails the create if the queue or provider keys are unavailable.
+        scan_audit_id = self._trigger_scan(
+            website, request.user, [p.text for p in created_prompts], location,
         )
-        # Link the prompt to the website so it shows in the Saved tab.
-        # The Saved tab reads BrandPrompt rows, not Prompt rows directly.
-        brand_prompt, _ = BrandPrompt.objects.get_or_create(
-            website=website, prompt=prompt,
-        )
-        payload = PromptSerializer(prompt).data
-        # FE needs the BrandPrompt id to chain into "add to env" calls.
-        payload["brand_prompt_id"] = str(brand_prompt.id)
+
+        payload = PromptSerializer(created_prompts[0]).data
+        payload["brand_prompt_id"] = brand_prompt_ids[0]
+        payload["brand_prompt_ids"] = brand_prompt_ids
+        payload["created_count"] = len(created_prompts)
+        payload["scan_audit_id"] = scan_audit_id
         return Response(payload, status=status.HTTP_201_CREATED)
+
+    @staticmethod
+    def _trigger_scan(website, user, prompts, location):
+        """Kick off an LLM ranking audit for freshly added prompts."""
+        try:
+            from django.conf import settings as dj_settings
+
+            from apps.llm_ranking.models import LLMRankingAudit
+            from apps.llm_ranking.providers import PROVIDERS as PROV_REGISTRY
+            from apps.llm_ranking.services.regions import region_for_country
+            from apps.llm_ranking.services.scan_dispatch import dispatch_scan
+
+            selected = [
+                k for k, prov in PROV_REGISTRY.items()
+                if getattr(dj_settings, prov.api_key_setting, "")
+            ] or ["claude"]
+            audit = LLMRankingAudit.objects.create(
+                website=website,
+                created_by=user,
+                business_name=getattr(website, "business_name", None) or website.name or "",
+                business_description=getattr(website, "description", "") or "",
+                industry=getattr(website, "industry", "") or "",
+                location=location or "",
+                region=region_for_country(location),
+                prompts=list(prompts),
+                providers_queried=selected,
+            )
+            dispatch_scan(str(audit.id))
+            return str(audit.id)
+        except Exception:  # pragma: no cover - scan is best-effort
+            logger.exception("auto-scan dispatch failed")
+            return None
 
 
 class PromptPreviewView(APIView):
@@ -768,35 +857,51 @@ class BrandPromptDetailAggView(APIView):
             return Response({"detail": "Prompt not found."},
                             status=status.HTTP_404_NOT_FOUND)
 
-        bp_exists = BrandPrompt.objects.filter(website=website, prompt=prompt).exists()
+        bp = BrandPrompt.objects.filter(website=website, prompt=prompt).first()
+        bp_exists = bp is not None
+        bp_location = bp.location if bp else ""
+        bp_tags = bp.tags if bp else []
 
         # Match every LLMRankingResult on this website whose prompt text
         # equals the prompt's text OR template_text. The audit serializer
         # stores the resolved text on the result, so we compare against
         # both shapes to catch templated variants.
+        # Match results to this prompt by the source_prompt FK (set when the
+        # cell ran) OR by exact text. The FK is the reliable link — it catches
+        # region-flavored or whitespace-different prompt text that pure string
+        # matching would miss.
         norm_text = self._normalise(prompt.text)
         norm_template = self._normalise(prompt.template_text or "")
         candidates = (
             LLMRankingResult.objects
             .filter(audit__website=website)
-            .filter(Q(prompt__icontains=prompt.text[:80]) | Q(prompt__icontains=(prompt.template_text or "")[:80]))
+            .filter(
+                Q(source_prompt_id=prompt.id)
+                | Q(prompt__icontains=prompt.text[:80])
+                | Q(prompt__icontains=(prompt.template_text or "")[:80])
+            )
             .only(
-                "id", "provider", "prompt", "response_text",
+                "id", "public_id", "provider", "prompt", "response_text",
                 "is_mentioned", "mention_rank", "sentiment",
                 "competitors_mentioned", "created_at",
+                "citation_countries", "query_succeeded", "source_prompt_id",
             )
         )
 
         results = []
         for r in candidates:
             rn = self._normalise(r.prompt)
-            if rn == norm_text or (norm_template and rn == norm_template):
+            if (
+                r.source_prompt_id == prompt.id
+                or rn == norm_text
+                or (norm_template and rn == norm_template)
+            ):
                 results.append(r)
 
         total_results = len(results)
 
         # ── Per-brand visibility / SOV / sentiment / position ──────────
-        brand_label = website.business_name or website.name or "your brand"
+        brand_label = getattr(website, "business_name", None) or website.name or "your brand"
         brand_label_lower = brand_label.lower()
 
         brand_stats: dict[str, dict] = {}
@@ -867,6 +972,7 @@ class BrandPromptDetailAggView(APIView):
         )
         per_domain: dict[str, dict] = {}
         responses_with_citation: dict[str, set] = defaultdict(set)
+        sources_by_result: dict[str, list] = defaultdict(list)
         for c in citations_qs:
             apex = c.apex_domain or c.domain
             if not apex:
@@ -879,6 +985,7 @@ class BrandPromptDetailAggView(APIView):
             })
             entry["count"] += 1
             responses_with_citation[apex].add(c.result_id)
+            sources_by_result[c.result_id].append(apex)
 
         top_domains = []
         for apex, entry in per_domain.items():
@@ -902,6 +1009,69 @@ class BrandPromptDetailAggView(APIView):
             for key, cnt in type_counter.most_common()
         ]
 
+        # ── Brand visibility per model for this prompt ──
+        # Every implemented provider appears: unconfigured ones are flagged
+        # so the UI shows "Not configured" instead of a misleading 0%.
+        from django.conf import settings as dj_settings
+
+        from apps.citations.services.url_analytics import model_key
+        from apps.llm_ranking.providers import PROVIDERS
+
+        model_labels = {
+            "claude": "Claude", "gpt4": "ChatGPT", "gemini": "Gemini",
+            "perplexity": "Perplexity", "grok": "Grok",
+        }
+        per_model: dict[str, dict] = {}
+        for r in results:
+            m = per_model.setdefault(r.provider, {"responses": 0, "mentioned": 0})
+            m["responses"] += 1
+            if r.is_mentioned:
+                m["mentioned"] += 1
+        by_model = []
+        for key, cls in PROVIDERS.items():
+            configured = bool(getattr(dj_settings, cls.api_key_setting, ""))
+            stat = per_model.get(key, {"responses": 0, "mentioned": 0})
+            responses = stat["responses"]
+            by_model.append({
+                "provider": key,
+                "model": model_key(key),
+                "label": model_labels.get(key, key),
+                "configured": configured,
+                "responses": responses,
+                "mentioned": stat["mentioned"],
+                "visibility_pct": (
+                    round(100 * stat["mentioned"] / responses, 1) if responses else 0.0
+                ),
+            })
+        # Configured-with-data first, then by visibility, unconfigured last.
+        by_model.sort(key=lambda m: (not m["configured"], -m["responses"], -m["visibility_pct"]))
+
+        ordered = sorted(
+            results, key=lambda r: r.created_at or prompt.created_at, reverse=True,
+        )[:100]
+        recent_chats = []
+        for r in ordered:
+            srcs, seen = [], set()
+            for d in sources_by_result.get(r.id, []):
+                if d and d not in seen:
+                    seen.add(d)
+                    srcs.append(d)
+            cc = r.citation_countries or {}
+            country = max(cc.items(), key=lambda kv: kv[1])[0] if isinstance(cc, dict) and cc else None
+            has_response = bool((r.response_text or "").strip())
+            recent_chats.append({
+                "result_id": str(r.public_id),
+                "prompt": r.prompt,
+                "response_preview": (r.response_text or "")[:200],
+                "brand_mentioned": r.is_mentioned,
+                "position": r.mention_rank,
+                "models": [model_key(r.provider)],
+                "sources": srcs[:6],
+                "country": country,
+                "status": "complete" if has_response else "pending",
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+            })
+
         return Response({
             "prompt": {
                 "id": str(prompt.id),
@@ -909,6 +1079,8 @@ class BrandPromptDetailAggView(APIView):
                 "template_text": prompt.template_text or "",
                 "intent_bucket": prompt.intent_bucket,
                 "topic": prompt.industry.name if prompt.industry_id else "",
+                "location": bp_location,
+                "tags": bp_tags,
                 "demand_score": prompt.demand_score,
                 "runs_count": prompt.runs_count,
                 "effectiveness_score": prompt.effectiveness_score,
@@ -919,9 +1091,11 @@ class BrandPromptDetailAggView(APIView):
             "total_responses": total_results,
             "brand_label": brand_label,
             "brands": brands_out,
+            "by_model": by_model,
             "top_domains": top_domains,
             "domain_types": type_breakdown,
             "total_retrievals": sum(type_counter.values()),
+            "recent_chats": recent_chats,
         })
 
 
@@ -1010,6 +1184,8 @@ class WebsiteSavedPromptsAggView(APIView):
                 "topic_slug": p.industry.slug if p.industry_id else "",
                 "intent_bucket": p.intent_bucket,
                 "style": p.style,
+                "tags": bp.tags or [],
+                "location": bp.location or "",
                 "demand_score": p.demand_score,
                 "runs_count": p.runs_count,
                 "is_active": p.is_active,
@@ -1077,6 +1253,20 @@ class WebsiteSavedPromptsAggView(APIView):
         for row in rows:
             row.pop("_norm", None)
 
+        # Tag summary (over the full set, so the filter list is stable) and
+        # optional ?tag= filter applied to the rows.
+        tag_counter: Counter = Counter()
+        for row in rows:
+            for t in (row.get("tags") or []):
+                tag_counter[t] += 1
+        all_tags = [
+            {"name": name, "count": count}
+            for name, count in tag_counter.most_common()
+        ]
+        tag_filter = (request.query_params.get("tag") or "").strip()
+        if tag_filter:
+            rows = [r for r in rows if tag_filter in (r.get("tags") or [])]
+
         # Topic summary for the left rail.
         topic_counter: Counter = Counter()
         for row in rows:
@@ -1101,6 +1291,7 @@ class WebsiteSavedPromptsAggView(APIView):
             "rows": rows,
             "total": len(rows),
             "topics": topics,
+            "all_tags": all_tags,
             "kpi": {
                 "visibility_pct": avg_vis,
                 "sentiment_score": avg_sent,

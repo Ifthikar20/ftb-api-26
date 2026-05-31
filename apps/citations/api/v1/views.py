@@ -247,6 +247,73 @@ class WebsiteCitationsView(TenantScopedListAPIView):
         return self.paginated_response(qs, CitationSerializer)
 
 
+class WebsiteUrlsView(TenantScopedAPIView):
+    """Sources > URLs list view: overview chart, movers, types, and URL rows.
+
+    Aggregates every cited URL across the website's audits within the window.
+    """
+
+    def get(self, request, website_id):
+        from apps.citations.services.url_analytics import build_urls_overview
+
+        website = self.get_website(website_id)
+        period_days = int(request.query_params.get("period_days", 30) or 30)
+        provider = request.query_params.get("provider") or None
+        topic = request.query_params.get("topic") or None
+
+        end = timezone.now().date()
+        start = end - timedelta(days=period_days)
+        return Response(
+            build_urls_overview(
+                website, start=start, end=end, provider=provider, topic=topic
+            )
+        )
+
+
+class WebsiteUrlDetailView(TenantScopedAPIView):
+    """Sources > URLs detail view for a single cited URL.
+
+    The URL is identified by its ``normalized_url`` passed as ``?url=``.
+    """
+
+    def get(self, request, website_id):
+        from apps.citations.services.url_analytics import build_url_detail
+        from apps.citations.services.url_normalizer import normalize_url
+
+        website = self.get_website(website_id)
+        raw = request.query_params.get("url")
+        if not raw:
+            return Response({"detail": "Missing 'url' query parameter."}, status=400)
+        normalized, _host, _apex = normalize_url(raw)
+
+        period_days = int(request.query_params.get("period_days", 30) or 30)
+        provider = request.query_params.get("provider") or None
+        topic = request.query_params.get("topic") or None
+        end = timezone.now().date()
+        start = end - timedelta(days=period_days)
+
+        payload = build_url_detail(
+            website, normalized_url=normalized, start=start, end=end,
+            provider=provider, topic=topic,
+        )
+        if payload is None:
+            return Response({"detail": "URL not found for this website."}, status=404)
+        return Response(payload)
+
+
+class WebsiteChatDetailView(TenantScopedAPIView):
+    """Full conversation detail for one chat (LLMRankingResult) on a website."""
+
+    def get(self, request, website_id, result_id):
+        from apps.citations.services.url_analytics import build_chat_detail
+
+        website = self.get_website(website_id)
+        payload = build_chat_detail(website, result_id=result_id)
+        if payload is None:
+            return Response({"detail": "Chat not found for this website."}, status=404)
+        return Response(payload)
+
+
 class GlobalSourceInfluenceView(APIView):
     """Global (cross-tenant) rollup for benchmarking. No PII; safe to expose."""
 

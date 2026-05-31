@@ -246,6 +246,12 @@ CELERY_TASK_TRACK_STARTED = True
 CELERY_TASK_TIME_LIMIT = 300
 CELERY_TASK_SOFT_TIME_LIMIT = 240
 
+# How newly-added prompts get scanned. "celery" enqueues the chord task
+# (production); "inline" runs the audit in a background thread so a dev
+# server with no broker/worker still scans. See apps.llm_ranking.services
+# .scan_dispatch.
+LLM_SCAN_MODE = env("LLM_SCAN_MODE", default="celery")
+
 # ── SECURITY ──
 SECURE_SSL_REDIRECT = True
 SECURE_HSTS_SECONDS = 31536000
@@ -358,6 +364,13 @@ CANVA_CLIENT_ID = env("CANVA_CLIENT_ID", default="")
 CANVA_CLIENT_SECRET = env("CANVA_CLIENT_SECRET", default="")
 GEMINI_API_KEY = env("GEMINI_API_KEY", default="")
 PERPLEXITY_API_KEY = env("PERPLEXITY_API_KEY", default="")
+XAI_API_KEY = env("XAI_API_KEY", default="")
+
+# When True, web-search-capable providers (Claude, GPT, Gemini, Grok) run
+# with their web-search tool enabled and pass the audit region as the search
+# user_location, so non-Perplexity models also answer as a local user.
+# Off by default because web-grounded calls cost more and are slower.
+LLM_WEBSEARCH_ENABLED = env.bool("LLM_WEBSEARCH_ENABLED", default=False)
 
 # Google Programmable Search (Custom Search JSON API). Used by the
 # Model Test pipeline to fetch real publisher URLs for the citations

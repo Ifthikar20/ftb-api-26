@@ -5,6 +5,11 @@ SECURE_SSL_REDIRECT = False
 ALLOWED_HOSTS = ["*"]
 CORS_ALLOW_ALL_ORIGINS = True
 
+# Run prompt scans inline (background thread) by default in dev so a plain
+# runserver with no Celery worker/Redis still fills in mentions. Override
+# with LLM_SCAN_MODE=celery if you run a worker locally.
+LLM_SCAN_MODE = env("LLM_SCAN_MODE", default="inline")  # noqa: F405
+
 # Disable rate limiting in dev
 REST_FRAMEWORK["DEFAULT_THROTTLE_CLASSES"] = []  # noqa: F405
 

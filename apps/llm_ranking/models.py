@@ -191,6 +191,11 @@ class LLMRankingResult(TimestampMixin):
     ]
 
     audit = models.ForeignKey(LLMRankingAudit, on_delete=models.CASCADE, related_name="results")
+    # Public, non-sequential identifier exposed in URLs (the chat modal) so
+    # rows can't be enumerated/brute-forced via the integer PK.
+    public_id = models.UUIDField(
+        default=uuid.uuid4, editable=False, unique=True, db_index=True,
+    )
     provider = models.CharField(max_length=30, choices=PROVIDER_CHOICES, db_index=True)
     # Index of the prompt within the audit's prompts list. Together with
     # (audit, provider) this is the natural idempotency key, so a retried

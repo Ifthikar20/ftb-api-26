@@ -5,6 +5,7 @@ from . import views
 
 urlpatterns = [
     path("industries/", views.IndustryListView.as_view(), name="prompt-library-industries"),
+    path("regions/", views.RegionsListView.as_view(), name="prompt-library-regions"),
     path(
         "industries/<slug:slug>/trends/",
         views.IndustryTrendView.as_view(),

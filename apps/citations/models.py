@@ -65,6 +65,11 @@ class Citation(TimestampMixin):
     )
     confidence = models.FloatField(default=1.0)
     position = models.IntegerField(null=True, blank=True)
+    # Number of times this source is *explicitly* referenced in the answer
+    # text (numbered marker like [2] for native/grounding sources, or the
+    # literal URL appearing in prose for regex hits). 0 means the page was
+    # retrieved as a candidate source but never cited in the response.
+    reference_count = models.IntegerField(default=0)
     title = models.CharField(max_length=500, blank=True)
     snippet = models.TextField(blank=True)
     is_target = models.BooleanField(default=False)

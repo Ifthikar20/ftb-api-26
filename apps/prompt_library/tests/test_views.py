@@ -173,3 +173,219 @@ def test_brand_prompt_other_user_blocked():
         format="json",
     )
     assert resp.status_code in (403, 404)
+
+
+@pytest.mark.django_db
+def test_create_prompt_with_new_topic(auth):
+    client, _, website = auth
+    # Need at least one active industry so the no-topic default path exists,
+    # but here we pass an explicit new topic name.
+    resp = client.post(
+        f"/api/v1/prompt-library/websites/{website.id}/prompts/",
+        {"text": "What are the best budgeting apps in 2026?", "topic": "ALi"},
+        format="json",
+    )
+    assert resp.status_code == 201, resp.content
+    body = resp.json()
+    assert body.get("brand_prompt_id")
+    # A BrandPrompt linked to a Prompt filed under the new "ALi" topic.
+    bp = BrandPrompt.objects.select_related("prompt__industry").get(
+        id=body["brand_prompt_id"],
+    )
+    assert bp.website_id == website.id
+    assert bp.prompt.industry.name == "ALi"
+    assert bp.prompt.text == "What are the best budgeting apps in 2026?"
+
+
+@pytest.mark.django_db
+def test_create_prompt_reuses_existing_topic(auth):
+    client, _, website = auth
+    industry = IndustryFactory(name="ALi", slug="ali")
+    resp = client.post(
+        f"/api/v1/prompt-library/websites/{website.id}/prompts/",
+        {"text": "How do I automate cash flow?", "topic": "ALi"},
+        format="json",
+    )
+    assert resp.status_code == 201, resp.content
+    bp = BrandPrompt.objects.select_related("prompt__industry").get(
+        id=resp.json()["brand_prompt_id"],
+    )
+    assert bp.prompt.industry_id == industry.id
+
+
+@pytest.mark.django_db
+def test_create_prompt_requires_text(auth):
+    client, _, website = auth
+    resp = client.post(
+        f"/api/v1/prompt-library/websites/{website.id}/prompts/",
+        {"topic": "ALi"},
+        format="json",
+    )
+    assert resp.status_code == 400
+
+
+@pytest.mark.django_db
+def test_prompt_detail_returns_recent_chats(auth):
+    from apps.citations.services.extraction_service import extract_for_result
+    from apps.llm_ranking.models import LLMRankingResult
+    from apps.llm_ranking.tests.factories import LLMRankingResultFactory
+
+    client, user, website = auth
+    industry = IndustryFactory(name="ALi", slug="ali")
+    p = PromptFactory(industry=industry, text="best budgeting apps in 2026")
+    BrandPrompt.objects.create(website=website, prompt=p)
+    audit = LLMRankingAuditFactory(website=website, created_by=user)
+    r = LLMRankingResultFactory(
+        audit=audit, provider=LLMRankingResult.PROVIDER_PERPLEXITY, prompt_index=0,
+        prompt="best budgeting apps in 2026", response_text="Here are some apps...",
+        is_mentioned=True, mention_rank=2,
+        citations=[{"url": "https://reddit.com/r/x"}],
+    )
+    extract_for_result(str(r.id))
+
+    resp = client.get(
+        f"/api/v1/prompt-library/websites/{website.id}/prompts/{p.id}/detail/"
+    )
+    assert resp.status_code == 200, resp.content
+    body = resp.json()
+    assert body["prompt"]["topic"] == "ALi"
+    chats = body["recent_chats"]
+    assert len(chats) == 1
+    chat = chats[0]
+    assert chat["result_id"] == str(r.public_id)
+    assert chat["brand_mentioned"] is True
+    assert chat["position"] == 2
+    assert chat["models"] == ["perplexity"]
+    assert "reddit.com" in chat["sources"]
+
+
+@pytest.mark.django_db
+def test_create_prompts_multiline_with_tags_and_location(auth, monkeypatch):
+    import apps.llm_ranking.tasks as lr_tasks
+    monkeypatch.setattr(lr_tasks.run_llm_ranking_audit, "delay", lambda **k: None)
+
+    client, _, website = auth
+    resp = client.post(
+        f"/api/v1/prompt-library/websites/{website.id}/prompts/",
+        {
+            "text": "best budgeting apps\nalternatives to rocket money\n",
+            "topic": "ALi",
+            "location": "US",
+            "tags": ["branded", "transactional"],
+        },
+        format="json",
+    )
+    assert resp.status_code == 201, resp.content
+    body = resp.json()
+    assert body["created_count"] == 2
+    assert len(body["brand_prompt_ids"]) == 2
+
+    bps = BrandPrompt.objects.filter(website=website).select_related("prompt__industry")
+    assert bps.count() == 2
+    for bp in bps:
+        assert bp.tags == ["branded", "transactional"]
+        assert bp.location == "US"
+        assert bp.prompt.industry.name == "ALi"
+
+
+@pytest.mark.django_db
+def test_create_prompt_scan_failure_does_not_break_create(auth, monkeypatch):
+    import apps.llm_ranking.tasks as lr_tasks
+
+    def boom(**k):
+        raise RuntimeError("queue down")
+    monkeypatch.setattr(lr_tasks.run_llm_ranking_audit, "delay", boom)
+
+    client, _, website = auth
+    resp = client.post(
+        f"/api/v1/prompt-library/websites/{website.id}/prompts/",
+        {"text": "a resilient prompt", "topic": "ALi"},
+        format="json",
+    )
+    assert resp.status_code == 201, resp.content
+    assert resp.json()["scan_audit_id"] is None
+    assert BrandPrompt.objects.filter(website=website).count() == 1
+
+
+@pytest.mark.django_db
+def test_create_prompt_routes_region_from_location(auth, monkeypatch):
+    import apps.llm_ranking.services.scan_dispatch as sd
+    monkeypatch.setattr(sd, "dispatch_scan", lambda audit_id: "noop")
+
+    from apps.llm_ranking.models import LLMRankingAudit
+
+    client, _, website = auth
+    resp = client.post(
+        f"/api/v1/prompt-library/websites/{website.id}/prompts/",
+        {"text": "best UK current accounts", "topic": "ALi", "location": "GB"},
+        format="json",
+    )
+    assert resp.status_code == 201, resp.content
+    audit = LLMRankingAudit.objects.filter(website=website).latest("created_at")
+    assert audit.region == "uk"      # GB -> uk region
+    assert audit.location == "GB"
+
+
+@pytest.mark.django_db
+def test_saved_agg_tag_filter_and_all_tags(auth, monkeypatch):
+    import apps.llm_ranking.services.scan_dispatch as sd
+    monkeypatch.setattr(sd, "dispatch_scan", lambda audit_id: "noop")
+
+    client, _, website = auth
+    base = f"/api/v1/prompt-library/websites/{website.id}/prompts/"
+    client.post(base, {"text": "branded prompt one", "topic": "ALi",
+                       "tags": ["branded"]}, format="json")
+    client.post(base, {"text": "txn prompt two", "topic": "ALi",
+                       "tags": ["transactional"]}, format="json")
+
+    agg = f"/api/v1/prompt-library/websites/{website.id}/saved-prompts/agg/"
+    full = client.get(agg).json()
+    tag_names = {t["name"]: t["count"] for t in full["all_tags"]}
+    assert tag_names.get("branded") == 1
+    assert tag_names.get("transactional") == 1
+
+    filtered = client.get(agg, {"tag": "branded"}).json()
+    assert filtered["total"] == 1
+    assert all("branded" in r["tags"] for r in filtered["rows"])
+
+
+@pytest.mark.django_db
+def test_regions_endpoint(auth):
+    client, _, _ = auth
+    resp = client.get("/api/v1/prompt-library/regions/")
+    assert resp.status_code == 200
+    codes = {c["code"] for c in resp.json()["countries"]}
+    assert {"US", "RU", "UA", "GB"} <= codes
+
+
+@pytest.mark.django_db
+def test_prompt_detail_by_model_visibility(auth, settings):
+    from apps.llm_ranking.models import LLMRankingResult
+    from apps.llm_ranking.tests.factories import LLMRankingResultFactory
+
+    settings.PERPLEXITY_API_KEY = "configured-key"
+    settings.XAI_API_KEY = ""  # Grok not configured
+
+    client, user, website = auth
+    industry = IndustryFactory(name="ALi", slug="ali")
+    p = PromptFactory(industry=industry, text="best money apps")
+    BrandPrompt.objects.create(website=website, prompt=p)
+    audit = LLMRankingAuditFactory(website=website, created_by=user)
+    LLMRankingResultFactory(
+        audit=audit, provider=LLMRankingResult.PROVIDER_PERPLEXITY, prompt_index=0,
+        prompt="best money apps", response_text="...", is_mentioned=True,
+    )
+
+    resp = client.get(
+        f"/api/v1/prompt-library/websites/{website.id}/prompts/{p.id}/detail/"
+    )
+    assert resp.status_code == 200, resp.content
+    by_model = {m["provider"]: m for m in resp.json()["by_model"]}
+    # Every implemented provider is represented.
+    assert {"claude", "gpt4", "gemini", "perplexity", "grok"} <= set(by_model)
+    assert by_model["perplexity"]["configured"] is True
+    assert by_model["perplexity"]["responses"] == 1
+    assert by_model["perplexity"]["visibility_pct"] == 100.0
+    # No key -> flagged not configured (so the UI shows "Not configured").
+    assert by_model["grok"]["configured"] is False
+    assert by_model["grok"]["responses"] == 0
