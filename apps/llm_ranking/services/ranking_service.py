@@ -1029,6 +1029,12 @@ class LLMRankingService:
             "audit_logs", "updated_at",
         ])
 
+        try:
+            from apps.notifications.services.geo_events import record_audit_events
+            record_audit_events(audit)
+        except Exception as exc:  # pragma: no cover
+            logger.debug("notification dispatch failed for %s: %s", audit_id, exc)
+
         # Phase 4 — generate Content Studio briefs from the latest gaps.
         try:
             from django.conf import settings as _settings_phase4
@@ -1437,6 +1443,12 @@ class LLMRankingService:
             "providers_queried", "extraction_method", "completed_at",
             "duration_seconds", "total_tokens", "total_cost_usd", "updated_at",
         ])
+
+        try:
+            from apps.notifications.services.geo_events import record_audit_events
+            record_audit_events(audit)
+        except Exception as exc:  # pragma: no cover
+            logger.debug("notification dispatch failed for %s: %s", audit_id, exc)
 
         logger.info(
             "LLMRankingAudit %s completed: score=%d, mention_rate=%.1f%%",
