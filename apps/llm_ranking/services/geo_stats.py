@@ -39,7 +39,10 @@ def build_kpis_for_user(user) -> list[dict] | None:
     return [
         _build_tile(
             label="Visibility",
-            subtext="Share of AI answers you appear in",
+            subtext=(
+                "See the share of chats where your brand is mentioned and "
+                "understand how often you show up in conversations."
+            ),
             higher_better=True,
             value_fmt=_pct,
             current=_visibility(user, *current),
@@ -47,7 +50,10 @@ def build_kpis_for_user(user) -> list[dict] | None:
         ),
         _build_tile(
             label="Position",
-            subtext="Average rank when mentioned (lower is better)",
+            subtext=(
+                "Understand your brand's position within AI search results "
+                "and uncover opportunities to improve your ranking."
+            ),
             higher_better=False,
             value_fmt=_rank,
             current=_position(user, *current),
@@ -55,13 +61,130 @@ def build_kpis_for_user(user) -> list[dict] | None:
         ),
         _build_tile(
             label="Sentiment",
-            subtext="Net sentiment score (0-100)",
+            subtext=(
+                "Find out how your brand is perceived by AI, what's going "
+                "well, and what requires improvements."
+            ),
             higher_better=True,
             value_fmt=_score,
             current=_sentiment(user, *current),
             previous=_sentiment(user, *previous),
         ),
     ]
+
+
+# ── Breakdown payload for the per-metric detail cards ──────────────────────
+
+def build_breakdowns_for_user(user) -> dict | None:
+    """Return per-metric drill-downs for the dashboard, or None if no data."""
+    now = timezone.now()
+    start = now - timedelta(days=PERIOD_DAYS)
+    audit_ids = list(
+        LLMRankingAudit.objects.filter(
+            created_by=user,
+            status=LLMRankingAudit.STATUS_COMPLETED,
+            completed_at__gte=start,
+            completed_at__lt=now,
+        ).values_list("id", flat=True)
+    )
+    if not audit_ids:
+        return None
+    return {
+        "visibility": _visibility_breakdown(audit_ids),
+        "position": _position_breakdown(audit_ids),
+        "sentiment": _sentiment_breakdown(audit_ids),
+    }
+
+
+def _visibility_breakdown(audit_ids: list) -> dict:
+    """Mention share per LLM provider over the period."""
+    rows: dict[str, dict[str, int]] = {}
+    for r in LLMRankingResult.objects.filter(
+        audit_id__in=audit_ids, query_succeeded=True,
+    ).values("provider", "is_mentioned"):
+        bucket = rows.setdefault(r["provider"], {"total": 0, "mentions": 0})
+        bucket["total"] += 1
+        if r["is_mentioned"]:
+            bucket["mentions"] += 1
+    providers = [
+        {
+            "provider": p,
+            "mentions": v["mentions"],
+            "total": v["total"],
+            "mention_rate": round(100.0 * v["mentions"] / v["total"], 1) if v["total"] else 0.0,
+        }
+        for p, v in rows.items()
+    ]
+    providers.sort(key=lambda x: x["mention_rate"], reverse=True)
+    return {"by_provider": providers}
+
+
+def _position_breakdown(audit_ids: list) -> dict:
+    """Distribution of mention rank across the period."""
+    buckets = {"1": 0, "2-3": 0, "4-10": 0, "11+": 0}
+    qs = LLMRankingResult.objects.filter(
+        audit_id__in=audit_ids, query_succeeded=True,
+        is_mentioned=True, mention_rank__isnull=False,
+    ).values_list("mention_rank", flat=True)
+    total = 0
+    for rank in qs:
+        total += 1
+        if rank == 1:
+            buckets["1"] += 1
+        elif rank <= 3:
+            buckets["2-3"] += 1
+        elif rank <= 10:
+            buckets["4-10"] += 1
+        else:
+            buckets["11+"] += 1
+    distribution = [
+        {
+            "range": label,
+            "count": count,
+            "pct": round(100.0 * count / total, 1) if total else 0.0,
+        }
+        for label, count in buckets.items()
+    ]
+    return {"distribution": distribution, "total_mentions": total}
+
+
+def _sentiment_breakdown(audit_ids: list) -> dict:
+    """Positive/neutral/negative split plus a few representative quotes."""
+    qs = LLMRankingResult.objects.filter(
+        audit_id__in=audit_ids, query_succeeded=True, is_mentioned=True,
+    )
+    counts = {"positive": 0, "neutral": 0, "negative": 0}
+    for s in qs.values_list("sentiment", flat=True):
+        if s in counts:
+            counts[s] += 1
+    total = sum(counts.values())
+    split = [
+        {
+            "sentiment": k,
+            "count": v,
+            "pct": round(100.0 * v / total, 1) if total else 0.0,
+        }
+        for k, v in counts.items()
+    ]
+    samples = []
+    for sentiment in (
+        LLMRankingResult.SENTIMENT_POSITIVE,
+        LLMRankingResult.SENTIMENT_NEGATIVE,
+    ):
+        row = (
+            qs.filter(sentiment=sentiment)
+            .exclude(mention_context="")
+            .order_by("-confidence_score")
+            .values("sentiment", "provider", "mention_context")
+            .first()
+        )
+        if row:
+            samples.append({
+                "sentiment": row["sentiment"],
+                "provider": row["provider"],
+                "quote": row["mention_context"][:280],
+            })
+    return {"split": split, "samples": samples, "total_mentions": total}
 
 
 # ── metric calculators ─────────────────────────────────────────────────────

@@ -124,7 +124,10 @@ class DashboardView(APIView):
 
     def get(self, request):
         from apps.notifications.models import Notification
-        from apps.llm_ranking.services.geo_stats import build_kpis_for_user
+        from apps.llm_ranking.services.geo_stats import (
+            build_breakdowns_for_user,
+            build_kpis_for_user,
+        )
 
         websites = Website.objects.filter(user=request.user)
         website = websites.first()
@@ -132,6 +135,7 @@ class DashboardView(APIView):
         # GEO KPI tiles — Visibility, Position, Sentiment — computed from
         # the user's completed LLM ranking audits. None when there's no data.
         stats = build_kpis_for_user(request.user) or []
+        analytics_breakdowns = build_breakdowns_for_user(request.user)
 
         # Recent activity (from notifications)
         activity = []
@@ -182,6 +186,7 @@ class DashboardView(APIView):
             'quick_actions': quick_actions,
             'integrations': integrations,
             'visibility_series': visibility_series,
+            'analytics_breakdowns': analytics_breakdowns,
         })
 
 

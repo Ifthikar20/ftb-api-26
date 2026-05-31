@@ -6,7 +6,11 @@ from django.utils import timezone
 
 from apps.accounts.tests.factories import UserFactory
 from apps.llm_ranking.models import LLMRankingAudit, LLMRankingResult
-from apps.llm_ranking.services.geo_stats import PERIOD_DAYS, build_kpis_for_user
+from apps.llm_ranking.services.geo_stats import (
+    PERIOD_DAYS,
+    build_breakdowns_for_user,
+    build_kpis_for_user,
+)
 from apps.llm_ranking.tests.factories import (
     LLMRankingAuditFactory,
     LLMRankingResultFactory,
@@ -106,3 +110,71 @@ class TestBuildKpisForUser:
         )
         tile = _by_label(build_kpis_for_user(user), "Visibility")
         assert tile["value"] == "10.0%"
+
+
+@pytest.mark.django_db
+class TestBuildBreakdownsForUser:
+    def test_returns_none_with_no_audits(self):
+        user = UserFactory()
+        assert build_breakdowns_for_user(user) is None
+
+    def test_visibility_by_provider(self):
+        user = UserFactory()
+        audit = LLMRankingAuditFactory(
+            created_by=user, status=LLMRankingAudit.STATUS_COMPLETED,
+            completed_at=timezone.now(),
+        )
+        LLMRankingResultFactory(
+            audit=audit, provider="claude", query_succeeded=True, is_mentioned=True,
+        )
+        LLMRankingResultFactory(
+            audit=audit, provider="claude", query_succeeded=True, is_mentioned=False,
+        )
+        LLMRankingResultFactory(
+            audit=audit, provider="gpt4", query_succeeded=True, is_mentioned=True,
+        )
+        # Failed cells are excluded.
+        LLMRankingResultFactory(
+            audit=audit, provider="claude", query_succeeded=False, is_mentioned=True,
+        )
+        by_provider = build_breakdowns_for_user(user)["visibility"]["by_provider"]
+        claude = next(r for r in by_provider if r["provider"] == "claude")
+        gpt4 = next(r for r in by_provider if r["provider"] == "gpt4")
+        assert claude == {"provider": "claude", "mentions": 1, "total": 2, "mention_rate": 50.0}
+        assert gpt4 == {"provider": "gpt4", "mentions": 1, "total": 1, "mention_rate": 100.0}
+
+    def test_position_distribution_buckets(self):
+        user = UserFactory()
+        audit = LLMRankingAuditFactory(
+            created_by=user, status=LLMRankingAudit.STATUS_COMPLETED,
+            completed_at=timezone.now(),
+        )
+        for rank in (1, 1, 2, 3, 5, 12):
+            LLMRankingResultFactory(
+                audit=audit, query_succeeded=True, is_mentioned=True, mention_rank=rank,
+            )
+        dist = build_breakdowns_for_user(user)["position"]["distribution"]
+        counts = {row["range"]: row["count"] for row in dist}
+        assert counts == {"1": 2, "2-3": 2, "4-10": 1, "11+": 1}
+
+    def test_sentiment_split_and_samples(self):
+        user = UserFactory()
+        audit = LLMRankingAuditFactory(
+            created_by=user, status=LLMRankingAudit.STATUS_COMPLETED,
+            completed_at=timezone.now(),
+        )
+        LLMRankingResultFactory(
+            audit=audit, query_succeeded=True, is_mentioned=True,
+            sentiment=LLMRankingResult.SENTIMENT_POSITIVE,
+            mention_context="Acme is the best option", confidence_score=95.0,
+        )
+        LLMRankingResultFactory(
+            audit=audit, query_succeeded=True, is_mentioned=True,
+            sentiment=LLMRankingResult.SENTIMENT_NEGATIVE,
+            mention_context="Acme has poor reliability", confidence_score=88.0,
+        )
+        result = build_breakdowns_for_user(user)["sentiment"]
+        split = {row["sentiment"]: row["count"] for row in result["split"]}
+        assert split == {"positive": 1, "neutral": 0, "negative": 1}
+        sentiments = {s["sentiment"] for s in result["samples"]}
+        assert sentiments == {"positive", "negative"}
