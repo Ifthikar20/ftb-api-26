@@ -782,7 +782,7 @@ class LLMRankingService:
             LLMRankingService._upsert_failed_cell(
                 audit=audit, prompt_index=prompt_index, provider=provider,
                 prompt_text=prompt_text,
-                error=f"{provider} not configured or implemented",
+                error=f"service_unavailable: {provider} provider not enabled",
             )
             LLMRankingService._bump_progress(audit_id)
             return {"audit_id": audit_id, "prompt_index": prompt_index,
