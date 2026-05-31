@@ -196,11 +196,15 @@ class DashboardView(APIView):
             'services': services,
         }
 
+        from apps.llm_ranking.services.visibility_series import build_for_user as build_visibility_series
+        visibility_series = build_visibility_series(request.user)
+
         return Response({
             'stats': stats,
             'activity': activity,
             'quick_actions': quick_actions,
             'integrations': integrations,
+            'visibility_series': visibility_series,
         })
 
 
