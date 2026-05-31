@@ -128,6 +128,9 @@ class DashboardView(APIView):
             build_breakdowns_for_user,
             build_kpis_for_user,
         )
+        from apps.llm_ranking.services.geo_deep_dive import (
+            build_for_user as build_deep_dive,
+        )
 
         websites = Website.objects.filter(user=request.user)
         website = websites.first()
@@ -136,6 +139,7 @@ class DashboardView(APIView):
         # the user's completed LLM ranking audits. None when there's no data.
         stats = build_kpis_for_user(request.user) or []
         analytics_breakdowns = build_breakdowns_for_user(request.user)
+        analytics_deep_dive = build_deep_dive(request.user)
 
         # Recent activity (from notifications)
         activity = []
@@ -187,6 +191,7 @@ class DashboardView(APIView):
             'integrations': integrations,
             'visibility_series': visibility_series,
             'analytics_breakdowns': analytics_breakdowns,
+            'analytics_deep_dive': analytics_deep_dive,
         })
 
 
