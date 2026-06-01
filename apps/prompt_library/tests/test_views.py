@@ -260,6 +260,55 @@ def test_prompt_detail_returns_recent_chats(auth):
 
 
 @pytest.mark.django_db
+def test_prompt_detail_includes_latest_scan(auth):
+    from apps.llm_ranking.tests.factories import LLMRankingAuditFactory
+    from apps.prompt_library.models import Prompt, PromptCrawlRun
+
+    client, user = auth
+    audit = LLMRankingAuditFactory(created_by=user)
+    website = audit.website
+    p = Prompt.objects.create(text="how to track LLM visibility")
+    BrandPrompt.objects.create(website=website, prompt=p)
+
+    PromptCrawlRun.objects.create(
+        website=website, prompt=p,
+        status=PromptCrawlRun.STATUS_FAILED,
+        providers=["claude"], error="rate_limit_exceeded",
+    )
+    latest = PromptCrawlRun.objects.create(
+        website=website, prompt=p,
+        status=PromptCrawlRun.STATUS_RUNNING,
+        providers=["claude", "gpt4"],
+    )
+
+    resp = client.get(
+        f"/api/v1/prompt-library/websites/{website.id}/prompts/{p.id}/detail/"
+    )
+    assert resp.status_code == 200, resp.content
+    body = resp.json()
+    assert body["latest_scan"]["id"] == str(latest.id)
+    assert body["latest_scan"]["status"] == PromptCrawlRun.STATUS_RUNNING
+    assert body["latest_scan"]["providers"] == ["claude", "gpt4"]
+
+
+@pytest.mark.django_db
+def test_prompt_detail_latest_scan_none_when_never_crawled(auth):
+    from apps.llm_ranking.tests.factories import LLMRankingAuditFactory
+    from apps.prompt_library.models import Prompt
+
+    client, user = auth
+    audit = LLMRankingAuditFactory(created_by=user)
+    p = Prompt.objects.create(text="another prompt")
+    BrandPromptFactory(website=audit.website, prompt=p)
+
+    resp = client.get(
+        f"/api/v1/prompt-library/websites/{audit.website.id}/prompts/{p.id}/detail/"
+    )
+    assert resp.status_code == 200, resp.content
+    assert resp.json()["latest_scan"] is None
+
+
+@pytest.mark.django_db
 def test_create_prompts_multiline_with_tags_and_location(auth, monkeypatch):
     import apps.llm_ranking.tasks as lr_tasks
     monkeypatch.setattr(lr_tasks.run_llm_ranking_audit, "delay", lambda **k: None)

@@ -1072,6 +1072,28 @@ class BrandPromptDetailAggView(APIView):
                 "created_at": r.created_at.isoformat() if r.created_at else None,
             })
 
+        # ── Latest crawl run for this (website, prompt) ────────────────
+        # Surfaces "scanning now / last scan succeeded / last scan failed"
+        # in the page header so the empty state has an actionable handle.
+        from apps.prompt_library.models import PromptCrawlRun
+
+        latest_run = (
+            PromptCrawlRun.objects
+            .filter(website=website, prompt=prompt)
+            .order_by("-created_at")
+            .first()
+        )
+        latest_scan = None
+        if latest_run is not None:
+            latest_scan = {
+                "id": str(latest_run.id),
+                "status": latest_run.status,
+                "providers": latest_run.providers or [],
+                "started_at": latest_run.started_at.isoformat() if latest_run.started_at else None,
+                "completed_at": latest_run.completed_at.isoformat() if latest_run.completed_at else None,
+                "error": (latest_run.error or "")[:240],
+            }
+
         return Response({
             "prompt": {
                 "id": str(prompt.id),
@@ -1096,6 +1118,7 @@ class BrandPromptDetailAggView(APIView):
             "domain_types": type_breakdown,
             "total_retrievals": sum(type_counter.values()),
             "recent_chats": recent_chats,
+            "latest_scan": latest_scan,
         })
 
 
