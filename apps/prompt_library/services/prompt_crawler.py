@@ -118,6 +118,68 @@ def _heuristic_fanout(prompt_text: str) -> list[str]:
     ]
 
 
+def _website_keywords(website: Website) -> list[str]:
+    """Keywords the extractor uses to recognise the brand. Combines the
+    business name, configured topics, and competitor names so the LLM
+    extractor has enough context to label mentions."""
+    out: list[str] = []
+    name = getattr(website, "business_name", None) or website.name or ""
+    if name:
+        out.append(name)
+    for t in (getattr(website, "topics", None) or []):
+        if isinstance(t, str) and t.strip():
+            out.append(t.strip())
+    for c in (getattr(website, "competitors", None) or []):
+        cname = c.get("name") if isinstance(c, dict) else (c if isinstance(c, str) else None)
+        if cname and cname.strip():
+            out.append(cname.strip())
+    # De-dupe, preserve order.
+    seen, deduped = set(), []
+    for k in out:
+        kl = k.lower()
+        if kl not in seen:
+            seen.add(kl)
+            deduped.append(k)
+    return deduped
+
+
+def _extract_brands(*, response_text, website, brand_name, keywords, audit_id) -> dict:
+    """Run the same structured extraction the full audit uses so the
+    crawl captures the brand, its rank/sentiment, and every competitor
+    named in the response. Falls back to an empty analysis when there's
+    no text or the extractor errors."""
+    if not (response_text or "").strip():
+        from apps.llm_ranking.services.extraction_service import HaikuExtractionService
+        return HaikuExtractionService._empty_result()
+    try:
+        from apps.llm_ranking.services.extraction_service import HaikuExtractionService
+        return HaikuExtractionService.extract(
+            response_text=response_text,
+            brand_name=brand_name,
+            keywords=keywords,
+            user=getattr(website, "user", None),
+            website=website,
+            audit_id=audit_id,
+        )
+    except Exception as exc:
+        logger.warning("Crawl extraction failed: %s", exc)
+        from apps.llm_ranking.services.extraction_service import HaikuExtractionService
+        return HaikuExtractionService._empty_result()
+
+
+def _dispatch_citations(result_id) -> None:
+    """Kick off citation extraction so the Top Domains table populates.
+    Mirrors the main audit flow; failures are non-fatal."""
+    from django.conf import settings as _settings
+    if not getattr(_settings, "CITATION_EXTRACTION_ENABLED", True):
+        return
+    try:
+        from apps.citations.tasks import extract_citations_for_result
+        extract_citations_for_result.delay(str(result_id))
+    except Exception as exc:  # pragma: no cover
+        logger.debug("citation dispatch failed for %s: %s", result_id, exc)
+
+
 def crawl_prompt(website: Website, prompt: Prompt) -> CrawlOutcome:
     """Run a prompt across every configured provider and persist the
     fanout + responses. Returns a small outcome summary used by the
@@ -135,6 +197,7 @@ def crawl_prompt(website: Website, prompt: Prompt) -> CrawlOutcome:
     responses_logged = 0
 
     brand_name = getattr(website, "business_name", None) or website.name or "your brand"
+    keywords = _website_keywords(website)
     fanouts = _llm_fanout(prompt.text or prompt.template_text or "", brand_name)
 
     # Persist fan-out rows. Bulk create with ignore_conflicts so a
@@ -198,21 +261,46 @@ def crawl_prompt(website: Website, prompt: Prompt) -> CrawlOutcome:
             errors.append(f"{provider_key}: {exc!s}")
             continue
 
-        response_text = getattr(result, "text", None) or str(result)
-        is_mentioned = brand_name.lower() in response_text.lower()
-        LLMRankingResult.objects.create(
+        # A provider that returns succeeded=False (missing key, rate limit,
+        # circuit open) still gets a row so the detail page can show the
+        # state, but we skip extraction on it.
+        succeeded = getattr(result, "succeeded", True)
+        response_text = getattr(result, "text", None) or ""
+        err = getattr(result, "error", "") or ""
+
+        analysis = _extract_brands(
+            response_text=response_text if succeeded else "",
+            website=website,
+            brand_name=brand_name,
+            keywords=keywords,
+            audit_id=str(audit.id),
+        )
+
+        result_obj = LLMRankingResult.objects.create(
             audit=audit,
             provider=provider_key,
             prompt_index=0,
             prompt=prompt.text,
             response_text=response_text,
-            is_mentioned=is_mentioned,
-            sentiment=(
-                LLMRankingResult.SENTIMENT_POSITIVE if is_mentioned
-                else LLMRankingResult.SENTIMENT_NOT_MENTIONED
-            ),
+            query_succeeded=succeeded,
+            error_message=err[:500],
+            is_mentioned=analysis["is_mentioned"],
+            mention_rank=analysis["mention_rank"],
+            sentiment=analysis["sentiment"],
+            confidence_score=analysis["confidence_score"],
+            mention_context=analysis["mention_context"],
+            is_linked=analysis.get("is_linked", False),
+            competitors_mentioned=analysis.get("competitors_mentioned", []),
+            primary_recommendation=analysis.get("primary_recommendation", ""),
+            citations=analysis.get("citations", []),
+            extraction_model=analysis.get("extraction_model", ""),
+            extraction_version=analysis.get("extraction_version", ""),
         )
-        responses_logged += 1
+        if succeeded:
+            responses_logged += 1
+            _dispatch_citations(result_obj.id)
+        else:
+            errors.append(f"{provider_key}: {err[:120]}")
         queried_providers.append(provider_key)
 
     audit.providers_queried = queried_providers
