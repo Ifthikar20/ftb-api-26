@@ -5,7 +5,33 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from apps.llm_ranking.models import LLMRankingAudit, LLMRankingResult
-from apps.prompt_library.models import Prompt, PromptCrawlRun
+from apps.prompt_library.models import Prompt, PromptCrawlRun, PromptFanout
+from apps.prompt_library.services.prompt_crawler import _dedupe_fanouts
+
+
+def test_dedupe_fanouts_dedupes_caps_and_trims():
+    out = _dedupe_fanouts([
+        "Hijab stores Dallas",
+        "hijab stores dallas",   # dup (case/space)
+        "  best hijab shops  ",
+        *[f"q{i}" for i in range(20)],
+    ])
+    # Deduped and capped at 8.
+    assert len(out) == 8
+    assert out[0] == "Hijab stores Dallas"
+    assert "best hijab shops" in out  # trimmed
+
+
+def test_llm_fanout_returns_empty_on_failure(monkeypatch):
+    """No templated padding: a failed LLM call yields an empty fan-out."""
+    from apps.prompt_library.services.prompt_crawler import _llm_fanout
+
+    fake = MagicMock()
+    fake.query.side_effect = RuntimeError("down")
+    monkeypatch.setattr(
+        "apps.llm_ranking.providers.claude.ClaudeProvider", lambda: fake,
+    )
+    assert _llm_fanout("some prompt", "Brand") == []
 from apps.prompt_library.services.prompt_crawler import _llm_fanout, crawl_prompt
 from apps.websites.tests.factories import WebsiteFactory
 
@@ -50,6 +76,35 @@ def test_llm_fanout_uses_system_prompt_kwarg(monkeypatch):
     _, kwargs = fake_provider.query.call_args
     assert "system_prompt" in kwargs
     assert "system" not in kwargs
+
+
+@pytest.mark.django_db
+def test_crawl_replaces_fanouts_instead_of_appending(settings):
+    """A re-scan replaces the prompt's fan-out set, so duplicates don't
+    accumulate across runs."""
+    settings.CITATION_EXTRACTION_ENABLED = False
+    website = WebsiteFactory()
+    prompt = Prompt.objects.create(text="best hijab store dallas")
+
+    # Stale fan-outs from a previous run.
+    PromptFanout.objects.create(website=website, prompt=prompt, text="old query 1")
+    PromptFanout.objects.create(website=website, prompt=prompt, text="old query 2")
+
+    with patch(
+        "apps.prompt_library.services.prompt_crawler._llm_fanout",
+        return_value=["fresh query a", "fresh query b", "fresh query a"],
+    ), patch(
+        "apps.prompt_library.services.prompt_crawler.list_model_variants",
+        return_value=[],
+    ):
+        crawl_prompt(website, prompt)
+
+    texts = sorted(
+        PromptFanout.objects.filter(website=website, prompt=prompt)
+        .values_list("text", flat=True)
+    )
+    # Old set replaced; new set deduped.
+    assert texts == ["fresh query a", "fresh query b"]
 
 
 @pytest.mark.django_db

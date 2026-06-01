@@ -41,8 +41,23 @@ from apps.websites.models import Website
 logger = logging.getLogger(__name__)
 
 
-FANOUT_MIN = 4
 FANOUT_MAX = 8
+
+
+def _dedupe_fanouts(items: list[str]) -> list[str]:
+    """De-dupe sub-queries case-insensitively (preserving order) and cap at
+    FANOUT_MAX so the stored set stays short and high-signal."""
+    seen: set[str] = set()
+    out: list[str] = []
+    for q in items:
+        key = " ".join((q or "").split()).lower()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        out.append(q.strip())
+        if len(out) >= FANOUT_MAX:
+            break
+    return out
 
 
 @dataclass
@@ -55,18 +70,18 @@ class CrawlOutcome:
 def _llm_fanout(prompt_text: str, brand_name: str) -> list[str]:
     """Ask Claude to decompose the prompt into buyer-intent sub-queries.
 
-    Falls back to ``_heuristic_fanout`` if Claude isn't configured or
-    the call fails — we never raise from here so the crawler keeps
-    going.
+    Returns only genuine LLM-generated sub-queries. On any failure it
+    returns an empty list rather than padding with templated queries -
+    an empty, honest fan-out beats a list bloated with mechanical
+    "best X / pricing for X / X vs competitors" rows.
     """
     try:
         # Lazy import — if Anthropic isn't installed or the key isn't
-        # set, the provider raises on instantiation and we drop to
-        # the heuristic path below.
+        # set, the provider raises on instantiation.
         from apps.llm_ranking.providers.claude import ClaudeProvider
         prov = ClaudeProvider()
     except Exception:
-        return _heuristic_fanout(prompt_text)
+        return []
 
     system = (
         "You break a buyer-intent prompt into 4-8 short sub-queries an "
@@ -78,45 +93,19 @@ def _llm_fanout(prompt_text: str, brand_name: str) -> list[str]:
         resp = prov.query(user, system_prompt=system)
     except Exception as exc:
         logger.warning("Fanout LLM call failed: %s", exc)
-        return _heuristic_fanout(prompt_text)
+        return []
 
     text = getattr(resp, "text", None) or str(resp)
     # Pull the first JSON array out of the response.
     match = re.search(r"\[[^\]]+\]", text or "", re.DOTALL)
     if not match:
-        return _heuristic_fanout(prompt_text)
+        return []
     try:
         items = json.loads(match.group())
     except json.JSONDecodeError:
-        return _heuristic_fanout(prompt_text)
+        return []
     cleaned = [str(x).strip() for x in items if isinstance(x, str | int | float) and str(x).strip()]
-    return cleaned[:FANOUT_MAX] or _heuristic_fanout(prompt_text)
-
-
-def _heuristic_fanout(prompt_text: str) -> list[str]:
-    """Template a handful of sub-queries from the prompt's keywords.
-
-    Crude but deterministic, and the page is rarely empty even when
-    the LLM path is unavailable.
-    """
-    text = (prompt_text or "").strip()
-    if not text:
-        return []
-    # Pull the noun-ish phrases by stripping question words + trailing
-    # punctuation. Good enough for typical buyer-intent prompts.
-    stripped = re.sub(r"^(which|what|how|where|when|why|who|find|recommend|show me|list|compare|evaluate)\s+", "", text, flags=re.I)
-    stripped = re.sub(r"[?.!]+$", "", stripped).strip()
-    if not stripped:
-        return []
-    base = stripped[:120]
-    return [
-        f"best {base}",
-        f"top alternatives to {base}",
-        f"{base} reviews and ratings",
-        f"{base} vs competitors",
-        f"how to choose {base}",
-        f"pricing for {base}",
-    ]
+    return cleaned[:FANOUT_MAX]
 
 
 def _website_keywords(website: Website) -> list[str]:
@@ -226,12 +215,16 @@ def crawl_prompt(website: Website, prompt: Prompt) -> CrawlOutcome:
 
     brand_name = getattr(website, "business_name", None) or website.name or "your brand"
     keywords = _website_keywords(website)
-    fanouts = _llm_fanout(prompt.text or prompt.template_text or "", brand_name)
+    fanouts = _dedupe_fanouts(
+        _llm_fanout(prompt.text or prompt.template_text or "", brand_name)
+    )
 
-    # Persist fan-out rows. Bulk create with ignore_conflicts so a
-    # re-crawl doesn't double-write.
-    PromptFanout.objects.bulk_create(
-        [
+    # Replace this prompt's fan-out set rather than appending, so re-scans
+    # don't accumulate duplicates. Only write when we actually generated
+    # fan-outs (a failed LLM call leaves the previous set untouched).
+    if fanouts:
+        PromptFanout.objects.filter(website=website, prompt=prompt).delete()
+        PromptFanout.objects.bulk_create([
             PromptFanout(
                 website=website,
                 prompt=prompt,
@@ -240,9 +233,7 @@ def crawl_prompt(website: Website, prompt: Prompt) -> CrawlOutcome:
                 confidence=0.7,
             )
             for q in fanouts
-        ],
-        ignore_conflicts=True,
-    )
+        ])
 
     # Run the original prompt against each configured provider and
     # log the responses as LLMRankingResult rows on a synthetic audit.
