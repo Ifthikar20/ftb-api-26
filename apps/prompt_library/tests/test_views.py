@@ -358,6 +358,44 @@ def test_prompt_detail_latest_scan_none_when_never_crawled(auth):
     assert resp.json()["latest_scan"] is None
 
 
+def test_match_brand_domain():
+    from apps.prompt_library.api.v1.views import _match_brand_domain
+
+    domains = ["tasselsbyrenu.com", "indiabazaar.com", "reddit.com", "yelp.com"]
+    assert _match_brand_domain("Tassels By Renu", domains) == "tasselsbyrenu.com"
+    assert _match_brand_domain("India Bazaar", domains) == "indiabazaar.com"
+    # No plausible match -> None (UI falls back to name lookup / badge).
+    assert _match_brand_domain("Krishna Sarees", domains) is None
+    assert _match_brand_domain("", domains) is None
+
+
+@pytest.mark.django_db
+def test_prompt_detail_attaches_logo_from_cited_domain(auth):
+    from apps.llm_ranking.tests.factories import LLMRankingResultFactory
+    from apps.prompt_library.models import Prompt
+
+    client, _user, website = auth
+    p = Prompt.objects.create(text="best saree shop in dallas")
+    BrandPrompt.objects.create(website=website, prompt=p)
+
+    r = LLMRankingResultFactory(
+        audit__website=website, provider="claude",
+        prompt=p.text, source_prompt=p, query_succeeded=True,
+        response_text="Try Tassels By Renu.",
+        competitors_mentioned=[{"name": "Tassels By Renu", "position": 1}],
+        citations=["https://tasselsbyrenu.com/shop"],
+    )
+    from apps.citations.services.extraction_service import extract_for_result
+    extract_for_result(str(r.id))
+
+    body = client.get(
+        f"/api/v1/prompt-library/websites/{website.id}/prompts/{p.id}/detail/"
+    ).json()
+    brand = next(b for b in body["brands"] if b["name"] == "Tassels By Renu")
+    assert brand["domain"] == "tasselsbyrenu.com"
+    assert brand["logo"] == "https://logo.clearbit.com/tasselsbyrenu.com"
+
+
 @pytest.mark.django_db
 def test_prompt_detail_position_follows_response_list_order(auth):
     """Position reflects the order brands appear in the response, not the

@@ -51,6 +51,33 @@ from core.interceptors.pagination import StandardPagination
 logger = logging.getLogger("apps")
 
 
+def _match_brand_domain(brand_name: str, domains: list[str]) -> str | None:
+    """Best-effort match of a brand name to one of the cited domains.
+
+    Squashes both to alphanumerics and matches when the domain's root
+    contains the brand (or vice-versa), or they share a distinctive token.
+    Returns the matched apex domain or None. Used to source a real website
+    logo from the domains the models actually cited.
+    """
+    import re
+
+    squashed = re.sub(r"[^a-z0-9]", "", (brand_name or "").lower())
+    if len(squashed) < 3 or not domains:
+        return None
+    tokens = {t for t in re.split(r"[^a-z0-9]+", (brand_name or "").lower()) if len(t) >= 4}
+    best = None
+    for d in domains:
+        root = (d or "").split(".")[0].lower()
+        root_sq = re.sub(r"[^a-z0-9]", "", root)
+        if not root_sq:
+            continue
+        if root_sq == squashed or root_sq in squashed or squashed in root_sq:
+            return d  # strong match — take it immediately
+        if best is None and any(tok in root_sq for tok in tokens):
+            best = d  # weaker token match — keep as fallback
+    return best
+
+
 class IndustryListView(ListAPIView):
     permission_classes = [IsAuthenticated]
     serializer_class = IndustrySerializer
@@ -1076,6 +1103,17 @@ class BrandPromptDetailAggView(APIView):
             entry["count"] += 1
             responses_with_citation[apex].add(c.result_id)
             sources_by_result[c.result_id].append(apex)
+
+        # Resolve a real website logo per brand by matching its name to a
+        # domain the models actually cited (e.g. "Tassels By Renu" ->
+        # tasselsbyrenu.com). When matched we hand the UI the domain + a
+        # logo URL; otherwise the UI falls back to a name lookup, then a
+        # lettered badge.
+        cited_domains = list(per_domain.keys())
+        for b in brands_out:
+            domain = _match_brand_domain(b["name"], cited_domains)
+            b["domain"] = domain or ""
+            b["logo"] = f"https://logo.clearbit.com/{domain}" if domain else ""
 
         # public_id is what the chat modal opens — map internal id -> public.
         public_id_by_result = {r.id: str(r.public_id) for r in results}
