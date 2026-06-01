@@ -110,6 +110,111 @@ def test_crawl_prompt_runs_extraction_and_captures_competitors(settings):
 
 
 @pytest.mark.django_db
+def test_crawl_skips_models_already_answered(settings):
+    """A model that already returned a response on a prior run is not
+    re-queried, and the crawl still completes successfully."""
+    settings.CITATION_EXTRACTION_ENABLED = False
+    website = WebsiteFactory()
+    prompt = Prompt.objects.create(text="pizza ordering app in dfw")
+
+    # Existing good response for claude from a previous run.
+    LLMRankingResult.objects.create(
+        audit=LLMRankingAudit.objects.create(
+            website=website, created_by=website.user,
+            status=LLMRankingAudit.STATUS_COMPLETED,
+        ),
+        provider="claude", prompt_index=0, prompt=prompt.text,
+        source_prompt=prompt, response_text="prior answer",
+        query_succeeded=True,
+    )
+
+    fake_provider = MagicMock()
+    fake_provider.query.return_value = SimpleNamespace(
+        succeeded=True, text="new answer", error="",
+    )
+
+    with patch(
+        "apps.prompt_library.services.prompt_crawler._llm_fanout",
+        return_value=[],
+    ), patch(
+        "apps.prompt_library.services.prompt_crawler.list_model_variants",
+        return_value=[SimpleNamespace(configured=True, provider="claude")],
+    ), patch(
+        "apps.prompt_library.services.prompt_crawler.PROVIDERS",
+        {"claude": lambda: fake_provider},
+    ):
+        outcome = crawl_prompt(website, prompt)
+
+    # claude was skipped — not queried again, no duplicate row created.
+    fake_provider.query.assert_not_called()
+    assert outcome.responses == 0
+    assert LLMRankingResult.objects.filter(
+        provider="claude", source_prompt=prompt,
+    ).count() == 1
+    run = PromptCrawlRun.objects.filter(website=website, prompt=prompt).latest("created_at")
+    assert run.status == PromptCrawlRun.STATUS_COMPLETE
+
+
+@pytest.mark.django_db
+def test_crawl_retries_transient_failure_once_then_records(settings):
+    """A transient provider failure is retried exactly once; a second
+    failure is recorded and we move on."""
+    settings.CITATION_EXTRACTION_ENABLED = False
+    website = WebsiteFactory()
+    prompt = Prompt.objects.create(text="pizza ordering app in dfw")
+
+    fake_provider = MagicMock()
+    fake_provider.query.side_effect = [
+        SimpleNamespace(succeeded=False, text="", error="rate limit"),
+        SimpleNamespace(succeeded=False, text="", error="rate limit"),
+    ]
+
+    with patch(
+        "apps.prompt_library.services.prompt_crawler._llm_fanout",
+        return_value=[],
+    ), patch(
+        "apps.prompt_library.services.prompt_crawler.list_model_variants",
+        return_value=[SimpleNamespace(configured=True, provider="claude")],
+    ), patch(
+        "apps.prompt_library.services.prompt_crawler.PROVIDERS",
+        {"claude": lambda: fake_provider},
+    ):
+        crawl_prompt(website, prompt)
+
+    assert fake_provider.query.call_count == 2
+    row = LLMRankingResult.objects.get(provider="claude", source_prompt=prompt)
+    assert row.query_succeeded is False
+
+
+@pytest.mark.django_db
+def test_crawl_does_not_retry_missing_key(settings):
+    """A service_unavailable result (missing key) is not retried."""
+    settings.CITATION_EXTRACTION_ENABLED = False
+    website = WebsiteFactory()
+    prompt = Prompt.objects.create(text="pizza ordering app in dfw")
+
+    fake_provider = MagicMock()
+    fake_provider.query.return_value = SimpleNamespace(
+        succeeded=False, text="",
+        error="service_unavailable: gemini provider not enabled",
+    )
+
+    with patch(
+        "apps.prompt_library.services.prompt_crawler._llm_fanout",
+        return_value=[],
+    ), patch(
+        "apps.prompt_library.services.prompt_crawler.list_model_variants",
+        return_value=[SimpleNamespace(configured=True, provider="gemini")],
+    ), patch(
+        "apps.prompt_library.services.prompt_crawler.PROVIDERS",
+        {"gemini": lambda: fake_provider},
+    ):
+        crawl_prompt(website, prompt)
+
+    assert fake_provider.query.call_count == 1
+
+
+@pytest.mark.django_db
 def test_crawl_prompt_records_failed_provider_row(settings):
     """A provider that returns succeeded=False gets a row flagged with
     the error, and does not count as a logged response."""

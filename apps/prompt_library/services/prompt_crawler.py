@@ -23,6 +23,7 @@ import logging
 import re
 from dataclasses import dataclass
 
+from django.db.models import Q
 from django.utils import timezone
 
 from apps.llm_ranking.models import LLMRankingAudit, LLMRankingResult
@@ -167,6 +168,33 @@ def _extract_brands(*, response_text, website, brand_name, keywords, audit_id) -
         return HaikuExtractionService._empty_result()
 
 
+def _query_with_retry(instance, prompt_text):
+    """Query a provider, retrying once when it raises or returns a
+    non-key transient failure. Returns the ProviderResult (which may
+    still be succeeded=False) or None if both attempts raised.
+
+    A succeeded=False result whose error is the not-configured /
+    service_unavailable sentinel is returned immediately without a
+    retry — a missing key won't fix itself on a second call.
+    """
+    last = None
+    for attempt in (1, 2):
+        try:
+            result = instance.query(prompt_text)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Provider query raised (attempt %d): %s", attempt, exc)
+            last = None
+            continue
+        last = result
+        if getattr(result, "succeeded", True):
+            return result
+        err = (getattr(result, "error", "") or "").lower()
+        if "service_unavailable" in err or "not configured" in err or "not enabled" in err:
+            return result  # no point retrying a missing key
+        # transient failure — loop for one more attempt
+    return last
+
+
 def _dispatch_citations(result_id) -> None:
     """Kick off citation extraction so the Top Domains table populates.
     Mirrors the main audit flow; failures are non-fatal."""
@@ -233,7 +261,20 @@ def crawl_prompt(website: Website, prompt: Prompt) -> CrawlOutcome:
         started_at=timezone.now(),
     )
 
+    # Providers we already have a good answer for on this prompt. Once a
+    # model has returned a response we're done with it — re-scanning only
+    # fills in the models we're still missing, so we never re-query (or
+    # pile up duplicate rows for) a model that already answered.
+    already_answered = set(
+        LLMRankingResult.objects
+        .filter(audit__website=website, query_succeeded=True)
+        .filter(Q(source_prompt=prompt) | Q(prompt=prompt.text))
+        .exclude(response_text="")
+        .values_list("provider", flat=True)
+    )
+
     queried_providers: list[str] = []
+    skipped_have_answer = 0
     try:
         variants = list_model_variants()
     except Exception:
@@ -247,6 +288,9 @@ def crawl_prompt(website: Website, prompt: Prompt) -> CrawlOutcome:
         if not provider_key or provider_key in seen_providers:
             continue
         seen_providers.add(provider_key)
+        if provider_key in already_answered:
+            skipped_have_answer += 1
+            continue
         cls = PROVIDERS.get(provider_key)
         if cls is None:
             continue
@@ -255,10 +299,14 @@ def crawl_prompt(website: Website, prompt: Prompt) -> CrawlOutcome:
         except Exception as exc:
             errors.append(f"{provider_key}: {exc!s}")
             continue
-        try:
-            result = instance.query(prompt.text)
-        except Exception as exc:
-            errors.append(f"{provider_key}: {exc!s}")
+
+        # One query, one retry. A model that doesn't answer (transient
+        # error, rate limit) gets a single second attempt, then we record
+        # the failure and move on instead of looping. A hard failure with
+        # no key returns succeeded=False immediately and isn't retried.
+        result = _query_with_retry(instance, prompt.text)
+        if result is None:
+            errors.append(f"{provider_key}: query raised on both attempts")
             continue
 
         # A provider that returns succeeded=False (missing key, rate limit,
@@ -304,9 +352,14 @@ def crawl_prompt(website: Website, prompt: Prompt) -> CrawlOutcome:
             errors.append(f"{provider_key}: {err[:120]}")
         queried_providers.append(provider_key)
 
+    # "Have what we need" = we logged a response this run OR every model
+    # was already answered on a previous run. Either way the crawl is a
+    # success, not a failure.
+    have_coverage = bool(responses_logged or skipped_have_answer)
+
     audit.providers_queried = queried_providers
     audit.status = (
-        LLMRankingAudit.STATUS_COMPLETED if responses_logged
+        LLMRankingAudit.STATUS_COMPLETED if have_coverage
         else LLMRankingAudit.STATUS_FAILED
     )
     audit.completed_at = timezone.now()
@@ -316,7 +369,7 @@ def crawl_prompt(website: Website, prompt: Prompt) -> CrawlOutcome:
     run.fanout_count = len(fanouts)
     run.source_count = responses_logged
     run.status = (
-        PromptCrawlRun.STATUS_COMPLETE if responses_logged or fanouts
+        PromptCrawlRun.STATUS_COMPLETE if have_coverage or fanouts
         else PromptCrawlRun.STATUS_FAILED
     )
     run.error = "; ".join(errors)[:1000]
