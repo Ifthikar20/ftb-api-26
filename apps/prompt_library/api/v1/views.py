@@ -885,7 +885,7 @@ class BrandPromptDetailAggView(APIView):
                 "is_mentioned", "mention_rank", "sentiment",
                 "competitors_mentioned", "created_at",
                 "citation_countries", "query_succeeded", "error_message",
-                "source_prompt_id",
+                "extraction_model", "source_prompt_id",
             )
         )
 
@@ -900,6 +900,16 @@ class BrandPromptDetailAggView(APIView):
                 results.append(r)
 
         total_results = len(results)
+
+        # Responses that have text but were never run through structured
+        # extraction (old crawler rows). The UI uses this to trigger a
+        # one-shot backfill so the brand table fills in.
+        unextracted_count = sum(
+            1 for r in results
+            if r.query_succeeded
+            and (r.response_text or "").strip()
+            and not (getattr(r, "extraction_model", "") or "")
+        )
 
         # ── Per-brand visibility / SOV / sentiment / position ──────────
         brand_label = getattr(website, "business_name", None) or website.name or "your brand"
@@ -1179,7 +1189,32 @@ class BrandPromptDetailAggView(APIView):
             "total_retrievals": sum(type_counter.values()),
             "recent_chats": recent_chats,
             "latest_scan": latest_scan,
+            "unextracted_count": unextracted_count,
         })
+
+
+class PromptReextractView(APIView):
+    """Backfill brand extraction onto a prompt's existing responses.
+
+    Re-runs the structured extractor on rows that have text but were
+    never analysed (e.g. captured by an older crawler), so the brand
+    table fills in without re-querying the models. Idempotent: rows
+    already extracted are skipped, so repeated calls are cheap no-ops.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, website_id, prompt_id):
+        website = WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        try:
+            prompt = Prompt.objects.get(id=prompt_id)
+        except Prompt.DoesNotExist:
+            return Response({"detail": "Prompt not found."},
+                            status=status.HTTP_404_NOT_FOUND)
+
+        from apps.prompt_library.services.reextract import reextract_prompt
+        updated = reextract_prompt(website, prompt)
+        return Response({"reextracted": updated})
 
 
 class WebsiteSavedPromptsAggView(APIView):

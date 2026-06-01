@@ -340,6 +340,68 @@ def test_prompt_detail_per_model_rank_buckets_and_unavailable(auth):
 
 
 @pytest.mark.django_db
+def test_reextract_backfills_competitors_on_old_rows(auth):
+    from unittest.mock import patch
+
+    from apps.llm_ranking.tests.factories import LLMRankingResultFactory
+    from apps.prompt_library.models import Prompt
+
+    client, _user, website = auth
+    p = Prompt.objects.create(text="pizza ordering app in dfw")
+    BrandPrompt.objects.create(website=website, prompt=p)
+
+    # Old crawler row: has text, never extracted (extraction_model="").
+    row = LLMRankingResultFactory(
+        audit__website=website, provider="gpt4",
+        prompt=p.text, source_prompt=p,
+        response_text="Top apps: Domino's, Pizza Hut, Slice.",
+        query_succeeded=True, is_mentioned=False,
+        competitors_mentioned=[], extraction_model="",
+    )
+
+    # Detail should flag it as needing backfill.
+    detail = client.get(
+        f"/api/v1/prompt-library/websites/{website.id}/prompts/{p.id}/detail/"
+    ).json()
+    assert detail["unextracted_count"] == 1
+    assert detail["brands"] == []
+
+    extraction = {
+        "is_mentioned": False, "mention_rank": None, "sentiment": "not_mentioned",
+        "mention_context": "", "is_linked": False,
+        "competitors_mentioned": [
+            {"name": "Domino's", "position": 1, "linked": False},
+            {"name": "Pizza Hut", "position": 2, "linked": False},
+            {"name": "Slice", "position": 3, "linked": False},
+        ],
+        "primary_recommendation": "Domino's", "citations": [],
+        "confidence_score": 95.0, "extraction_model": "haiku",
+        "extraction_version": "1",
+    }
+    with patch(
+        "apps.llm_ranking.services.extraction_service.HaikuExtractionService.extract",
+        return_value=extraction,
+    ):
+        resp = client.post(
+            f"/api/v1/prompt-library/websites/{website.id}/prompts/{p.id}/reextract/"
+        )
+    assert resp.status_code == 200, resp.content
+    assert resp.json()["reextracted"] == 1
+
+    row.refresh_from_db()
+    assert {c["name"] for c in row.competitors_mentioned} == {"Domino's", "Pizza Hut", "Slice"}
+    assert row.extraction_model == "haiku"
+
+    # Detail now lists the brands and no longer flags backfill.
+    detail2 = client.get(
+        f"/api/v1/prompt-library/websites/{website.id}/prompts/{p.id}/detail/"
+    ).json()
+    assert detail2["unextracted_count"] == 0
+    brand_names = {b["name"] for b in detail2["brands"]}
+    assert {"Domino's", "Pizza Hut", "Slice"}.issubset(brand_names)
+
+
+@pytest.mark.django_db
 def test_prompt_detail_recent_chats_label_failed_and_unavailable(auth):
     from apps.llm_ranking.tests.factories import LLMRankingResultFactory
     from apps.prompt_library.models import Prompt

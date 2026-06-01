@@ -105,6 +105,11 @@ urlpatterns = [
         name="prompt-library-website-prompt-crawl",
     ),
     path(
+        "websites/<uuid:website_id>/prompts/<uuid:prompt_id>/reextract/",
+        views.PromptReextractView.as_view(),
+        name="prompt-library-website-prompt-reextract",
+    ),
+    path(
         "websites/<uuid:website_id>/saved-prompts/agg/",
         views.WebsiteSavedPromptsAggView.as_view(),
         name="prompt-library-website-saved-prompts-agg",

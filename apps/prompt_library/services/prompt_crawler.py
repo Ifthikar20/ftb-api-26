@@ -281,6 +281,7 @@ def crawl_prompt(website: Website, prompt: Prompt) -> CrawlOutcome:
             provider=provider_key,
             prompt_index=0,
             prompt=prompt.text,
+            source_prompt=prompt,
             response_text=response_text,
             query_succeeded=succeeded,
             error_message=err[:500],
