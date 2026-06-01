@@ -937,11 +937,15 @@ class BrandPromptDetailAggView(APIView):
                     "responses_with_mention": 0,
                     "sentiments": [],
                     "positions": [],
+                    "providers": set(),
                 }
                 brand_stats[key] = row
             return row
 
-        from apps.citations.services.url_analytics import extract_response_brands
+        from apps.citations.services.url_analytics import (
+            extract_response_brands,
+            model_key,
+        )
 
         for r in answered_results:
             # Collect every brand named in THIS response, deduped, keeping
@@ -1005,6 +1009,7 @@ class BrandPromptDetailAggView(APIView):
                     continue
                 row["responses_with_mention"] += 1
                 row["mentions"] += 1
+                row["providers"].add(r.provider)
                 if info["position"] is not None:
                     row["positions"].append(info["position"])
                 sent = info.get("sentiment")
@@ -1031,6 +1036,10 @@ class BrandPromptDetailAggView(APIView):
                 "sentiment_score": sentiment_score,
                 "avg_position": avg_pos,
                 "mentions": row["mentions"],
+                # Which models named this brand (mapped to UI model keys),
+                # and how many - a brand named by more models is stronger.
+                "models": sorted(model_key(p) for p in row["providers"]),
+                "model_count": len(row["providers"]),
             })
         # Most-visible first; break ties by share of voice, then by best
         # average rank (lower is better) so a brand the models put at #1
@@ -1102,7 +1111,6 @@ class BrandPromptDetailAggView(APIView):
         # for "we tried but the provider was down" versus "no data yet".
         from django.conf import settings as dj_settings
 
-        from apps.citations.services.url_analytics import model_key
         from apps.llm_ranking.providers import PROVIDERS
 
         model_labels = {

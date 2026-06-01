@@ -433,6 +433,10 @@ def test_prompt_detail_visibility_varies_with_cross_model_overlap(auth):
     assert brands["Buffalo Exchange"]["visibility_pct"] == 50.0
     # Most-visible brand sorts first.
     assert body["brands"][0]["name"] == "Vintage Martini"
+    # Named by both models vs. one.
+    assert brands["Vintage Martini"]["model_count"] == 2
+    assert brands["Buffalo Exchange"]["model_count"] == 1
+    assert len(brands["Vintage Martini"]["models"]) == 2
 
 
 @pytest.mark.django_db
