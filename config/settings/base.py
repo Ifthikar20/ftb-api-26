@@ -308,6 +308,11 @@ FIELD_ENCRYPTION_KEY = env("FIELD_ENCRYPTION_KEY", default="")
 # ── EXTERNAL SERVICES ──
 OPENAI_API_KEY = env("OPENAI_API_KEY", default="")
 ANTHROPIC_API_KEY = env("ANTHROPIC_API_KEY", default="")
+# Model overrides. Defaults are the cheapest current Claude model
+# (Haiku 4.5); set these to a Sonnet/Opus id only if you want pricier,
+# more representative answers.
+LLM_CLAUDE_MODEL = env("LLM_CLAUDE_MODEL", default="")
+LLM_EXTRACTION_MODEL = env("LLM_EXTRACTION_MODEL", default="")
 # DeepSeek is used ONLY for offline tooling: prompt synthesis,
 # auto-templating raw user text, and on-demand smoke tests. It is NEVER
 # used to answer real audit prompts (those still go through the four

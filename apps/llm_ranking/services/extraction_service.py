@@ -20,7 +20,9 @@ from django.conf import settings
 
 logger = logging.getLogger("apps")
 
-EXTRACTION_MODEL = "claude-haiku-4-5"
+# Cheap, current model for structured extraction. Overridable per
+# environment with LLM_EXTRACTION_MODEL.
+EXTRACTION_MODEL = getattr(settings, "LLM_EXTRACTION_MODEL", "") or "claude-haiku-4-5"
 EXTRACTION_VERSION = "v1"
 
 EXTRACTION_SYSTEM = (
