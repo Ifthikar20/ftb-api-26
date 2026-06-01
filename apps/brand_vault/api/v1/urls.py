@@ -109,4 +109,30 @@ urlpatterns = [
         views.ToneSampleDeleteView.as_view(),
         name="brand-vault-tone-sample-delete",
     ),
+    # ── AI Brand Safety ──
+    path(
+        "websites/<uuid:website_id>/safety/prompts/",
+        views.WebsiteSafetyPromptsView.as_view(),
+        name="brand-vault-safety-prompts",
+    ),
+    path(
+        "safety/prompts/<uuid:prompt_id>/",
+        views.SafetyPromptDetailView.as_view(),
+        name="brand-vault-safety-prompt-detail",
+    ),
+    path(
+        "websites/<uuid:website_id>/safety/alerts/",
+        views.WebsiteSafetyAlertsView.as_view(),
+        name="brand-vault-safety-alerts",
+    ),
+    path(
+        "safety/alerts/<uuid:alert_id>/resolve/",
+        views.SafetyAlertResolveView.as_view(),
+        name="brand-vault-safety-alert-resolve",
+    ),
+    path(
+        "websites/<uuid:website_id>/safety/metrics/",
+        views.WebsiteSafetyMetricsView.as_view(),
+        name="brand-vault-safety-metrics",
+    ),
 ]
