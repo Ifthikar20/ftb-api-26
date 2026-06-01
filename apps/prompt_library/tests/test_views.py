@@ -359,6 +359,51 @@ def test_prompt_detail_latest_scan_none_when_never_crawled(auth):
 
 
 @pytest.mark.django_db
+def test_prompt_detail_visibility_varies_with_cross_model_overlap(auth):
+    """A brand named by more models should outrank one named by fewer,
+    and the denominator should be the number of answered responses."""
+    from apps.llm_ranking.tests.factories import LLMRankingResultFactory
+    from apps.prompt_library.models import Prompt
+
+    client, _user, website = auth
+    p = Prompt.objects.create(text="best vintage shop in dallas")
+    BrandPrompt.objects.create(website=website, prompt=p)
+
+    # Two answered responses + one failed cell (must not dilute the denom).
+    LLMRankingResultFactory(
+        audit__website=website, provider="claude",
+        prompt=p.text, source_prompt=p, query_succeeded=True,
+        competitors_mentioned=[
+            {"name": "Vintage Martini", "position": 1},
+            {"name": "Buffalo Exchange", "position": 2},
+        ],
+    )
+    LLMRankingResultFactory(
+        audit__website=website, provider="gpt4",
+        prompt=p.text, source_prompt=p, query_succeeded=True,
+        competitors_mentioned=[
+            {"name": "Vintage Martini", "position": 1},  # named by both
+        ],
+    )
+    LLMRankingResultFactory(
+        audit__website=website, provider="gemini",
+        prompt=p.text, source_prompt=p, query_succeeded=False,
+        response_text="", error_message="service_unavailable: gemini",
+    )
+
+    body = client.get(
+        f"/api/v1/prompt-library/websites/{website.id}/prompts/{p.id}/detail/"
+    ).json()
+    assert body["total_responses"] == 2  # failed cell excluded
+    brands = {b["name"]: b for b in body["brands"]}
+    # Named by 2 of 2 answered responses -> 100%; the other by 1 -> 50%.
+    assert brands["Vintage Martini"]["visibility_pct"] == 100.0
+    assert brands["Buffalo Exchange"]["visibility_pct"] == 50.0
+    # Most-visible brand sorts first.
+    assert body["brands"][0]["name"] == "Vintage Martini"
+
+
+@pytest.mark.django_db
 def test_prompt_detail_brands_fall_back_to_response_text(auth):
     """When competitors_mentioned is empty but the response lists brands,
     the brand table is parsed from the response text - so even a single

@@ -901,6 +901,16 @@ class BrandPromptDetailAggView(APIView):
 
         total_results = len(results)
 
+        # Visibility is "in what share of real answers does this brand
+        # appear", so the denominator must be the responses that actually
+        # returned text - not failed/unavailable cells, which would dilute
+        # every brand's score.
+        answered_results = [
+            r for r in results
+            if r.query_succeeded and (r.response_text or "").strip()
+        ]
+        num_answers = len(answered_results)
+
         # Responses that have text but were never run through structured
         # extraction (old crawler rows). The UI uses this to trigger a
         # one-shot backfill so the brand table fills in.
@@ -936,7 +946,7 @@ class BrandPromptDetailAggView(APIView):
 
         from apps.citations.services.url_analytics import extract_response_brands
 
-        for r in results:
+        for r in answered_results:
             # Collect every brand named in THIS response, deduped, keeping
             # the best (lowest) position. Three sources, in priority order:
             #   1. the tracked brand (when the extractor flagged it)
@@ -996,7 +1006,7 @@ class BrandPromptDetailAggView(APIView):
             smap = {"positive": 85, "neutral": 55, "negative": 25}
             scores = [smap.get(s, 50) for s in row["sentiments"]]
             sentiment_score = round(sum(scores) / len(scores), 1) if scores else None
-            vis_pct = round(100 * row["responses_with_mention"] / total_results, 1) if total_results else 0.0
+            vis_pct = round(100 * row["responses_with_mention"] / num_answers, 1) if num_answers else 0.0
             sov_pct = round(100 * row["mentions"] / total_mentions, 1)
             brands_out.append({
                 "name": row["name"],
@@ -1007,7 +1017,14 @@ class BrandPromptDetailAggView(APIView):
                 "avg_position": avg_pos,
                 "mentions": row["mentions"],
             })
-        brands_out.sort(key=lambda x: (-x["visibility_pct"], -x["mentions"]))
+        # Most-visible first; break ties by share of voice, then by best
+        # average rank (lower is better) so a brand the models put at #1
+        # outranks one they bury, even when both appear equally often.
+        brands_out.sort(key=lambda x: (
+            -x["visibility_pct"],
+            -x["sov_pct"],
+            x["avg_position"] if x["avg_position"] is not None else 999,
+        ))
 
         # ── Top domains + type breakdown from citations on these results
         result_ids = [r.id for r in results]
@@ -1240,7 +1257,7 @@ class BrandPromptDetailAggView(APIView):
             },
             "is_brand_prompt": bp_exists,
             "status": "active" if (prompt.is_active and bp_exists) else "inactive",
-            "total_responses": total_results,
+            "total_responses": num_answers,
             "brand_label": brand_label,
             "brands": brands_out,
             "by_model": by_model,
