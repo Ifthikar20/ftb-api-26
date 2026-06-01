@@ -110,6 +110,11 @@ urlpatterns = [
         name="prompt-library-website-prompt-reextract",
     ),
     path(
+        "logo/",
+        views.BrandLogoView.as_view(),
+        name="prompt-library-brand-logo",
+    ),
+    path(
         "websites/<uuid:website_id>/saved-prompts/agg/",
         views.WebsiteSavedPromptsAggView.as_view(),
         name="prompt-library-website-saved-prompts-agg",

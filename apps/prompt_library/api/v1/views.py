@@ -1360,6 +1360,30 @@ class PromptReextractView(APIView):
         return Response({"reextracted": updated})
 
 
+class BrandLogoView(APIView):
+    """Resolve a website's logo by crawling its domain.
+
+    GET ?domain=tasselsbyrenu.com -> {"domain": ..., "logo": "https://..."}.
+    Results are cached server-side; the crawl fetches the homepage and
+    extracts the best logo (apple-touch-icon / og:image / icon / favicon).
+    Returns logo="" when nothing usable is found so the UI can fall back.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from apps.prompt_library.services.logo_crawler import (
+            fetch_site_logo,
+            normalise_domain,
+        )
+
+        raw = request.query_params.get("domain", "")
+        domain = normalise_domain(raw)
+        if not domain:
+            return Response({"detail": "Invalid domain."}, status=400)
+        return Response({"domain": domain, "logo": fetch_site_logo(domain)})
+
+
 class WebsiteSavedPromptsAggView(APIView):
     """
     Saved-prompts dashboard payload — every saved prompt for the
