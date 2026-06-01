@@ -987,6 +987,9 @@ class BrandPromptDetailAggView(APIView):
             responses_with_citation[apex].add(c.result_id)
             sources_by_result[c.result_id].append(apex)
 
+        # public_id is what the chat modal opens — map internal id -> public.
+        public_id_by_result = {r.id: str(r.public_id) for r in results}
+
         top_domains = []
         for apex, entry in per_domain.items():
             unique_responses = len(responses_with_citation[apex])
@@ -996,6 +999,12 @@ class BrandPromptDetailAggView(APIView):
             entry["retrieved_pct"] = (
                 round(100 * unique_responses / total_results, 1) if total_results else 0.0
             )
+            sample_ids = [
+                public_id_by_result[rid]
+                for rid in list(responses_with_citation[apex])[:8]
+                if rid in public_id_by_result
+            ]
+            entry["sample_result_ids"] = sample_ids
             top_domains.append(entry)
         top_domains.sort(key=lambda e: (-e["count"], e["apex_domain"]))
         top_domains = top_domains[:25]
@@ -1012,6 +1021,9 @@ class BrandPromptDetailAggView(APIView):
         # ── Brand visibility per model for this prompt ──
         # Every implemented provider appears: unconfigured ones are flagged
         # so the UI shows "Not configured" instead of a misleading 0%.
+        # Failed cells whose error_message starts with the service_unavailable
+        # sentinel are counted separately so the UI can show a distinct state
+        # for "we tried but the provider was down" versus "no data yet".
         from django.conf import settings as dj_settings
 
         from apps.citations.services.url_analytics import model_key
@@ -1023,14 +1035,40 @@ class BrandPromptDetailAggView(APIView):
         }
         per_model: dict[str, dict] = {}
         for r in results:
-            m = per_model.setdefault(r.provider, {"responses": 0, "mentioned": 0})
+            m = per_model.setdefault(r.provider, {
+                "responses": 0, "mentioned": 0, "unavailable": 0,
+                "ranks": [],
+            })
+            if not r.query_succeeded:
+                err = getattr(r, "error_message", "") or ""
+                if err.startswith("service_unavailable"):
+                    m["unavailable"] += 1
+                continue
             m["responses"] += 1
             if r.is_mentioned:
                 m["mentioned"] += 1
+                if r.mention_rank is not None:
+                    m["ranks"].append(r.mention_rank)
+
+        def _rank_buckets(ranks: list) -> dict:
+            buckets = {"1": 0, "2-3": 0, "4-10": 0, "11+": 0}
+            for rank in ranks:
+                if rank == 1:
+                    buckets["1"] += 1
+                elif rank <= 3:
+                    buckets["2-3"] += 1
+                elif rank <= 10:
+                    buckets["4-10"] += 1
+                else:
+                    buckets["11+"] += 1
+            return buckets
+
         by_model = []
         for key, cls in PROVIDERS.items():
             configured = bool(getattr(dj_settings, cls.api_key_setting, ""))
-            stat = per_model.get(key, {"responses": 0, "mentioned": 0})
+            stat = per_model.get(key, {
+                "responses": 0, "mentioned": 0, "unavailable": 0, "ranks": [],
+            })
             responses = stat["responses"]
             by_model.append({
                 "provider": key,
@@ -1039,8 +1077,14 @@ class BrandPromptDetailAggView(APIView):
                 "configured": configured,
                 "responses": responses,
                 "mentioned": stat["mentioned"],
+                "unavailable": stat["unavailable"],
                 "visibility_pct": (
                     round(100 * stat["mentioned"] / responses, 1) if responses else 0.0
+                ),
+                "rank_buckets": _rank_buckets(stat["ranks"]),
+                "avg_rank": (
+                    round(sum(stat["ranks"]) / len(stat["ranks"]), 1)
+                    if stat["ranks"] else None
                 ),
             })
         # Configured-with-data first, then by visibility, unconfigured last.

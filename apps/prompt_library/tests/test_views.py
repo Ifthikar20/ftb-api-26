@@ -261,12 +261,9 @@ def test_prompt_detail_returns_recent_chats(auth):
 
 @pytest.mark.django_db
 def test_prompt_detail_includes_latest_scan(auth):
-    from apps.llm_ranking.tests.factories import LLMRankingAuditFactory
     from apps.prompt_library.models import Prompt, PromptCrawlRun
 
-    client, user = auth
-    audit = LLMRankingAuditFactory(created_by=user)
-    website = audit.website
+    client, _user, website = auth
     p = Prompt.objects.create(text="how to track LLM visibility")
     BrandPrompt.objects.create(website=website, prompt=p)
 
@@ -293,19 +290,80 @@ def test_prompt_detail_includes_latest_scan(auth):
 
 @pytest.mark.django_db
 def test_prompt_detail_latest_scan_none_when_never_crawled(auth):
-    from apps.llm_ranking.tests.factories import LLMRankingAuditFactory
     from apps.prompt_library.models import Prompt
 
-    client, user = auth
-    audit = LLMRankingAuditFactory(created_by=user)
+    client, _user, website = auth
     p = Prompt.objects.create(text="another prompt")
-    BrandPromptFactory(website=audit.website, prompt=p)
+    BrandPrompt.objects.create(website=website, prompt=p)
 
     resp = client.get(
-        f"/api/v1/prompt-library/websites/{audit.website.id}/prompts/{p.id}/detail/"
+        f"/api/v1/prompt-library/websites/{website.id}/prompts/{p.id}/detail/"
     )
     assert resp.status_code == 200, resp.content
     assert resp.json()["latest_scan"] is None
+
+
+@pytest.mark.django_db
+def test_prompt_detail_per_model_rank_buckets_and_unavailable(auth):
+    from apps.llm_ranking.tests.factories import LLMRankingResultFactory
+    from apps.prompt_library.models import Prompt
+
+    client, _user, website = auth
+    p = Prompt.objects.create(text="how do I fix a squeaky floorboard?")
+    BrandPrompt.objects.create(website=website, prompt=p)
+
+    for rank in (1, 2, 12):
+        LLMRankingResultFactory(
+            audit__website=website,
+            provider="claude",
+            prompt=p.text, source_prompt=p,
+            query_succeeded=True, is_mentioned=True, mention_rank=rank,
+        )
+    LLMRankingResultFactory(
+        audit__website=website,
+        provider="gemini",
+        prompt=p.text, source_prompt=p,
+        response_text="",
+        query_succeeded=False,
+        error_message="service_unavailable: gemini provider not enabled",
+    )
+
+    resp = client.get(
+        f"/api/v1/prompt-library/websites/{website.id}/prompts/{p.id}/detail/"
+    )
+    assert resp.status_code == 200, resp.content
+    by_model = {m["provider"]: m for m in resp.json()["by_model"]}
+    assert by_model["claude"]["rank_buckets"] == {"1": 1, "2-3": 1, "4-10": 0, "11+": 1}
+    assert by_model["claude"]["avg_rank"] == 5.0
+    assert by_model["gemini"]["unavailable"] == 1
+    assert by_model["gemini"]["responses"] == 0
+
+
+@pytest.mark.django_db
+def test_prompt_detail_top_domains_expose_sample_chats(auth):
+    from apps.citations.services.extraction_service import extract_for_result
+    from apps.llm_ranking.tests.factories import LLMRankingResultFactory
+    from apps.prompt_library.models import Prompt
+
+    client, _user, website = auth
+    p = Prompt.objects.create(text="best budgeting apps in 2026")
+    BrandPrompt.objects.create(website=website, prompt=p)
+
+    r = LLMRankingResultFactory(
+        audit__website=website, provider="perplexity",
+        prompt=p.text, source_prompt=p,
+        response_text="Apps include Acme.", is_mentioned=True, mention_rank=1,
+        citations=[{"url": "https://reddit.com/r/personalfinance"}],
+    )
+    extract_for_result(str(r.id))
+
+    resp = client.get(
+        f"/api/v1/prompt-library/websites/{website.id}/prompts/{p.id}/detail/"
+    )
+    assert resp.status_code == 200, resp.content
+    domains = resp.json()["top_domains"]
+    reddit = next(d for d in domains if "reddit.com" in d["apex_domain"])
+    assert str(r.public_id) in reddit["sample_result_ids"]
 
 
 @pytest.mark.django_db
