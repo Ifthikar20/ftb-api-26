@@ -20,8 +20,10 @@ from django.conf import settings
 
 logger = logging.getLogger("apps")
 
-EXTRACTION_MODEL = "claude-haiku-4-5"
-EXTRACTION_VERSION = "v1"
+# Cheap, current model for structured extraction. Overridable per
+# environment with LLM_EXTRACTION_MODEL.
+EXTRACTION_MODEL = getattr(settings, "LLM_EXTRACTION_MODEL", "") or "claude-haiku-4-5"
+EXTRACTION_VERSION = "v3"  # v3 adds per-competitor website domain
 
 EXTRACTION_SYSTEM = (
     "You extract structured brand-mention data from AI assistant responses. "
@@ -44,7 +46,9 @@ Return JSON only, matching this schema exactly:
   "target_sentiment": "positive" | "neutral" | "negative" | "not_mentioned",
   "target_context": str,                  // up to 300 chars around the first target mention, or ""
   "competitors_mentioned": [              // other brands/products/companies named in the response
-    {{"name": str, "position": int or null, "linked": bool}}
+    {{"name": str, "position": int or null, "linked": bool,
+      "sentiment": "positive" | "neutral" | "negative",  // how the response portrays THIS brand
+      "domain": str or null}}             // the brand's official website domain if you know it, e.g. "nike.com", else null
   ],
   "primary_recommendation": str or null,  // name of the brand the response clearly recommends first, else null
   "citations": [str]                      // any URLs cited
@@ -82,6 +86,26 @@ def _call_haiku(prompt: str, *, user=None, website=None, audit_id=None) -> str:
     return resp.content[0].text.strip()
 
 
+def _clean_domain(raw) -> str:
+    """Reduce an LLM-supplied website value to a bare host, or "".
+
+    Accepts "https://www.nike.com/x" or "Nike.com" and yields "nike.com".
+    Returns "" for nulls or anything that isn't a plausible domain.
+    """
+    if not raw or not isinstance(raw, str):
+        return ""
+    d = raw.strip().lower()
+    if "//" in d:
+        d = d.split("//", 1)[1]
+    d = d.split("/", 1)[0].split("@")[-1].split(":")[0]
+    if d.startswith("www."):
+        d = d[4:]
+    # Plausible domain: label(s) + TLD, no spaces.
+    if re.match(r"^(?=.{1,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$", d):
+        return d
+    return ""
+
+
 def _parse_json_object(text: str) -> dict:
     """Extract the first JSON object from a possibly-messy response."""
     match = re.search(r"\{.*\}", text, re.DOTALL)
@@ -105,6 +129,7 @@ def _normalise(raw: dict) -> dict:
     MAX_CITATIONS = 50
     MAX_URL_LEN = 500
 
+    comp_sentiments = {"positive", "neutral", "negative"}
     competitors = []
     for c in (raw.get("competitors_mentioned") or [])[:MAX_COMPETITORS]:
         if not isinstance(c, dict):
@@ -113,10 +138,13 @@ def _normalise(raw: dict) -> dict:
         if not name:
             continue
         pos = c.get("position")
+        csent = c.get("sentiment")
         competitors.append({
             "name": name[:200],
             "position": int(pos) if isinstance(pos, int | float) and pos is not None else None,
             "linked": bool(c.get("linked", False)),
+            "sentiment": csent if csent in comp_sentiments else "neutral",
+            "domain": _clean_domain(c.get("domain")),
         })
 
     citations = []

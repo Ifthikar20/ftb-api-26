@@ -111,3 +111,35 @@ class TestExtractionCaps:
                 response_text="any", brand_name="Target", keywords=[],
             )
         assert out["competitors_mentioned"] == []
+
+
+class TestCompetitorDomain:
+    def test_captures_and_cleans_domain(self):
+        from apps.llm_ranking.services.extraction_service import _clean_domain
+        assert _clean_domain("https://www.Nike.com/shoes") == "nike.com"
+        assert _clean_domain("PizzaHut.com") == "pizzahut.com"
+        assert _clean_domain(None) == ""
+        assert _clean_domain("not a domain") == ""
+
+    def test_competitor_domain_flows_through_extract(self):
+        payload = {
+            "target_mentioned": False,
+            "target_position": None,
+            "target_linked": False,
+            "target_sentiment": "not_mentioned",
+            "target_context": "",
+            "competitors_mentioned": [
+                {"name": "Nike", "position": 1, "sentiment": "positive",
+                 "domain": "https://nike.com"},
+                {"name": "NoSite", "position": 2},
+            ],
+            "primary_recommendation": None,
+            "citations": [],
+        }
+        with _patch_haiku(payload):
+            out = HaikuExtractionService.extract(
+                response_text="any", brand_name="Target", keywords=[],
+            )
+        comps = {c["name"]: c for c in out["competitors_mentioned"]}
+        assert comps["Nike"]["domain"] == "nike.com"
+        assert comps["NoSite"]["domain"] == ""

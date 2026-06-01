@@ -23,6 +23,7 @@ import logging
 import re
 from dataclasses import dataclass
 
+from django.db.models import Q
 from django.utils import timezone
 
 from apps.llm_ranking.models import LLMRankingAudit, LLMRankingResult
@@ -40,8 +41,23 @@ from apps.websites.models import Website
 logger = logging.getLogger(__name__)
 
 
-FANOUT_MIN = 4
 FANOUT_MAX = 8
+
+
+def _dedupe_fanouts(items: list[str]) -> list[str]:
+    """De-dupe sub-queries case-insensitively (preserving order) and cap at
+    FANOUT_MAX so the stored set stays short and high-signal."""
+    seen: set[str] = set()
+    out: list[str] = []
+    for q in items:
+        key = " ".join((q or "").split()).lower()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        out.append(q.strip())
+        if len(out) >= FANOUT_MAX:
+            break
+    return out
 
 
 @dataclass
@@ -54,18 +70,18 @@ class CrawlOutcome:
 def _llm_fanout(prompt_text: str, brand_name: str) -> list[str]:
     """Ask Claude to decompose the prompt into buyer-intent sub-queries.
 
-    Falls back to ``_heuristic_fanout`` if Claude isn't configured or
-    the call fails — we never raise from here so the crawler keeps
-    going.
+    Returns only genuine LLM-generated sub-queries. On any failure it
+    returns an empty list rather than padding with templated queries -
+    an empty, honest fan-out beats a list bloated with mechanical
+    "best X / pricing for X / X vs competitors" rows.
     """
     try:
         # Lazy import — if Anthropic isn't installed or the key isn't
-        # set, the provider raises on instantiation and we drop to
-        # the heuristic path below.
+        # set, the provider raises on instantiation.
         from apps.llm_ranking.providers.claude import ClaudeProvider
         prov = ClaudeProvider()
     except Exception:
-        return _heuristic_fanout(prompt_text)
+        return []
 
     system = (
         "You break a buyer-intent prompt into 4-8 short sub-queries an "
@@ -74,48 +90,111 @@ def _llm_fanout(prompt_text: str, brand_name: str) -> list[str]:
     )
     user = f"Brand: {brand_name}\nPrompt: {prompt_text}"
     try:
-        resp = prov.query(user, system=system, max_tokens=400)
+        resp = prov.query(user, system_prompt=system)
     except Exception as exc:
         logger.warning("Fanout LLM call failed: %s", exc)
-        return _heuristic_fanout(prompt_text)
+        return []
 
     text = getattr(resp, "text", None) or str(resp)
     # Pull the first JSON array out of the response.
     match = re.search(r"\[[^\]]+\]", text or "", re.DOTALL)
     if not match:
-        return _heuristic_fanout(prompt_text)
+        return []
     try:
         items = json.loads(match.group())
     except json.JSONDecodeError:
-        return _heuristic_fanout(prompt_text)
+        return []
     cleaned = [str(x).strip() for x in items if isinstance(x, str | int | float) and str(x).strip()]
-    return cleaned[:FANOUT_MAX] or _heuristic_fanout(prompt_text)
+    return cleaned[:FANOUT_MAX]
 
 
-def _heuristic_fanout(prompt_text: str) -> list[str]:
-    """Template a handful of sub-queries from the prompt's keywords.
+def _website_keywords(website: Website) -> list[str]:
+    """Keywords the extractor uses to recognise the brand. Combines the
+    business name, configured topics, and competitor names so the LLM
+    extractor has enough context to label mentions."""
+    out: list[str] = []
+    name = getattr(website, "business_name", None) or website.name or ""
+    if name:
+        out.append(name)
+    for t in (getattr(website, "topics", None) or []):
+        if isinstance(t, str) and t.strip():
+            out.append(t.strip())
+    for c in (getattr(website, "competitors", None) or []):
+        cname = c.get("name") if isinstance(c, dict) else (c if isinstance(c, str) else None)
+        if cname and cname.strip():
+            out.append(cname.strip())
+    # De-dupe, preserve order.
+    seen, deduped = set(), []
+    for k in out:
+        kl = k.lower()
+        if kl not in seen:
+            seen.add(kl)
+            deduped.append(k)
+    return deduped
 
-    Crude but deterministic, and the page is rarely empty even when
-    the LLM path is unavailable.
+
+def _extract_brands(*, response_text, website, brand_name, keywords, audit_id) -> dict:
+    """Run the same structured extraction the full audit uses so the
+    crawl captures the brand, its rank/sentiment, and every competitor
+    named in the response. Falls back to an empty analysis when there's
+    no text or the extractor errors."""
+    if not (response_text or "").strip():
+        from apps.llm_ranking.services.extraction_service import HaikuExtractionService
+        return HaikuExtractionService._empty_result()
+    try:
+        from apps.llm_ranking.services.extraction_service import HaikuExtractionService
+        return HaikuExtractionService.extract(
+            response_text=response_text,
+            brand_name=brand_name,
+            keywords=keywords,
+            user=getattr(website, "user", None),
+            website=website,
+            audit_id=audit_id,
+        )
+    except Exception as exc:
+        logger.warning("Crawl extraction failed: %s", exc)
+        from apps.llm_ranking.services.extraction_service import HaikuExtractionService
+        return HaikuExtractionService._empty_result()
+
+
+def _query_with_retry(instance, prompt_text):
+    """Query a provider, retrying once when it raises or returns a
+    non-key transient failure. Returns the ProviderResult (which may
+    still be succeeded=False) or None if both attempts raised.
+
+    A succeeded=False result whose error is the not-configured /
+    service_unavailable sentinel is returned immediately without a
+    retry — a missing key won't fix itself on a second call.
     """
-    text = (prompt_text or "").strip()
-    if not text:
-        return []
-    # Pull the noun-ish phrases by stripping question words + trailing
-    # punctuation. Good enough for typical buyer-intent prompts.
-    stripped = re.sub(r"^(which|what|how|where|when|why|who|find|recommend|show me|list|compare|evaluate)\s+", "", text, flags=re.I)
-    stripped = re.sub(r"[?.!]+$", "", stripped).strip()
-    if not stripped:
-        return []
-    base = stripped[:120]
-    return [
-        f"best {base}",
-        f"top alternatives to {base}",
-        f"{base} reviews and ratings",
-        f"{base} vs competitors",
-        f"how to choose {base}",
-        f"pricing for {base}",
-    ]
+    last = None
+    for attempt in (1, 2):
+        try:
+            result = instance.query(prompt_text)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Provider query raised (attempt %d): %s", attempt, exc)
+            last = None
+            continue
+        last = result
+        if getattr(result, "succeeded", True):
+            return result
+        err = (getattr(result, "error", "") or "").lower()
+        if "service_unavailable" in err or "not configured" in err or "not enabled" in err:
+            return result  # no point retrying a missing key
+        # transient failure — loop for one more attempt
+    return last
+
+
+def _dispatch_citations(result_id) -> None:
+    """Kick off citation extraction so the Top Domains table populates.
+    Mirrors the main audit flow; failures are non-fatal."""
+    from django.conf import settings as _settings
+    if not getattr(_settings, "CITATION_EXTRACTION_ENABLED", True):
+        return
+    try:
+        from apps.citations.tasks import extract_citations_for_result
+        extract_citations_for_result.delay(str(result_id))
+    except Exception as exc:  # pragma: no cover
+        logger.debug("citation dispatch failed for %s: %s", result_id, exc)
 
 
 def crawl_prompt(website: Website, prompt: Prompt) -> CrawlOutcome:
@@ -135,12 +214,17 @@ def crawl_prompt(website: Website, prompt: Prompt) -> CrawlOutcome:
     responses_logged = 0
 
     brand_name = getattr(website, "business_name", None) or website.name or "your brand"
-    fanouts = _llm_fanout(prompt.text or prompt.template_text or "", brand_name)
+    keywords = _website_keywords(website)
+    fanouts = _dedupe_fanouts(
+        _llm_fanout(prompt.text or prompt.template_text or "", brand_name)
+    )
 
-    # Persist fan-out rows. Bulk create with ignore_conflicts so a
-    # re-crawl doesn't double-write.
-    PromptFanout.objects.bulk_create(
-        [
+    # Replace this prompt's fan-out set rather than appending, so re-scans
+    # don't accumulate duplicates. Only write when we actually generated
+    # fan-outs (a failed LLM call leaves the previous set untouched).
+    if fanouts:
+        PromptFanout.objects.filter(website=website, prompt=prompt).delete()
+        PromptFanout.objects.bulk_create([
             PromptFanout(
                 website=website,
                 prompt=prompt,
@@ -149,9 +233,7 @@ def crawl_prompt(website: Website, prompt: Prompt) -> CrawlOutcome:
                 confidence=0.7,
             )
             for q in fanouts
-        ],
-        ignore_conflicts=True,
-    )
+        ])
 
     # Run the original prompt against each configured provider and
     # log the responses as LLMRankingResult rows on a synthetic audit.
@@ -159,6 +241,9 @@ def crawl_prompt(website: Website, prompt: Prompt) -> CrawlOutcome:
     # what makes the visibility/sentiment numbers light up.
     audit = LLMRankingAudit.objects.create(
         website=website,
+        # Audit rows require a created_by; the crawl is run on behalf of
+        # the website's owner regardless of which user kicked the scan.
+        created_by=website.user,
         business_name=brand_name,
         status=LLMRankingAudit.STATUS_RUNNING,
         prompt_source=getattr(LLMRankingAudit, "PROMPT_SOURCE_LIBRARY", "library"),
@@ -167,7 +252,20 @@ def crawl_prompt(website: Website, prompt: Prompt) -> CrawlOutcome:
         started_at=timezone.now(),
     )
 
+    # Providers we already have a good answer for on this prompt. Once a
+    # model has returned a response we're done with it — re-scanning only
+    # fills in the models we're still missing, so we never re-query (or
+    # pile up duplicate rows for) a model that already answered.
+    already_answered = set(
+        LLMRankingResult.objects
+        .filter(audit__website=website, query_succeeded=True)
+        .filter(Q(source_prompt=prompt) | Q(prompt=prompt.text))
+        .exclude(response_text="")
+        .values_list("provider", flat=True)
+    )
+
     queried_providers: list[str] = []
+    skipped_have_answer = 0
     try:
         variants = list_model_variants()
     except Exception:
@@ -181,6 +279,9 @@ def crawl_prompt(website: Website, prompt: Prompt) -> CrawlOutcome:
         if not provider_key or provider_key in seen_providers:
             continue
         seen_providers.add(provider_key)
+        if provider_key in already_answered:
+            skipped_have_answer += 1
+            continue
         cls = PROVIDERS.get(provider_key)
         if cls is None:
             continue
@@ -189,32 +290,67 @@ def crawl_prompt(website: Website, prompt: Prompt) -> CrawlOutcome:
         except Exception as exc:
             errors.append(f"{provider_key}: {exc!s}")
             continue
-        try:
-            result = instance.query(prompt.text)
-        except Exception as exc:
-            errors.append(f"{provider_key}: {exc!s}")
+
+        # One query, one retry. A model that doesn't answer (transient
+        # error, rate limit) gets a single second attempt, then we record
+        # the failure and move on instead of looping. A hard failure with
+        # no key returns succeeded=False immediately and isn't retried.
+        result = _query_with_retry(instance, prompt.text)
+        if result is None:
+            errors.append(f"{provider_key}: query raised on both attempts")
             continue
 
-        response_text = getattr(result, "text", None) or str(result)
-        is_mentioned = brand_name.lower() in response_text.lower()
-        LLMRankingResult.objects.create(
+        # A provider that returns succeeded=False (missing key, rate limit,
+        # circuit open) still gets a row so the detail page can show the
+        # state, but we skip extraction on it.
+        succeeded = getattr(result, "succeeded", True)
+        response_text = getattr(result, "text", None) or ""
+        err = getattr(result, "error", "") or ""
+
+        analysis = _extract_brands(
+            response_text=response_text if succeeded else "",
+            website=website,
+            brand_name=brand_name,
+            keywords=keywords,
+            audit_id=str(audit.id),
+        )
+
+        result_obj = LLMRankingResult.objects.create(
             audit=audit,
             provider=provider_key,
             prompt_index=0,
             prompt=prompt.text,
+            source_prompt=prompt,
             response_text=response_text,
-            is_mentioned=is_mentioned,
-            sentiment=(
-                LLMRankingResult.SENTIMENT_POSITIVE if is_mentioned
-                else LLMRankingResult.SENTIMENT_NOT_MENTIONED
-            ),
+            query_succeeded=succeeded,
+            error_message=err[:500],
+            is_mentioned=analysis["is_mentioned"],
+            mention_rank=analysis["mention_rank"],
+            sentiment=analysis["sentiment"],
+            confidence_score=analysis["confidence_score"],
+            mention_context=analysis["mention_context"],
+            is_linked=analysis.get("is_linked", False),
+            competitors_mentioned=analysis.get("competitors_mentioned", []),
+            primary_recommendation=analysis.get("primary_recommendation", ""),
+            citations=analysis.get("citations", []),
+            extraction_model=analysis.get("extraction_model", ""),
+            extraction_version=analysis.get("extraction_version", ""),
         )
-        responses_logged += 1
+        if succeeded:
+            responses_logged += 1
+            _dispatch_citations(result_obj.id)
+        else:
+            errors.append(f"{provider_key}: {err[:120]}")
         queried_providers.append(provider_key)
+
+    # "Have what we need" = we logged a response this run OR every model
+    # was already answered on a previous run. Either way the crawl is a
+    # success, not a failure.
+    have_coverage = bool(responses_logged or skipped_have_answer)
 
     audit.providers_queried = queried_providers
     audit.status = (
-        LLMRankingAudit.STATUS_COMPLETED if responses_logged
+        LLMRankingAudit.STATUS_COMPLETED if have_coverage
         else LLMRankingAudit.STATUS_FAILED
     )
     audit.completed_at = timezone.now()
@@ -224,7 +360,7 @@ def crawl_prompt(website: Website, prompt: Prompt) -> CrawlOutcome:
     run.fanout_count = len(fanouts)
     run.source_count = responses_logged
     run.status = (
-        PromptCrawlRun.STATUS_COMPLETE if responses_logged or fanouts
+        PromptCrawlRun.STATUS_COMPLETE if have_coverage or fanouts
         else PromptCrawlRun.STATUS_FAILED
     )
     run.error = "; ".join(errors)[:1000]

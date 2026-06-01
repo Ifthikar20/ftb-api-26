@@ -559,18 +559,32 @@ def build_url_detail(website, *, normalized_url: str, start: date, end: date,
     }
 
 
-_LIST_ITEM = re.compile(r"^\s*(?:\d+[.)]|[-*•])\s+(.*\S)\s*$")
+# Only numbered list items ("1.", "2)") lead with a brand. Sub-bullets
+# ("- **Description**: ...") are detail lines, not brands, so we ignore
+# dash/asterisk bullets entirely.
+_LIST_ITEM = re.compile(r"^\s*\d+[.)]\s+(.*\S)\s*$")
 _BOLD = re.compile(r"\*\*([^*\n]{1,60}?)\*\*")
 _LEAD_SPLIT = re.compile(r"\s+[—:\-–]\s+|[:(]| - ")
+
+# Generic section labels that show up in bold but are never brand names.
+_NON_BRAND = {
+    "description", "overview", "summary", "note", "notes", "pros", "cons",
+    "price", "pricing", "cost", "location", "locations", "address", "hours",
+    "features", "highlights", "tips", "why", "rating", "ratings", "reviews",
+    "specialty", "specialties", "best for", "ideal for", "details", "website",
+    "phone", "contact", "menu", "products", "services", "about", "bottom line",
+    "verdict", "recommendation", "key features", "what we like",
+}
 
 
 def extract_response_brands(text: str, limit: int = 25) -> list[dict]:
     """Pull the ranked entity/brand names a list-style answer recommends.
 
-    Models answer "best X" prompts as a numbered or bulleted list where each
-    item leads with the brand name (often bold). We capture that lead name and
-    its list position so the chat panel can show the brands the model named,
-    even when none are tracked competitors. Best-effort and heuristic.
+    Models answer "best X" prompts as a numbered list where each item leads
+    with the brand name (often bold). We capture that lead name and its list
+    position so the chat panel can show the brands the model named, even when
+    none are tracked competitors. Sub-bullets and generic section labels
+    (Description, Pros, Price, ...) are filtered out. Best-effort, heuristic.
     """
     if not text:
         return []
@@ -583,11 +597,11 @@ def extract_response_brands(text: str, limit: int = 25) -> list[dict]:
         item = m.group(1).strip()
         bold = _BOLD.search(item)
         name = bold.group(1) if bold else _LEAD_SPLIT.split(item, 1)[0]
-        name = name.strip().strip("*\"'.,").strip()
+        name = name.strip().strip("*\"'.,:").strip()
         if not (1 < len(name) <= 60):
             continue
         key = name.lower()
-        if key in seen:
+        if key in seen or key in _NON_BRAND:
             continue
         seen.add(key)
         out.append({"name": name, "position": len(out) + 1})
@@ -636,19 +650,20 @@ def build_chat_detail(website, *, result_id: str) -> dict | None:
     brands = []
     seen_brands: set[str] = set()
 
-    def _add_brand(name, position):
+    def _add_brand(name, position, domain=""):
         name = (name or "").strip()
         key = name.lower()
         if not name or key in seen_brands:
             return
         seen_brands.add(key)
-        brands.append({"name": name, "position": position})
+        # domain (LLM-supplied) is used by the UI only to crawl the logo.
+        brands.append({"name": name, "position": position, "domain": domain or ""})
 
     if result.is_mentioned:
         _add_brand(website.name, result.mention_rank)
     for comp in (result.competitors_mentioned or []):
         if isinstance(comp, dict):
-            _add_brand(comp.get("name"), comp.get("position"))
+            _add_brand(comp.get("name"), comp.get("position"), comp.get("domain"))
         else:
             _add_brand(str(comp), None)
     # Capture brands straight from the model's recommendation list.
@@ -656,16 +671,25 @@ def build_chat_detail(website, *, result_id: str) -> dict | None:
         _add_brand(entry["name"], entry["position"])
 
     # Fan-out sub-queries the model researched (per saved prompt).
+    # Re-crawls append fresh PromptFanout rows, so de-dupe by text.
     fanout_queries: list[str] = []
     if result.source_prompt_id:
         from apps.prompt_library.models import PromptFanout
 
-        fanout_queries = list(
+        seen_fanout: set[str] = set()
+        for text in (
             PromptFanout.objects
             .filter(website=website, prompt_id=result.source_prompt_id)
             .order_by("-confidence", "created_at")
-            .values_list("text", flat=True)[:12]
-        )
+            .values_list("text", flat=True)
+        ):
+            key = (text or "").strip().lower()
+            if not key or key in seen_fanout:
+                continue
+            seen_fanout.add(key)
+            fanout_queries.append(text)
+            if len(fanout_queries) >= 12:
+                break
 
     # Country hint for the flag chip (top of the per-result breakdown).
     country = None

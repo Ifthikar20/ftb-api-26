@@ -12,11 +12,20 @@ DEFAULT_SYSTEM = (
 
 class ClaudeProvider(LLMProvider):
     name = "claude"
-    model = "claude-sonnet-4-20250514"
+    # Cheap, current default. Haiku 4.5 is the lowest-cost Claude model and
+    # is plenty for generating a listing-style answer. Override per
+    # environment with LLM_CLAUDE_MODEL (e.g. a Sonnet id) when you want the
+    # answer to reflect a pricier consumer model.
+    DEFAULT_MODEL = "claude-haiku-4-5"
+    model = DEFAULT_MODEL
     api_key_setting = "ANTHROPIC_API_KEY"
     # Anthropic Tier 1 = 50 RPM. Stay well under to share with extraction.
     rpm = 40
     burst = 15
+
+    def __init__(self):
+        super().__init__()
+        self.model = getattr(settings, "LLM_CLAUDE_MODEL", "") or self.DEFAULT_MODEL
 
     def _call(self, *, prompt: str, system_prompt: str,
               region: str = "") -> ProviderResult:

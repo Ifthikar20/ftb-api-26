@@ -51,6 +51,33 @@ from core.interceptors.pagination import StandardPagination
 logger = logging.getLogger("apps")
 
 
+def _match_brand_domain(brand_name: str, domains: list[str]) -> str | None:
+    """Best-effort match of a brand name to one of the cited domains.
+
+    Squashes both to alphanumerics and matches when the domain's root
+    contains the brand (or vice-versa), or they share a distinctive token.
+    Returns the matched apex domain or None. Used to source a real website
+    logo from the domains the models actually cited.
+    """
+    import re
+
+    squashed = re.sub(r"[^a-z0-9]", "", (brand_name or "").lower())
+    if len(squashed) < 3 or not domains:
+        return None
+    tokens = {t for t in re.split(r"[^a-z0-9]+", (brand_name or "").lower()) if len(t) >= 4}
+    best = None
+    for d in domains:
+        root = (d or "").split(".")[0].lower()
+        root_sq = re.sub(r"[^a-z0-9]", "", root)
+        if not root_sq:
+            continue
+        if root_sq == squashed or root_sq in squashed or squashed in root_sq:
+            return d  # strong match — take it immediately
+        if best is None and any(tok in root_sq for tok in tokens):
+            best = d  # weaker token match — keep as fallback
+    return best
+
+
 class IndustryListView(ListAPIView):
     permission_classes = [IsAuthenticated]
     serializer_class = IndustrySerializer
@@ -884,7 +911,8 @@ class BrandPromptDetailAggView(APIView):
                 "id", "public_id", "provider", "prompt", "response_text",
                 "is_mentioned", "mention_rank", "sentiment",
                 "competitors_mentioned", "created_at",
-                "citation_countries", "query_succeeded", "source_prompt_id",
+                "citation_countries", "query_succeeded", "error_message",
+                "extraction_model", "source_prompt_id",
             )
         )
 
@@ -899,6 +927,23 @@ class BrandPromptDetailAggView(APIView):
                 results.append(r)
 
         total_results = len(results)
+
+        # Visibility is "in what share of real answers does this brand
+        # appear", so the denominator must be the responses that actually
+        # returned text - not failed/unavailable cells, which would dilute
+        # every brand's score.
+        answered_results = [
+            r for r in results
+            if r.query_succeeded and (r.response_text or "").strip()
+        ]
+        num_answers = len(answered_results)
+
+        # Responses that still need (re)extraction - never analysed, or
+        # analysed by the weak heuristic / an older schema. The UI uses this
+        # to trigger a one-shot backfill so the brand table fills in
+        # accurately.
+        from apps.prompt_library.services.reextract import count_unextracted
+        unextracted_count = count_unextracted(website, prompt)
 
         # ── Per-brand visibility / SOV / sentiment / position ──────────
         brand_label = getattr(website, "business_name", None) or website.name or "your brand"
@@ -919,28 +964,98 @@ class BrandPromptDetailAggView(APIView):
                     "responses_with_mention": 0,
                     "sentiments": [],
                     "positions": [],
+                    "providers": set(),
+                    "domain": "",
                 }
                 brand_stats[key] = row
             return row
 
-        for r in results:
-            if r.is_mentioned:
-                row = _ensure(brand_label)
-                row["responses_with_mention"] += 1
-                row["mentions"] += 1
-                if r.mention_rank is not None:
-                    row["positions"].append(r.mention_rank)
-                if r.sentiment and r.sentiment != "not_mentioned":
-                    row["sentiments"].append(r.sentiment)
-            for comp in (r.competitors_mentioned or []):
-                name = (comp.get("name") if isinstance(comp, dict) else None) or ""
+        from apps.citations.services.url_analytics import (
+            extract_response_brands,
+            model_key,
+        )
+
+        for r in answered_results:
+            # Collect every brand named in THIS response, deduped, keeping
+            # the best (lowest) position. Three sources, in priority order:
+            #   1. the tracked brand (when the extractor flagged it)
+            #   2. extracted competitors_mentioned
+            #   3. brands parsed straight from the response's numbered list
+            # The third is the fallback that makes the table populate even
+            # when extraction was sparse but the model plainly listed brands.
+            per_result: dict[str, dict] = {}
+
+            def _see(name, position, is_self=False, sentiment=None,
+                     position_authoritative=False, domain=None):
+                name = (name or "").strip()
                 if not name:
+                    return
+                key = name.lower()
+                slot = per_result.get(key)
+                if slot is None:
+                    per_result[key] = {
+                        "name": name, "position": position,
+                        "is_self": is_self, "sentiment": sentiment,
+                        "domain": domain or "",
+                    }
+                else:
+                    if is_self:
+                        slot["is_self"] = True
+                    if position is not None:
+                        # The order a brand appears in the response (text-parse,
+                        # position_authoritative) is the ground-truth rank, so
+                        # it overrides the extractor's noisier position. Other
+                        # sources only fill a missing position.
+                        if position_authoritative or slot["position"] is None:
+                            slot["position"] = position
+                    if sentiment and not slot.get("sentiment"):
+                        slot["sentiment"] = sentiment
+                    if domain and not slot.get("domain"):
+                        slot["domain"] = domain
+
+            if r.is_mentioned:
+                _see(
+                    brand_label, r.mention_rank, is_self=True,
+                    sentiment=r.sentiment if r.sentiment != "not_mentioned" else None,
+                )
+            for comp in (r.competitors_mentioned or []):
+                if isinstance(comp, dict):
+                    # Default to neutral when the row predates per-competitor
+                    # sentiment (v2); a v2 re-extract replaces it with the
+                    # real positive/negative tone. domain (v3) is the brand's
+                    # website the model named - used only to crawl its logo.
+                    _see(
+                        comp.get("name"), comp.get("position"),
+                        sentiment=comp.get("sentiment") or "neutral",
+                        domain=comp.get("domain") or "",
+                    )
+                elif isinstance(comp, str):
+                    _see(comp, None, sentiment="neutral")
+            if (r.response_text or "").strip():
+                for entry in extract_response_brands(r.response_text):
+                    # The response's actual list order is the authoritative
+                    # rank, overriding the extractor's position so brands get a
+                    # clean 1,2,3,... within a single answer. Sentiment stays
+                    # whatever the extractor assigned (neutral only fills gaps).
+                    _see(
+                        entry["name"], entry.get("position"),
+                        sentiment="neutral", position_authoritative=True,
+                    )
+
+            for info in per_result.values():
+                row = _ensure(info["name"])
+                if not row:
                     continue
-                if name.strip().lower() == brand_label_lower:
-                    continue
-                row = _ensure(name)
                 row["responses_with_mention"] += 1
                 row["mentions"] += 1
+                row["providers"].add(r.provider)
+                if info["position"] is not None:
+                    row["positions"].append(info["position"])
+                sent = info.get("sentiment")
+                if sent and sent != "not_mentioned":
+                    row["sentiments"].append(sent)
+                if info.get("domain") and not row.get("domain"):
+                    row["domain"] = info["domain"]
 
         total_mentions = sum(row["mentions"] for row in brand_stats.values()) or 1
         brands_out = []
@@ -952,7 +1067,7 @@ class BrandPromptDetailAggView(APIView):
             smap = {"positive": 85, "neutral": 55, "negative": 25}
             scores = [smap.get(s, 50) for s in row["sentiments"]]
             sentiment_score = round(sum(scores) / len(scores), 1) if scores else None
-            vis_pct = round(100 * row["responses_with_mention"] / total_results, 1) if total_results else 0.0
+            vis_pct = round(100 * row["responses_with_mention"] / num_answers, 1) if num_answers else 0.0
             sov_pct = round(100 * row["mentions"] / total_mentions, 1)
             brands_out.append({
                 "name": row["name"],
@@ -962,8 +1077,21 @@ class BrandPromptDetailAggView(APIView):
                 "sentiment_score": sentiment_score,
                 "avg_position": avg_pos,
                 "mentions": row["mentions"],
+                # Which models named this brand (mapped to UI model keys),
+                # and how many - a brand named by more models is stronger.
+                "models": sorted(model_key(p) for p in row["providers"]),
+                "model_count": len(row["providers"]),
+                # LLM-supplied website domain (used only to crawl the logo).
+                "_llm_domain": row.get("domain", ""),
             })
-        brands_out.sort(key=lambda x: (-x["visibility_pct"], -x["mentions"]))
+        # Most-visible first; break ties by share of voice, then by best
+        # average rank (lower is better) so a brand the models put at #1
+        # outranks one they bury, even when both appear equally often.
+        brands_out.sort(key=lambda x: (
+            -x["visibility_pct"],
+            -x["sov_pct"],
+            x["avg_position"] if x["avg_position"] is not None else 999,
+        ))
 
         # ── Top domains + type breakdown from citations on these results
         result_ids = [r.id for r in results]
@@ -987,6 +1115,18 @@ class BrandPromptDetailAggView(APIView):
             responses_with_citation[apex].add(c.result_id)
             sources_by_result[c.result_id].append(apex)
 
+        # Resolve a website domain per brand so the UI can crawl its logo.
+        # Prefer the domain the extractor (LLM) supplied for the brand, then
+        # fall back to matching the name against a domain the models cited.
+        # The domain is used only to fetch the logo - never shown.
+        cited_domains = list(per_domain.keys())
+        for b in brands_out:
+            domain = b.pop("_llm_domain", "") or _match_brand_domain(b["name"], cited_domains)
+            b["domain"] = domain or ""
+
+        # public_id is what the chat modal opens — map internal id -> public.
+        public_id_by_result = {r.id: str(r.public_id) for r in results}
+
         top_domains = []
         for apex, entry in per_domain.items():
             unique_responses = len(responses_with_citation[apex])
@@ -996,6 +1136,12 @@ class BrandPromptDetailAggView(APIView):
             entry["retrieved_pct"] = (
                 round(100 * unique_responses / total_results, 1) if total_results else 0.0
             )
+            sample_ids = [
+                public_id_by_result[rid]
+                for rid in list(responses_with_citation[apex])[:8]
+                if rid in public_id_by_result
+            ]
+            entry["sample_result_ids"] = sample_ids
             top_domains.append(entry)
         top_domains.sort(key=lambda e: (-e["count"], e["apex_domain"]))
         top_domains = top_domains[:25]
@@ -1012,9 +1158,11 @@ class BrandPromptDetailAggView(APIView):
         # ── Brand visibility per model for this prompt ──
         # Every implemented provider appears: unconfigured ones are flagged
         # so the UI shows "Not configured" instead of a misleading 0%.
+        # Failed cells whose error_message starts with the service_unavailable
+        # sentinel are counted separately so the UI can show a distinct state
+        # for "we tried but the provider was down" versus "no data yet".
         from django.conf import settings as dj_settings
 
-        from apps.citations.services.url_analytics import model_key
         from apps.llm_ranking.providers import PROVIDERS
 
         model_labels = {
@@ -1023,14 +1171,43 @@ class BrandPromptDetailAggView(APIView):
         }
         per_model: dict[str, dict] = {}
         for r in results:
-            m = per_model.setdefault(r.provider, {"responses": 0, "mentioned": 0})
+            m = per_model.setdefault(r.provider, {
+                "responses": 0, "mentioned": 0, "unavailable": 0, "failed": 0,
+                "ranks": [],
+            })
+            if not r.query_succeeded:
+                err = getattr(r, "error_message", "") or ""
+                if err.startswith("service_unavailable"):
+                    m["unavailable"] += 1
+                else:
+                    m["failed"] += 1
+                continue
             m["responses"] += 1
             if r.is_mentioned:
                 m["mentioned"] += 1
+                if r.mention_rank is not None:
+                    m["ranks"].append(r.mention_rank)
+
+        def _rank_buckets(ranks: list) -> dict:
+            buckets = {"1": 0, "2-3": 0, "4-10": 0, "11+": 0}
+            for rank in ranks:
+                if rank == 1:
+                    buckets["1"] += 1
+                elif rank <= 3:
+                    buckets["2-3"] += 1
+                elif rank <= 10:
+                    buckets["4-10"] += 1
+                else:
+                    buckets["11+"] += 1
+            return buckets
+
         by_model = []
         for key, cls in PROVIDERS.items():
             configured = bool(getattr(dj_settings, cls.api_key_setting, ""))
-            stat = per_model.get(key, {"responses": 0, "mentioned": 0})
+            stat = per_model.get(key, {
+                "responses": 0, "mentioned": 0, "unavailable": 0, "failed": 0,
+                "ranks": [],
+            })
             responses = stat["responses"]
             by_model.append({
                 "provider": key,
@@ -1039,8 +1216,15 @@ class BrandPromptDetailAggView(APIView):
                 "configured": configured,
                 "responses": responses,
                 "mentioned": stat["mentioned"],
+                "unavailable": stat["unavailable"],
+                "failed": stat.get("failed", 0),
                 "visibility_pct": (
                     round(100 * stat["mentioned"] / responses, 1) if responses else 0.0
+                ),
+                "rank_buckets": _rank_buckets(stat["ranks"]),
+                "avg_rank": (
+                    round(sum(stat["ranks"]) / len(stat["ranks"]), 1)
+                    if stat["ranks"] else None
                 ),
             })
         # Configured-with-data first, then by visibility, unconfigured last.
@@ -1059,18 +1243,78 @@ class BrandPromptDetailAggView(APIView):
             cc = r.citation_countries or {}
             country = max(cc.items(), key=lambda kv: kv[1])[0] if isinstance(cc, dict) and cc else None
             has_response = bool((r.response_text or "").strip())
+            err = getattr(r, "error_message", "") or ""
+            # Distinguish a cell that returned text (complete) from one that
+            # errored. A failed cell with the service_unavailable sentinel is
+            # surfaced separately from a genuine upstream error, and only a
+            # cell that succeeded-but-empty (still in flight) reads "pending".
+            if has_response:
+                chat_status = "complete"
+            elif err.startswith("service_unavailable"):
+                chat_status = "unavailable"
+            elif not r.query_succeeded:
+                chat_status = "failed"
+            else:
+                chat_status = "pending"
             recent_chats.append({
                 "result_id": str(r.public_id),
                 "prompt": r.prompt,
-                "response_preview": (r.response_text or "")[:200],
+                "response_preview": (r.response_text or "")[:400],
                 "brand_mentioned": r.is_mentioned,
                 "position": r.mention_rank,
                 "models": [model_key(r.provider)],
+                "provider": r.provider,
                 "sources": srcs[:6],
                 "country": country,
-                "status": "complete" if has_response else "pending",
+                "status": chat_status,
+                "error": err[:200] if chat_status in ("failed", "unavailable") else "",
                 "created_at": r.created_at.isoformat() if r.created_at else None,
             })
+
+        # ── Latest crawl run for this (website, prompt) ────────────────
+        # Surfaces "scanning now / last scan succeeded / last scan failed"
+        # in the page header so the empty state has an actionable handle.
+        #
+        # Self-heal stale runs: the crawl is synchronous, so a run left in
+        # "running"/"pending" well past STALE_RUN_MINUTES means the worker
+        # or request died mid-scan (it is NOT still hitting the model APIs).
+        # Flip it to failed on read so the UI stops showing a forever-
+        # ticking "Scan running" and the user can re-trigger.
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from apps.prompt_library.models import PromptCrawlRun
+
+        STALE_RUN_MINUTES = 10
+
+        latest_run = (
+            PromptCrawlRun.objects
+            .filter(website=website, prompt=prompt)
+            .order_by("-created_at")
+            .first()
+        )
+        if (
+            latest_run is not None
+            and latest_run.status in (PromptCrawlRun.STATUS_RUNNING, PromptCrawlRun.STATUS_PENDING)
+        ):
+            anchor = latest_run.started_at or latest_run.created_at
+            if anchor and (timezone.now() - anchor) > timedelta(minutes=STALE_RUN_MINUTES):
+                latest_run.status = PromptCrawlRun.STATUS_FAILED
+                latest_run.error = (latest_run.error or "") or "Scan timed out and was stopped."
+                latest_run.completed_at = timezone.now()
+                latest_run.save(update_fields=["status", "error", "completed_at"])
+
+        latest_scan = None
+        if latest_run is not None:
+            latest_scan = {
+                "id": str(latest_run.id),
+                "status": latest_run.status,
+                "providers": latest_run.providers or [],
+                "started_at": latest_run.started_at.isoformat() if latest_run.started_at else None,
+                "completed_at": latest_run.completed_at.isoformat() if latest_run.completed_at else None,
+                "error": (latest_run.error or "")[:240],
+            }
 
         return Response({
             "prompt": {
@@ -1088,7 +1332,7 @@ class BrandPromptDetailAggView(APIView):
             },
             "is_brand_prompt": bp_exists,
             "status": "active" if (prompt.is_active and bp_exists) else "inactive",
-            "total_responses": total_results,
+            "total_responses": num_answers,
             "brand_label": brand_label,
             "brands": brands_out,
             "by_model": by_model,
@@ -1096,7 +1340,57 @@ class BrandPromptDetailAggView(APIView):
             "domain_types": type_breakdown,
             "total_retrievals": sum(type_counter.values()),
             "recent_chats": recent_chats,
+            "latest_scan": latest_scan,
+            "unextracted_count": unextracted_count,
         })
+
+
+class PromptReextractView(APIView):
+    """Backfill brand extraction onto a prompt's existing responses.
+
+    Re-runs the structured extractor on rows that have text but were
+    never analysed (e.g. captured by an older crawler), so the brand
+    table fills in without re-querying the models. Idempotent: rows
+    already extracted are skipped, so repeated calls are cheap no-ops.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, website_id, prompt_id):
+        website = WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        try:
+            prompt = Prompt.objects.get(id=prompt_id)
+        except Prompt.DoesNotExist:
+            return Response({"detail": "Prompt not found."},
+                            status=status.HTTP_404_NOT_FOUND)
+
+        from apps.prompt_library.services.reextract import reextract_prompt
+        updated = reextract_prompt(website, prompt)
+        return Response({"reextracted": updated})
+
+
+class BrandLogoView(APIView):
+    """Resolve a website's logo by crawling its domain.
+
+    GET ?domain=tasselsbyrenu.com -> {"domain": ..., "logo": "https://..."}.
+    Results are cached server-side; the crawl fetches the homepage and
+    extracts the best logo (apple-touch-icon / og:image / icon / favicon).
+    Returns logo="" when nothing usable is found so the UI can fall back.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from apps.prompt_library.services.logo_crawler import (
+            fetch_site_logo,
+            normalise_domain,
+        )
+
+        raw = request.query_params.get("domain", "")
+        domain = normalise_domain(raw)
+        if not domain:
+            return Response({"detail": "Invalid domain."}, status=400)
+        return Response({"domain": domain, "logo": fetch_site_logo(domain)})
 
 
 class WebsiteSavedPromptsAggView(APIView):

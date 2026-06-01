@@ -111,7 +111,7 @@ class LLMProvider:
         if not self.is_configured():
             return ProviderResult(
                 succeeded=False,
-                error=f"{self.api_key_setting or self.name} not configured",
+                error=f"service_unavailable: {self.name} provider not enabled",
             )
 
         # Per-provider circuit breaker. When OPEN we short-circuit without

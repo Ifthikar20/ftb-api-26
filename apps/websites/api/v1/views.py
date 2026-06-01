@@ -1,6 +1,3 @@
-from datetime import timedelta
-
-from django.utils import timezone
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -126,35 +123,49 @@ class DashboardView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        from apps.analytics.models import PageEvent, Visitor
         from apps.notifications.models import Notification
+        from apps.llm_ranking.services._window import (
+            parse_prompt_filter,
+            resolve_window,
+        )
+        from apps.llm_ranking.services.geo_stats import (
+            build_breakdowns_for_user,
+            build_kpis_for_user,
+        )
+        from apps.llm_ranking.services.geo_deep_dive import (
+            build_for_user as build_deep_dive,
+        )
 
         websites = Website.objects.filter(user=request.user)
         website = websites.first()
-        now = timezone.now()
-        thirty_days_ago = now - timedelta(days=30)
-        now - timedelta(days=7)
 
-        # Stats
-        total_visitors = 0
-        conversion_rate = 0
-        visitors_prev = 0
+        # Filters: ?range=overall|7d|30d|90d|1y|custom plus optional
+        # ?start=YYYY-MM-DD&end=YYYY-MM-DD&prompts=text1\ntext2.
+        range_key = request.query_params.get("range") or "30d"
+        start_dt, end_dt = resolve_window(
+            range_key,
+            request.query_params.get("start"),
+            request.query_params.get("end"),
+        )
+        prompt_filter = parse_prompt_filter(
+            request.query_params.getlist("prompts") or request.query_params.get("prompts"),
+        )
+        applied_filter = {
+            "range": range_key,
+            "start": start_dt.isoformat() if start_dt else None,
+            "end": end_dt.isoformat() if end_dt else None,
+            "prompts": prompt_filter or [],
+        }
 
-        if website:
-            total_visitors = Visitor.objects.filter(website=website, first_seen__gte=thirty_days_ago).count()
-            visitors_prev = Visitor.objects.filter(website=website, first_seen__gte=thirty_days_ago - timedelta(days=30), first_seen__lt=thirty_days_ago).count()
-            total_events = PageEvent.objects.filter(website=website, timestamp__gte=thirty_days_ago).count()
-            form_events = PageEvent.objects.filter(website=website, event_type='form_submit', timestamp__gte=thirty_days_ago).count()
-            conversion_rate = round((form_events / max(total_events, 1)) * 100, 1)
-
-        visitor_change = 0
-        if visitors_prev > 0:
-            visitor_change = round(((total_visitors - visitors_prev) / visitors_prev) * 100, 1)
-
-        stats = [
-            {'label': 'Total Visitors', 'value': f'{total_visitors:,}', 'change': f'{abs(visitor_change)}% vs last month', 'direction': 'up' if visitor_change >= 0 else 'down'},
-            {'label': 'Conversion Rate', 'value': f'{conversion_rate}%', 'change': 'form submissions / events', 'direction': 'up' if conversion_rate >= 2 else 'down'},
-        ]
+        stats = build_kpis_for_user(
+            request.user, start=start_dt, end=end_dt, prompts=prompt_filter,
+        ) or []
+        analytics_breakdowns = build_breakdowns_for_user(
+            request.user, start=start_dt, end=end_dt, prompts=prompt_filter,
+        )
+        analytics_deep_dive = build_deep_dive(
+            request.user, start=start_dt, end=end_dt, prompts=prompt_filter,
+        )
 
         # Recent activity (from notifications)
         activity = []
@@ -196,11 +207,18 @@ class DashboardView(APIView):
             'services': services,
         }
 
+        from apps.llm_ranking.services.visibility_series import build_for_user as build_visibility_series
+        visibility_series = build_visibility_series(request.user)
+
         return Response({
             'stats': stats,
             'activity': activity,
             'quick_actions': quick_actions,
             'integrations': integrations,
+            'visibility_series': visibility_series,
+            'analytics_breakdowns': analytics_breakdowns,
+            'analytics_deep_dive': analytics_deep_dive,
+            'applied_filter': applied_filter,
         })
 
 
