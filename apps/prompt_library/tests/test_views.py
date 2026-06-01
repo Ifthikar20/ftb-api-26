@@ -393,7 +393,35 @@ def test_prompt_detail_attaches_logo_from_cited_domain(auth):
     ).json()
     brand = next(b for b in body["brands"] if b["name"] == "Tassels By Renu")
     assert brand["domain"] == "tasselsbyrenu.com"
-    assert brand["logo"] == "https://logo.clearbit.com/tasselsbyrenu.com"
+
+
+@pytest.mark.django_db
+def test_prompt_detail_prefers_llm_supplied_domain(auth):
+    """When the extractor supplies a brand's website domain, it's used for
+    the logo crawl in preference to citation matching - and never shown."""
+    from apps.llm_ranking.tests.factories import LLMRankingResultFactory
+    from apps.prompt_library.models import Prompt
+
+    client, _user, website = auth
+    p = Prompt.objects.create(text="best running shoes")
+    BrandPrompt.objects.create(website=website, prompt=p)
+
+    LLMRankingResultFactory(
+        audit__website=website, provider="claude",
+        prompt=p.text, source_prompt=p, query_succeeded=True,
+        response_text="Nike makes great shoes.",
+        competitors_mentioned=[
+            {"name": "Nike", "position": 1, "domain": "nike.com"},
+        ],
+    )
+
+    body = client.get(
+        f"/api/v1/prompt-library/websites/{website.id}/prompts/{p.id}/detail/"
+    ).json()
+    brand = next(b for b in body["brands"] if b["name"] == "Nike")
+    assert brand["domain"] == "nike.com"
+    # The raw LLM-domain helper key must not leak into the payload.
+    assert "_llm_domain" not in brand
 
 
 @pytest.mark.django_db

@@ -965,6 +965,7 @@ class BrandPromptDetailAggView(APIView):
                     "sentiments": [],
                     "positions": [],
                     "providers": set(),
+                    "domain": "",
                 }
                 brand_stats[key] = row
             return row
@@ -984,7 +985,8 @@ class BrandPromptDetailAggView(APIView):
             # when extraction was sparse but the model plainly listed brands.
             per_result: dict[str, dict] = {}
 
-            def _see(name, position, is_self=False, sentiment=None, position_authoritative=False):
+            def _see(name, position, is_self=False, sentiment=None,
+                     position_authoritative=False, domain=None):
                 name = (name or "").strip()
                 if not name:
                     return
@@ -994,6 +996,7 @@ class BrandPromptDetailAggView(APIView):
                     per_result[key] = {
                         "name": name, "position": position,
                         "is_self": is_self, "sentiment": sentiment,
+                        "domain": domain or "",
                     }
                 else:
                     if is_self:
@@ -1007,6 +1010,8 @@ class BrandPromptDetailAggView(APIView):
                             slot["position"] = position
                     if sentiment and not slot.get("sentiment"):
                         slot["sentiment"] = sentiment
+                    if domain and not slot.get("domain"):
+                        slot["domain"] = domain
 
             if r.is_mentioned:
                 _see(
@@ -1017,10 +1022,12 @@ class BrandPromptDetailAggView(APIView):
                 if isinstance(comp, dict):
                     # Default to neutral when the row predates per-competitor
                     # sentiment (v2); a v2 re-extract replaces it with the
-                    # real positive/negative tone.
+                    # real positive/negative tone. domain (v3) is the brand's
+                    # website the model named - used only to crawl its logo.
                     _see(
                         comp.get("name"), comp.get("position"),
                         sentiment=comp.get("sentiment") or "neutral",
+                        domain=comp.get("domain") or "",
                     )
                 elif isinstance(comp, str):
                     _see(comp, None, sentiment="neutral")
@@ -1047,6 +1054,8 @@ class BrandPromptDetailAggView(APIView):
                 sent = info.get("sentiment")
                 if sent and sent != "not_mentioned":
                     row["sentiments"].append(sent)
+                if info.get("domain") and not row.get("domain"):
+                    row["domain"] = info["domain"]
 
         total_mentions = sum(row["mentions"] for row in brand_stats.values()) or 1
         brands_out = []
@@ -1072,6 +1081,8 @@ class BrandPromptDetailAggView(APIView):
                 # and how many - a brand named by more models is stronger.
                 "models": sorted(model_key(p) for p in row["providers"]),
                 "model_count": len(row["providers"]),
+                # LLM-supplied website domain (used only to crawl the logo).
+                "_llm_domain": row.get("domain", ""),
             })
         # Most-visible first; break ties by share of voice, then by best
         # average rank (lower is better) so a brand the models put at #1
@@ -1104,16 +1115,14 @@ class BrandPromptDetailAggView(APIView):
             responses_with_citation[apex].add(c.result_id)
             sources_by_result[c.result_id].append(apex)
 
-        # Resolve a real website logo per brand by matching its name to a
-        # domain the models actually cited (e.g. "Tassels By Renu" ->
-        # tasselsbyrenu.com). When matched we hand the UI the domain + a
-        # logo URL; otherwise the UI falls back to a name lookup, then a
-        # lettered badge.
+        # Resolve a website domain per brand so the UI can crawl its logo.
+        # Prefer the domain the extractor (LLM) supplied for the brand, then
+        # fall back to matching the name against a domain the models cited.
+        # The domain is used only to fetch the logo - never shown.
         cited_domains = list(per_domain.keys())
         for b in brands_out:
-            domain = _match_brand_domain(b["name"], cited_domains)
+            domain = b.pop("_llm_domain", "") or _match_brand_domain(b["name"], cited_domains)
             b["domain"] = domain or ""
-            b["logo"] = f"https://logo.clearbit.com/{domain}" if domain else ""
 
         # public_id is what the chat modal opens — map internal id -> public.
         public_id_by_result = {r.id: str(r.public_id) for r in results}
