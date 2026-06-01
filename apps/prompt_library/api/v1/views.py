@@ -884,7 +884,8 @@ class BrandPromptDetailAggView(APIView):
                 "id", "public_id", "provider", "prompt", "response_text",
                 "is_mentioned", "mention_rank", "sentiment",
                 "competitors_mentioned", "created_at",
-                "citation_countries", "query_succeeded", "source_prompt_id",
+                "citation_countries", "query_succeeded", "error_message",
+                "source_prompt_id",
             )
         )
 
@@ -1103,16 +1104,31 @@ class BrandPromptDetailAggView(APIView):
             cc = r.citation_countries or {}
             country = max(cc.items(), key=lambda kv: kv[1])[0] if isinstance(cc, dict) and cc else None
             has_response = bool((r.response_text or "").strip())
+            err = getattr(r, "error_message", "") or ""
+            # Distinguish a cell that returned text (complete) from one that
+            # errored. A failed cell with the service_unavailable sentinel is
+            # surfaced separately from a genuine upstream error, and only a
+            # cell that succeeded-but-empty (still in flight) reads "pending".
+            if has_response:
+                chat_status = "complete"
+            elif err.startswith("service_unavailable"):
+                chat_status = "unavailable"
+            elif not r.query_succeeded:
+                chat_status = "failed"
+            else:
+                chat_status = "pending"
             recent_chats.append({
                 "result_id": str(r.public_id),
                 "prompt": r.prompt,
-                "response_preview": (r.response_text or "")[:200],
+                "response_preview": (r.response_text or "")[:400],
                 "brand_mentioned": r.is_mentioned,
                 "position": r.mention_rank,
                 "models": [model_key(r.provider)],
+                "provider": r.provider,
                 "sources": srcs[:6],
                 "country": country,
-                "status": "complete" if has_response else "pending",
+                "status": chat_status,
+                "error": err[:200] if chat_status in ("failed", "unavailable") else "",
                 "created_at": r.created_at.isoformat() if r.created_at else None,
             })
 

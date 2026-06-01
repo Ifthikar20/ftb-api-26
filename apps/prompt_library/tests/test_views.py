@@ -340,6 +340,44 @@ def test_prompt_detail_per_model_rank_buckets_and_unavailable(auth):
 
 
 @pytest.mark.django_db
+def test_prompt_detail_recent_chats_label_failed_and_unavailable(auth):
+    from apps.llm_ranking.tests.factories import LLMRankingResultFactory
+    from apps.prompt_library.models import Prompt
+
+    client, _user, website = auth
+    p = Prompt.objects.create(text="pizza ordering app in dfw")
+    BrandPrompt.objects.create(website=website, prompt=p)
+
+    LLMRankingResultFactory(
+        audit__website=website, provider="claude",
+        prompt=p.text, source_prompt=p,
+        response_text="Here are some pizza apps...", query_succeeded=True,
+    )
+    LLMRankingResultFactory(
+        audit__website=website, provider="gemini",
+        prompt=p.text, source_prompt=p,
+        response_text="", query_succeeded=False,
+        error_message="service_unavailable: gemini provider not enabled",
+    )
+    LLMRankingResultFactory(
+        audit__website=website, provider="gpt4",
+        prompt=p.text, source_prompt=p,
+        response_text="", query_succeeded=False,
+        error_message="upstream 500",
+    )
+
+    resp = client.get(
+        f"/api/v1/prompt-library/websites/{website.id}/prompts/{p.id}/detail/"
+    )
+    assert resp.status_code == 200, resp.content
+    by_provider = {c["provider"]: c for c in resp.json()["recent_chats"]}
+    assert by_provider["claude"]["status"] == "complete"
+    assert by_provider["gemini"]["status"] == "unavailable"
+    assert by_provider["gpt4"]["status"] == "failed"
+    assert by_provider["gpt4"]["error"] == "upstream 500"
+
+
+@pytest.mark.django_db
 def test_prompt_detail_top_domains_expose_sample_chats(auth):
     from apps.citations.services.extraction_service import extract_for_result
     from apps.llm_ranking.tests.factories import LLMRankingResultFactory
