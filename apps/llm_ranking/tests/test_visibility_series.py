@@ -182,3 +182,73 @@ class TestBuildOverview:
         out = build_overview_for_website(user, website)
         assert out["brand_delta_pct"] == pytest.approx(400.0, abs=1.0)
         assert out["brand_current"] == 50.0
+
+    def test_per_competitor_breakdown_ranks_by_total_mentions(self):
+        user = UserFactory()
+        website = WebsiteFactory(user=user)
+        audit = LLMRankingAuditFactory(
+            created_by=user, website=website,
+            status=LLMRankingAudit.STATUS_COMPLETED,
+            mention_rate=50.0, completed_at=timezone.now(),
+        )
+        # Four successful answers: Mixpanel in 3, Amplitude in 2, Heap in 1.
+        # Expected rates: Mixpanel 75%, Amplitude 50%, Heap 25%.
+        LLMRankingResultFactory(
+            audit=audit, query_succeeded=True,
+            competitors_mentioned=[{"name": "Mixpanel"}, {"name": "Amplitude"}],
+        )
+        LLMRankingResultFactory(
+            audit=audit, query_succeeded=True,
+            competitors_mentioned=["Mixpanel", "Heap"],
+        )
+        LLMRankingResultFactory(
+            audit=audit, query_succeeded=True,
+            competitors_mentioned=["Mixpanel", "Amplitude"],
+        )
+        LLMRankingResultFactory(
+            audit=audit, query_succeeded=True,
+            competitors_mentioned=[],
+        )
+
+        out = build_overview_for_website(user, website)
+        names = [c["name"] for c in out["competitors"]]
+        assert names[:3] == ["Mixpanel", "Amplitude", "Heap"]
+
+        # Per-competitor current (last populated bucket) reflects the rates.
+        by_name = {c["name"]: c for c in out["competitors"]}
+        assert by_name["Mixpanel"]["current"] == 75.0
+        assert by_name["Amplitude"]["current"] == 50.0
+        assert by_name["Heap"]["current"] == 25.0
+
+        # Competitor avg = mean across the three rates = 50.0.
+        assert out["competitor_current"] == 50.0
+
+    def test_competitor_names_are_deduped_case_insensitively(self):
+        user = UserFactory()
+        website = WebsiteFactory(user=user)
+        audit = LLMRankingAuditFactory(
+            created_by=user, website=website,
+            status=LLMRankingAudit.STATUS_COMPLETED,
+            mention_rate=10.0, completed_at=timezone.now(),
+        )
+        # Same answer names "Mixpanel" twice in different casings — should
+        # only count once.
+        LLMRankingResultFactory(
+            audit=audit, query_succeeded=True,
+            competitors_mentioned=["Mixpanel", "mixpanel"],
+        )
+        LLMRankingResultFactory(
+            audit=audit, query_succeeded=True,
+            competitors_mentioned=[],
+        )
+        out = build_overview_for_website(user, website)
+        # One competitor, mentioned in 1 of 2 answers -> 50%.
+        assert len(out["competitors"]) == 1
+        assert out["competitors"][0]["current"] == 50.0
+
+    def test_empty_state_returns_empty_competitor_list(self):
+        user = UserFactory()
+        website = WebsiteFactory(user=user)
+        out = build_overview_for_website(user, website)
+        assert out["competitors"] == []
+        assert out["competitor_current"] == 0.0

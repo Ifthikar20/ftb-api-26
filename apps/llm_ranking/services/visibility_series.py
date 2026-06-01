@@ -55,33 +55,92 @@ def build_month12_for_website(user, website) -> dict:
     return _month12_series(user, now, website=website)
 
 
+TOP_COMPETITORS_LIMIT = 5
+
+
 def build_overview_for_website(user, website) -> dict:
     """Return the Visibility Overview payload for a single website.
 
-    Combines the 12-month brand + competitor series with computed headline
-    values and trend deltas so the dashboard card doesn't have to derive
-    them client-side.
+    Builds a 12-month brand series, a *real* per-competitor breakdown across
+    the top tracked competitors, and a "competitor avg" line that is the
+    monthly mean of the per-competitor rates (not "share of answers naming
+    any competitor"). Includes computed headline values and trend deltas so
+    the dashboard doesn't derive them client-side.
 
     Delta formula: mean of the last three months vs the prior three months,
     expressed as a percentage change of the prior window. Falls back to a
     first-vs-last calculation when the series has fewer than six populated
-    points. Always returns the chart series; ``has_data`` is False when
-    every bucket is zero so the card can show its sample-data badge.
-    """
-    series = build_month12_for_website(user, website)
-    brand = series["brand"]
-    competitor = series["competitor"]
+    points. ``has_data`` is False when every bucket is zero so the card can
+    show its sample-data badge.
 
-    has_data = any(v > 0 for v in brand) or any(v > 0 for v in competitor)
+    Competitor selection: the top ``TOP_COMPETITORS_LIMIT`` competitors by
+    total mention count over the full 12-month window. Picking the set up
+    front (rather than per-bucket) keeps each per-competitor line continuous
+    across months even when a given competitor wasn't mentioned in every
+    bucket.
+    """
+    now = timezone.now()
+    months = _last_n_month_starts(now.date(), MONTH12_BUCKETS)
+    labels = [m.strftime("%b") for m in months]
+    ranges = [
+        (_start_of_day(m), _start_of_day(_first_of_next_month(m)))
+        for m in months
+    ]
+
+    # Walk each month once, collecting brand rate + per-competitor breakdown
+    # in a single pass so we don't query the audit table N + N×K times.
+    brand: list[float] = []
+    breakdowns: list[dict[str, float]] = []
+    for start, end in ranges:
+        qs = LLMRankingAudit.objects.filter(
+            created_by=user, website=website,
+            status=LLMRankingAudit.STATUS_COMPLETED,
+            completed_at__gte=start, completed_at__lt=end,
+        )
+        audit_ids = list(qs.values_list("id", flat=True))
+        brand.append(_brand_rate(audit_ids))
+        breakdowns.append(_competitor_breakdown(audit_ids))
+
+    # Rank competitors by their summed mention rate across the window, take
+    # the top N. Names are kept in their original casing for display.
+    totals: dict[str, float] = {}
+    for breakdown in breakdowns:
+        for name, rate in breakdown.items():
+            totals[name] = totals.get(name, 0.0) + rate
+    top_names = sorted(totals, key=lambda n: totals[n], reverse=True)[:TOP_COMPETITORS_LIMIT]
+
+    competitors = []
+    for name in top_names:
+        series = [round(b.get(name, 0.0), 1) for b in breakdowns]
+        competitors.append({
+            "name": name,
+            "series": series,
+            "current": _current(series),
+            "delta_pct": _trend_delta(series),
+        })
+
+    # The "Competitor Avg" line: per-bucket mean across the top-N competitor
+    # rates. If a bucket has fewer than N competitors mentioned, the missing
+    # ones contribute zero, which reads as "they were silent in that month."
+    if top_names:
+        competitor_avg = []
+        for i in range(len(labels)):
+            values = [c["series"][i] for c in competitors]
+            competitor_avg.append(round(sum(values) / len(values), 1))
+    else:
+        competitor_avg = [0.0] * len(labels)
+
+    has_data = any(v > 0 for v in brand) or any(v > 0 for v in competitor_avg)
 
     return {
-        "labels": series["labels"],
+        "labels": labels,
         "brand": brand,
-        "competitor": competitor,
+        "competitor": competitor_avg,
         "brand_current": _current(brand),
-        "competitor_current": _current(competitor),
+        "competitor_current": _current(competitor_avg),
         "brand_delta_pct": _trend_delta(brand),
-        "competitor_delta_pct": _trend_delta(competitor),
+        "competitor_delta_pct": _trend_delta(competitor_avg),
+        "competitors": competitors,
         "has_data": has_data,
     }
 
@@ -207,6 +266,59 @@ def _competitor_rate(audit_ids: list) -> float:
         if _has_competitor(row.competitors_mentioned)
     )
     return round(100.0 * with_competitors / total, 1)
+
+
+def _competitor_breakdown(audit_ids: list) -> dict[str, float]:
+    """Per-competitor mention rate for the given bucket of audits.
+
+    Returns ``{competitor_name: mention_rate_pct}`` where the rate is the
+    share of successful AI answers in the bucket that named that specific
+    competitor. Competitor names are normalised case-insensitively so
+    "Mixpanel" and "mixpanel" don't fork into two series.
+    """
+    if not audit_ids:
+        return {}
+    succeeded = LLMRankingResult.objects.filter(
+        audit_id__in=audit_ids, query_succeeded=True,
+    ).only("competitors_mentioned")
+    total = succeeded.count()
+    if total == 0:
+        return {}
+
+    # answer_count[name] = number of distinct AI answers in this bucket
+    # that named ``name``. Dedupe within a single answer so the same
+    # competitor appearing twice in one response still only counts once.
+    answer_count: dict[str, int] = {}
+    for row in succeeded:
+        names_in_answer: set[str] = set()
+        for raw in _iter_competitor_names(row.competitors_mentioned):
+            key = raw.casefold()
+            if key and key not in names_in_answer:
+                names_in_answer.add(key)
+                answer_count[raw] = answer_count.get(raw, 0) + 1
+    return {
+        name: round(100.0 * count / total, 1)
+        for name, count in answer_count.items()
+    }
+
+
+def _iter_competitor_names(value):
+    """Yield string names from a ``competitors_mentioned`` field value.
+
+    The field is loosely typed in the database: sometimes a list of strings,
+    sometimes a list of ``{"name": ...}`` dicts. This normalises both.
+    """
+    if not value or not isinstance(value, list):
+        return
+    for item in value:
+        if isinstance(item, str):
+            name = item.strip()
+        elif isinstance(item, dict):
+            name = str(item.get("name", "")).strip()
+        else:
+            continue
+        if name:
+            yield name
 
 
 def _has_competitor(value) -> bool:

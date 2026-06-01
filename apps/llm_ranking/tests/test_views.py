@@ -464,3 +464,28 @@ class TestVisibilityOverviewView:
         resp = client.get(f"/api/v1/llm-ranking/{website.id}/visibility-overview/")
         data = resp.json()
         assert data["brand_current"] == 0.0
+
+    def test_response_includes_per_competitor_breakdown(self, auth_client):
+        from django.utils import timezone
+        client, user, website = auth_client
+        audit = LLMRankingAuditFactory(
+            created_by=user, website=website,
+            status=LLMRankingAudit.STATUS_COMPLETED,
+            mention_rate=40.0, completed_at=timezone.now(),
+        )
+        LLMRankingResultFactory(
+            audit=audit, query_succeeded=True,
+            competitors_mentioned=["Mixpanel", "Amplitude"],
+        )
+        LLMRankingResultFactory(
+            audit=audit, query_succeeded=True,
+            competitors_mentioned=["Mixpanel"],
+        )
+        resp = client.get(f"/api/v1/llm-ranking/{website.id}/visibility-overview/")
+        data = resp.json()
+        assert "competitors" in data
+        assert len(data["competitors"]) == 2
+        first = data["competitors"][0]
+        assert set(first) >= {"name", "series", "current", "delta_pct"}
+        assert first["name"] == "Mixpanel"
+        assert first["current"] == 100.0
