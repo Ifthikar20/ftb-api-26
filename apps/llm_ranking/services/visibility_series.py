@@ -25,6 +25,7 @@ from apps.llm_ranking.models import LLMRankingAudit, LLMRankingResult
 DAY_BUCKETS = 7
 WEEK_BUCKETS = 8
 MONTH_BUCKETS = 6
+MONTH12_BUCKETS = 12
 
 
 def build_for_user(user) -> dict | None:
@@ -39,7 +40,77 @@ def build_for_user(user) -> dict | None:
         "day": _day_series(user, now),
         "week": _week_series(user, now),
         "month": _month_series(user, now),
+        "month12": _month12_series(user, now),
     }
+
+
+def build_month12_for_website(user, website) -> dict:
+    """Return a 12-month visibility series scoped to a single website.
+
+    Used by the dashboard's Visibility Overview card. Unlike ``build_for_user``,
+    this always returns a series — empty buckets are zero, not None — so the
+    chart renders even when only a few months have data.
+    """
+    now = timezone.now()
+    return _month12_series(user, now, website=website)
+
+
+def build_overview_for_website(user, website) -> dict:
+    """Return the Visibility Overview payload for a single website.
+
+    Combines the 12-month brand + competitor series with computed headline
+    values and trend deltas so the dashboard card doesn't have to derive
+    them client-side.
+
+    Delta formula: mean of the last three months vs the prior three months,
+    expressed as a percentage change of the prior window. Falls back to a
+    first-vs-last calculation when the series has fewer than six populated
+    points. Always returns the chart series; ``has_data`` is False when
+    every bucket is zero so the card can show its sample-data badge.
+    """
+    series = build_month12_for_website(user, website)
+    brand = series["brand"]
+    competitor = series["competitor"]
+
+    has_data = any(v > 0 for v in brand) or any(v > 0 for v in competitor)
+
+    return {
+        "labels": series["labels"],
+        "brand": brand,
+        "competitor": competitor,
+        "brand_current": _current(brand),
+        "competitor_current": _current(competitor),
+        "brand_delta_pct": _trend_delta(brand),
+        "competitor_delta_pct": _trend_delta(competitor),
+        "has_data": has_data,
+    }
+
+
+def _current(series: list[float]) -> float:
+    """Most recent populated value, or the very last value if all are zero."""
+    if not series:
+        return 0.0
+    for value in reversed(series):
+        if value:
+            return round(value, 1)
+    return round(series[-1], 1)
+
+
+def _trend_delta(series: list[float]) -> float:
+    """Percent change of the last 3-mo mean vs the prior 3-mo mean."""
+    if not series or len(series) < 2:
+        return 0.0
+    if len(series) >= 6:
+        tail = series[-3:]
+        prev = series[-6:-3]
+        tail_avg = sum(tail) / len(tail)
+        prev_avg = sum(prev) / len(prev)
+        if prev_avg == 0:
+            return 0.0
+        return round((tail_avg - prev_avg) / prev_avg * 100, 1)
+    first = series[0] or 1
+    last = series[-1]
+    return round((last - first) / abs(first) * 100, 1)
 
 
 # ── bucket builders ─────────────────────────────────────────────────────────
@@ -71,27 +142,40 @@ def _month_series(user, now: datetime) -> dict:
     return _series_for_ranges(user, labels, ranges)
 
 
+def _month12_series(user, now: datetime, *, website=None) -> dict:
+    months = _last_n_month_starts(now.date(), MONTH12_BUCKETS)
+    labels = [m.strftime("%b") for m in months]
+    ranges = [
+        (_start_of_day(m), _start_of_day(_first_of_next_month(m)))
+        for m in months
+    ]
+    return _series_for_ranges(user, labels, ranges, website=website)
+
+
 # ── core aggregation ────────────────────────────────────────────────────────
 
 def _series_for_ranges(
     user, labels: list[str], ranges: list[tuple[datetime, datetime]],
+    *, website=None,
 ) -> dict:
     """Compute brand + competitor rates for each (start, end) range.
 
     Both rates are expressed in percent (0-100) so the chart axis stays
-    consistent with the existing tooltip format.
+    consistent with the existing tooltip format. When ``website`` is given,
+    the audit filter is restricted to that website only.
     """
     brand: list[float] = []
     competitor: list[float] = []
     for start, end in ranges:
-        audit_ids = list(
-            LLMRankingAudit.objects.filter(
-                created_by=user,
-                status=LLMRankingAudit.STATUS_COMPLETED,
-                completed_at__gte=start,
-                completed_at__lt=end,
-            ).values_list("id", flat=True)
+        qs = LLMRankingAudit.objects.filter(
+            created_by=user,
+            status=LLMRankingAudit.STATUS_COMPLETED,
+            completed_at__gte=start,
+            completed_at__lt=end,
         )
+        if website is not None:
+            qs = qs.filter(website=website)
+        audit_ids = list(qs.values_list("id", flat=True))
         brand.append(_brand_rate(audit_ids))
         competitor.append(_competitor_rate(audit_ids))
     return {"labels": labels, "brand": brand, "competitor": competitor}

@@ -1747,3 +1747,18 @@ class GeoJudgeView(TenantScopedAPIView):
             "quota_remaining": subjective_impression.quota_remaining(user_id),
             "daily_limit":     subjective_impression.quota_for_user(user_id),
         })
+
+
+class VisibilityOverviewView(TenantScopedAPIView):
+    """12-month brand + competitor visibility series for the dashboard card.
+
+    Returns the chart series alongside computed headline values and trend
+    deltas, so the frontend never has to derive them from synthetic data.
+    """
+
+    def get(self, request, website_id):
+        from apps.llm_ranking.services.visibility_series import (
+            build_overview_for_website,
+        )
+        website = self.get_website(website_id)
+        return Response(build_overview_for_website(request.user, website))

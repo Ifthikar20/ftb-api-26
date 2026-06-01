@@ -419,3 +419,48 @@ class TestLLMRankingHistoryView:
         comp = next(c for c in data[0]["competitors"] if c["name"] == "Mixpanel")
         assert comp["mention_count"] == 1
         assert comp["visibility"] == 100.0  # 1 of 1 prompts
+
+
+@pytest.mark.django_db
+class TestVisibilityOverviewView:
+    def test_requires_auth(self):
+        website = WebsiteFactory()
+        resp = APIClient().get(f"/api/v1/llm-ranking/{website.id}/visibility-overview/")
+        assert resp.status_code == 401
+
+    def test_empty_state(self, auth_client):
+        client, _user, website = auth_client
+        resp = client.get(f"/api/v1/llm-ranking/{website.id}/visibility-overview/")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["has_data"] is False
+        assert data["brand_current"] == 0.0
+        assert data["competitor_current"] == 0.0
+        assert len(data["labels"]) == 12
+
+    def test_populated_state(self, auth_client):
+        from django.utils import timezone
+        client, user, website = auth_client
+        LLMRankingAuditFactory(
+            created_by=user, website=website,
+            status=LLMRankingAudit.STATUS_COMPLETED,
+            mention_rate=58.0, completed_at=timezone.now(),
+        )
+        resp = client.get(f"/api/v1/llm-ranking/{website.id}/visibility-overview/")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["has_data"] is True
+        assert data["brand_current"] == 58.0
+
+    def test_excludes_other_websites(self, auth_client):
+        from django.utils import timezone
+        client, user, website = auth_client
+        other = WebsiteFactory(user=user)
+        LLMRankingAuditFactory(
+            created_by=user, website=other,
+            status=LLMRankingAudit.STATUS_COMPLETED,
+            mention_rate=80.0, completed_at=timezone.now(),
+        )
+        resp = client.get(f"/api/v1/llm-ranking/{website.id}/visibility-overview/")
+        data = resp.json()
+        assert data["brand_current"] == 0.0
