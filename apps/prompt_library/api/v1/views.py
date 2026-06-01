@@ -1080,13 +1080,15 @@ class BrandPromptDetailAggView(APIView):
         per_model: dict[str, dict] = {}
         for r in results:
             m = per_model.setdefault(r.provider, {
-                "responses": 0, "mentioned": 0, "unavailable": 0,
+                "responses": 0, "mentioned": 0, "unavailable": 0, "failed": 0,
                 "ranks": [],
             })
             if not r.query_succeeded:
                 err = getattr(r, "error_message", "") or ""
                 if err.startswith("service_unavailable"):
                     m["unavailable"] += 1
+                else:
+                    m["failed"] += 1
                 continue
             m["responses"] += 1
             if r.is_mentioned:
@@ -1111,7 +1113,8 @@ class BrandPromptDetailAggView(APIView):
         for key, cls in PROVIDERS.items():
             configured = bool(getattr(dj_settings, cls.api_key_setting, ""))
             stat = per_model.get(key, {
-                "responses": 0, "mentioned": 0, "unavailable": 0, "ranks": [],
+                "responses": 0, "mentioned": 0, "unavailable": 0, "failed": 0,
+                "ranks": [],
             })
             responses = stat["responses"]
             by_model.append({
@@ -1122,6 +1125,7 @@ class BrandPromptDetailAggView(APIView):
                 "responses": responses,
                 "mentioned": stat["mentioned"],
                 "unavailable": stat["unavailable"],
+                "failed": stat.get("failed", 0),
                 "visibility_pct": (
                     round(100 * stat["mentioned"] / responses, 1) if responses else 0.0
                 ),
