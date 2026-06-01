@@ -981,12 +981,23 @@ class BrandPromptDetailAggView(APIView):
                 )
             for comp in (r.competitors_mentioned or []):
                 if isinstance(comp, dict):
-                    _see(comp.get("name"), comp.get("position"), sentiment=comp.get("sentiment"))
+                    # Default to neutral when the row predates per-competitor
+                    # sentiment (v2); a v2 re-extract replaces it with the
+                    # real positive/negative tone.
+                    _see(
+                        comp.get("name"), comp.get("position"),
+                        sentiment=comp.get("sentiment") or "neutral",
+                    )
                 elif isinstance(comp, str):
-                    _see(comp, None)
+                    _see(comp, None, sentiment="neutral")
             if (r.response_text or "").strip():
                 for entry in extract_response_brands(r.response_text):
-                    _see(entry["name"], entry.get("position"))
+                    # A brand merely listed in a recommendation has no
+                    # explicit tone, so default to neutral. Haiku's per-brand
+                    # sentiment (set above via competitors_mentioned) is seen
+                    # first and wins, so this only fills brands the extractor
+                    # didn't tag - the column is populated rather than blank.
+                    _see(entry["name"], entry.get("position"), sentiment="neutral")
 
             for info in per_result.values():
                 row = _ensure(info["name"])

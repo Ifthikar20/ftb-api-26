@@ -376,6 +376,7 @@ def test_prompt_detail_uses_per_competitor_sentiment(auth):
         competitors_mentioned=[
             {"name": "Vintage Martini", "position": 1, "sentiment": "positive"},
             {"name": "Thrift Town", "position": 2, "sentiment": "negative"},
+            {"name": "Plain Mention", "position": 3},  # no sentiment -> neutral
         ],
     )
 
@@ -383,9 +384,10 @@ def test_prompt_detail_uses_per_competitor_sentiment(auth):
         f"/api/v1/prompt-library/websites/{website.id}/prompts/{p.id}/detail/"
     ).json()
     brands = {b["name"]: b for b in body["brands"]}
-    # positive -> 85, negative -> 25 on the display scale.
+    # positive -> 85, negative -> 25, neutral (default) -> 55.
     assert brands["Vintage Martini"]["sentiment_score"] == 85
     assert brands["Thrift Town"]["sentiment_score"] == 25
+    assert brands["Plain Mention"]["sentiment_score"] == 55
 
 
 @pytest.mark.django_db
