@@ -934,24 +934,57 @@ class BrandPromptDetailAggView(APIView):
                 brand_stats[key] = row
             return row
 
+        from apps.citations.services.url_analytics import extract_response_brands
+
         for r in results:
-            if r.is_mentioned:
-                row = _ensure(brand_label)
-                row["responses_with_mention"] += 1
-                row["mentions"] += 1
-                if r.mention_rank is not None:
-                    row["positions"].append(r.mention_rank)
-                if r.sentiment and r.sentiment != "not_mentioned":
-                    row["sentiments"].append(r.sentiment)
-            for comp in (r.competitors_mentioned or []):
-                name = (comp.get("name") if isinstance(comp, dict) else None) or ""
+            # Collect every brand named in THIS response, deduped, keeping
+            # the best (lowest) position. Three sources, in priority order:
+            #   1. the tracked brand (when the extractor flagged it)
+            #   2. extracted competitors_mentioned
+            #   3. brands parsed straight from the response's numbered list
+            # The third is the fallback that makes the table populate even
+            # when extraction was sparse but the model plainly listed brands.
+            per_result: dict[str, dict] = {}
+
+            def _see(name, position, is_self=False):
+                name = (name or "").strip()
                 if not name:
+                    return
+                key = name.lower()
+                slot = per_result.get(key)
+                if slot is None:
+                    per_result[key] = {
+                        "name": name, "position": position, "is_self": is_self,
+                    }
+                else:
+                    if is_self:
+                        slot["is_self"] = True
+                    if position is not None and (
+                        slot["position"] is None or position < slot["position"]
+                    ):
+                        slot["position"] = position
+
+            if r.is_mentioned:
+                _see(brand_label, r.mention_rank, is_self=True)
+            for comp in (r.competitors_mentioned or []):
+                if isinstance(comp, dict):
+                    _see(comp.get("name"), comp.get("position"))
+                elif isinstance(comp, str):
+                    _see(comp, None)
+            if (r.response_text or "").strip():
+                for entry in extract_response_brands(r.response_text):
+                    _see(entry["name"], entry.get("position"))
+
+            for info in per_result.values():
+                row = _ensure(info["name"])
+                if not row:
                     continue
-                if name.strip().lower() == brand_label_lower:
-                    continue
-                row = _ensure(name)
                 row["responses_with_mention"] += 1
                 row["mentions"] += 1
+                if info["position"] is not None:
+                    row["positions"].append(info["position"])
+                if info["is_self"] and r.sentiment and r.sentiment != "not_mentioned":
+                    row["sentiments"].append(r.sentiment)
 
         total_mentions = sum(row["mentions"] for row in brand_stats.values()) or 1
         brands_out = []

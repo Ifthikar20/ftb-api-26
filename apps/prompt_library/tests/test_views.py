@@ -359,6 +359,43 @@ def test_prompt_detail_latest_scan_none_when_never_crawled(auth):
 
 
 @pytest.mark.django_db
+def test_prompt_detail_brands_fall_back_to_response_text(auth):
+    """When competitors_mentioned is empty but the response lists brands,
+    the brand table is parsed from the response text - so even a single
+    model response yields the brand list with ranks."""
+    from apps.llm_ranking.tests.factories import LLMRankingResultFactory
+    from apps.prompt_library.models import Prompt
+
+    client, _user, website = auth
+    p = Prompt.objects.create(text="pizza ordering app in dfw")
+    BrandPrompt.objects.create(website=website, prompt=p)
+
+    response = (
+        "Here are some popular pizza ordering apps in DFW:\n"
+        "1. **Domino's Pizza** - customize and track orders.\n"
+        "2. **Pizza Hut** - Hut Rewards program.\n"
+        "3. **Papa John's** - Papa Rewards.\n"
+        "4. **Grubhub** - local pizza shops.\n"
+    )
+    LLMRankingResultFactory(
+        audit__website=website, provider="claude",
+        prompt=p.text, source_prompt=p,
+        response_text=response, query_succeeded=True,
+        is_mentioned=False, competitors_mentioned=[],  # extraction was empty
+    )
+
+    resp = client.get(
+        f"/api/v1/prompt-library/websites/{website.id}/prompts/{p.id}/detail/"
+    )
+    assert resp.status_code == 200, resp.content
+    brands = {b["name"]: b for b in resp.json()["brands"]}
+    assert "Domino's Pizza" in brands
+    assert "Pizza Hut" in brands
+    assert brands["Domino's Pizza"]["avg_position"] == 1
+    assert brands["Pizza Hut"]["avg_position"] == 2
+
+
+@pytest.mark.django_db
 def test_prompt_detail_per_model_rank_buckets_and_unavailable(auth):
     from apps.llm_ranking.tests.factories import LLMRankingResultFactory
     from apps.prompt_library.models import Prompt

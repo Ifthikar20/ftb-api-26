@@ -656,16 +656,25 @@ def build_chat_detail(website, *, result_id: str) -> dict | None:
         _add_brand(entry["name"], entry["position"])
 
     # Fan-out sub-queries the model researched (per saved prompt).
+    # Re-crawls append fresh PromptFanout rows, so de-dupe by text.
     fanout_queries: list[str] = []
     if result.source_prompt_id:
         from apps.prompt_library.models import PromptFanout
 
-        fanout_queries = list(
+        seen_fanout: set[str] = set()
+        for text in (
             PromptFanout.objects
             .filter(website=website, prompt_id=result.source_prompt_id)
             .order_by("-confidence", "created_at")
-            .values_list("text", flat=True)[:12]
-        )
+            .values_list("text", flat=True)
+        ):
+            key = (text or "").strip().lower()
+            if not key or key in seen_fanout:
+                continue
+            seen_fanout.add(key)
+            fanout_queries.append(text)
+            if len(fanout_queries) >= 12:
+                break
 
     # Country hint for the flag chip (top of the per-result breakdown).
     country = None
