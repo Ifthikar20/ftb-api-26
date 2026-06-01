@@ -1145,7 +1145,19 @@ class BrandPromptDetailAggView(APIView):
         # ── Latest crawl run for this (website, prompt) ────────────────
         # Surfaces "scanning now / last scan succeeded / last scan failed"
         # in the page header so the empty state has an actionable handle.
+        #
+        # Self-heal stale runs: the crawl is synchronous, so a run left in
+        # "running"/"pending" well past STALE_RUN_MINUTES means the worker
+        # or request died mid-scan (it is NOT still hitting the model APIs).
+        # Flip it to failed on read so the UI stops showing a forever-
+        # ticking "Scan running" and the user can re-trigger.
+        from datetime import timedelta
+
+        from django.utils import timezone
+
         from apps.prompt_library.models import PromptCrawlRun
+
+        STALE_RUN_MINUTES = 10
 
         latest_run = (
             PromptCrawlRun.objects
@@ -1153,6 +1165,17 @@ class BrandPromptDetailAggView(APIView):
             .order_by("-created_at")
             .first()
         )
+        if (
+            latest_run is not None
+            and latest_run.status in (PromptCrawlRun.STATUS_RUNNING, PromptCrawlRun.STATUS_PENDING)
+        ):
+            anchor = latest_run.started_at or latest_run.created_at
+            if anchor and (timezone.now() - anchor) > timedelta(minutes=STALE_RUN_MINUTES):
+                latest_run.status = PromptCrawlRun.STATUS_FAILED
+                latest_run.error = (latest_run.error or "") or "Scan timed out and was stopped."
+                latest_run.completed_at = timezone.now()
+                latest_run.save(update_fields=["status", "error", "completed_at"])
+
         latest_scan = None
         if latest_run is not None:
             latest_scan = {

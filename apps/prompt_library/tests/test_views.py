@@ -289,6 +289,61 @@ def test_prompt_detail_includes_latest_scan(auth):
 
 
 @pytest.mark.django_db
+def test_prompt_detail_heals_stale_running_scan(auth):
+    """A run stuck in 'running' well past the staleness window is flipped
+    to failed on read, so the UI stops showing a forever-running scan."""
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from apps.prompt_library.models import Prompt, PromptCrawlRun
+
+    client, _user, website = auth
+    p = Prompt.objects.create(text="pizza ordering app in dfw")
+    BrandPrompt.objects.create(website=website, prompt=p)
+
+    run = PromptCrawlRun.objects.create(
+        website=website, prompt=p,
+        status=PromptCrawlRun.STATUS_RUNNING,
+        started_at=timezone.now() - timedelta(minutes=45),
+    )
+
+    resp = client.get(
+        f"/api/v1/prompt-library/websites/{website.id}/prompts/{p.id}/detail/"
+    )
+    assert resp.status_code == 200, resp.content
+    assert resp.json()["latest_scan"]["status"] == PromptCrawlRun.STATUS_FAILED
+
+    run.refresh_from_db()
+    assert run.status == PromptCrawlRun.STATUS_FAILED
+    assert run.completed_at is not None
+
+
+@pytest.mark.django_db
+def test_prompt_detail_keeps_fresh_running_scan(auth):
+    """A recently-started run is left as running."""
+    from django.utils import timezone
+
+    from apps.prompt_library.models import Prompt, PromptCrawlRun
+
+    client, _user, website = auth
+    p = Prompt.objects.create(text="pizza ordering app in dfw")
+    BrandPrompt.objects.create(website=website, prompt=p)
+
+    PromptCrawlRun.objects.create(
+        website=website, prompt=p,
+        status=PromptCrawlRun.STATUS_RUNNING,
+        started_at=timezone.now(),
+    )
+
+    resp = client.get(
+        f"/api/v1/prompt-library/websites/{website.id}/prompts/{p.id}/detail/"
+    )
+    assert resp.status_code == 200, resp.content
+    assert resp.json()["latest_scan"]["status"] == PromptCrawlRun.STATUS_RUNNING
+
+
+@pytest.mark.django_db
 def test_prompt_detail_latest_scan_none_when_never_crawled(auth):
     from apps.prompt_library.models import Prompt
 
