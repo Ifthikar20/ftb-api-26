@@ -339,3 +339,20 @@ class TestResponseBrandExtraction:
         body = client.get(url).data
         names = {b["name"] for b in body["brands"]}
         assert {"Domino's Pizza", "Pizza Hut", "Papa John's"} <= names
+
+
+def test_extract_response_brands_filters_labels_and_subbullets():
+    from apps.citations.services.url_analytics import extract_response_brands
+
+    text = (
+        "1. **Nalli Silk Sarees**\n"
+        "   - **Description**: Known for premium silk.\n"
+        "2. **Mehndi Couture**\n"
+        "   - **Description**: Ethnic wear specialist.\n"
+        "3. **India Bazaar**\n"
+        "   - **Price**: Affordable.\n"
+    )
+    names = [b["name"] for b in extract_response_brands(text)]
+    assert names == ["Nalli Silk Sarees", "Mehndi Couture", "India Bazaar"]
+    assert "Description" not in names
+    assert "Price" not in names
