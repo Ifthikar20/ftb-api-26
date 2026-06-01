@@ -911,15 +911,12 @@ class BrandPromptDetailAggView(APIView):
         ]
         num_answers = len(answered_results)
 
-        # Responses that have text but were never run through structured
-        # extraction (old crawler rows). The UI uses this to trigger a
-        # one-shot backfill so the brand table fills in.
-        unextracted_count = sum(
-            1 for r in results
-            if r.query_succeeded
-            and (r.response_text or "").strip()
-            and not (getattr(r, "extraction_model", "") or "")
-        )
+        # Responses that still need (re)extraction - never analysed, or
+        # analysed by the weak heuristic / an older schema. The UI uses this
+        # to trigger a one-shot backfill so the brand table fills in
+        # accurately.
+        from apps.prompt_library.services.reextract import count_unextracted
+        unextracted_count = count_unextracted(website, prompt)
 
         # ── Per-brand visibility / SOV / sentiment / position ──────────
         brand_label = getattr(website, "business_name", None) or website.name or "your brand"
@@ -956,7 +953,7 @@ class BrandPromptDetailAggView(APIView):
             # when extraction was sparse but the model plainly listed brands.
             per_result: dict[str, dict] = {}
 
-            def _see(name, position, is_self=False):
+            def _see(name, position, is_self=False, sentiment=None):
                 name = (name or "").strip()
                 if not name:
                     return
@@ -964,7 +961,8 @@ class BrandPromptDetailAggView(APIView):
                 slot = per_result.get(key)
                 if slot is None:
                     per_result[key] = {
-                        "name": name, "position": position, "is_self": is_self,
+                        "name": name, "position": position,
+                        "is_self": is_self, "sentiment": sentiment,
                     }
                 else:
                     if is_self:
@@ -973,12 +971,17 @@ class BrandPromptDetailAggView(APIView):
                         slot["position"] is None or position < slot["position"]
                     ):
                         slot["position"] = position
+                    if sentiment and not slot.get("sentiment"):
+                        slot["sentiment"] = sentiment
 
             if r.is_mentioned:
-                _see(brand_label, r.mention_rank, is_self=True)
+                _see(
+                    brand_label, r.mention_rank, is_self=True,
+                    sentiment=r.sentiment if r.sentiment != "not_mentioned" else None,
+                )
             for comp in (r.competitors_mentioned or []):
                 if isinstance(comp, dict):
-                    _see(comp.get("name"), comp.get("position"))
+                    _see(comp.get("name"), comp.get("position"), sentiment=comp.get("sentiment"))
                 elif isinstance(comp, str):
                     _see(comp, None)
             if (r.response_text or "").strip():
@@ -993,8 +996,9 @@ class BrandPromptDetailAggView(APIView):
                 row["mentions"] += 1
                 if info["position"] is not None:
                     row["positions"].append(info["position"])
-                if info["is_self"] and r.sentiment and r.sentiment != "not_mentioned":
-                    row["sentiments"].append(r.sentiment)
+                sent = info.get("sentiment")
+                if sent and sent != "not_mentioned":
+                    row["sentiments"].append(sent)
 
         total_mentions = sum(row["mentions"] for row in brand_stats.values()) or 1
         brands_out = []

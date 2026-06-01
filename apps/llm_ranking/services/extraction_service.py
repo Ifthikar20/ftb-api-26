@@ -23,7 +23,7 @@ logger = logging.getLogger("apps")
 # Cheap, current model for structured extraction. Overridable per
 # environment with LLM_EXTRACTION_MODEL.
 EXTRACTION_MODEL = getattr(settings, "LLM_EXTRACTION_MODEL", "") or "claude-haiku-4-5"
-EXTRACTION_VERSION = "v1"
+EXTRACTION_VERSION = "v2"  # v2 adds per-competitor sentiment
 
 EXTRACTION_SYSTEM = (
     "You extract structured brand-mention data from AI assistant responses. "
@@ -46,7 +46,8 @@ Return JSON only, matching this schema exactly:
   "target_sentiment": "positive" | "neutral" | "negative" | "not_mentioned",
   "target_context": str,                  // up to 300 chars around the first target mention, or ""
   "competitors_mentioned": [              // other brands/products/companies named in the response
-    {{"name": str, "position": int or null, "linked": bool}}
+    {{"name": str, "position": int or null, "linked": bool,
+      "sentiment": "positive" | "neutral" | "negative"}}  // how the response portrays THIS brand
   ],
   "primary_recommendation": str or null,  // name of the brand the response clearly recommends first, else null
   "citations": [str]                      // any URLs cited
@@ -107,6 +108,7 @@ def _normalise(raw: dict) -> dict:
     MAX_CITATIONS = 50
     MAX_URL_LEN = 500
 
+    comp_sentiments = {"positive", "neutral", "negative"}
     competitors = []
     for c in (raw.get("competitors_mentioned") or [])[:MAX_COMPETITORS]:
         if not isinstance(c, dict):
@@ -115,10 +117,12 @@ def _normalise(raw: dict) -> dict:
         if not name:
             continue
         pos = c.get("position")
+        csent = c.get("sentiment")
         competitors.append({
             "name": name[:200],
             "position": int(pos) if isinstance(pos, int | float) and pos is not None else None,
             "linked": bool(c.get("linked", False)),
+            "sentiment": csent if csent in comp_sentiments else "neutral",
         })
 
     citations = []

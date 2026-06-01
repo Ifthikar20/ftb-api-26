@@ -16,9 +16,11 @@ from __future__ import annotations
 
 import logging
 
+from django.conf import settings
 from django.db.models import Q
 
 from apps.llm_ranking.models import LLMRankingResult
+from apps.llm_ranking.services.extraction_service import EXTRACTION_VERSION
 
 logger = logging.getLogger("apps")
 
@@ -27,21 +29,47 @@ def _normalise(text: str) -> str:
     return " ".join((text or "").split()).lower()
 
 
+def _stale_extraction_q() -> Q:
+    """Rows whose extraction should be (re)run.
+
+    Always: rows never extracted (extraction_model blank).
+    When the LLM extractor is configured, also upgrade rows produced by an
+    older extraction schema version (extraction_version != current). This
+    covers heuristic-era rows and v1 LLM rows alike, and is loop-safe: a
+    row is stamped with the current version after one pass regardless of
+    whether the LLM or heuristic produced it, so it won't be re-run again.
+    Gated on the key so a missing extractor can't churn on every load.
+    """
+    q = Q(extraction_model="")
+    if getattr(settings, "ANTHROPIC_API_KEY", ""):
+        q |= ~Q(extraction_version=EXTRACTION_VERSION)
+    return q
+
+
+def _prompt_match_q(prompt) -> Q:
+    return (
+        Q(source_prompt_id=prompt.id)
+        | Q(prompt__icontains=prompt.text[:80])
+        | Q(prompt__icontains=(prompt.template_text or "")[:80])
+    )
+
+
+def count_unextracted(website, prompt) -> int:
+    """How many of this prompt's responses still need (re)extraction."""
+    return len(unextracted_results(website, prompt))
+
+
 def unextracted_results(website, prompt):
-    """Successful, non-empty responses for this prompt that were never
-    run through structured extraction."""
+    """Successful, non-empty responses for this prompt that need structured
+    extraction (never run, or stale per _stale_extraction_q)."""
     norm_text = _normalise(prompt.text)
     norm_template = _normalise(prompt.template_text or "")
     candidates = (
         LLMRankingResult.objects
         .filter(audit__website=website, query_succeeded=True)
-        .filter(extraction_model="")
+        .filter(_stale_extraction_q())
         .exclude(response_text="")
-        .filter(
-            Q(source_prompt_id=prompt.id)
-            | Q(prompt__icontains=prompt.text[:80])
-            | Q(prompt__icontains=(prompt.template_text or "")[:80])
-        )
+        .filter(_prompt_match_q(prompt))
     )
     rows = []
     for r in candidates:

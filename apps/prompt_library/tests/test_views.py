@@ -359,6 +359,36 @@ def test_prompt_detail_latest_scan_none_when_never_crawled(auth):
 
 
 @pytest.mark.django_db
+def test_prompt_detail_uses_per_competitor_sentiment(auth):
+    """Competitor sentiment captured by the extractor surfaces in the
+    brand table, not just the tracked brand's sentiment."""
+    from apps.llm_ranking.tests.factories import LLMRankingResultFactory
+    from apps.prompt_library.models import Prompt
+
+    client, _user, website = auth
+    p = Prompt.objects.create(text="best vintage shop in dallas")
+    BrandPrompt.objects.create(website=website, prompt=p)
+
+    LLMRankingResultFactory(
+        audit__website=website, provider="claude",
+        prompt=p.text, source_prompt=p, query_succeeded=True,
+        extraction_model="claude-haiku-4-5", extraction_version="v2",
+        competitors_mentioned=[
+            {"name": "Vintage Martini", "position": 1, "sentiment": "positive"},
+            {"name": "Thrift Town", "position": 2, "sentiment": "negative"},
+        ],
+    )
+
+    body = client.get(
+        f"/api/v1/prompt-library/websites/{website.id}/prompts/{p.id}/detail/"
+    ).json()
+    brands = {b["name"]: b for b in body["brands"]}
+    # positive -> 85, negative -> 25 on the display scale.
+    assert brands["Vintage Martini"]["sentiment_score"] == 85
+    assert brands["Thrift Town"]["sentiment_score"] == 25
+
+
+@pytest.mark.django_db
 def test_prompt_detail_visibility_varies_with_cross_model_overlap(auth):
     """A brand named by more models should outrank one named by fewer,
     and the denominator should be the number of answered responses."""
@@ -477,11 +507,15 @@ def test_prompt_detail_per_model_rank_buckets_and_unavailable(auth):
 
 
 @pytest.mark.django_db
-def test_reextract_backfills_competitors_on_old_rows(auth):
+def test_reextract_backfills_competitors_on_old_rows(auth, settings):
     from unittest.mock import patch
 
     from apps.llm_ranking.tests.factories import LLMRankingResultFactory
     from apps.prompt_library.models import Prompt
+
+    # Pin the staleness predicate to "never extracted" only, so the test is
+    # deterministic regardless of whether the dev shell exports a key.
+    settings.ANTHROPIC_API_KEY = ""
 
     client, _user, website = auth
     p = Prompt.objects.create(text="pizza ordering app in dfw")
