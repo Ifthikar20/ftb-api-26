@@ -74,7 +74,7 @@ def _llm_fanout(prompt_text: str, brand_name: str) -> list[str]:
     )
     user = f"Brand: {brand_name}\nPrompt: {prompt_text}"
     try:
-        resp = prov.query(user, system=system, max_tokens=400)
+        resp = prov.query(user, system_prompt=system)
     except Exception as exc:
         logger.warning("Fanout LLM call failed: %s", exc)
         return _heuristic_fanout(prompt_text)
@@ -159,6 +159,9 @@ def crawl_prompt(website: Website, prompt: Prompt) -> CrawlOutcome:
     # what makes the visibility/sentiment numbers light up.
     audit = LLMRankingAudit.objects.create(
         website=website,
+        # Audit rows require a created_by; the crawl is run on behalf of
+        # the website's owner regardless of which user kicked the scan.
+        created_by=website.user,
         business_name=brand_name,
         status=LLMRankingAudit.STATUS_RUNNING,
         prompt_source=getattr(LLMRankingAudit, "PROMPT_SOURCE_LIBRARY", "library"),
