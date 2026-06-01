@@ -359,6 +359,45 @@ def test_prompt_detail_latest_scan_none_when_never_crawled(auth):
 
 
 @pytest.mark.django_db
+def test_prompt_detail_position_follows_response_list_order(auth):
+    """Position reflects the order brands appear in the response, not the
+    extractor's noisy positions - so a single listing yields distinct
+    ranks (1, 2, 3...) instead of collapsing several brands to #1."""
+    from apps.llm_ranking.tests.factories import LLMRankingResultFactory
+    from apps.prompt_library.models import Prompt
+
+    client, _user, website = auth
+    p = Prompt.objects.create(text="best saree shop in dallas")
+    BrandPrompt.objects.create(website=website, prompt=p)
+
+    response = (
+        "Top saree shops in Dallas:\n"
+        "1. **Tassels By Renu**\n"
+        "2. **Kohinoor Fashion**\n"
+        "3. **India Bazaar**\n"
+    )
+    # Extractor assigned the same noisy position (1) to several brands.
+    LLMRankingResultFactory(
+        audit__website=website, provider="claude",
+        prompt=p.text, source_prompt=p, query_succeeded=True,
+        response_text=response,
+        competitors_mentioned=[
+            {"name": "Tassels By Renu", "position": 1},
+            {"name": "Kohinoor Fashion", "position": 1},
+            {"name": "India Bazaar", "position": 1},
+        ],
+    )
+
+    body = client.get(
+        f"/api/v1/prompt-library/websites/{website.id}/prompts/{p.id}/detail/"
+    ).json()
+    brands = {b["name"]: b for b in body["brands"]}
+    assert brands["Tassels By Renu"]["avg_position"] == 1
+    assert brands["Kohinoor Fashion"]["avg_position"] == 2
+    assert brands["India Bazaar"]["avg_position"] == 3
+
+
+@pytest.mark.django_db
 def test_prompt_detail_uses_per_competitor_sentiment(auth):
     """Competitor sentiment captured by the extractor surfaces in the
     brand table, not just the tracked brand's sentiment."""

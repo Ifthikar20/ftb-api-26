@@ -957,7 +957,7 @@ class BrandPromptDetailAggView(APIView):
             # when extraction was sparse but the model plainly listed brands.
             per_result: dict[str, dict] = {}
 
-            def _see(name, position, is_self=False, sentiment=None):
+            def _see(name, position, is_self=False, sentiment=None, position_authoritative=False):
                 name = (name or "").strip()
                 if not name:
                     return
@@ -971,10 +971,13 @@ class BrandPromptDetailAggView(APIView):
                 else:
                     if is_self:
                         slot["is_self"] = True
-                    if position is not None and (
-                        slot["position"] is None or position < slot["position"]
-                    ):
-                        slot["position"] = position
+                    if position is not None:
+                        # The order a brand appears in the response (text-parse,
+                        # position_authoritative) is the ground-truth rank, so
+                        # it overrides the extractor's noisier position. Other
+                        # sources only fill a missing position.
+                        if position_authoritative or slot["position"] is None:
+                            slot["position"] = position
                     if sentiment and not slot.get("sentiment"):
                         slot["sentiment"] = sentiment
 
@@ -996,12 +999,14 @@ class BrandPromptDetailAggView(APIView):
                     _see(comp, None, sentiment="neutral")
             if (r.response_text or "").strip():
                 for entry in extract_response_brands(r.response_text):
-                    # A brand merely listed in a recommendation has no
-                    # explicit tone, so default to neutral. Haiku's per-brand
-                    # sentiment (set above via competitors_mentioned) is seen
-                    # first and wins, so this only fills brands the extractor
-                    # didn't tag - the column is populated rather than blank.
-                    _see(entry["name"], entry.get("position"), sentiment="neutral")
+                    # The response's actual list order is the authoritative
+                    # rank, overriding the extractor's position so brands get a
+                    # clean 1,2,3,... within a single answer. Sentiment stays
+                    # whatever the extractor assigned (neutral only fills gaps).
+                    _see(
+                        entry["name"], entry.get("position"),
+                        sentiment="neutral", position_authoritative=True,
+                    )
 
             for info in per_result.values():
                 row = _ensure(info["name"])
