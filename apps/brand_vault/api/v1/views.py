@@ -25,7 +25,12 @@ from apps.brand_vault.api.v1.serializers import (
     ToneSampleSerializer,
 )
 from apps.brand_vault.models import (
-    BrandFact, FactRevision, FactStatus, SafetyAlert, SafetyPrompt, ToneSample,
+    BrandFact,
+    FactRevision,
+    FactStatus,
+    SafetyAlert,
+    SafetyPrompt,
+    ToneSample,
 )
 from apps.brand_vault.services import fact_versioning
 from apps.brand_vault.services.embeddings import embed_text

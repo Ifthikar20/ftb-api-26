@@ -6,7 +6,12 @@ import pytest
 
 from apps.llm_ranking.models import LLMRankingAudit, LLMRankingResult
 from apps.prompt_library.models import Prompt, PromptCrawlRun, PromptFanout
-from apps.prompt_library.services.prompt_crawler import _dedupe_fanouts
+from apps.prompt_library.services.prompt_crawler import (
+    _dedupe_fanouts,
+    _llm_fanout,
+    crawl_prompt,
+)
+from apps.websites.tests.factories import WebsiteFactory
 
 
 def test_dedupe_fanouts_dedupes_caps_and_trims():
@@ -32,8 +37,6 @@ def test_llm_fanout_returns_empty_on_failure(monkeypatch):
         "apps.llm_ranking.providers.claude.ClaudeProvider", lambda: fake,
     )
     assert _llm_fanout("some prompt", "Brand") == []
-from apps.prompt_library.services.prompt_crawler import _llm_fanout, crawl_prompt
-from apps.websites.tests.factories import WebsiteFactory
 
 
 @pytest.mark.django_db
