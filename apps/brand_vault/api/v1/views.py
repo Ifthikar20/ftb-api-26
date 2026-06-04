@@ -19,9 +19,14 @@ from apps.brand_vault.api.v1.serializers import (
     BrandFactSerializer,
     FactImportItemSerializer,
     FactRevisionSerializer,
+    SafetyAlertSerializer,
+    SafetyPromptCreateSerializer,
+    SafetyPromptSerializer,
     ToneSampleSerializer,
 )
-from apps.brand_vault.models import BrandFact, FactRevision, FactStatus, ToneSample
+from apps.brand_vault.models import (
+    BrandFact, FactRevision, FactStatus, SafetyAlert, SafetyPrompt, ToneSample,
+)
 from apps.brand_vault.services import fact_versioning
 from apps.brand_vault.services.embeddings import embed_text
 from apps.brand_vault.services.fact_versioning import record_creation
@@ -854,3 +859,146 @@ class ToneSampleDeleteView(APIView):
         WebsiteService.get_for_user(user=request.user, website_id=sample.website_id)
         sample.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+# ── AI Brand Safety ────────────────────────────────────────────────────────
+
+
+def _annotate_prompt_hits(prompts_qs, window_days: int = 30):
+    """Attach a count of recent, non-dismissed alerts to each SafetyPrompt."""
+    import datetime as _dt
+
+    from django.db.models import Count, Q
+
+    cutoff = timezone.now() - _dt.timedelta(days=window_days)
+    return prompts_qs.annotate(
+        hits=Count(
+            "alerts",
+            filter=Q(alerts__detected_at__gte=cutoff)
+                   & ~Q(alerts__status=SafetyAlert.STATUS_DISMISSED),
+        ),
+    )
+
+
+class WebsiteSafetyPromptsView(TenantScopedListAPIView):
+    """List or create custom safety-monitoring prompts for a website."""
+
+    def get(self, request, website_id):
+        website = self.get_website(website_id)
+        qs = _annotate_prompt_hits(
+            SafetyPrompt.objects.filter(website=website),
+        ).order_by("-created_at")
+        return self.paginated_response(qs, SafetyPromptSerializer)
+
+    def post(self, request, website_id):
+        website = self.get_website(website_id)
+        ser = SafetyPromptCreateSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        text = ser.validated_data["text"].strip()
+        prompt, created = SafetyPrompt.objects.get_or_create(
+            website=website, text=text,
+            defaults={"created_by": request.user},
+        )
+        prompt = _annotate_prompt_hits(
+            SafetyPrompt.objects.filter(pk=prompt.pk),
+        ).first()
+        return Response(
+            SafetyPromptSerializer(prompt).data,
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )
+
+
+class SafetyPromptDetailView(TenantScopedAPIView):
+    """Delete a safety prompt. Ownership is enforced via the parent website."""
+
+    def delete(self, request, prompt_id):
+        try:
+            prompt = SafetyPrompt.objects.select_related("website").get(id=prompt_id)
+        except SafetyPrompt.DoesNotExist as exc:
+            raise ResourceNotFound("SafetyPrompt not found.") from exc
+        self.get_website(prompt.website_id)
+        prompt.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class WebsiteSafetyAlertsView(TenantScopedListAPIView):
+    """List safety alerts for a website with optional status/severity filters."""
+
+    def get(self, request, website_id):
+        website = self.get_website(website_id)
+        qs = SafetyAlert.objects.filter(website=website)
+
+        status_filter = request.query_params.get("status")
+        if status_filter:
+            qs = qs.filter(status=status_filter)
+
+        severity = request.query_params.get("severity")
+        if severity:
+            qs = qs.filter(severity=severity)
+
+        qs = qs.order_by("-detected_at")
+        return self.paginated_response(qs, SafetyAlertSerializer)
+
+
+class SafetyAlertResolveView(TenantScopedAPIView):
+    """Mark a safety alert as resolved or dismissed."""
+
+    def post(self, request, alert_id):
+        try:
+            alert = SafetyAlert.objects.select_related("website").get(id=alert_id)
+        except SafetyAlert.DoesNotExist as exc:
+            raise ResourceNotFound("SafetyAlert not found.") from exc
+        self.get_website(alert.website_id)
+
+        action = (request.data.get("action") or "resolve").lower()
+        if action == "dismiss":
+            alert.status = SafetyAlert.STATUS_DISMISSED
+        else:
+            alert.status = SafetyAlert.STATUS_RESOLVED
+        alert.resolved_at = timezone.now()
+        alert.resolved_by = request.user
+        alert.save(update_fields=["status", "resolved_at", "resolved_by", "updated_at"])
+        return Response(SafetyAlertSerializer(alert).data)
+
+
+class WebsiteSafetyMetricsView(TenantScopedAPIView):
+    """Summary tiles for the AI Brand Safety panel.
+
+    Returns reputation health (derived from open-alert severity), hallucination
+    + harmful-mention counts, and the number of active monitored prompts.
+    """
+
+    SEVERITY_WEIGHTS = {
+        SafetyAlert.SEVERITY_HIGH: 12,
+        SafetyAlert.SEVERITY_MEDIUM: 5,
+        SafetyAlert.SEVERITY_LOW: 1,
+    }
+
+    def get(self, request, website_id):
+        website = self.get_website(website_id)
+        open_alerts = SafetyAlert.objects.filter(
+            website=website, status=SafetyAlert.STATUS_OPEN,
+        )
+        penalty = sum(
+            self.SEVERITY_WEIGHTS.get(a.severity, 0) for a in open_alerts
+        )
+        health = max(0, min(100, 100 - penalty))
+
+        hallucinations = open_alerts.filter(
+            issue=SafetyAlert.ISSUE_HALLUCINATION,
+        ).count()
+        harmful = open_alerts.filter(
+            issue__in=(SafetyAlert.ISSUE_HARMFUL, SafetyAlert.ISSUE_NEGATIVE),
+        ).count()
+
+        monitored = SafetyPrompt.objects.filter(
+            website=website, status=SafetyPrompt.STATUS_ACTIVE,
+        ).count()
+
+        return Response({
+            "reputation_health": health,
+            "hallucinations": hallucinations,
+            "harmful_mentions": harmful,
+            "prompts_monitored": monitored,
+            "open_alerts": open_alerts.count(),
+        })

@@ -1,7 +1,9 @@
 """DRF serializers for the brand_vault API."""
 from rest_framework import serializers
 
-from apps.brand_vault.models import BrandFact, FactRevision, ToneSample
+from apps.brand_vault.models import (
+    BrandFact, FactRevision, SafetyAlert, SafetyPrompt, ToneSample,
+)
 
 
 class FactRevisionSerializer(serializers.ModelSerializer):
@@ -60,6 +62,35 @@ class ToneSampleSerializer(serializers.ModelSerializer):
         fields = (
             "id", "website", "source_chunk",
             "text", "text_hash", "word_count",
+            "created_at",
+        )
+        read_only_fields = fields
+
+
+class SafetyPromptSerializer(serializers.ModelSerializer):
+    hits = serializers.IntegerField(read_only=True, default=0)
+
+    class Meta:
+        model = SafetyPrompt
+        fields = (
+            "id", "website", "text", "status",
+            "hits", "created_at", "updated_at",
+        )
+        read_only_fields = ("id", "website", "hits", "created_at", "updated_at")
+
+
+class SafetyPromptCreateSerializer(serializers.Serializer):
+    text = serializers.CharField(max_length=500)
+
+
+class SafetyAlertSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SafetyAlert
+        fields = (
+            "id", "website", "prompt",
+            "model", "prompt_text", "snippet",
+            "issue", "detail", "severity", "status",
+            "detected_at", "resolved_at",
             "created_at",
         )
         read_only_fields = fields

@@ -28,4 +28,10 @@ urlpatterns = [
     # GEO action endpoints (Aggarwal et al. 2024)
     path("<uuid:website_id>/geo/rewrite/", views.GeoRewriteView.as_view(), name="llm-ranking-geo-rewrite"),
     path("<uuid:website_id>/geo/judge/",   views.GeoJudgeView.as_view(),   name="llm-ranking-geo-judge"),
+    # Dashboard Visibility Overview card
+    path(
+        "<uuid:website_id>/visibility-overview/",
+        views.VisibilityOverviewView.as_view(),
+        name="llm-ranking-visibility-overview",
+    ),
 ]

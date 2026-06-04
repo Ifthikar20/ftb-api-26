@@ -146,3 +146,121 @@ class ToneSample(TimestampMixin):
 
     def __str__(self):
         return f"ToneSample({self.website_id}, {self.word_count}w)"
+
+
+class SafetyPrompt(TimestampMixin):
+    """A user-defined prompt monitored across AI models for brand-safety risks.
+
+    Phase 5 of the GEO platform. Each prompt is re-run on a schedule by the
+    safety monitor task; matches are recorded as ``SafetyAlert`` rows.
+    """
+
+    STATUS_ACTIVE = "active"
+    STATUS_PAUSED = "paused"
+    STATUS_CHOICES = [
+        (STATUS_ACTIVE, "Active"),
+        (STATUS_PAUSED, "Paused"),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    website = models.ForeignKey(
+        "websites.Website",
+        related_name="safety_prompts",
+        on_delete=models.CASCADE,
+    )
+    text = models.CharField(max_length=500)
+    status = models.CharField(
+        max_length=10, choices=STATUS_CHOICES, default=STATUS_ACTIVE,
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name="created_safety_prompts",
+    )
+
+    class Meta:
+        db_table = "brand_vault_safetyprompt"
+        unique_together = [("website", "text")]
+        indexes = [models.Index(fields=["website", "status"])]
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"SafetyPrompt({self.website_id}, {self.text[:40]})"
+
+
+class SafetyAlert(TimestampMixin):
+    """A flagged AI response that mentions the brand in a risky or inaccurate way."""
+
+    SEVERITY_HIGH = "high"
+    SEVERITY_MEDIUM = "medium"
+    SEVERITY_LOW = "low"
+    SEVERITY_CHOICES = [
+        (SEVERITY_HIGH, "High"),
+        (SEVERITY_MEDIUM, "Medium"),
+        (SEVERITY_LOW, "Low"),
+    ]
+
+    ISSUE_HALLUCINATION = "hallucination"
+    ISSUE_UNVERIFIED = "unverified"
+    ISSUE_OUTDATED = "outdated"
+    ISSUE_HARMFUL = "harmful"
+    ISSUE_NEGATIVE = "negative"
+    ISSUE_CHOICES = [
+        (ISSUE_HALLUCINATION, "Hallucination"),
+        (ISSUE_UNVERIFIED, "Unverified claim"),
+        (ISSUE_OUTDATED, "Outdated info"),
+        (ISSUE_HARMFUL, "Harmful mention"),
+        (ISSUE_NEGATIVE, "Negative mention"),
+    ]
+
+    STATUS_OPEN = "open"
+    STATUS_RESOLVED = "resolved"
+    STATUS_DISMISSED = "dismissed"
+    STATUS_CHOICES = [
+        (STATUS_OPEN, "Open"),
+        (STATUS_RESOLVED, "Resolved"),
+        (STATUS_DISMISSED, "Dismissed"),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    website = models.ForeignKey(
+        "websites.Website",
+        related_name="safety_alerts",
+        on_delete=models.CASCADE,
+    )
+    prompt = models.ForeignKey(
+        SafetyPrompt,
+        null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name="alerts",
+    )
+
+    model = models.CharField(max_length=40)
+    prompt_text = models.CharField(max_length=500)
+    snippet = models.TextField()
+    issue = models.CharField(max_length=20, choices=ISSUE_CHOICES)
+    detail = models.TextField(blank=True)
+    severity = models.CharField(max_length=10, choices=SEVERITY_CHOICES)
+    status = models.CharField(
+        max_length=10, choices=STATUS_CHOICES, default=STATUS_OPEN,
+    )
+    detected_at = models.DateTimeField(default=timezone.now)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    resolved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name="resolved_safety_alerts",
+    )
+
+    class Meta:
+        db_table = "brand_vault_safetyalert"
+        indexes = [
+            models.Index(fields=["website", "status", "-detected_at"]),
+            models.Index(fields=["website", "severity"]),
+        ]
+        ordering = ["-detected_at"]
+
+    def __str__(self):
+        return f"SafetyAlert({self.website_id}, {self.severity}, {self.issue})"
