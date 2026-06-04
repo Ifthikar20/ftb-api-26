@@ -986,14 +986,14 @@ class BrandPromptDetailAggView(APIView):
             per_result: dict[str, dict] = {}
 
             def _see(name, position, is_self=False, sentiment=None,
-                     position_authoritative=False, domain=None):
+                     position_authoritative=False, domain=None, *, _pr=per_result):
                 name = (name or "").strip()
                 if not name:
                     return
                 key = name.lower()
-                slot = per_result.get(key)
+                slot = _pr.get(key)
                 if slot is None:
-                    per_result[key] = {
+                    _pr[key] = {
                         "name": name, "position": position,
                         "is_self": is_self, "sentiment": sentiment,
                         "domain": domain or "",

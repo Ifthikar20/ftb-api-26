@@ -20,8 +20,6 @@ import hashlib
 import json
 import logging
 import re
-from datetime import timedelta
-from typing import Optional
 
 from django.conf import settings
 from django.core.cache import cache
@@ -48,7 +46,7 @@ def build_for_user(
     *,
     start=None,
     end=None,
-    prompts: Optional[list[str]] = None,
+    prompts: list[str] | None = None,
 ) -> dict | None:
     """Return the deep-dive payload for a user, or None if no data."""
     end = end or timezone.now()
@@ -72,7 +70,7 @@ def build_for_user(
     }
 
 
-def _filter_results(audit_ids: list, prompts: Optional[list[str]]):
+def _filter_results(audit_ids: list, prompts: list[str] | None):
     qs = LLMRankingResult.objects.filter(
         audit_id__in=audit_ids, query_succeeded=True,
     )
@@ -100,7 +98,7 @@ def _available_prompts(user) -> list[dict]:
 
 # ── visibility ─────────────────────────────────────────────────────────────
 
-def _visibility_matrix(audit_ids: list, prompts: Optional[list[str]] = None) -> dict:
+def _visibility_matrix(audit_ids: list, prompts: list[str] | None = None) -> dict:
     """One row per distinct prompt, one column per provider seen.
 
     When the same (prompt, provider) appears in multiple audits the most
@@ -135,7 +133,7 @@ def _visibility_matrix(audit_ids: list, prompts: Optional[list[str]] = None) -> 
 
 # ── position ───────────────────────────────────────────────────────────────
 
-def _position_by_provider(audit_ids: list, prompts: Optional[list[str]] = None) -> list[dict]:
+def _position_by_provider(audit_ids: list, prompts: list[str] | None = None) -> list[dict]:
     rows = (
         _filter_results(audit_ids, prompts)
         .filter(is_mentioned=True, mention_rank__isnull=False)
@@ -177,7 +175,7 @@ def _position_by_provider(audit_ids: list, prompts: Optional[list[str]] = None) 
 
 # ── sentiment ──────────────────────────────────────────────────────────────
 
-def _sentiment_by_provider(audit_ids: list, prompts: Optional[list[str]] = None) -> list[dict]:
+def _sentiment_by_provider(audit_ids: list, prompts: list[str] | None = None) -> list[dict]:
     rows = (
         _filter_results(audit_ids, prompts)
         .filter(is_mentioned=True)
@@ -213,7 +211,7 @@ def _sentiment_by_provider(audit_ids: list, prompts: Optional[list[str]] = None)
 
 # ── sentiment themes (LLM-clustered, cached) ───────────────────────────────
 
-def _sentiment_themes(audit_ids: list, prompts: Optional[list[str]] = None) -> dict:
+def _sentiment_themes(audit_ids: list, prompts: list[str] | None = None) -> dict:
     """Cluster positive and negative quote contexts into named themes.
 
     Returns {"positive": [...], "negative": [...]}. Each list is at most
@@ -238,7 +236,7 @@ def _sentiment_themes(audit_ids: list, prompts: Optional[list[str]] = None) -> d
     return out
 
 
-def _cluster_one(audit_ids: list, prompts: Optional[list[str]], sentiment_label: str) -> list[dict]:
+def _cluster_one(audit_ids: list, prompts: list[str] | None, sentiment_label: str) -> list[dict]:
     qs = (
         _filter_results(audit_ids, prompts)
         .filter(is_mentioned=True, sentiment=sentiment_label)
@@ -304,7 +302,7 @@ def _parse_themes(text: str) -> list[dict]:
     return cleaned
 
 
-def _themes_cache_key(audit_ids: list, prompts: Optional[list[str]] = None) -> str:
+def _themes_cache_key(audit_ids: list, prompts: list[str] | None = None) -> str:
     audit_part = ",".join(str(a) for a in sorted(audit_ids))
     prompt_part = "|".join(sorted(prompts)) if prompts else ""
     digest = hashlib.sha1(f"{audit_part}::{prompt_part}".encode()).hexdigest()[:16]

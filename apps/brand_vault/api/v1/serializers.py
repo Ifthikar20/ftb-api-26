@@ -2,7 +2,11 @@
 from rest_framework import serializers
 
 from apps.brand_vault.models import (
-    BrandFact, FactRevision, SafetyAlert, SafetyPrompt, ToneSample,
+    BrandFact,
+    FactRevision,
+    SafetyAlert,
+    SafetyPrompt,
+    ToneSample,
 )
 
 

@@ -16,7 +16,6 @@ its empty state in that case.
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
-from typing import Iterable
 
 from django.utils import timezone
 

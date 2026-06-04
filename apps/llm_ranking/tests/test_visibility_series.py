@@ -15,11 +15,11 @@ from apps.llm_ranking.services.visibility_series import (
     build_month12_for_website,
     build_overview_for_website,
 )
-from apps.websites.tests.factories import WebsiteFactory
 from apps.llm_ranking.tests.factories import (
     LLMRankingAuditFactory,
     LLMRankingResultFactory,
 )
+from apps.websites.tests.factories import WebsiteFactory
 
 
 @pytest.mark.django_db

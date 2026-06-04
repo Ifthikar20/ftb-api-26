@@ -123,18 +123,18 @@ class DashboardView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        from apps.notifications.models import Notification
         from apps.llm_ranking.services._window import (
             parse_prompt_filter,
             resolve_window,
+        )
+        from apps.llm_ranking.services.geo_deep_dive import (
+            build_for_user as build_deep_dive,
         )
         from apps.llm_ranking.services.geo_stats import (
             build_breakdowns_for_user,
             build_kpis_for_user,
         )
-        from apps.llm_ranking.services.geo_deep_dive import (
-            build_for_user as build_deep_dive,
-        )
+        from apps.notifications.models import Notification
 
         websites = Website.objects.filter(user=request.user)
         website = websites.first()
@@ -207,7 +207,9 @@ class DashboardView(APIView):
             'services': services,
         }
 
-        from apps.llm_ranking.services.visibility_series import build_for_user as build_visibility_series
+        from apps.llm_ranking.services.visibility_series import (
+            build_for_user as build_visibility_series,
+        )
         visibility_series = build_visibility_series(request.user)
 
         return Response({

@@ -12,8 +12,7 @@ on a single audit.
 """
 from __future__ import annotations
 
-from datetime import timedelta
-from typing import Optional
+from datetime import datetime, timedelta
 
 from django.utils import timezone
 
@@ -25,9 +24,9 @@ PERIOD_DAYS = 30
 def build_kpis_for_user(
     user,
     *,
-    start: Optional["datetime"] = None,
-    end: Optional["datetime"] = None,
-    prompts: Optional[list[str]] = None,
+    start: datetime | None = None,
+    end: datetime | None = None,
+    prompts: list[str] | None = None,
 ) -> list[dict] | None:
     """Return Visibility / Position / Sentiment tiles for the given window.
 
@@ -100,7 +99,7 @@ def build_breakdowns_for_user(
     *,
     start=None,
     end=None,
-    prompts: Optional[list[str]] = None,
+    prompts: list[str] | None = None,
 ) -> dict | None:
     """Return per-metric drill-downs for the dashboard, or None if no data."""
     end = end or timezone.now()
@@ -122,7 +121,7 @@ def build_breakdowns_for_user(
     }
 
 
-def _visibility_breakdown(audit_ids: list, prompts: Optional[list[str]]) -> dict:
+def _visibility_breakdown(audit_ids: list, prompts: list[str] | None) -> dict:
     """Mention share per LLM provider in the window."""
     rows: dict[str, dict[str, int]] = {}
     for r in _filtered_results(audit_ids, prompts).values("provider", "is_mentioned"):
@@ -143,7 +142,7 @@ def _visibility_breakdown(audit_ids: list, prompts: Optional[list[str]]) -> dict
     return {"by_provider": providers}
 
 
-def _position_breakdown(audit_ids: list, prompts: Optional[list[str]]) -> dict:
+def _position_breakdown(audit_ids: list, prompts: list[str] | None) -> dict:
     """Distribution of mention rank across the window."""
     buckets = {"1": 0, "2-3": 0, "4-10": 0, "11+": 0}
     qs = (
@@ -173,7 +172,7 @@ def _position_breakdown(audit_ids: list, prompts: Optional[list[str]]) -> dict:
     return {"distribution": distribution, "total_mentions": total}
 
 
-def _sentiment_breakdown(audit_ids: list, prompts: Optional[list[str]]) -> dict:
+def _sentiment_breakdown(audit_ids: list, prompts: list[str] | None) -> dict:
     """Positive/neutral/negative split plus a few representative quotes."""
     qs = _filtered_results(audit_ids, prompts).filter(is_mentioned=True)
     counts = {"positive": 0, "neutral": 0, "negative": 0}

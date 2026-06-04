@@ -6,7 +6,6 @@ service all interpret query params identically.
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from typing import Optional
 
 from django.utils import timezone
 
@@ -26,9 +25,9 @@ PRESET_DAYS = {
 
 
 def resolve_window(
-    range_key: Optional[str],
-    start: Optional[str],
-    end: Optional[str],
+    range_key: str | None,
+    start: str | None,
+    end: str | None,
 ) -> tuple[datetime, datetime]:
     """Return (start_dt, end_dt) for the requested analytics window.
 
@@ -48,7 +47,7 @@ def resolve_window(
     return end_dt - timedelta(days=DEFAULT_DAYS), end_dt
 
 
-def _parse_dt(value: Optional[str], *, default: datetime, end_of_day: bool = False) -> datetime:
+def _parse_dt(value: str | None, *, default: datetime, end_of_day: bool = False) -> datetime:
     if not value:
         return default
     parsed = None
@@ -70,7 +69,7 @@ def _parse_dt(value: Optional[str], *, default: datetime, end_of_day: bool = Fal
     return parsed
 
 
-def parse_prompt_filter(raw) -> Optional[list[str]]:
+def parse_prompt_filter(raw) -> list[str] | None:
     """Normalise the raw prompts query param into a list, or None for unfiltered."""
     if raw is None:
         return None
