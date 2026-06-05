@@ -167,6 +167,7 @@ MIDDLEWARE = [
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "core.middleware.audit_log.AuditLogMiddleware",
+    "core.middleware.analytics_access_log.AnalyticsAccessLogMiddleware",
     "core.middleware.rate_limit.AdaptiveRateLimitMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",

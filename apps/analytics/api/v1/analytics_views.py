@@ -363,3 +363,51 @@ class EventLogView(APIView):
         response = StreamingHttpResponse(_rows(), content_type="text/csv")
         response["Content-Disposition"] = 'attachment; filename="event-log.csv"'
         return response
+
+
+class AnalyticsAccessLogView(APIView):
+    """Who has read this website's analytics, and when.
+
+    Scoped exactly like every other analytics view: the caller must own the
+    website. Returns the access trail in reverse-chronological order so a
+    customer (or their security team) can verify that only authorized users
+    have viewed their data. This is the compliance read side of the audit
+    trail the AnalyticsAccessLogMiddleware writes.
+    """
+
+    permission_classes = [IsAuthenticated]
+    PAGE_SIZE_DEFAULT = 50
+    PAGE_SIZE_MAX = 200
+
+    def get(self, request, website_id):
+        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        from apps.analytics.models import AnalyticsAccessLog
+
+        qs = AnalyticsAccessLog.objects.filter(
+            website_id_raw=str(website_id),
+        ).order_by("-accessed_at")
+
+        try:
+            page = max(1, int(request.query_params.get("page", "1")))
+        except ValueError:
+            page = 1
+        try:
+            page_size = int(request.query_params.get("page_size", self.PAGE_SIZE_DEFAULT))
+        except ValueError:
+            page_size = self.PAGE_SIZE_DEFAULT
+        page_size = max(1, min(page_size, self.PAGE_SIZE_MAX))
+
+        total = qs.count()
+        offset = (page - 1) * page_size
+        rows = list(
+            qs.values(
+                "id", "user_email", "path", "method", "status_code",
+                "ip_address", "user_agent", "accessed_at",
+            )[offset:offset + page_size]
+        )
+        return Response({
+            "results": rows,
+            "page": page,
+            "page_size": page_size,
+            "total": total,
+        })
