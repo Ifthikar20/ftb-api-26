@@ -6,7 +6,7 @@ keyword intelligence, and API endpoints.
 import uuid
 from datetime import timedelta
 
-from django.test import TestCase
+from django.test import RequestFactory, TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient, APITestCase
 
@@ -17,6 +17,10 @@ from apps.analytics.models import (
     Visitor,
 )
 from apps.websites.models import Website
+
+# A realistic non-bot user-agent. Ingestion now drops blank/bot UAs, so
+# service-level tests that bypass the HTTP layer must supply one.
+_HUMAN_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"
 
 
 def create_test_user():
@@ -119,6 +123,7 @@ class EventIngestionServiceTest(TestCase):
                 "url": "https://www.outfi.ai/shop",
                 "event_type": "pageview",
                 "referrer": "https://www.google.com/search?q=outfi",
+                "user_agent": _HUMAN_UA,
             },
         )
 
@@ -144,6 +149,7 @@ class EventIngestionServiceTest(TestCase):
                 "fingerprint": "utm-test-fp",
                 "url": "https://www.outfi.ai/?utm_source=newsletter&utm_medium=email&utm_campaign=spring_sale",
                 "event_type": "pageview",
+                "user_agent": _HUMAN_UA,
             },
         )
 
@@ -165,7 +171,7 @@ class EventIngestionServiceTest(TestCase):
         from apps.analytics.services.event_ingestion_service import EventIngestionService
 
         events = [
-            {"fingerprint": f"batch-{i}", "url": f"https://www.outfi.ai/p{i}", "event_type": "pageview"}
+            {"fingerprint": f"batch-{i}", "url": f"https://www.outfi.ai/p{i}", "event_type": "pageview", "user_agent": _HUMAN_UA}
             for i in range(5)
         ]
         results = EventIngestionService.ingest_batch(
@@ -180,12 +186,12 @@ class EventIngestionServiceTest(TestCase):
         # First event
         e1 = EventIngestionService.ingest_event(
             pixel_key=str(self.website.pixel_key),
-            event_data={"fingerprint": "reuse-fp", "url": "https://www.outfi.ai/a", "event_type": "pageview"},
+            event_data={"fingerprint": "reuse-fp", "url": "https://www.outfi.ai/a", "event_type": "pageview", "user_agent": _HUMAN_UA},
         )
         # Second event within 30 min
         e2 = EventIngestionService.ingest_event(
             pixel_key=str(self.website.pixel_key),
-            event_data={"fingerprint": "reuse-fp", "url": "https://www.outfi.ai/b", "event_type": "pageview"},
+            event_data={"fingerprint": "reuse-fp", "url": "https://www.outfi.ai/b", "event_type": "pageview", "user_agent": _HUMAN_UA},
         )
         # Should reuse same session
         self.assertEqual(e1.session_id, e2.session_id)
@@ -601,3 +607,127 @@ class EventLogViewTest(TestCase):
         body = b"".join(resp.streaming_content).decode()
         self.assertIn("/csv-target", body)
         self.assertIn("timestamp", body.splitlines()[0])
+
+
+# ═══════════════════════════════════════════
+# Ingestion accuracy tests (bot filter, visit count, sessions, timestamps)
+# ═══════════════════════════════════════════
+
+class IngestionAccuracyTest(TestCase):
+    def setUp(self):
+        self.user = create_test_user()
+        self.website = create_test_website(self.user)
+        from apps.analytics.services.event_ingestion_service import EventIngestionService
+        self.svc = EventIngestionService
+
+    def _req(self, ua="Mozilla/5.0 (Macintosh) Chrome/126.0 Safari/537", ip="203.0.113.5"):
+        r = RequestFactory().post("/api/v1/track/event/")
+        r.META["HTTP_USER_AGENT"] = ua
+        r.META["REMOTE_ADDR"] = ip
+        return r
+
+    def _event(self, **over):
+        data = {"fingerprint": "fp-human-1", "url": "https://www.outfi.ai/", "event_type": "pageview"}
+        data.update(over)
+        return data
+
+    def test_bot_events_are_dropped(self):
+        for ua in [
+            "Mozilla/5.0 (compatible; GPTBot/1.0; +https://openai.com/gptbot)",
+            "Mozilla/5.0 (compatible; AhrefsBot/7.0)",
+            "Mozilla/5.0 (compatible; Googlebot/2.1)",
+            "curl/8.1.2",
+        ]:
+            out = self.svc.ingest_event(
+                pixel_key=str(self.website.pixel_key),
+                event_data=self._event(fingerprint=""),
+                request=self._req(ua=ua),
+            )
+            self.assertIsNone(out, f"expected bot UA dropped: {ua}")
+        self.assertEqual(Visitor.objects.filter(website=self.website).count(), 0)
+        self.assertEqual(PageEvent.objects.filter(website=self.website).count(), 0)
+
+    def test_human_event_is_kept(self):
+        out = self.svc.ingest_event(
+            pixel_key=str(self.website.pixel_key),
+            event_data=self._event(),
+            request=self._req(),
+        )
+        self.assertIsNotNone(out)
+        self.assertEqual(Visitor.objects.filter(website=self.website).count(), 1)
+
+    def test_visit_count_increments_per_session_not_per_event(self):
+        key = str(self.website.pixel_key)
+        # Three events in the same session (within 30 min) -> visit_count stays 1.
+        for url in ("/a", "/b", "/c"):
+            self.svc.ingest_event(
+                pixel_key=key,
+                event_data=self._event(url="https://www.outfi.ai" + url),
+                request=self._req(),
+            )
+        v = Visitor.objects.get(website=self.website)
+        self.assertEqual(v.visit_count, 1)
+        self.assertEqual(Session.objects.filter(visitor=v).count(), 1)
+
+        # A 4th event 40 minutes later opens a new session -> visit_count 2.
+        future = (timezone.now() + timedelta(minutes=40)).isoformat()
+        self.svc.ingest_event(
+            pixel_key=key,
+            event_data=self._event(url="https://www.outfi.ai/d", timestamp=future),
+            request=self._req(),
+        )
+        v.refresh_from_db()
+        self.assertEqual(v.visit_count, 2)
+        self.assertEqual(Session.objects.filter(visitor=v).count(), 2)
+
+    def test_page_count_increments_atomically(self):
+        key = str(self.website.pixel_key)
+        for url in ("/a", "/b", "/c"):
+            self.svc.ingest_event(
+                pixel_key=key,
+                event_data=self._event(url="https://www.outfi.ai" + url),
+                request=self._req(),
+            )
+        session = Session.objects.get(visitor__website=self.website)
+        self.assertEqual(session.page_count, 3)
+
+    def test_session_end_event_closes_session(self):
+        key = str(self.website.pixel_key)
+        self.svc.ingest_event(pixel_key=key, event_data=self._event(), request=self._req())
+        self.svc.ingest_event(
+            pixel_key=key,
+            event_data=self._event(event_type="session_end"),
+            request=self._req(),
+        )
+        session = Session.objects.get(visitor__website=self.website)
+        self.assertIsNotNone(session.ended_at)
+
+    def test_absurd_future_timestamp_is_clamped(self):
+        key = str(self.website.pixel_key)
+        far_future = (timezone.now() + timedelta(days=30)).isoformat()
+        ev = self.svc.ingest_event(
+            pixel_key=key,
+            event_data=self._event(timestamp=far_future),
+            request=self._req(),
+        )
+        # Stored timestamp should be ~now, not 30 days out.
+        self.assertLess((ev.timestamp - timezone.now()).total_seconds(), 60)
+
+    def test_same_fingerprint_different_site_is_a_distinct_visitor(self):
+        other = create_test_website(self.user, name="Other", url="https://other.example")
+        self.svc.ingest_event(
+            pixel_key=str(self.website.pixel_key),
+            event_data=self._event(fingerprint="shared-fp"),
+            request=self._req(),
+        )
+        self.svc.ingest_event(
+            pixel_key=str(other.pixel_key),
+            event_data={"fingerprint": "shared-fp", "url": "https://other.example/", "event_type": "pageview"},
+            request=self._req(),
+        )
+        # Salting by website id means the same fingerprint hashes differently
+        # per site -> one visitor each, no cross-site merge.
+        self.assertEqual(Visitor.objects.filter(website=self.website).count(), 1)
+        self.assertEqual(Visitor.objects.filter(website=other).count(), 1)
+        hashes = set(Visitor.objects.values_list("fingerprint_hash", flat=True))
+        self.assertEqual(len(hashes), 2)

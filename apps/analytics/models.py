@@ -42,6 +42,10 @@ class Session(models.Model):
 
     visitor = models.ForeignKey(Visitor, on_delete=models.CASCADE, related_name="sessions")
     started_at = models.DateTimeField(db_index=True)
+    # Rolling timestamp of the most recent event in this session. Drives the
+    # 30-minute inactivity timeout so a session expires 30 min after the last
+    # interaction, not 30 min after it started.
+    last_activity = models.DateTimeField(null=True, blank=True, db_index=True)
     ended_at = models.DateTimeField(null=True, blank=True)
     page_count = models.PositiveIntegerField(default=0)
     entry_page = models.URLField(max_length=1000, blank=True)
