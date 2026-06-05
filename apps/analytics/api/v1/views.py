@@ -8,8 +8,38 @@ from rest_framework.views import APIView
 
 from apps.analytics.services.analytics_service import AnalyticsService
 from apps.analytics.services.event_ingestion_service import EventIngestionService
+from apps.analytics.services.origin_check import is_origin_allowed
+from apps.websites.models import Website
 from core.interceptors.throttling import PixelIngestThrottle
 from core.views import TenantScopedAPIView
+
+
+def _resolve_website_or_403(pixel_key, request):
+    """Return (website, error_response).
+
+    ``error_response`` is None on success, or a DRF Response (403/400) the
+    caller should return immediately. Bundles three rejections:
+    pixel_key missing, pixel_key unknown, or Origin not on the allowlist.
+    """
+    if not pixel_key:
+        return None, Response(
+            {"error": "pixel_key required"}, status=status.HTTP_400_BAD_REQUEST,
+        )
+    try:
+        website = Website.objects.only("id", "url", "pixel_key", "is_active").get(
+            pixel_key=pixel_key, is_active=True,
+        )
+    except Website.DoesNotExist:
+        # Treat unknown keys as forbidden, not 400 — refusing to confirm
+        # whether the key exists makes brute-forcing slower.
+        return None, Response(
+            {"error": "forbidden"}, status=status.HTTP_403_FORBIDDEN,
+        )
+    if not is_origin_allowed(request, website):
+        return None, Response(
+            {"error": "origin not allowed"}, status=status.HTTP_403_FORBIDDEN,
+        )
+    return website, None
 
 
 class PlainTextJSONParser:
@@ -31,12 +61,13 @@ class EventIngestView(APIView):
 
     def post(self, request):
         pixel_key = request.data.get("pixel_key")
-        if not pixel_key:
-            return Response({"error": "pixel_key required"}, status=status.HTTP_400_BAD_REQUEST)
+        _website, err = _resolve_website_or_403(pixel_key, request)
+        if err is not None:
+            return err
 
         try:
             EventIngestionService.ingest_event(
-                pixel_key=pixel_key, event_data=request.data, request=request
+                pixel_key=pixel_key, event_data=request.data, request=request,
             )
         except ValueError as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
@@ -52,10 +83,17 @@ class BatchEventIngestView(APIView):
     def post(self, request):
         pixel_key = request.data.get("pixel_key")
         events = request.data.get("events", [])
-        if not pixel_key or not events:
-            return Response({"error": "pixel_key and events required"}, status=status.HTTP_400_BAD_REQUEST)
+        if not events:
+            return Response(
+                {"error": "events required"}, status=status.HTTP_400_BAD_REQUEST,
+            )
+        _website, err = _resolve_website_or_403(pixel_key, request)
+        if err is not None:
+            return err
 
-        results = EventIngestionService.ingest_batch(pixel_key=pixel_key, events=events, request=request)
+        results = EventIngestionService.ingest_batch(
+            pixel_key=pixel_key, events=events, request=request,
+        )
         return Response({"ingested": len(results)}, status=status.HTTP_202_ACCEPTED)
 
 

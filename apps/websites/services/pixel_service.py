@@ -5,35 +5,23 @@ from core.logging.audit_logger import audit_log
 
 logger = logging.getLogger("apps")
 
-PIXEL_JS_TEMPLATE = """
-(function() {{
-  var gp = window.GrowthPilot = window.GrowthPilot || {{}};
-  gp.pixelKey = '{pixel_key}';
-  gp.endpoint = '{endpoint}';
-
-  function track(event, data) {{
-    var payload = Object.assign({{
-      pixel_key: gp.pixelKey,
-      event_type: event,
-      url: window.location.href,
-      referrer: document.referrer,
-      timestamp: new Date().toISOString(),
-    }}, data || {{}});
-
-    navigator.sendBeacon(gp.endpoint + 'event/', JSON.stringify(payload));
-  }}
-
-  gp.track = track;
-  track('pageview');
-}})();
-"""
+# Single source of truth for the user-facing install snippet. Customers paste
+# this verbatim into their site's <head>. Versioned via the URL — bump to
+# /p2.js etc. if a future pixel needs an incompatible schema.
+PIXEL_SCRIPT_URL = "https://fetchbot.ai/p.js"
+PIXEL_SNIPPET_TEMPLATE = '<script src="{src}" data-key="{pixel_key}"></script>'
 
 
 class PixelService:
     @staticmethod
-    def get_snippet(*, website: Website, endpoint: str = "https://fetchbot.ai/api/v1/track/") -> str:
-        """Return the JavaScript snippet to embed on the tracked site."""
-        return PIXEL_JS_TEMPLATE.format(pixel_key=str(website.pixel_key), endpoint=endpoint)
+    def get_snippet(*, website: Website, src: str = PIXEL_SCRIPT_URL) -> str:
+        """Return the user-visible <script> tag to embed on the tracked site.
+
+        The actual tracking JS lives at PIXEL_SCRIPT_URL and is served by
+        nginx; this just produces the one-line snippet a customer pastes
+        into their <head>.
+        """
+        return PIXEL_SNIPPET_TEMPLATE.format(src=src, pixel_key=str(website.pixel_key))
 
     @staticmethod
     def verify(*, website: Website) -> bool:
