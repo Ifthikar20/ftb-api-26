@@ -447,3 +447,18 @@ SPECTACULAR_SETTINGS = {
     "VERSION": "1.0.0",
     "SERVE_INCLUDE_SCHEMA": False,
 }
+
+# ── Analytics geo + proxy ──
+# Number of trusted reverse proxies in front of the app (our nginx / CDN).
+# get_client_ip reads the client hop from the right of X-Forwarded-For
+# accordingly, so a client cannot spoof its IP by prepending an entry.
+TRUSTED_PROXY_COUNT = env.int("TRUSTED_PROXY_COUNT", default=1)
+
+# Request headers a trusted edge sets after resolving country itself.
+# Cloudflare: CF-IPCountry (forwarded by nginx as CF-IPCountry ->
+# HTTP_CF_IPCOUNTRY). An nginx geoip2 block can forward X-Geo-Country.
+GEO_COUNTRY_HEADERS = ("HTTP_CF_IPCOUNTRY", "HTTP_X_GEO_COUNTRY")
+
+# Absolute path to a MaxMind GeoLite2-Country.mmdb for in-process country
+# lookups. Empty disables the local-DB layer (header + ip-api still work).
+GEOIP_PATH = env("GEOIP_PATH", default="")

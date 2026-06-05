@@ -38,6 +38,14 @@
     navigator.hardwareConcurrency || '',
   ].join('|');
 
+  // Best-effort region from the browser's own timezone (e.g. "America/
+  // New_York"). Sent as a weak last-resort hint; the server resolves the
+  // authoritative country from the request IP / edge header.
+  function tz() {
+    try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ''; }
+    catch (_) { return ''; }
+  }
+
   function send(event, extra) {
     var p = {
       pixel_key: w.k,
@@ -51,6 +59,7 @@
       viewport_width: innerWidth,
       viewport_height: innerHeight,
       language: navigator.language,
+      timezone: tz(),
       fingerprint: w.f,
       scroll_depth: w.ms,
       time_on_page_ms: Date.now() - w.t0,

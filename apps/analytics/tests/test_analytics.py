@@ -620,11 +620,37 @@ class IngestionAccuracyTest(TestCase):
         from apps.analytics.services.event_ingestion_service import EventIngestionService
         self.svc = EventIngestionService
 
-    def _req(self, ua="Mozilla/5.0 (Macintosh) Chrome/126.0 Safari/537", ip="203.0.113.5"):
+    def _req(self, ua="Mozilla/5.0 (Macintosh) Chrome/126.0 Safari/537", ip="203.0.113.5", country=None):
         r = RequestFactory().post("/api/v1/track/event/")
         r.META["HTTP_USER_AGENT"] = ua
         r.META["REMOTE_ADDR"] = ip
+        if country:
+            r.META["HTTP_CF_IPCOUNTRY"] = country
         return r
+
+    def test_country_captured_from_edge_header(self):
+        ev = self.svc.ingest_event(
+            pixel_key=str(self.website.pixel_key),
+            event_data=self._event(),
+            request=self._req(country="de"),
+        )
+        self.assertEqual(ev.visitor.geo_country, "DE")
+
+    def test_country_backfilled_on_later_event(self):
+        key = str(self.website.pixel_key)
+        # First event has no resolvable country.
+        self.svc.ingest_event(
+            pixel_key=key, event_data=self._event(), request=self._req(),
+        )
+        v = Visitor.objects.get(website=self.website)
+        self.assertEqual(v.geo_country, "")
+        # A later event for the same visitor now carries an edge country.
+        self.svc.ingest_event(
+            pixel_key=key, event_data=self._event(url="https://www.outfi.ai/x"),
+            request=self._req(country="ca"),
+        )
+        v.refresh_from_db()
+        self.assertEqual(v.geo_country, "CA")
 
     def _event(self, **over):
         data = {"fingerprint": "fp-human-1", "url": "https://www.outfi.ai/", "event_type": "pageview"}

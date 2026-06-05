@@ -7,6 +7,7 @@ from django.db.models import F
 from django.utils import timezone
 
 from apps.analytics.models import PageEvent, Session, Visitor
+from apps.analytics.services.geo import resolve_country
 from apps.websites.models import Website
 from core.utils.ua_parser import get_client_ip, is_bot, parse_user_agent
 
@@ -89,10 +90,13 @@ class EventIngestionService:
         salted = f"{website.id}|{fingerprint}"
         fingerprint_hash = hashlib.sha256(salted.encode()).hexdigest()[:64]
 
-        # Detect country from IP using free API (cached per IP)
-        geo_country = event_data.get("geo_country", "")
-        if not geo_country and client_ip:
-            geo_country = EventIngestionService._detect_country(client_ip)
+        # Resolve country: trusted edge header -> local MaxMind DB ->
+        # ip-api fallback -> client-declared. See services/geo.py.
+        geo_country = resolve_country(
+            request=request,
+            ip=client_ip,
+            client_value=event_data.get("geo_country", ""),
+        )
 
         visitor, created = Visitor.objects.get_or_create(
             website=website,
@@ -110,7 +114,13 @@ class EventIngestionService:
         # Touch last_seen on every event, but DO NOT bump visit_count here —
         # that is incremented once per new session below, not once per event.
         if not created:
-            Visitor.objects.filter(pk=visitor.pk).update(last_seen=timezone.now())
+            updates = {"last_seen": timezone.now()}
+            # Backfill country if it could not be resolved on the first event
+            # (e.g. the geo API was rate-limited) but resolves now. Never
+            # overwrite a country we already have.
+            if geo_country and not visitor.geo_country:
+                updates["geo_country"] = geo_country
+            Visitor.objects.filter(pk=visitor.pk).update(**updates)
 
         timestamp = _clamp_timestamp(event_data.get("timestamp"))
 
@@ -301,43 +311,4 @@ class EventIngestionService:
             except Exception as e:
                 logger.warning(f"Failed to ingest event: {e}")
         return results
-
-    # ── Country detection from IP ──
-    # Resolved country codes are cached in Django's cache backend (shared
-    # across workers and persistent across restarts, unlike the old
-    # in-process dict) so a busy IP hits the external API at most once per
-    # cache TTL.
-    _GEO_CACHE_PREFIX = "geoip:"
-    _GEO_CACHE_TTL = 7 * 24 * 3600  # a week
-    _GEO_TIMEOUT_SECONDS = 1.5
-
-    @staticmethod
-    def _detect_country(ip: str) -> str:
-        """Best-effort country code from IP. Never raises, never blocks long."""
-        if not ip or ip.startswith(("127.", "10.", "192.168.", "172.", "::1", "0.")):
-            return ""
-
-        from django.core.cache import cache
-
-        cache_key = EventIngestionService._GEO_CACHE_PREFIX + ip
-        cached = cache.get(cache_key)
-        if cached is not None:
-            return cached
-
-        country = ""
-        try:
-            import json as _json
-            import urllib.request
-            resp = urllib.request.urlopen(
-                f"http://ip-api.com/json/{ip}?fields=countryCode",
-                timeout=EventIngestionService._GEO_TIMEOUT_SECONDS,
-            )
-            country = _json.loads(resp.read()).get("countryCode", "") or ""
-        except Exception:
-            country = ""
-
-        # Cache even an empty result so a string of failures for one IP does
-        # not re-hit the rate-limited API on every event.
-        cache.set(cache_key, country, EventIngestionService._GEO_CACHE_TTL)
-        return country
 
