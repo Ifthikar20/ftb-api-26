@@ -212,3 +212,154 @@ class LiveEventsView(APIView):
             .values("id", "event_type", "event_name", "url", "timestamp", "visitor__fingerprint_hash")
         )
         return Response(list(events))
+
+
+# Maximum window we ever serve from this endpoint. Mirrors the UI claim
+# in AnalyticsPage that we retain analytics + event logs for the most
+# recent six months. The pixel ingestion task already purges older
+# rows; this clamp is belt-and-suspenders.
+EVENT_LOG_RETENTION_DAYS = 180
+
+
+class EventLogView(APIView):
+    """Persisted, paginated event log for the SEO Analytics Events tab.
+
+    Returns rows straight out of PageEvent, in reverse-chronological order,
+    with optional filters and an in-window CSV export.
+
+    Query params
+    ------------
+    page         page number, 1-indexed (default 1)
+    page_size    rows per page, capped at 500 (default 50)
+    event_type   one of pageview / click / scroll / form_submit / ...
+    device       desktop / mobile / tablet (matched on Visitor.device_type)
+    country      ISO-2 code, matched on Visitor.geo_country
+    q            free-text search across url, event_name, fingerprint
+    start, end   ISO timestamps; clamped to the last 180 days
+    format       set to 'csv' to download instead of paginate
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    PAGE_SIZE_DEFAULT = 50
+    PAGE_SIZE_MAX = 500
+
+    EVENT_FIELDS = [
+        "id", "event_type", "event_name", "url", "referrer",
+        "timestamp", "scroll_depth", "time_on_page_ms",
+        "visitor__fingerprint_hash",
+        "visitor__device_type",
+        "visitor__geo_country",
+        "visitor__geo_city",
+    ]
+
+    def get(self, request, website_id):
+        import datetime as _dt
+
+        from django.db.models import Q
+        from django.utils import timezone
+
+        from apps.analytics.models import PageEvent
+
+        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+
+        retention_floor = timezone.now() - _dt.timedelta(days=EVENT_LOG_RETENTION_DAYS)
+
+        qs = PageEvent.objects.filter(
+            website_id=website_id,
+            timestamp__gte=retention_floor,
+        )
+
+        event_type = request.query_params.get("event_type")
+        if event_type:
+            qs = qs.filter(event_type=event_type)
+
+        device = request.query_params.get("device")
+        if device:
+            qs = qs.filter(visitor__device_type__iexact=device)
+
+        country = request.query_params.get("country")
+        if country:
+            qs = qs.filter(visitor__geo_country__iexact=country)
+
+        q = (request.query_params.get("q") or "").strip()
+        if q:
+            qs = qs.filter(
+                Q(url__icontains=q)
+                | Q(event_name__icontains=q)
+                | Q(visitor__fingerprint_hash__icontains=q),
+            )
+
+        start = request.query_params.get("start")
+        if start:
+            try:
+                start_dt = _dt.datetime.fromisoformat(start.replace("Z", "+00:00"))
+                qs = qs.filter(timestamp__gte=max(start_dt, retention_floor))
+            except (TypeError, ValueError):
+                pass
+        end = request.query_params.get("end")
+        if end:
+            try:
+                end_dt = _dt.datetime.fromisoformat(end.replace("Z", "+00:00"))
+                qs = qs.filter(timestamp__lte=end_dt)
+            except (TypeError, ValueError):
+                pass
+
+        qs = qs.order_by("-timestamp")
+
+        if (request.query_params.get("format") or "").lower() == "csv":
+            return self._stream_csv(qs)
+
+        try:
+            page = max(1, int(request.query_params.get("page", "1")))
+        except ValueError:
+            page = 1
+        try:
+            page_size = int(request.query_params.get("page_size", self.PAGE_SIZE_DEFAULT))
+        except ValueError:
+            page_size = self.PAGE_SIZE_DEFAULT
+        page_size = max(1, min(page_size, self.PAGE_SIZE_MAX))
+
+        total = qs.count()
+        offset = (page - 1) * page_size
+        rows = list(qs.values(*self.EVENT_FIELDS)[offset:offset + page_size])
+
+        return Response({
+            "results": rows,
+            "page": page,
+            "page_size": page_size,
+            "total": total,
+            "retention_days": EVENT_LOG_RETENTION_DAYS,
+        })
+
+    def _stream_csv(self, qs):
+        import csv
+
+        from django.http import StreamingHttpResponse
+
+        class _Echo:
+            def write(self, value):
+                return value
+
+        writer = csv.writer(_Echo())
+        header = [
+            "timestamp", "event_type", "event_name", "url", "referrer",
+            "scroll_depth", "time_on_page_ms",
+            "visitor_fingerprint", "device_type", "country", "city",
+        ]
+
+        def _rows():
+            yield writer.writerow(header)
+            for row in qs.values_list(
+                "timestamp", "event_type", "event_name", "url", "referrer",
+                "scroll_depth", "time_on_page_ms",
+                "visitor__fingerprint_hash",
+                "visitor__device_type",
+                "visitor__geo_country",
+                "visitor__geo_city",
+            ).iterator(chunk_size=2000):
+                yield writer.writerow(row)
+
+        response = StreamingHttpResponse(_rows(), content_type="text/csv")
+        response["Content-Disposition"] = 'attachment; filename="event-log.csv"'
+        return response

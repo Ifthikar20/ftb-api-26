@@ -515,3 +515,89 @@ class WebsiteCreationTest(APITestCase):
             "url": "not-a-url",
         })
         self.assertIn(response.status_code, [400, 422])
+
+
+# ═══════════════════════════════════════════
+# Event Log endpoint tests
+# ═══════════════════════════════════════════
+
+class EventLogViewTest(TestCase):
+    """Persisted, paginated event log surfaced on the SEO Analytics Events tab."""
+
+    def setUp(self):
+        self.user = create_test_user()
+        self.website = create_test_website(self.user)
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+
+    def _make_event(self, *, ts=None, event_type="pageview", url="/", device="desktop", country="US"):
+        ts = ts or timezone.now()
+        visitor, _ = Visitor.objects.get_or_create(
+            website=self.website,
+            fingerprint_hash=f"fp-{ts.isoformat()}-{url}",
+            defaults={"device_type": device, "geo_country": country, "browser": "Chrome"},
+        )
+        return PageEvent.objects.create(
+            visitor=visitor, website=self.website,
+            url=url, event_type=event_type, timestamp=ts,
+        )
+
+    def test_requires_auth(self):
+        anon = APIClient()
+        resp = anon.get(f"/api/v1/analytics/{self.website.id}/event-log/")
+        self.assertEqual(resp.status_code, 401)
+
+    def test_paginates_and_includes_retention_meta(self):
+        now = timezone.now()
+        for i in range(5):
+            self._make_event(ts=now - timedelta(minutes=i), url=f"/page-{i}")
+        resp = self.client.get(
+            f"/api/v1/analytics/{self.website.id}/event-log/", {"page_size": 2},
+        )
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertEqual(body["total"], 5)
+        self.assertEqual(body["page_size"], 2)
+        self.assertEqual(len(body["results"]), 2)
+        self.assertEqual(body["retention_days"], 180)
+
+    def test_filters_by_event_type_device_and_q(self):
+        now = timezone.now()
+        for i in range(4):
+            self._make_event(
+                ts=now - timedelta(minutes=i),
+                event_type="pageview" if i % 2 == 0 else "click",
+                url=f"/page-{i}",
+                device="mobile" if i < 2 else "desktop",
+            )
+        base = f"/api/v1/analytics/{self.website.id}/event-log/"
+
+        self.assertEqual(self.client.get(base, {"event_type": "click"}).json()["total"], 2)
+        self.assertEqual(self.client.get(base, {"device": "mobile"}).json()["total"], 2)
+        body = self.client.get(base, {"q": "page-3"}).json()
+        self.assertEqual(body["total"], 1)
+        self.assertTrue(body["results"][0]["url"].endswith("page-3"))
+
+    def test_clamps_to_retention_floor(self):
+        now = timezone.now()
+        self._make_event(ts=now, url="/recent")
+        self._make_event(ts=now - timedelta(days=181), url="/ancient")
+        body = self.client.get(
+            f"/api/v1/analytics/{self.website.id}/event-log/",
+        ).json()
+        urls = [r["url"] for r in body["results"]]
+        self.assertEqual(body["total"], 1)
+        self.assertIn("/recent", urls)
+        self.assertNotIn("/ancient", urls)
+
+    def test_csv_export(self):
+        self._make_event(url="/csv-target")
+        resp = self.client.get(
+            f"/api/v1/analytics/{self.website.id}/event-log/", {"format": "csv"},
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp["Content-Type"].startswith("text/csv"))
+        self.assertIn("attachment", resp["Content-Disposition"])
+        body = b"".join(resp.streaming_content).decode()
+        self.assertIn("/csv-target", body)
+        self.assertIn("timestamp", body.splitlines()[0])
