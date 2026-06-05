@@ -757,3 +757,83 @@ class IngestionAccuracyTest(TestCase):
         self.assertEqual(Visitor.objects.filter(website=other).count(), 1)
         hashes = set(Visitor.objects.values_list("fingerprint_hash", flat=True))
         self.assertEqual(len(hashes), 2)
+
+
+# ═══════════════════════════════════════════
+# Ingestion input sanitization (security)
+# ═══════════════════════════════════════════
+
+class IngestionSanitizationTest(TestCase):
+    def setUp(self):
+        self.user = create_test_user()
+        self.website = create_test_website(self.user)
+        from apps.analytics.services.event_ingestion_service import EventIngestionService
+        self.svc = EventIngestionService
+
+    def _req(self):
+        r = RequestFactory().post("/api/v1/track/event/")
+        r.META["HTTP_USER_AGENT"] = _HUMAN_UA
+        r.META["REMOTE_ADDR"] = "203.0.113.5"
+        return r
+
+    def _ingest(self, **over):
+        data = {"fingerprint": "fp-1", "url": "https://www.outfi.ai/", "event_type": "pageview"}
+        data.update(over)
+        return self.svc.ingest_event(
+            pixel_key=str(self.website.pixel_key), event_data=data, request=self._req(),
+        )
+
+    def test_unknown_event_type_becomes_custom(self):
+        ev = self._ingest(event_type="'; DROP TABLE analytics_pageevent; --")
+        self.assertEqual(ev.event_type, "custom")
+
+    def test_event_name_truncated(self):
+        ev = self._ingest(event_name="A" * 500)
+        self.assertLessEqual(len(ev.event_name), 100)
+
+    def test_url_truncated(self):
+        ev = self._ingest(url="https://www.outfi.ai/" + "p" * 5000)
+        self.assertLessEqual(len(ev.url), 2000)
+
+    def test_properties_key_count_capped(self):
+        ev = self._ingest(properties={f"k{i}": i for i in range(200)})
+        self.assertLessEqual(len(ev.properties), 30)
+
+    def test_properties_value_truncated_and_nesting_dropped(self):
+        ev = self._ingest(properties={
+            "long": "x" * 2000,
+            "nested": {"evil": "payload"},
+            "ok": "fine",
+        })
+        self.assertLessEqual(len(ev.properties["long"]), 500)
+        self.assertNotIn("nested", ev.properties)
+        self.assertEqual(ev.properties["ok"], "fine")
+
+    def test_properties_non_dict_dropped(self):
+        ev = self._ingest(properties="not-a-dict")
+        self.assertEqual(ev.properties, {})
+
+    def test_scroll_depth_clamped(self):
+        ev = self._ingest(scroll_depth=9999)
+        self.assertEqual(ev.scroll_depth, 100)
+
+    def test_time_on_page_rejects_negative(self):
+        ev = self._ingest(time_on_page_ms=-5000)
+        self.assertIsNone(ev.time_on_page_ms)
+
+
+class IngestEndpointBodySizeTest(APITestCase):
+    def setUp(self):
+        self.user = create_test_user()
+        self.website = create_test_website(self.user)
+
+    def test_oversized_body_rejected_413(self):
+        # Declare a huge content-length; the guard rejects before parsing.
+        resp = self.client.post(
+            "/api/v1/track/event/",
+            data="{}",
+            content_type="application/json",
+            HTTP_CONTENT_LENGTH=str(200 * 1024),
+            HTTP_ORIGIN="https://www.outfi.ai",
+        )
+        self.assertEqual(resp.status_code, 413)

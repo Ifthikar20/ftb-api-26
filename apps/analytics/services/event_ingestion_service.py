@@ -22,6 +22,77 @@ SESSION_TIMEOUT_MINUTES = 30
 MAX_TIMESTAMP_FUTURE_SECONDS = 300        # 5 min of clock skew tolerated forward
 MAX_TIMESTAMP_PAST_SECONDS = 24 * 3600    # 24 h back (late sendBeacon flushes)
 
+# ── Input sanitization bounds ───────────────────────────────────────────────
+# The ingest endpoint is public, so every field is attacker-controllable. We
+# bound each before it touches the database to prevent storage abuse, oversized
+# payloads, and arbitrary values polluting customer dashboards.
+ALLOWED_EVENT_TYPES = frozenset(
+    {"pageview", "click", "form_submit", "scroll", "session_end", "exit", "custom"},
+)
+MAX_EVENT_NAME_LEN = 100
+MAX_URL_LEN = 2000
+MAX_PROPS_KEYS = 30          # at most this many keys in the properties dict
+MAX_PROP_KEY_LEN = 64
+MAX_PROP_VALUE_LEN = 500     # string values truncated to this
+MAX_PROPS_SERIALIZED = 4000  # total JSON length cap for the whole dict
+
+
+def _sanitize_event_type(raw) -> str:
+    """Coerce event_type to a known value; unknown strings become 'custom'."""
+    value = str(raw or "pageview").strip().lower()
+    return value if value in ALLOWED_EVENT_TYPES else "custom"
+
+
+def _sanitize_properties(raw) -> dict:
+    """Bound the free-form properties dict so it can't be abused.
+
+    Only a flat dict of scalar (or shallow-list) values survives, with the
+    key count, key length, value length, and total serialized size all
+    capped. Anything that doesn't fit is dropped rather than rejected, so a
+    junk payload still records the event without poisoning storage.
+    """
+    if not isinstance(raw, dict):
+        return {}
+    out = {}
+    for key in list(raw.keys())[:MAX_PROPS_KEYS]:
+        k = str(key)[:MAX_PROP_KEY_LEN]
+        v = raw[key]
+        if isinstance(v, str):
+            v = v[:MAX_PROP_VALUE_LEN]
+        elif isinstance(v, bool | int | float) or v is None:
+            pass  # scalars kept as-is
+        elif isinstance(v, list):
+            # Keep a short list of stringified scalars only — no nesting.
+            v = [str(item)[:MAX_PROP_VALUE_LEN] for item in v[:10]]
+        else:
+            # dicts / objects / anything deeper is dropped.
+            continue
+        out[k] = v
+    # Final guard against a dict that's individually-bounded but collectively
+    # huge: serialize and trim keys until it fits.
+    import json as _json
+    while out and len(_json.dumps(out, default=str)) > MAX_PROPS_SERIALIZED:
+        out.pop(next(iter(out)))
+    return out
+
+
+def _clamp_scroll(raw):
+    try:
+        return max(0, min(100, int(raw))) if raw is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _clamp_time_on_page(raw):
+    # Cap at 6 hours of milliseconds; reject negatives and garbage.
+    try:
+        ms = int(raw)
+    except (TypeError, ValueError):
+        return None
+    if ms < 0:
+        return None
+    return min(ms, 6 * 3600 * 1000)
+
 
 def _clamp_timestamp(raw, now=None):
     """Parse a client timestamp, falling back to now() when absent or absurd."""
@@ -140,21 +211,21 @@ class EventIngestionService:
         if session_created and not created:
             Visitor.objects.filter(pk=visitor.pk).update(visit_count=F("visit_count") + 1)
 
+        event_type = _sanitize_event_type(event_data.get("event_type"))
+
         event = PageEvent.objects.create(
             visitor=visitor,
             website=website,
             session=session,
-            url=event_data.get("url", "")[:2000],
-            referrer=event_data.get("referrer", "")[:2000],
-            event_type=event_data.get("event_type", "pageview"),
-            event_name=event_data.get("event_name", ""),
-            properties=event_data.get("properties", {}),
+            url=str(event_data.get("url", ""))[:MAX_URL_LEN],
+            referrer=str(event_data.get("referrer", ""))[:MAX_URL_LEN],
+            event_type=event_type,
+            event_name=str(event_data.get("event_name", ""))[:MAX_EVENT_NAME_LEN],
+            properties=_sanitize_properties(event_data.get("properties", {})),
             timestamp=timestamp,
-            scroll_depth=event_data.get("scroll_depth"),
-            time_on_page_ms=event_data.get("time_on_page_ms"),
+            scroll_depth=_clamp_scroll(event_data.get("scroll_depth")),
+            time_on_page_ms=_clamp_time_on_page(event_data.get("time_on_page_ms")),
         )
-
-        event_type = event_data.get("event_type", "pageview")
 
         # Update session page count and exit page atomically (F() avoids the
         # read-modify-write race when several events from the same visitor
