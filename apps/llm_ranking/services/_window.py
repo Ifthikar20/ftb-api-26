@@ -75,7 +75,7 @@ def parse_prompt_filter(raw) -> list[str] | None:
         return None
     if isinstance(raw, str):
         items = [s for s in (p.strip() for p in raw.split("\n")) if s]
-    elif isinstance(raw, (list, tuple)):
+    elif isinstance(raw, list | tuple):
         items = [str(p).strip() for p in raw if str(p).strip()]
     else:
         return None

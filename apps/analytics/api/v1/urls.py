@@ -26,6 +26,8 @@ urlpatterns = [
     path("<uuid:website_id>/visitors/<uuid:visitor_id>/timeline/", analytics_views.VisitorTimelineView.as_view(), name="analytics-visitor-timeline"),
     path("<uuid:website_id>/insights/", analytics_views.AIInsightsView.as_view(), name="analytics-insights"),
     path("<uuid:website_id>/live/", analytics_views.LiveEventsView.as_view(), name="analytics-live"),
+    path("<uuid:website_id>/event-log/", analytics_views.EventLogView.as_view(), name="analytics-event-log"),
+    path("<uuid:website_id>/access-log/", analytics_views.AnalyticsAccessLogView.as_view(), name="analytics-access-log"),
 
     # Dynamic SEO Optimization
     path("<uuid:website_id>/seo-script/", dynamic_seo_views.SEOScriptView.as_view(), name="seo-script"),

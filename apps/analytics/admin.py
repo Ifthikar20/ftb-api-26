@@ -1,6 +1,27 @@
 from django.contrib import admin
 
-from apps.analytics.models import LinkClick, PageEvent, TrackedLink, Visitor
+from apps.analytics.models import (
+    AnalyticsAccessLog,
+    LinkClick,
+    PageEvent,
+    TrackedLink,
+    Visitor,
+)
+
+
+@admin.register(AnalyticsAccessLog)
+class AnalyticsAccessLogAdmin(admin.ModelAdmin):
+    list_display = ("accessed_at", "user_email", "website_id_raw", "path", "status_code", "ip_address")
+    list_filter = ("status_code", "method")
+    search_fields = ("user_email", "website_id_raw", "ip_address", "path")
+    readonly_fields = tuple(f.name for f in AnalyticsAccessLog._meta.fields)
+    date_hierarchy = "accessed_at"
+
+    def has_add_permission(self, request):
+        return False  # append-only; never hand-edit the audit trail
+
+    def has_change_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(Visitor)

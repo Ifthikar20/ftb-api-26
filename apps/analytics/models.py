@@ -42,6 +42,10 @@ class Session(models.Model):
 
     visitor = models.ForeignKey(Visitor, on_delete=models.CASCADE, related_name="sessions")
     started_at = models.DateTimeField(db_index=True)
+    # Rolling timestamp of the most recent event in this session. Drives the
+    # 30-minute inactivity timeout so a session expires 30 min after the last
+    # interaction, not 30 min after it started.
+    last_activity = models.DateTimeField(null=True, blank=True, db_index=True)
     ended_at = models.DateTimeField(null=True, blank=True)
     page_count = models.PositiveIntegerField(default=0)
     entry_page = models.URLField(max_length=1000, blank=True)
@@ -159,3 +163,52 @@ class LinkClick(TimestampMixin):
 
     def __str__(self):
         return f"Click({self.tracked_link.tracking_key} at {self.clicked_at})"
+
+
+class AnalyticsAccessLog(models.Model):
+    """Immutable record of who viewed which website's analytics, and when.
+
+    Written by AnalyticsAccessLogMiddleware on every successful authenticated
+    read under /api/v1/analytics/<website_id>/. This is the queryable proof
+    of tenant isolation: "show every access to Company X's analytics in the
+    last 90 days" is a single filter, not a log grep. Append-only — rows are
+    never updated, only inserted and (eventually) pruned by retention.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    # Who. Kept even if the user is later deleted, so the trail survives.
+    user = models.ForeignKey(
+        "accounts.User",
+        null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name="analytics_accesses",
+    )
+    user_email = models.CharField(max_length=254, blank=True)
+    # Which website's data was read. SET_NULL so deleting a website does not
+    # erase the historical fact that it was accessed.
+    website = models.ForeignKey(
+        "websites.Website",
+        null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name="access_logs",
+    )
+    website_id_raw = models.CharField(max_length=64, db_index=True)
+    # What / where from.
+    path = models.CharField(max_length=300)
+    method = models.CharField(max_length=8, default="GET")
+    status_code = models.PositiveSmallIntegerField(default=200)
+    ip_address = models.CharField(max_length=64, blank=True)
+    user_agent = models.CharField(max_length=400, blank=True)
+    request_id = models.CharField(max_length=64, blank=True)
+    accessed_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        db_table = "analytics_accesslog"
+        indexes = [
+            models.Index(fields=["website_id_raw", "-accessed_at"]),
+            models.Index(fields=["user", "-accessed_at"]),
+        ]
+        ordering = ["-accessed_at"]
+
+    def __str__(self):
+        return f"AccessLog({self.user_email} -> {self.website_id_raw} @ {self.accessed_at})"
