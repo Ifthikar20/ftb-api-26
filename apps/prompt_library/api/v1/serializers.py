@@ -204,7 +204,9 @@ class GenerateRelatedRequestSerializer(serializers.Serializer):
     """
 
     prompt = serializers.CharField()
-    count = serializers.IntegerField(min_value=1, max_value=20, default=6)
+    # Small by design — this is a secondary recommendation, not a bulk
+    # generation, so we cap it low to keep DeepSeek token spend minimal.
+    count = serializers.IntegerField(min_value=1, max_value=10, default=5)
 
     def validate_prompt(self, value: str) -> str:
         cleaned = (value or "").strip()
