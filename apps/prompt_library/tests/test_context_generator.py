@@ -4,7 +4,10 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from apps.prompt_library.services.context_generator import generate_from_context
+from apps.prompt_library.services.context_generator import (
+    generate_from_context,
+    generate_related_prompts,
+)
 
 
 class _Fake:
@@ -115,6 +118,32 @@ def test_provider_exception_falls_back():
         items, provider = generate_from_context("a real context with words")
     assert provider == "deepseek"
     assert len(items) == 1
+
+
+def test_related_blank_seed_returns_empty():
+    # No seed means nothing to relate to; return an empty list (not a
+    # fallback row) so the caller can render nothing.
+    items, provider = generate_related_prompts("   ")
+    assert items == []
+    assert provider == "fallback"
+
+
+def test_related_short_seed_still_generates():
+    # Unlike the free-form context path, a short seed prompt is allowed —
+    # the service wraps it into a richer instruction before the AI call.
+    payload = (
+        '[{"template_text": "Which CRM is best for a two-person agency?",'
+        ' "style": "comparison", "intent_bucket": "comparison",'
+        ' "preview_text": "Which CRM is best for a two-person agency?"}]'
+    )
+    with patch(
+        "apps.llm_ranking.providers.get_synthesis_provider",
+        return_value=_provider(payload),
+    ):
+        items, provider = generate_related_prompts("best CRM?", count=3)
+    assert provider == "deepseek"
+    assert len(items) == 1
+    assert items[0]["style"] == "comparison"
 
 
 def test_truncated_json_is_repaired():

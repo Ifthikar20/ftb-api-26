@@ -24,6 +24,7 @@ from apps.prompt_library.api.v1.serializers import (
     AutoTemplateRequestSerializer,
     BrandPromptSerializer,
     GenerateFromContextRequestSerializer,
+    GenerateRelatedRequestSerializer,
     IndustrySerializer,
     PreviewSampleRequestSerializer,
     PromptCreateSerializer,
@@ -669,6 +670,47 @@ class PromptGenerateFromContextView(APIView):
             "provider": provider_name,
             "persisted": PromptSerializer(persisted, many=True).data,
         })
+
+
+class PromptGenerateRelatedView(APIView):
+    """Recommend prompts related to an existing one via the AI model.
+
+    Given a single seed prompt, returns a small set of closely-related
+    prompts (same topic/audience, different angle) the user can add to their
+    library. Used by the create-prompt flow to surface follow-on suggestions
+    immediately after a prompt is saved. Throttled per-user, sharing the same
+    budget as the free-form context generator.
+    """
+
+    permission_classes = [IsAuthenticated]
+    _BUCKET_CAPACITY = 6
+    _BUCKET_REFILL = 6 / 60.0  # 6 calls per minute, smooth refill.
+
+    def post(self, request):
+        from apps.prompt_library.services.context_generator import (
+            generate_related_prompts,
+        )
+        from core.resilience import TokenBucket
+
+        bucket = TokenBucket(
+            name=f"prompt_ctx_gen:{request.user.id}",
+            capacity=self._BUCKET_CAPACITY,
+            refill_per_second=self._BUCKET_REFILL,
+        )
+        if not bucket.try_acquire():
+            return Response(
+                {"error": "rate_limited", "detail": "Too many generations. Wait a moment."},
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+
+        serializer = GenerateRelatedRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        items, provider_name = generate_related_prompts(
+            data["prompt"], count=data["count"], user=request.user,
+        )
+        return Response({"generated": items, "provider": provider_name})
 
 
 class WebsiteVariablesView(APIView):

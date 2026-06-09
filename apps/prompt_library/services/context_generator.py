@@ -311,3 +311,31 @@ def generate_from_context(
         return _fallback_single(context_text), getattr(provider, "name", "fallback")
 
     return items, getattr(provider, "name", "deepseek")
+
+
+def generate_related_prompts(
+    seed_prompt: str,
+    *,
+    count: int = 6,
+    user=None,
+) -> tuple[list[dict], str]:
+    """Return (items, provider_name) of prompts related to ``seed_prompt``.
+
+    Thin wrapper over :func:`generate_from_context` that frames an existing
+    prompt as the seed and asks the AI model for closely-related variations
+    (same topic and audience, different angle/intent/phrasing). Used by the
+    create-prompt flow to recommend follow-on prompts the user can add to
+    their library. Returns an empty list (not a fallback row) when no seed is
+    given, so the caller can simply render nothing.
+    """
+    seed = (seed_prompt or "").strip()
+    if not seed:
+        return [], "fallback"
+    context = (
+        "Suggest other natural questions a customer might ask that are closely "
+        "related to the existing prompt below. Keep the same topic, product "
+        "category, and audience, but vary the angle, intent, and phrasing so "
+        "each is distinct from the original and from each other.\n\n"
+        f'EXISTING PROMPT: "{seed}"'
+    )
+    return generate_from_context(context, count=count, user=user)

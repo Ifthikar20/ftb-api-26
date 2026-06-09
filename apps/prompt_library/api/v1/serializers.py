@@ -195,6 +195,24 @@ class GenerateFromContextRequestSerializer(serializers.Serializer):
         return cleaned
 
 
+class GenerateRelatedRequestSerializer(serializers.Serializer):
+    """Validate the seed prompt for related-prompt recommendations.
+
+    Unlike :class:`GenerateFromContextRequestSerializer` there is no word
+    minimum: the seed is a single existing prompt the service wraps into a
+    richer instruction before calling the AI model.
+    """
+
+    prompt = serializers.CharField()
+    count = serializers.IntegerField(min_value=1, max_value=20, default=6)
+
+    def validate_prompt(self, value: str) -> str:
+        cleaned = (value or "").strip()
+        if len(cleaned) < 3:
+            raise serializers.ValidationError("Prompt is too short.")
+        return cleaned
+
+
 class TestEnvironmentSerializer(serializers.ModelSerializer):
     prompt_ids = serializers.SerializerMethodField()
     prompt_count = serializers.SerializerMethodField()
