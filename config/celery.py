@@ -27,6 +27,9 @@ app.conf.task_routes = {
     "apps.citations.tasks.*": {"queue": "ai"},
     "apps.brand_vault.tasks.*": {"queue": "ai"},
     "apps.content_studio.tasks.*": {"queue": "ai"},
+    # agents: runs are AI-heavy; action execution hits integrations
+    "apps.agents.tasks.run_hired_agent": {"queue": "ai"},
+    "apps.agents.tasks.execute_agent_action": {"queue": "integrations"},
 }
 
 app.conf.beat_schedule = {
@@ -67,6 +70,11 @@ app.conf.beat_schedule = {
     # ── LLM Ranking ──
     "llm-ranking-schedule-dispatcher": {
         "task": "apps.llm_ranking.tasks.dispatch_scheduled_audits",
+        "schedule": crontab(minute="*/15"),  # Every 15 min — checks next_run_at
+    },
+    # ── Hireable Agents ──
+    "agents-run-dispatcher": {
+        "task": "apps.agents.tasks.dispatch_agent_runs",
         "schedule": crontab(minute="*/15"),  # Every 15 min — checks next_run_at
     },
     # ── Prompt Library ──
