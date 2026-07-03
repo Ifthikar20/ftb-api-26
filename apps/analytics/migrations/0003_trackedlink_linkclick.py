@@ -8,6 +8,13 @@ class Migration(migrations.Migration):
     dependencies = [
         ("analytics", "0002_trackedkeyword_keywordrankhistory"),
         ("websites", "0001_initial"),
+        # TrackedLink/LinkClick below reference leads.EmailCampaign and
+        # leads.CampaignRecipient (FKs later removed in 0008), so the
+        # stub leads models must exist in the migration state first.
+        # Without this edge a fresh database can order analytics before
+        # leads and fail with "Related model 'leads.emailcampaign'
+        # cannot be resolved".
+        ("leads", "0001_initial"),
     ]
 
     operations = [

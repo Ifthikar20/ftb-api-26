@@ -62,6 +62,7 @@ LOCAL_APPS = [
     "apps.brand_vault",
     "apps.content_studio",
     "apps.agents",
+    "apps.search_console",
     # Stub app — kept only to satisfy historical lazy FK references
     # from analytics migrations. All tables are managed=False.
     "apps.leads",
@@ -401,6 +402,30 @@ CLAUDE_JUDGE_DAILY_LIMIT_PER_USER = env.int("CLAUDE_JUDGE_DAILY_LIMIT_PER_USER",
 # Per-user daily cap on GEO content rewrites (geo_rewrite.py). Lower
 # because rewrites pull a whole document through the model.
 CLAUDE_REWRITE_DAILY_LIMIT_PER_USER = env.int("CLAUDE_REWRITE_DAILY_LIMIT_PER_USER", default=30)
+
+# ── Google Search Console (apps.search_console) ──
+# OAuth reuses GOOGLE_OAUTH_CLIENT_ID/SECRET via the integrations
+# registry ("gsc" entry). The redirect URI below must be listed in the
+# Google Cloud OAuth client's authorized redirect URIs.
+FRONTEND_URL = env("FRONTEND_URL", default="http://localhost:5173")
+GSC_OAUTH_REDIRECT_URI = env(
+    "GSC_OAUTH_REDIRECT_URI",
+    default="http://localhost:8000/api/v1/search-console/oauth/callback/",
+)
+# Max rows kept per dimension per sync run (query/page dimensions).
+GSC_DAILY_ROW_LIMIT = env.int("GSC_DAILY_ROW_LIMIT", default=5000)
+# First sync pulls this many days of history (ending 3 days ago, GSC lag).
+GSC_BACKFILL_DAYS = env.int("GSC_BACKFILL_DAYS", default=28)
+# Incremental syncs re-pull this window because Google revises late data.
+GSC_SYNC_LOOKBACK_DAYS = env.int("GSC_SYNC_LOOKBACK_DAYS", default=7)
+# Stored rows older than this are pruned nightly (GSC keeps 16 months).
+GSC_RETENTION_DAYS = env.int("GSC_RETENTION_DAYS", default=480)
+# Per-user daily cap on Search Console API calls.
+GSC_DAILY_API_LIMIT_PER_USER = env.int("GSC_DAILY_API_LIMIT_PER_USER", default=2000)
+# Prompt-library feed: minimum 28-day impressions for a query to qualify.
+GSC_PROMPT_MIN_IMPRESSIONS = env.int("GSC_PROMPT_MIN_IMPRESSIONS", default=10)
+# Prompt-library feed: max queries considered per website per sync.
+GSC_PROMPT_TOP_N = env.int("GSC_PROMPT_TOP_N", default=50)
 
 # ── Social Leads (Facebook, LinkedIn, X) ──
 FACEBOOK_APP_ID = env("FACEBOOK_APP_ID", default="")

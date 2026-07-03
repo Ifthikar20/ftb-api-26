@@ -22,6 +22,7 @@ app.conf.task_routes = {
     "apps.websites.tasks.deliver_webhook": {"queue": "webhooks"},
     # integrations / OAuth
     "apps.websites.tasks.refresh_expiring_tokens": {"queue": "integrations"},
+    "apps.search_console.tasks.*": {"queue": "integrations"},
     # AI / LLM
     "apps.llm_ranking.tasks.*": {"queue": "ai"},
     "apps.citations.tasks.*": {"queue": "ai"},
@@ -108,5 +109,12 @@ app.conf.beat_schedule = {
     "generate-briefs-daily": {
         "task": "apps.content_studio.tasks.generate_briefs_daily",
         "schedule": crontab(minute=15, hour=6),
+    },
+    # ── Search Console ──
+    # Runs before compute-demand-scores (05:00) so fresh GSC_AGGREGATE
+    # prompts are scored the same morning.
+    "gsc-nightly-sync": {
+        "task": "apps.search_console.tasks.sync_all_gsc",
+        "schedule": crontab(minute=0, hour=3),
     },
 }
