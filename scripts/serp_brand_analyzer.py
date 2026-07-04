@@ -35,6 +35,7 @@ import requests
 
 CSE_ENDPOINT = "https://www.googleapis.com/customsearch/v1"
 SERPAPI_ENDPOINT = "https://serpapi.com/search.json"
+PERPLEXITY_SEARCH_ENDPOINT = "https://api.perplexity.ai/search"
 PAGE_TIMEOUT = 10.0
 USER_AGENT = "Mozilla/5.0 (compatible; FetchBot-SEO-Analyzer/1.0)"
 
@@ -71,6 +72,51 @@ def fetch_serp_cse(query: str, api_key: str, cse_id: str, num: int) -> list[dict
         }
         for idx, item in enumerate(items, start=1)
     ]
+
+
+def fetch_serp_perplexity(query: str, api_key: str, num: int) -> list[dict]:
+    """Perplexity Search API: ranked results from Perplexity's own web
+    index (NOT Google's ranking). Uses the same PERPLEXITY_API_KEY the
+    app already holds for Sonar audits. Parsing is tolerant of minor
+    schema differences and dumps the raw body on surprises."""
+    resp = requests.post(
+        PERPLEXITY_SEARCH_ENDPOINT,
+        json={"query": query, "max_results": min(num, 20)},
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        timeout=20,
+    )
+    if resp.status_code != 200:
+        sys.exit(
+            f"[FAIL] Perplexity Search API returned HTTP {resp.status_code}: {resp.text[:300]}\n"
+            "       If this is a 404, the account may not have Search API access yet,\n"
+            "       or the endpoint changed; check docs.perplexity.ai."
+        )
+    try:
+        body = resp.json()
+    except ValueError:
+        sys.exit(f"[FAIL] Perplexity Search API returned non-JSON: {resp.text[:300]}")
+
+    raw = body.get("results") or body.get("web_results") or []
+    if not raw and body:
+        sys.exit(
+            "[FAIL] Perplexity response had no 'results' list. Raw keys: "
+            f"{sorted(body.keys())}. First 300 chars: {json.dumps(body)[:300]}"
+        )
+    results = []
+    for idx, item in enumerate(raw[:num], start=1):
+        url = item.get("url") or item.get("link") or ""
+        if not url:
+            continue
+        results.append({
+            "rank": idx,
+            "url": url,
+            "title": item.get("title", ""),
+            "snippet": item.get("snippet") or item.get("description", ""),
+        })
+    return results
 
 
 def fetch_serp_serpapi(query: str, api_key: str, num: int) -> list[dict]:
@@ -292,9 +338,11 @@ def main():
     parser.add_argument("--num", type=int, default=10, help="Results to analyze (max 10 per API call).")
     parser.add_argument(
         "--provider",
-        choices=["auto", "cse", "serpapi"],
+        choices=["auto", "cse", "serpapi", "perplexity"],
         default="auto",
         help="SERP source. auto prefers SerpAPI when SERPAPI_KEY is set, else Custom Search. "
+             "perplexity uses Perplexity's Search API (their own index, not Google's "
+             "ranking) with the existing PERPLEXITY_API_KEY. "
              "Note: CSE engines created after 2026-01-20 cannot search the whole web.",
     )
     # Precedence: flag > shell env > repo .env (new names, then legacy names).
@@ -311,6 +359,10 @@ def main():
     parser.add_argument(
         "--serpapi-key",
         default=os.environ.get("SERPAPI_KEY", "") or _env_file_value("SERPAPI_KEY"),
+    )
+    parser.add_argument(
+        "--perplexity-key",
+        default=os.environ.get("PERPLEXITY_API_KEY", "") or _env_file_value("PERPLEXITY_API_KEY"),
     )
     parser.add_argument("--no-fetch", action="store_true",
                         help="Skip fetching each page (ranking + brands only, no on-page analysis).")
@@ -340,6 +392,10 @@ def main():
         if not args.serpapi_key:
             sys.exit("[FAIL] --provider serpapi requires SERPAPI_KEY (env, .env, or --serpapi-key).")
         results = fetch_serp_serpapi(args.query, args.serpapi_key, args.num)
+    elif provider == "perplexity":
+        if not args.perplexity_key:
+            sys.exit("[FAIL] --provider perplexity requires PERPLEXITY_API_KEY (env, .env, or --perplexity-key).")
+        results = fetch_serp_perplexity(args.query, args.perplexity_key, args.num)
     else:
         if not args.api_key or not args.cse_id:
             sys.exit(
@@ -349,13 +405,13 @@ def main():
         results = fetch_serp_cse(args.query, args.api_key, args.cse_id, args.num)
 
     if not results:
-        hint = (
-            "Check that the engine has 'Search the entire web' enabled (only possible on "
-            "engines created before 2026-01-20); otherwise use --provider serpapi."
-            if provider == "cse"
-            else "SerpAPI returned no organic results; check the query and account quota."
-        )
-        sys.exit(f"[FAIL] No results returned for {args.query!r}. {hint}")
+        hints = {
+            "cse": "Check that the engine has 'Search the entire web' enabled (only possible "
+                   "on engines created before 2026-01-20); otherwise use --provider serpapi.",
+            "serpapi": "SerpAPI returned no organic results; check the query and account quota.",
+            "perplexity": "Perplexity returned no results; try a broader query.",
+        }
+        sys.exit(f"[FAIL] No results returned for {args.query!r}. {hints[provider]}")
 
     for result in results:
         page = None if args.no_fetch else analyze_page(result["url"])
@@ -378,9 +434,14 @@ def main():
                           "brand_share": share}, indent=2))
         return
 
-    source = "SerpAPI" if provider == "serpapi" else "Custom Search API"
+    headers = {
+        "serpapi": ("SerpAPI", "organic Google results"),
+        "cse": ("Custom Search API", "organic Google results"),
+        "perplexity": ("Perplexity Search API", "results from Perplexity's index (not Google's ranking)"),
+    }
+    source, kind = headers[provider]
     print(f'SERP analysis for: "{args.query}"')
-    print(f"Top {len(results)} organic Google results ({source})")
+    print(f"Top {len(results)} {kind} ({source})")
     print()
     print("Brand leaderboard:")
     for domain, entry in leaderboard:
