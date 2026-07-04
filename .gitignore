@@ -69,3 +69,8 @@ apps/compliance/
 apps/messaging/
 apps/social_leads/
 apps/voice_agent/
+
+# Google service account keys - never commit
+fb-project-*.json
+*-serviceaccount.json
+service-account*.json
