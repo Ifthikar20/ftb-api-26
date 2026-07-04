@@ -235,14 +235,45 @@ def seo_flags(page: dict) -> list[str]:
     return flags
 
 
+def _env_file_value(*names: str) -> str:
+    """Read a value from the repo's .env without sourcing it (the file
+    may contain non-shell lines). First matching name wins."""
+    env_path = os.path.join(os.path.dirname(__file__), "..", ".env")
+    try:
+        with open(env_path) as fh:
+            lines = fh.readlines()
+    except OSError:
+        return ""
+    values = {}
+    for line in lines:
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        values[key.strip()] = value.strip().strip('"').strip("'")
+    for name in names:
+        if values.get(name):
+            return values[name]
+    return ""
+
+
 def main():
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument("query", help='Search query, e.g. "best bagels in dallas"')
     parser.add_argument("--num", type=int, default=10, help="Results to analyze (max 10 per API call).")
-    parser.add_argument("--api-key", default=os.environ.get("GOOGLE_API_KEY", ""))
-    parser.add_argument("--cse-id", default=os.environ.get("GOOGLE_CSE_ID", ""))
+    # Precedence: flag > shell env > repo .env (new names, then legacy names).
+    parser.add_argument(
+        "--api-key",
+        default=os.environ.get("GOOGLE_API_KEY", "")
+        or _env_file_value("GOOGLE_API_KEY", "GOOGLE_SEARCH_API_KEY"),
+    )
+    parser.add_argument(
+        "--cse-id",
+        default=os.environ.get("GOOGLE_CSE_ID", "")
+        or _env_file_value("GOOGLE_CSE_ID", "GOOGLE_SEARCH_ENGINE_ID"),
+    )
     parser.add_argument("--no-fetch", action="store_true",
                         help="Skip fetching each page (ranking + brands only, no on-page analysis).")
     parser.add_argument("--json", action="store_true", dest="as_json",
