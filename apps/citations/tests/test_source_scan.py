@@ -276,3 +276,99 @@ class TestSourceScanAPI:
         other = WebsiteFactory()
         response = client.get(f"/api/v1/citations/websites/{other.id}/source-scans/")
         assert response.status_code == 404
+
+
+# -- yelp reader ---------------------------------------------------------------
+
+YELP_BIZ = {
+    "name": "Starship Bagel", "rating": 4.5, "review_count": 402,
+    "price": "$", "categories": [{"title": "Bagels"}],
+}
+YELP_REVIEWS = {"reviews": [
+    {"rating": 5, "text": "Best NY-style bagel in Texas."},
+    {"rating": 4, "text": "Great chew, long line."},
+]}
+YELP_SEARCH = {"businesses": [
+    YELP_BIZ,
+    {"name": "Shug's Bagels", "rating": 4.4, "review_count": 1002,
+     "categories": [{"title": "Bagels"}]},
+]}
+
+
+def _yelp_get_side_effect(responses):
+    def fake(url, params=None, headers=None, timeout=None):
+        for fragment, payload in responses.items():
+            if fragment in url:
+                return _resp(payload)
+        raise AssertionError(f"unexpected yelp url {url}")
+    return fake
+
+
+@pytest.mark.django_db
+def test_yelp_business_page_via_api(settings):
+    settings.YELP_API_KEY = "yelp-test"
+    fake = _yelp_get_side_effect({
+        "/businesses/starship-bagel-lewisville/reviews": YELP_REVIEWS,
+        "/businesses/starship-bagel-lewisville": YELP_BIZ,
+    })
+    with patch.object(content_reader.requests, "get", side_effect=fake):
+        out = content_reader.read_yelp("https://www.yelp.com/biz/starship-bagel-lewisville")
+
+    assert out["status"] == "ok"
+    assert out["kind"] == "yelp"
+    assert "4.5 stars from 402 reviews" in out["text"]
+    assert "[5 stars] Best NY-style bagel in Texas." in out["text"]
+
+
+@pytest.mark.django_db
+def test_yelp_category_page_via_search_api(settings):
+    settings.YELP_API_KEY = "yelp-test"
+    captured = {}
+
+    def fake(url, params=None, headers=None, timeout=None):
+        captured.update(params or {})
+        return _resp(YELP_SEARCH)
+
+    with patch.object(content_reader.requests, "get", side_effect=fake):
+        out = content_reader.read_yelp("https://www.yelp.com/c/dallas/bagels")
+
+    assert out["status"] == "ok"
+    assert captured["term"] == "bagels"
+    assert captured["location"] == "dallas"
+    assert "Starship Bagel: 4.5 stars from 402 reviews" in out["text"]
+    assert "Shug's Bagels: 4.4 stars from 1002 reviews" in out["text"]
+
+
+@pytest.mark.django_db
+def test_yelp_search_page_parses_query_params(settings):
+    settings.YELP_API_KEY = "yelp-test"
+    captured = {}
+
+    def fake(url, params=None, headers=None, timeout=None):
+        captured.update(params or {})
+        return _resp(YELP_SEARCH)
+
+    with patch.object(content_reader.requests, "get", side_effect=fake):
+        out = content_reader.read_yelp(
+            "https://www.yelp.com/search?find_desc=Bagels&find_loc=Dallas%2C+TX%2C+USA"
+        )
+
+    assert out["status"] == "ok"
+    assert captured["term"] == "Bagels"
+    assert captured["location"] == "Dallas, TX, USA"
+
+
+@pytest.mark.django_db
+def test_yelp_without_key_stays_blocked(settings):
+    settings.YELP_API_KEY = ""
+    out = content_reader.read_yelp("https://www.yelp.com/biz/anything")
+    assert out["status"] == "blocked"
+    assert "YELP_API_KEY" in out["detail"]
+
+
+@pytest.mark.django_db
+def test_read_url_dispatches_yelp(settings):
+    settings.YELP_API_KEY = "yelp-test"
+    with patch.object(content_reader, "read_yelp", return_value={"status": "ok"}) as mock_yelp:
+        content_reader.read_url("https://www.yelp.com/c/dallas/bagels")
+    mock_yelp.assert_called_once()

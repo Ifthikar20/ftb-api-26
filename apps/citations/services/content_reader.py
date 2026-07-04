@@ -7,11 +7,16 @@ Turns a ranked URL into analyzable text:
   the permalink), which bypasses the bot-verification wall the HTML
   serves. Comments come back with upvote scores, so the extracted text
   preserves community weighting for the sentiment stage.
+- Yelp URLs: read through the official Fusion API when YELP_API_KEY is
+  set (Yelp HTML always 403s bots). Business pages become rating,
+  review count, and the 3 excerpt reviews the API exposes; search and
+  category pages become the ranked business list with ratings, which
+  is quantified sentiment on its own.
 - Everything else: fetched through the SSRF-guarded safe_get and
   reduced to visible text with the stdlib HTML parser.
 
 Returned shape (always):
-    {"status": "ok"|"blocked"|"error", "kind": "reddit"|"page",
+    {"status": "ok"|"blocked"|"error", "kind": "reddit"|"yelp"|"page",
      "text": str, "word_count": int, "detail": str}
 """
 
@@ -19,9 +24,10 @@ from __future__ import annotations
 
 import logging
 from html.parser import HTMLParser
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 import requests
+from django.conf import settings
 
 from core.validators.safe_http import FetchError, safe_get
 
@@ -104,6 +110,110 @@ def read_reddit_thread(url: str) -> dict:
     return _result("ok", "reddit", "\n".join(lines))
 
 
+# -- Yelp (official Fusion API) ------------------------------------------------
+
+YELP_API_BASE = "https://api.yelp.com/v3"
+MAX_YELP_BUSINESSES = 10
+
+
+def _is_yelp(url: str) -> bool:
+    host = (urlparse(url).hostname or "").lower()
+    return host.endswith("yelp.com")
+
+
+def _yelp_headers() -> dict:
+    return {"Authorization": f"Bearer {settings.YELP_API_KEY}"}
+
+
+def _yelp_get(path: str, params: dict | None = None) -> dict | None:
+    try:
+        resp = requests.get(
+            f"{YELP_API_BASE}{path}",
+            params=params or {},
+            headers=_yelp_headers(),
+            timeout=PAGE_TIMEOUT,
+        )
+        resp.raise_for_status()
+        return resp.json()
+    except (requests.RequestException, ValueError) as exc:
+        logger.warning("Yelp API call %s failed: %s", path, exc)
+        return None
+
+
+def _yelp_business_lines(biz: dict) -> str:
+    categories = ", ".join(
+        c.get("title", "") for c in (biz.get("categories") or [])[:3]
+    )
+    return (
+        f"- {biz.get('name', '?')}: {biz.get('rating', '?')} stars from "
+        f"{biz.get('review_count', 0)} reviews"
+        + (f", price {biz.get('price')}" if biz.get("price") else "")
+        + (f" ({categories})" if categories else "")
+    )
+
+
+def read_yelp(url: str) -> dict:
+    """Read a Yelp URL through the Fusion API.
+
+    Star ratings and review counts are explicit, quantified sentiment;
+    the text block states that so the extraction stage uses them.
+    """
+    if not getattr(settings, "YELP_API_KEY", ""):
+        return _result("blocked", "yelp", detail="YELP_API_KEY not configured")
+
+    parsed = urlparse(url)
+    parts = [p for p in parsed.path.split("/") if p]
+
+    # Business page: yelp.com/biz/<alias>
+    if parts and parts[0] == "biz" and len(parts) > 1:
+        alias = unquote(parts[1])
+        biz = _yelp_get(f"/businesses/{alias}")
+        if biz is None:
+            return _result("error", "yelp", detail="business lookup failed")
+        lines = [
+            "YELP BUSINESS (official API; star ratings are aggregate customer sentiment):",
+            _yelp_business_lines(biz),
+        ]
+        reviews = _yelp_get(f"/businesses/{alias}/reviews") or {}
+        for review in (reviews.get("reviews") or [])[:3]:
+            lines.append(
+                f"[{review.get('rating', '?')} stars] {(review.get('text') or '').strip()}"
+            )
+        return _result("ok", "yelp", "\n".join(lines))
+
+    # Search page: yelp.com/search?find_desc=Bagels&find_loc=Dallas, TX
+    # Category page: yelp.com/c/<city>/<category>
+    term = location = ""
+    if parts and parts[0] == "search":
+        qs = parse_qs(parsed.query)
+        term = (qs.get("find_desc") or [""])[0]
+        location = (qs.get("find_loc") or [""])[0]
+    elif parts and parts[0] == "c" and len(parts) > 2:
+        location = unquote(parts[1]).replace("-", " ")
+        term = unquote(parts[2]).replace("-", " ")
+
+    if not (term and location):
+        return _result("blocked", "yelp", detail="unrecognized yelp url shape")
+
+    data = _yelp_get(
+        "/businesses/search",
+        {"term": term, "location": location, "limit": MAX_YELP_BUSINESSES,
+         "sort_by": "best_match"},
+    )
+    if data is None:
+        return _result("error", "yelp", detail="business search failed")
+    businesses = data.get("businesses") or []
+    if not businesses:
+        return _result("error", "yelp", detail="no businesses returned")
+
+    lines = [
+        f"YELP RANKING for {term!r} in {location!r} (official API; order is "
+        "Yelp's relevance ranking, star ratings are aggregate customer sentiment):",
+    ]
+    lines.extend(_yelp_business_lines(b) for b in businesses)
+    return _result("ok", "yelp", "\n".join(lines))
+
+
 # -- Generic pages ------------------------------------------------------------
 
 class _TextExtractor(HTMLParser):
@@ -149,4 +259,6 @@ def read_url(url: str) -> dict:
     """Dispatch to the right reader for the URL's source type."""
     if _is_reddit_thread(url):
         return read_reddit_thread(url)
+    if _is_yelp(url):
+        return read_yelp(url)
     return read_page(url)

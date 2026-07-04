@@ -496,3 +496,8 @@ GEOIP_PATH = env("GEOIP_PATH", default="")
 PERPLEXITY_SEARCH_DAILY_LIMIT_PER_USER = env.int(
     "PERPLEXITY_SEARCH_DAILY_LIMIT_PER_USER", default=200
 )
+
+# Yelp Fusion API (Source Intelligence). When set, Yelp URLs in scan
+# results are read through the official API (ratings, review counts,
+# excerpt reviews) instead of the bot-blocked HTML.
+YELP_API_KEY = env("YELP_API_KEY", default="")
