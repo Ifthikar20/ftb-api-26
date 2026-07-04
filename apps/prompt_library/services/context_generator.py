@@ -96,6 +96,23 @@ _USER_TEMPLATE = (
 )
 
 
+# Compact instruction for the related-prompt recommender. Kept intentionally
+# small (this is a secondary feature) to minimise DeepSeek token spend.
+_RELATED_SYSTEM = (
+    "You write short, natural questions a real person would ask an AI "
+    "assistant. Reply with JSON only."
+)
+
+_RELATED_USER_TEMPLATE = (
+    'Existing prompt: "{seed}"\n'
+    "Write {count} short related questions on the same topic and audience, "
+    "each from a different angle. Be concrete; no placeholders.\n"
+    'Return only a JSON array of objects with keys: "prompt_text" (string), '
+    '"style" (one of question, comparison, how_to, local, problem), '
+    '"intent_bucket" (one of category, comparison, problem, local).'
+)
+
+
 def _strip_fences(text: str) -> str:
     """Drop ```json ... ``` markdown fences if the model added them."""
     text = (text or "").strip()
@@ -310,4 +327,69 @@ def generate_from_context(
     if not items:
         return _fallback_single(context_text), getattr(provider, "name", "fallback")
 
+    return items, getattr(provider, "name", "deepseek")
+
+
+def generate_related_prompts(
+    seed_prompt: str,
+    *,
+    count: int = 5,
+    user=None,
+) -> tuple[list[dict], str]:
+    """Return (items, provider_name) of prompts related to ``seed_prompt``.
+
+    Best-effort recommender used by the create-prompt flow to suggest
+    follow-on prompts. Because this is a secondary operation (not a core
+    audit) it is kept deliberately cheap:
+
+    * Pins DeepSeek (the cheapest tooling provider) rather than the default
+      synthesis chain. A safety fallback to Claude/GPT only kicks in when
+      DeepSeek has no key configured.
+    * Uses a small system + user instruction and a low ``count`` to minimise
+      token spend.
+
+    Token usage is still metered per-user: passing ``user`` to
+    ``provider.query`` records an ``AITokenUsage`` row (tagged role
+    "recommendation") that counts toward the user's usage and monthly cost
+    cap. Returns an empty list on any failure so the UI just shows nothing.
+    """
+    seed = (seed_prompt or "").strip()
+    if not seed:
+        return [], "fallback"
+    count = max(1, min(int(count or 5), 10))
+
+    try:
+        from apps.llm_ranking.providers import get_synthesis_provider
+    except Exception as exc:  # pragma: no cover — import-time only
+        logger.warning("generate_related_prompts: provider import failed: %s", exc)
+        return [], "fallback"
+
+    provider = get_synthesis_provider("deepseek")
+    if provider is None:
+        return [], "fallback"
+
+    user_prompt = _RELATED_USER_TEMPLATE.format(seed=seed[:300], count=count)
+    try:
+        result = provider.query(
+            user_prompt,
+            _RELATED_SYSTEM,
+            user=user,
+            website=None,
+            audit_id="prompt_library_related",
+            role="recommendation",
+        )
+    except Exception as exc:
+        logger.warning("generate_related_prompts provider call failed: %s", exc)
+        return [], getattr(provider, "name", "fallback")
+
+    if not getattr(result, "succeeded", False):
+        return [], getattr(provider, "name", "fallback")
+
+    items: list[dict] = []
+    for raw in _extract_json_array(getattr(result, "text", "") or ""):
+        norm = _normalise_item(raw)
+        if norm is not None:
+            items.append(norm)
+        if len(items) >= count:
+            break
     return items, getattr(provider, "name", "deepseek")

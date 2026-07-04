@@ -22,11 +22,15 @@ app.conf.task_routes = {
     "apps.websites.tasks.deliver_webhook": {"queue": "webhooks"},
     # integrations / OAuth
     "apps.websites.tasks.refresh_expiring_tokens": {"queue": "integrations"},
+    "apps.search_console.tasks.*": {"queue": "integrations"},
     # AI / LLM
     "apps.llm_ranking.tasks.*": {"queue": "ai"},
     "apps.citations.tasks.*": {"queue": "ai"},
     "apps.brand_vault.tasks.*": {"queue": "ai"},
     "apps.content_studio.tasks.*": {"queue": "ai"},
+    # agents: runs are AI-heavy; action execution hits integrations
+    "apps.agents.tasks.run_hired_agent": {"queue": "ai"},
+    "apps.agents.tasks.execute_agent_action": {"queue": "integrations"},
 }
 
 app.conf.beat_schedule = {
@@ -69,6 +73,11 @@ app.conf.beat_schedule = {
         "task": "apps.llm_ranking.tasks.dispatch_scheduled_audits",
         "schedule": crontab(minute="*/15"),  # Every 15 min — checks next_run_at
     },
+    # ── Hireable Agents ──
+    "agents-run-dispatcher": {
+        "task": "apps.agents.tasks.dispatch_agent_runs",
+        "schedule": crontab(minute="*/15"),  # Every 15 min — checks next_run_at
+    },
     # ── Prompt Library ──
     "mine-daily-prompts": {
         "task": "apps.prompt_library.tasks.mine_daily_prompts",
@@ -100,5 +109,12 @@ app.conf.beat_schedule = {
     "generate-briefs-daily": {
         "task": "apps.content_studio.tasks.generate_briefs_daily",
         "schedule": crontab(minute=15, hour=6),
+    },
+    # ── Search Console ──
+    # Runs before compute-demand-scores (05:00) so fresh GSC_AGGREGATE
+    # prompts are scored the same morning.
+    "gsc-nightly-sync": {
+        "task": "apps.search_console.tasks.sync_all_gsc",
+        "schedule": crontab(minute=0, hour=3),
     },
 }

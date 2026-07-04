@@ -63,7 +63,6 @@ scripts/local_deploy.sh
 .env.prod.example
 # Apps that have been removed — block them from being silently
 # re-created by stale local scripts or runaway makemigrations runs.
-apps/agents/
 apps/claim_verifier/
 apps/competitors/
 apps/compliance/

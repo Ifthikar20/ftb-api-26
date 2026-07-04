@@ -24,6 +24,8 @@ urlpatterns = [
     path("api/v1/citations/", include("apps.citations.api.v1.urls")),
     path("api/v1/brand-vault/", include("apps.brand_vault.api.v1.urls")),
     path("api/v1/content-studio/", include("apps.content_studio.api.v1.urls")),
+    path("api/v1/agents/", include("apps.agents.api.v1.urls")),
+    path("api/v1/search-console/", include("apps.search_console.api.v1.urls")),
 
     # Pixel ingestion (high throughput)
     path("api/v1/track/", include("apps.analytics.api.v1.pixel_urls")),

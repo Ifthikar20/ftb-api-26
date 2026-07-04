@@ -4,6 +4,7 @@ import requests
 from django.conf import settings
 
 from apps.accounts.models import User
+from core.exceptions import PermissionDenied
 from core.logging.audit_logger import audit_log
 
 logger = logging.getLogger("apps")
@@ -15,7 +16,12 @@ GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo"
 class OAuthService:
     @staticmethod
     def google_authenticate(*, code: str, redirect_uri: str) -> User:
-        """Exchange Google OAuth code for user info and create/login user."""
+        """Exchange Google OAuth code for user info and log in an existing user.
+
+        Public sign-up is closed (accounts are admin-provisioned), so this
+        never creates accounts: a Google email without a matching User is
+        rejected with a 403.
+        """
         # Exchange code for access token
         token_response = requests.post(
             GOOGLE_TOKEN_URL,
@@ -44,20 +50,22 @@ class OAuthService:
         if not email:
             raise ValueError("Google account did not provide an email address.")
 
-        user, created = User.objects.get_or_create(
-            email__iexact=email,
-            defaults={
-                "email": email,
-                "full_name": userinfo.get("name", ""),
-                "is_email_verified": True,
-            },
-        )
+        user = User.objects.filter(email__iexact=email).first()
+        if user is None:
+            audit_log(
+                "user.login_rejected",
+                user=None,
+                action="login",
+                resource_type="user",
+                resource_id=email,
+                success=False,
+                metadata={"method": "google_oauth", "reason": "no_account"},
+            )
+            raise PermissionDenied(
+                "No FetchBot account exists for this Google email. "
+                "Contact your administrator for access."
+            )
 
-        if created:
-            user.set_unusable_password()
-            user.save()
-            audit_log("user.registered", user=user, action="create", resource_type="user", resource_id=str(user.id), metadata={"method": "google_oauth"})
-        else:
-            audit_log("user.login", user=user, action="login", resource_type="user", resource_id=str(user.id), metadata={"method": "google_oauth"})
+        audit_log("user.login", user=user, action="login", resource_type="user", resource_id=str(user.id), metadata={"method": "google_oauth"})
 
         return user

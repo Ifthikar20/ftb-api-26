@@ -4,7 +4,10 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from apps.prompt_library.services.context_generator import generate_from_context
+from apps.prompt_library.services.context_generator import (
+    generate_from_context,
+    generate_related_prompts,
+)
 
 
 class _Fake:
@@ -115,6 +118,77 @@ def test_provider_exception_falls_back():
         items, provider = generate_from_context("a real context with words")
     assert provider == "deepseek"
     assert len(items) == 1
+
+
+def test_related_blank_seed_returns_empty():
+    # No seed means nothing to relate to; return an empty list (not a
+    # fallback row) so the caller can render nothing.
+    items, provider = generate_related_prompts("   ")
+    assert items == []
+    assert provider == "fallback"
+
+
+def test_related_short_seed_still_generates():
+    # Unlike the free-form context path, a short seed prompt is allowed —
+    # the service wraps it into a small instruction before the AI call.
+    payload = (
+        '[{"prompt_text": "Which CRM is best for a two-person agency?",'
+        ' "style": "comparison", "intent_bucket": "comparison"}]'
+    )
+    with patch(
+        "apps.llm_ranking.providers.get_synthesis_provider",
+        return_value=_provider(payload),
+    ):
+        items, provider = generate_related_prompts("best CRM?", count=3)
+    assert provider == "deepseek"
+    assert len(items) == 1
+    assert items[0]["style"] == "comparison"
+
+
+def test_related_pins_deepseek_and_meters_per_user():
+    # The seed must reach DeepSeek (cheapest) and the call must carry the
+    # user + a distinct role so token usage is metered per-user.
+    captured = {}
+
+    def _query(prompt, system, **kw):
+        captured["prompt"] = prompt
+        captured.update(kw)
+        return _Fake(
+            '[{"prompt_text": "Which CRM fits a two-person team?",'
+            ' "style": "comparison", "intent_bucket": "comparison"}]'
+        )
+
+    provider = SimpleNamespace(name="deepseek")
+    provider.query = _query
+    with patch(
+        "apps.llm_ranking.providers.get_synthesis_provider",
+        return_value=provider,
+    ) as factory:
+        items, name = generate_related_prompts("best CRM?", count=4, user="user-123")
+
+    factory.assert_called_once_with("deepseek")  # pinned, not the default chain
+    assert name == "deepseek"
+    assert captured["user"] == "user-123"        # metered against the user
+    assert captured["role"] == "recommendation"  # distinct usage tag
+    assert "best CRM?" in captured["prompt"]
+    assert len(items) == 1
+
+
+def test_related_returns_empty_on_provider_failure():
+    boom = SimpleNamespace(name="deepseek")
+
+    def _raise(*a, **kw):
+        raise RuntimeError("network")
+
+    boom.query = _raise
+    with patch(
+        "apps.llm_ranking.providers.get_synthesis_provider",
+        return_value=boom,
+    ):
+        items, name = generate_related_prompts("best CRM?")
+    # Best-effort: no junk fallback row, just nothing to show.
+    assert items == []
+    assert name == "deepseek"
 
 
 def test_truncated_json_is_repaired():
