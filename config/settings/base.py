@@ -489,3 +489,10 @@ GEO_COUNTRY_HEADERS = ("HTTP_CF_IPCOUNTRY", "HTTP_X_GEO_COUNTRY")
 # Absolute path to a MaxMind GeoLite2-Country.mmdb for in-process country
 # lookups. Empty disables the local-DB layer (header + ip-api still work).
 GEOIP_PATH = env("GEOIP_PATH", default="")
+
+# Per-user daily cap on Perplexity Search API calls (Source Intelligence
+# scans). Each scan consumes one search call plus one cheap-LLM
+# extraction per readable result.
+PERPLEXITY_SEARCH_DAILY_LIMIT_PER_USER = env.int(
+    "PERPLEXITY_SEARCH_DAILY_LIMIT_PER_USER", default=200
+)

@@ -343,3 +343,96 @@ class GlobalSourceInfluenceView(APIView):
                 {"value": v, "label": label} for v, label in SourceClass.choices
             ],
         })
+
+
+class SourceScanListCreateView(TenantScopedAPIView):
+    """Source Intelligence scans: list recent, or start a new one.
+
+    POST body: {"query": "best bagels in dallas"}. The scan runs
+    asynchronously; poll the detail endpoint until status is complete.
+    """
+
+    MAX_ACTIVE_PER_WEBSITE = 3
+
+    def get(self, request, website_id):
+        from apps.citations.models import SourceScan
+
+        website = self.get_website(website_id)
+        scans = SourceScan.objects.filter(website=website)[:20]
+        return Response({"scans": [_scan_summary(s) for s in scans]})
+
+    def post(self, request, website_id):
+        from apps.citations.models import SourceScan, SourceScanStatus
+        from apps.citations.services import web_search
+        from apps.citations.tasks import run_source_scan
+
+        website = self.get_website(website_id)
+        if not web_search.is_configured():
+            return Response(
+                {"error": "not_configured",
+                 "message": "PERPLEXITY_API_KEY is not set on the server."},
+                status=400,
+            )
+        query = (request.data.get("query") or "").strip()
+        if not query or len(query) > 500:
+            return Response({"error": "query is required (max 500 chars)"}, status=400)
+
+        active = SourceScan.objects.filter(
+            website=website,
+            status__in=[SourceScanStatus.PENDING, SourceScanStatus.RUNNING],
+        ).count()
+        if active >= self.MAX_ACTIVE_PER_WEBSITE:
+            return Response(
+                {"error": "too_many_active_scans"}, status=429,
+            )
+
+        scan = SourceScan.objects.create(
+            website=website, query=query, created_by=request.user,
+        )
+        run_source_scan.delay(str(scan.id))
+        return Response(_scan_summary(scan), status=201)
+
+
+class SourceScanDetailView(TenantScopedAPIView):
+    def get(self, request, website_id, scan_id):
+        from apps.citations.models import SourceScan
+
+        website = self.get_website(website_id)
+        scan = self.get_tenant_object(
+            SourceScan.objects.filter(website=website), pk=scan_id
+        )
+        payload = _scan_summary(scan)
+        # Key is "rows", not "results": the EnvelopeRenderer treats any
+        # dict containing "results" as DRF pagination output.
+        payload["rows"] = [
+            {
+                "rank": r.rank,
+                "url": r.url,
+                "domain": r.domain,
+                "source_class": r.source_class,
+                "serp_title": r.serp_title,
+                "fetch_status": r.fetch_status,
+                "content_kind": r.content_kind,
+                "word_count": r.word_count,
+                "brands": r.brands,
+                "analysis_error": r.analysis_error,
+            }
+            for r in scan.results.all()
+        ]
+        return Response(payload)
+
+
+def _scan_summary(scan) -> dict:
+    return {
+        "id": str(scan.id),
+        "query": scan.query,
+        "provider": scan.provider,
+        "status": scan.status,
+        "error": scan.error,
+        "results_count": scan.results_count,
+        "analyzed_count": scan.analyzed_count,
+        "brands": scan.brands,
+        "own_brand_present": scan.own_brand_present,
+        "created_at": scan.created_at.isoformat() if scan.created_at else None,
+        "completed_at": scan.completed_at.isoformat() if scan.completed_at else None,
+    }

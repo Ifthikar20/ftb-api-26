@@ -102,3 +102,27 @@ def classify_unknown_domains(limit: int = 100) -> int:
         )
         upgraded += 1
     return upgraded
+
+
+@shared_task(name="apps.citations.tasks.run_source_scan")
+def run_source_scan(scan_id: str) -> str:
+    """Execute one Source Intelligence scan (SERP -> read -> sentiment)."""
+    from apps.citations.models import SourceScan
+    from apps.citations.services.source_scan import run_scan
+
+    try:
+        scan = SourceScan.objects.get(pk=scan_id)
+    except SourceScan.DoesNotExist:
+        logger.warning("run_source_scan: scan %s not found", scan_id)
+        return "not_found"
+    try:
+        run_scan(scan)
+        return scan.status
+    except Exception as exc:  # pragma: no cover
+        logger.exception("run_source_scan(%s) crashed: %s", scan_id, exc)
+        scan.refresh_from_db()
+        if scan.status not in ("complete", "failed"):
+            scan.status = "failed"
+            scan.error = str(exc)[:1000]
+            scan.save(update_fields=["status", "error", "updated_at"])
+        return "failed"

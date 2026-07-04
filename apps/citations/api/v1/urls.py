@@ -44,4 +44,14 @@ urlpatterns = [
         views.GlobalSourceInfluenceView.as_view(),
         name="citations-global-influence",
     ),
+    path(
+        "websites/<uuid:website_id>/source-scans/",
+        views.SourceScanListCreateView.as_view(),
+        name="citations-source-scan-list",
+    ),
+    path(
+        "websites/<uuid:website_id>/source-scans/<uuid:scan_id>/",
+        views.SourceScanDetailView.as_view(),
+        name="citations-source-scan-detail",
+    ),
 ]
