@@ -34,6 +34,7 @@ from urllib.parse import urlparse
 import requests
 
 CSE_ENDPOINT = "https://www.googleapis.com/customsearch/v1"
+SERPAPI_ENDPOINT = "https://serpapi.com/search.json"
 PAGE_TIMEOUT = 10.0
 USER_AGENT = "Mozilla/5.0 (compatible; FetchBot-SEO-Analyzer/1.0)"
 
@@ -45,7 +46,10 @@ THIN_CONTENT_WORDS = 300
 
 # ── SERP fetch ────────────────────────────────────────────────────────────
 
-def fetch_serp(query: str, api_key: str, cse_id: str, num: int) -> list[dict]:
+def fetch_serp_cse(query: str, api_key: str, cse_id: str, num: int) -> list[dict]:
+    """Google Custom Search JSON API. Only returns whole-web results on
+    engines created before 2026-01-20 with 'Search the entire web'
+    enabled; newer engines are limited to their configured sites."""
     resp = requests.get(
         CSE_ENDPOINT,
         params={"key": api_key, "cx": cse_id, "q": query, "num": min(num, 10)},
@@ -66,6 +70,29 @@ def fetch_serp(query: str, api_key: str, cse_id: str, num: int) -> list[dict]:
             "snippet": item.get("snippet", ""),
         }
         for idx, item in enumerate(items, start=1)
+    ]
+
+
+def fetch_serp_serpapi(query: str, api_key: str, num: int) -> list[dict]:
+    """SerpAPI Google engine — same params the app uses in
+    apps/prompt_library/services/search_sources.py. Whole-web results
+    with no Programmable Search Engine required."""
+    resp = requests.get(
+        SERPAPI_ENDPOINT,
+        params={"q": query[:500], "engine": "google", "num": str(min(num, 10)), "api_key": api_key},
+        timeout=15,
+    )
+    if resp.status_code != 200:
+        sys.exit(f"[FAIL] SerpAPI returned HTTP {resp.status_code}: {resp.text[:200]}")
+    organic = resp.json().get("organic_results") or []
+    return [
+        {
+            "rank": item.get("position", idx),
+            "url": item.get("link", ""),
+            "title": item.get("title", ""),
+            "snippet": item.get("snippet", ""),
+        }
+        for idx, item in enumerate(organic[:num], start=1)
     ]
 
 
@@ -263,6 +290,13 @@ def main():
     )
     parser.add_argument("query", help='Search query, e.g. "best bagels in dallas"')
     parser.add_argument("--num", type=int, default=10, help="Results to analyze (max 10 per API call).")
+    parser.add_argument(
+        "--provider",
+        choices=["auto", "cse", "serpapi"],
+        default="auto",
+        help="SERP source. auto prefers SerpAPI when SERPAPI_KEY is set, else Custom Search. "
+             "Note: CSE engines created after 2026-01-20 cannot search the whole web.",
+    )
     # Precedence: flag > shell env > repo .env (new names, then legacy names).
     parser.add_argument(
         "--api-key",
@@ -274,25 +308,54 @@ def main():
         default=os.environ.get("GOOGLE_CSE_ID", "")
         or _env_file_value("GOOGLE_CSE_ID", "GOOGLE_SEARCH_ENGINE_ID"),
     )
+    parser.add_argument(
+        "--serpapi-key",
+        default=os.environ.get("SERPAPI_KEY", "") or _env_file_value("SERPAPI_KEY"),
+    )
     parser.add_argument("--no-fetch", action="store_true",
                         help="Skip fetching each page (ranking + brands only, no on-page analysis).")
     parser.add_argument("--json", action="store_true", dest="as_json",
                         help="Emit machine-readable JSON instead of the report.")
     args = parser.parse_args()
 
-    if not args.api_key or not args.cse_id:
-        sys.exit(
-            "[FAIL] Missing credentials. Set GOOGLE_API_KEY and GOOGLE_CSE_ID env vars "
-            "(the same values from .env) or pass --api-key/--cse-id.\n"
-            "       These are Custom Search API credentials, not the OAuth client:\n"
-            "       key: Cloud Console > APIs & Services > Credentials > API key\n"
-            "       cx:  programmablesearchengine.google.com > your engine > Search engine ID"
-        )
+    # Pick a provider. SerpAPI is preferred in auto mode because new
+    # Custom Search engines (created after 2026-01-20) cannot search
+    # the whole web anymore.
+    provider = args.provider
+    if provider == "auto":
+        if args.serpapi_key:
+            provider = "serpapi"
+        elif args.api_key and args.cse_id:
+            provider = "cse"
+        else:
+            sys.exit(
+                "[FAIL] No SERP credentials found. Provide ONE of:\n"
+                "       SERPAPI_KEY (serpapi.com, free tier available), or\n"
+                "       GOOGLE_API_KEY + GOOGLE_CSE_ID (Custom Search; note that engines\n"
+                "       created after 2026-01-20 cannot search the entire web).\n"
+                "       Values are read from flags, shell env, or the repo .env file."
+            )
 
-    results = fetch_serp(args.query, args.api_key, args.cse_id, args.num)
+    if provider == "serpapi":
+        if not args.serpapi_key:
+            sys.exit("[FAIL] --provider serpapi requires SERPAPI_KEY (env, .env, or --serpapi-key).")
+        results = fetch_serp_serpapi(args.query, args.serpapi_key, args.num)
+    else:
+        if not args.api_key or not args.cse_id:
+            sys.exit(
+                "[FAIL] --provider cse requires GOOGLE_API_KEY and GOOGLE_CSE_ID "
+                "(flags, shell env, or repo .env)."
+            )
+        results = fetch_serp_cse(args.query, args.api_key, args.cse_id, args.num)
+
     if not results:
-        sys.exit(f"[FAIL] No results returned for {args.query!r}. "
-                 "Check that the search engine is set to search the entire web.")
+        hint = (
+            "Check that the engine has 'Search the entire web' enabled (only possible on "
+            "engines created before 2026-01-20); otherwise use --provider serpapi."
+            if provider == "cse"
+            else "SerpAPI returned no organic results; check the query and account quota."
+        )
+        sys.exit(f"[FAIL] No results returned for {args.query!r}. {hint}")
 
     for result in results:
         page = None if args.no_fetch else analyze_page(result["url"])
@@ -315,8 +378,9 @@ def main():
                           "brand_share": share}, indent=2))
         return
 
+    source = "SerpAPI" if provider == "serpapi" else "Custom Search API"
     print(f'SERP analysis for: "{args.query}"')
-    print(f"Top {len(results)} organic Google results (Custom Search API)")
+    print(f"Top {len(results)} organic Google results ({source})")
     print()
     print("Brand leaderboard:")
     for domain, entry in leaderboard:
