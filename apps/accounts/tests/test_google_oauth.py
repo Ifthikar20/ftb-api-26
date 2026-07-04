@@ -1,4 +1,9 @@
-"""Tests for the Google login endpoint (POST /api/v1/auth/google/)."""
+"""Tests for the Google login endpoint (POST /api/v1/auth/google/).
+
+Public sign-up is closed: Google sign-in only works for emails that
+already have a FetchBot account. Unknown emails are rejected with 403
+and no account is created.
+"""
 
 from unittest.mock import MagicMock, patch
 
@@ -33,11 +38,12 @@ def _google_mocks(userinfo):
 
 @pytest.mark.django_db
 class TestGoogleOAuthView:
-    def test_creates_user_and_returns_jwt(self, settings):
+    def test_logs_in_existing_user(self, settings):
         settings.GOOGLE_OAUTH_CLIENT_ID = "cid"
         settings.GOOGLE_OAUTH_CLIENT_SECRET = "secret"
+        existing = UserFactory(email="existing.google@test.com")
         token_post, userinfo_get = _google_mocks(
-            {"email": "new.google.user@test.com", "name": "Google User"}
+            {"email": "existing.google@test.com", "name": "Existing"}
         )
         with token_post as mock_post, userinfo_get:
             response = APIClient().post(
@@ -49,13 +55,12 @@ class TestGoogleOAuthView:
         assert response.status_code == 200
         payload = response.json()["data"]
         assert payload["access"]
-        assert payload["user"]["email"] == "new.google.user@test.com"
+        assert payload["user"]["id"] == str(existing.id)
+        assert payload["user"]["email"] == "existing.google@test.com"
         # Refresh cookie is set like password login.
         assert any("refresh" in c.lower() for c in response.cookies.keys())
-
-        user = User.objects.get(email="new.google.user@test.com")
-        assert user.is_email_verified is True
-        assert not user.has_usable_password()
+        # No duplicate account.
+        assert User.objects.filter(email__iexact="existing.google@test.com").count() == 1
 
         # The code exchange used our credentials and the SPA redirect URI.
         data = mock_post.call_args.kwargs["data"]
@@ -63,10 +68,9 @@ class TestGoogleOAuthView:
         assert data["redirect_uri"] == REDIRECT_URI
         assert data["grant_type"] == "authorization_code"
 
-    def test_logs_in_existing_user(self):
-        existing = UserFactory(email="existing.google@test.com")
+    def test_unknown_google_email_rejected(self):
         token_post, userinfo_get = _google_mocks(
-            {"email": "existing.google@test.com", "name": "Existing"}
+            {"email": "stranger@test.com", "name": "Stranger"}
         )
         with token_post, userinfo_get:
             response = APIClient().post(
@@ -75,9 +79,12 @@ class TestGoogleOAuthView:
                 format="json",
             )
 
-        assert response.status_code == 200
-        assert response.json()["data"]["user"]["id"] == str(existing.id)
-        assert User.objects.filter(email__iexact="existing.google@test.com").count() == 1
+        assert response.status_code == 403
+        body = response.json()
+        assert body["error"]["code"] == "permission_denied"
+        assert "No FetchBot account" in body["error"]["message"]
+        # Sign-up stays closed: no account was created.
+        assert not User.objects.filter(email__iexact="stranger@test.com").exists()
 
     def test_missing_code_returns_400(self):
         response = APIClient().post("/api/v1/auth/google/", {}, format="json")
