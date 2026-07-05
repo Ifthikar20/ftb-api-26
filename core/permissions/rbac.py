@@ -121,5 +121,8 @@ class PlanFeatureRequired(BasePermission):
     def has_permission(self, request, view):
         if not self.required_feature:
             return True
+        from django.conf import settings
+        if not settings.PAYWALL_ENABLED:
+            return True
         user_plan = getattr(request.user, "plan", "starter")
         return self.required_feature in PLAN_FEATURES.get(user_plan, [])

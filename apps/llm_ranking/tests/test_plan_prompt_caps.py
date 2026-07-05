@@ -10,6 +10,13 @@ import pytest
 from core.utils.constants import Plan, max_prompts_for_user
 
 
+@pytest.fixture(autouse=True)
+def _paywall_on(settings):
+    # These tests assert plan gating, which only applies while the
+    # paywall is enabled (PAYWALL_ENABLED defaults to False).
+    settings.PAYWALL_ENABLED = True
+
+
 class _FakeSub:
     def __init__(self, plan):
         self.plan = plan
