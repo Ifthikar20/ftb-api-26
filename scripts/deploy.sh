@@ -383,8 +383,18 @@ dep_deploy() {
 
   local cache_bust; cache_bust=$(date +%s)
 
+  # Build identity baked into the web image and reported by
+  # /api/v1/version/ so we can always tell which commit is live.
+  local build_number build_time
+  build_number=$(ssh_remote "cd $REMOTE_DIR && git rev-list --count HEAD")
+  build_time=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
   step "Rebuild backend (web + celery)"
-  remote_compose "build --build-arg CACHE_DATE=$cache_bust web celery"
+  remote_compose "build --build-arg CACHE_DATE=$cache_bust \
+    --build-arg GIT_SHA=$new_sha \
+    --build-arg BUILD_NUMBER=$build_number \
+    --build-arg BUILD_TIME=$build_time \
+    web celery"
   remote_compose "up -d web celery"
   ok "Backend rebuilt and restarted"
 

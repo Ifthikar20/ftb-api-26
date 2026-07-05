@@ -17,6 +17,13 @@ RUN pip install -r requirements/prod.txt
 
 COPY . .
 
+# Declared so the shared build args from scripts/deploy.sh do not
+# emit unconsumed-arg warnings; the celery image does not serve
+# /api/v1/version/ but is built with the same flags.
+ARG GIT_SHA=""
+ARG BUILD_NUMBER=""
+ARG BUILD_TIME=""
+
 RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser
 RUN mkdir -p /app/logs
 RUN chown -R appuser:appgroup /app

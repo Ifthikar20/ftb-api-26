@@ -19,6 +19,15 @@ RUN pip install -r requirements/prod.txt
 
 COPY . .
 
+# Build identity, surfaced by /api/v1/version/. Passed by
+# scripts/deploy.sh at image build time; empty for local builds.
+ARG GIT_SHA=""
+ARG BUILD_NUMBER=""
+ARG BUILD_TIME=""
+ENV GIT_SHA=$GIT_SHA \
+    BUILD_NUMBER=$BUILD_NUMBER \
+    BUILD_TIME=$BUILD_TIME
+
 RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser
 RUN mkdir -p /app/logs
 RUN chown -R appuser:appgroup /app
