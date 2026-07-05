@@ -101,5 +101,7 @@ def search_web(
             "domain": _domain(url),
             "title": item.get("title", "") or "",
             "snippet": (item.get("snippet") or item.get("description") or "")[:1000],
+            "date": (item.get("date") or "").strip(),
+            "last_updated": (item.get("last_updated") or "").strip(),
         })
     return results

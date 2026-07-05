@@ -356,10 +356,16 @@ class SourceScanListCreateView(TenantScopedAPIView):
 
     def get(self, request, website_id):
         from apps.citations.models import SourceScan
+        from apps.citations.services import web_search
 
         website = self.get_website(website_id)
         scans = SourceScan.objects.filter(website=website)[:20]
-        return Response({"scans": [_scan_summary(s) for s in scans]})
+        return Response({
+            "scans": [_scan_summary(s) for s in scans],
+            # Lets the UI show a "search key not configured" notice
+            # without having to attempt a POST first.
+            "configured": web_search.is_configured(),
+        })
 
     def post(self, request, website_id):
         from apps.citations.models import SourceScan, SourceScanStatus
@@ -401,9 +407,12 @@ class SourceScanDetailView(TenantScopedAPIView):
         scan = self.get_tenant_object(
             SourceScan.objects.filter(website=website), pk=scan_id
         )
+        from apps.citations.services.source_scan import derive_opportunities
+
         payload = _scan_summary(scan)
         # Key is "rows", not "results": the EnvelopeRenderer treats any
-        # dict containing "results" as DRF pagination output.
+        # dict containing "results" as DRF pagination output. Same for
+        # "opportunities".
         payload["rows"] = [
             {
                 "rank": r.rank,
@@ -411,6 +420,11 @@ class SourceScanDetailView(TenantScopedAPIView):
                 "domain": r.domain,
                 "source_class": r.source_class,
                 "serp_title": r.serp_title,
+                "serp_snippet": r.serp_snippet,
+                "published_at": r.published_at.isoformat() if r.published_at else None,
+                "last_updated_at": r.last_updated_at.isoformat() if r.last_updated_at else None,
+                "relevant": r.relevant,
+                "relevance_note": r.relevance_note,
                 "fetch_status": r.fetch_status,
                 "content_kind": r.content_kind,
                 "word_count": r.word_count,
@@ -419,6 +433,7 @@ class SourceScanDetailView(TenantScopedAPIView):
             }
             for r in scan.results.all()
         ]
+        payload["opportunities"] = derive_opportunities(scan)
         return Response(payload)
 
 
