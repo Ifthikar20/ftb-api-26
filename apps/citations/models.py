@@ -134,3 +134,87 @@ class SourceInfluenceSnapshot(TimestampMixin):
     def __str__(self):
         scope = self.website_id or self.industry_id or "global"
         return f"Influence({self.provider}, {scope}, {self.period_end})"
+
+
+class SourceScanStatus(models.TextChoices):
+    PENDING = "pending", "Pending"
+    RUNNING = "running", "Running"
+    COMPLETE = "complete", "Complete"
+    FAILED = "failed", "Failed"
+
+
+class SourceScan(TimestampMixin):
+    """One Source Intelligence run: query -> SERP -> content -> sentiment.
+
+    Fetches the top web results for a query from an AI-era search index
+    (Perplexity), reads the content behind each result (Reddit threads
+    via the public JSON API, regular pages via the SSRF-guarded
+    fetcher), and extracts brand mentions and sentiment with a cheap
+    LLM. `brands` holds the aggregated share-of-voice rollup.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    website = models.ForeignKey(
+        "websites.Website", related_name="source_scans", on_delete=models.CASCADE
+    )
+    query = models.CharField(max_length=500)
+    provider = models.CharField(max_length=32, default="perplexity")
+    status = models.CharField(
+        max_length=16, choices=SourceScanStatus.choices,
+        default=SourceScanStatus.PENDING, db_index=True,
+    )
+    error = models.TextField(blank=True)
+    results_count = models.IntegerField(default=0)
+    analyzed_count = models.IntegerField(default=0)
+    # Aggregate: [{"name", "mentions", "weighted_score", "sentiment",
+    #              "results_present_in", "top_quote"}] sorted by weight.
+    brands = models.JSONField(default=list, blank=True)
+    # True when the scan's own website brand was found anywhere.
+    own_brand_present = models.BooleanField(default=False)
+    created_by = models.ForeignKey(
+        "accounts.User", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="+",
+    )
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "citations_sourcescan"
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["website", "-created_at"])]
+
+    def __str__(self):
+        return f"SourceScan({self.query[:40]!r}, {self.status})"
+
+
+class SourceScanResult(TimestampMixin):
+    """One ranked URL from a SourceScan, plus what we learned from it."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    scan = models.ForeignKey(
+        SourceScan, related_name="results", on_delete=models.CASCADE
+    )
+    rank = models.IntegerField()
+    url = models.URLField(max_length=2000)
+    domain = models.CharField(max_length=300, db_index=True)
+    source_class = models.CharField(
+        max_length=24, choices=SourceClass.choices, default=SourceClass.OTHER
+    )
+    serp_title = models.CharField(max_length=500, blank=True)
+    serp_snippet = models.TextField(blank=True)
+    # ok | blocked | error | skipped
+    fetch_status = models.CharField(max_length=16, default="skipped")
+    # reddit | page
+    content_kind = models.CharField(max_length=16, blank=True)
+    word_count = models.IntegerField(default=0)
+    # Per-result extraction: [{"name", "sentiment" (-1..1), "mentions",
+    #                          "weight", "quotes": [..]}]
+    brands = models.JSONField(default=list, blank=True)
+    analysis_error = models.CharField(max_length=300, blank=True)
+
+    class Meta:
+        db_table = "citations_sourcescanresult"
+        ordering = ["rank"]
+        unique_together = [("scan", "rank")]
+
+    def __str__(self):
+        return f"SourceScanResult(#{self.rank} {self.domain})"

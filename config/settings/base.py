@@ -348,6 +348,14 @@ STRIPE_SCALE_ANNUAL_PRICE_ID = env("STRIPE_SCALE_ANNUAL_PRICE_ID", default="")
 # without calling Stripe. Useful for local dev and demos. Hard-wired
 # off in prod settings; default off here for safety.
 BILLING_DEV_MODE = env.bool("BILLING_DEV_MODE", default=False)
+
+# Master paywall switch. When False, authenticated users are never
+# routed to /paywall and every plan-entitlement check resolves to the
+# top tier, so the full app is open regardless of subscription state.
+# Set PAYWALL_ENABLED=True in the env file to turn billing gates back
+# on; no code change needed.
+PAYWALL_ENABLED = env.bool("PAYWALL_ENABLED", default=False)
+
 SENDGRID_API_KEY = env("SENDGRID_API_KEY", default="")
 GOOGLE_OAUTH_CLIENT_ID = env("GOOGLE_OAUTH_CLIENT_ID", default="")
 GOOGLE_OAUTH_CLIENT_SECRET = env("GOOGLE_OAUTH_CLIENT_SECRET", default="")
@@ -489,3 +497,15 @@ GEO_COUNTRY_HEADERS = ("HTTP_CF_IPCOUNTRY", "HTTP_X_GEO_COUNTRY")
 # Absolute path to a MaxMind GeoLite2-Country.mmdb for in-process country
 # lookups. Empty disables the local-DB layer (header + ip-api still work).
 GEOIP_PATH = env("GEOIP_PATH", default="")
+
+# Per-user daily cap on Perplexity Search API calls (Source Intelligence
+# scans). Each scan consumes one search call plus one cheap-LLM
+# extraction per readable result.
+PERPLEXITY_SEARCH_DAILY_LIMIT_PER_USER = env.int(
+    "PERPLEXITY_SEARCH_DAILY_LIMIT_PER_USER", default=200
+)
+
+# Yelp Fusion API (Source Intelligence). When set, Yelp URLs in scan
+# results are read through the official API (ratings, review counts,
+# excerpt reviews) instead of the bot-blocked HTML.
+YELP_API_KEY = env("YELP_API_KEY", default="")

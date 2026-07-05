@@ -75,7 +75,7 @@ if [[ -n "$PASSWORD" ]]; then
 else
   echo "  Password:  (auto-generated, printed below)"
 fi
-[[ ${#EXTRA_FLAGS[@]} -gt 0 ]] && echo "  Flags:     ${EXTRA_FLAGS[*]}"
+[[ ${EXTRA_FLAGS[@]+x} ]] && echo "  Flags:     ${EXTRA_FLAGS[*]}"
 echo ""
 
 # ── Build the remote command ─────────────────────────────────────────
@@ -84,7 +84,7 @@ echo ""
 # prompt because we have no TTY on the inner shell.
 PY_CMD=(python scripts/create_prod_user.py --yes)
 [[ -n "$PASSWORD" ]] && PY_CMD+=(--password "$PASSWORD")
-for f in "${EXTRA_FLAGS[@]}"; do
+for f in ${EXTRA_FLAGS[@]+"${EXTRA_FLAGS[@]}"}; do
   PY_CMD+=("$f")
 done
 PY_CMD+=("$EMAIL" "$FULL_NAME")

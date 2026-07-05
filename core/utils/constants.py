@@ -127,12 +127,17 @@ def max_prompts_for_user(user) -> int:
     a user with no subscription can run a tiny 5-prompt audit so the
     "first run" experience isn't gated.
     """
-    try:
-        sub = getattr(user, "subscription", None)
-        plan = getattr(sub, "plan", None) if sub else None
-    except Exception:
-        plan = None
-    limits = PLAN_LIMITS.get(plan) or PLAN_LIMITS[Plan.INDIVIDUAL]
+    from django.conf import settings
+
+    if not settings.PAYWALL_ENABLED:
+        limits = PLAN_LIMITS[Plan.ENTERPRISE]
+    else:
+        try:
+            sub = getattr(user, "subscription", None)
+            plan = getattr(sub, "plan", None) if sub else None
+        except Exception:
+            plan = None
+        limits = PLAN_LIMITS.get(plan) or PLAN_LIMITS[Plan.INDIVIDUAL]
     raw = limits.get("max_prompts_per_audit") or 5
     cap = int(raw) if isinstance(raw, int | float) else 5
     return cap if cap > 0 else 50  # treat -1 as "effectively unlimited"

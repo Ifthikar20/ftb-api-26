@@ -329,21 +329,31 @@ class IntegrationRegistry:
         """Return Django model choices for integration types."""
         return [(c.name, c.display_name) for c in self._integrations.values()]
 
+    @staticmethod
+    def _effective_plan(user) -> str:
+        """Plan tier used for entitlement checks.
+
+        With the paywall disabled everyone is treated as the top tier
+        ("scale"), so integrations and limits are never plan-blocked.
+        """
+        from django.conf import settings
+        if not settings.PAYWALL_ENABLED:
+            return "scale"
+        return getattr(user, "plan", "starter")
+
     def check_entitlement(self, user, integration_name: str) -> bool:
         """Check if a user's plan allows an integration."""
         config = self.get(integration_name)
         if not config:
             return False
-        plan = getattr(user, "plan", "starter")
-        return config.is_enabled_for(plan)
+        return config.is_enabled_for(self._effective_plan(user))
 
     def get_limit(self, user, integration_name: str, limit_name: str, default=None):
         """Get a specific limit for a user's plan and integration."""
         config = self.get(integration_name)
         if not config:
             return default
-        plan = getattr(user, "plan", "starter")
-        return config.get_limit(plan, limit_name, default)
+        return config.get_limit(self._effective_plan(user), limit_name, default)
 
 
 # ── Singleton ──

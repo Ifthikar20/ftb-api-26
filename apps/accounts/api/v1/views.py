@@ -266,6 +266,8 @@ class SessionView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        from django.conf import settings
+
         from apps.websites.models import Website
         from core.utils.constants import SubscriptionStatus
 
@@ -291,9 +293,12 @@ class SessionView(APIView):
         # they're asked to pay — invested users convert better. So
         # the funnel is: register -> onboarding modal -> paywall ->
         # dashboard.
+        # The paywall step is skipped entirely while PAYWALL_ENABLED is
+        # False (the flag lives in settings and is env-driven, so it can
+        # be flipped back on without a code change).
         if needs_onboarding:
             next_route = "onboarding"
-        elif not is_paying:
+        elif not is_paying and settings.PAYWALL_ENABLED:
             next_route = "paywall"
         else:
             next_route = "app"

@@ -1,5 +1,7 @@
 """Feature-gating helpers that resolve a user's plan and check limits."""
 
+from django.conf import settings
+
 from core.utils.constants import PLAN_LIMITS, Plan
 
 # Legacy plan → 2-tier mapping
@@ -15,6 +17,10 @@ _LEGACY_MAP = {
 
 def _resolve_plan_key(user):
     """Resolve the user's effective plan to a PLAN_LIMITS key."""
+    # Paywall off: everyone gets the top tier so no feature or numeric
+    # limit blocks them.
+    if not settings.PAYWALL_ENABLED:
+        return Plan.ENTERPRISE
     plan_key = getattr(user, "effective_plan", None) or getattr(user, "plan", "individual")
     # Map legacy names
     plan_key = _LEGACY_MAP.get(plan_key, plan_key)
