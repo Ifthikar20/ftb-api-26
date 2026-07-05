@@ -140,6 +140,24 @@ back.
   affected containers.
 - TLS certs in `/opt/fetchbot/ssl` are managed outside this repo.
 
+## Paywall entitlement switch
+
+The paywall (and all plan gating) is controlled by the `PAYWALL_ENABLED`
+GitHub repository **variable** (Settings > Secrets and variables > Actions
+> Variables), not by hand-edits on the server:
+
+1. Set the variable to `True` (paywall on) or `False` (open app).
+   Unset behaves as `False`.
+2. Re-run the "Deploy to prod" workflow (or merge anything to `main`).
+   The deploy pipeline syncs the value into `.env.prod` on the host and
+   restarts the containers.
+
+`scripts/deploy.sh` overwrites the `PAYWALL_ENABLED` line in the remote
+`.env.prod` on every pipeline deploy, so a manual edit of that line on the
+server survives only until the next deploy. Manual runs of the script
+without `PAYWALL_ENABLED` in the environment leave the remote value
+untouched.
+
 ## Pre-deploy checklist
 
 - CI lint job is green on the commit being deployed.

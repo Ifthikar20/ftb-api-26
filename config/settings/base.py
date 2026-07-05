@@ -356,6 +356,13 @@ BILLING_DEV_MODE = env.bool("BILLING_DEV_MODE", default=False)
 # on; no code change needed.
 PAYWALL_ENABLED = env.bool("PAYWALL_ENABLED", default=False)
 
+# Build identity of the running backend, surfaced by /api/v1/version/.
+# Baked into the Docker image at deploy time via build args (see
+# docker/Dockerfile and scripts/deploy.sh). All empty in local dev.
+GIT_SHA = env("GIT_SHA", default="")
+BUILD_NUMBER = env("BUILD_NUMBER", default="")
+BUILD_TIME = env("BUILD_TIME", default="")
+
 SENDGRID_API_KEY = env("SENDGRID_API_KEY", default="")
 GOOGLE_OAUTH_CLIENT_ID = env("GOOGLE_OAUTH_CLIENT_ID", default="")
 GOOGLE_OAUTH_CLIENT_SECRET = env("GOOGLE_OAUTH_CLIENT_SECRET", default="")

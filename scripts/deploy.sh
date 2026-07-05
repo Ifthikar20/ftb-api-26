@@ -47,6 +47,10 @@ PEM_KEY="${PEM_KEY:-$REPO_DIR/fynda-deploy.pem}"
 REMOTE_DIR="${REMOTE_DIR:-/opt/fetchbot/ftb-api-26}"
 PUBLIC_HOST="${PUBLIC_HOST:-https://fetchbot.ai}"
 COMPOSE_FILE="docker/docker-compose.prod.yml"
+# Entitlement switch synced into remote .env.prod when set. GitHub
+# Actions supplies it from the PAYWALL_ENABLED repository variable;
+# leave empty on manual runs to keep the remote value untouched.
+PAYWALL_ENABLED="${PAYWALL_ENABLED:-}"
 
 SSH_OPTS=(-i "$PEM_KEY" -o StrictHostKeyChecking=accept-new -o LogLevel=ERROR)
 
@@ -366,6 +370,24 @@ dep_deploy() {
     || die "Remote SHA mismatch after pull (got ${new_sha:0:12}, expected ${TARGET_SHA:0:12})"
   ok "Remote now at ${new_sha:0:12}"
 
+  # Sync the paywall entitlement switch into remote .env.prod. Only
+  # runs when the caller sets PAYWALL_ENABLED (GitHub Actions always
+  # does, from the repo variable); manual deploys without it leave the
+  # remote file alone. Validated here because an unparseable value
+  # would crash Django at boot (env.bool raises on bad input).
+  if [[ -n "$PAYWALL_ENABLED" ]]; then
+    case "$PAYWALL_ENABLED" in
+      True|true|False|false|1|0) ;;
+      *) die "Invalid PAYWALL_ENABLED='$PAYWALL_ENABLED' (use True or False)" ;;
+    esac
+    step "Sync PAYWALL_ENABLED=$PAYWALL_ENABLED into remote .env.prod"
+    ssh_remote "cd $REMOTE_DIR \
+      && touch .env.prod \
+      && sed -i '/^PAYWALL_ENABLED=/d' .env.prod \
+      && printf 'PAYWALL_ENABLED=%s\n' '$PAYWALL_ENABLED' >> .env.prod"
+    ok "Paywall switch set to $PAYWALL_ENABLED"
+  fi
+
   if [[ "$SKIP_BUILD" == "1" ]]; then
     warn "Skipping container rebuild"
     return
@@ -383,8 +405,18 @@ dep_deploy() {
 
   local cache_bust; cache_bust=$(date +%s)
 
+  # Build identity baked into the web image and reported by
+  # /api/v1/version/ so we can always tell which commit is live.
+  local build_number build_time
+  build_number=$(ssh_remote "cd $REMOTE_DIR && git rev-list --count HEAD")
+  build_time=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
   step "Rebuild backend (web + celery)"
-  remote_compose "build --build-arg CACHE_DATE=$cache_bust web celery"
+  remote_compose "build --build-arg CACHE_DATE=$cache_bust \
+    --build-arg GIT_SHA=$new_sha \
+    --build-arg BUILD_NUMBER=$build_number \
+    --build-arg BUILD_TIME=$build_time \
+    web celery"
   remote_compose "up -d web celery"
   ok "Backend rebuilt and restarted"
 

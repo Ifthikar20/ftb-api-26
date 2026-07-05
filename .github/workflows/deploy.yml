@@ -58,6 +58,13 @@ jobs:
           REMOTE_DIR: ${{ secrets.REMOTE_DIR || '/opt/fetchbot/ftb-api-26' }}
           BRANCH: main
           PUBLIC_HOST: https://fetchbot.ai
+          # Entitlement switch. Managed as a repository VARIABLE (not a
+          # secret): Settings > Secrets and variables > Actions >
+          # Variables > PAYWALL_ENABLED. Set to True to turn the paywall
+          # and plan gating on, False to open the app to everyone, then
+          # re-run this workflow (workflow_dispatch) to apply. Unset
+          # defaults to False (paywall off).
+          PAYWALL_ENABLED: ${{ vars.PAYWALL_ENABLED || 'False' }}
         # --clean runs `docker system prune -af` on the EC2 before
         # building so we never hit the 20 GB root volume's layer cache
         # ceiling mid-deploy. Costs ~5 s per run, never breaks anything.

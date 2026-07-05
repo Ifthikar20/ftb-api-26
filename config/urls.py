@@ -4,12 +4,16 @@ from django.urls import include, path
 from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView, SpectacularSwaggerView
 
 from apps.analytics.api.v1.tracking_views import TrackedLinkRedirectView
+from core.views.version import VersionView
 
 urlpatterns = [
     path("admin/", admin.site.urls),
 
     # Health checks
     path("health/", include("health_check.urls")),
+
+    # Build identity (unauthenticated; shown in the login page footer)
+    path("api/v1/version/", VersionView.as_view(), name="api-version"),
 
     # API v1
     path("api/v1/auth/", include("apps.accounts.api.v1.urls")),

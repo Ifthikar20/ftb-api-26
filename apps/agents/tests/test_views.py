@@ -9,6 +9,13 @@ from apps.agents.models import HiredAgent
 from apps.websites.tests.factories import WebsiteFactory
 
 
+@pytest.fixture(autouse=True)
+def _paywall_on(settings):
+    # These tests assert plan gating, which only applies while the
+    # paywall is enabled (PAYWALL_ENABLED defaults to False).
+    settings.PAYWALL_ENABLED = True
+
+
 @pytest.fixture
 def auth():
     user = UserFactory()
