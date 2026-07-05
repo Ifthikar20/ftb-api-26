@@ -21,10 +21,23 @@ class VersionView(APIView):
 
     def get(self, request, *args, **kwargs):
         sha = settings.GIT_SHA
+        build_time = settings.BUILD_TIME
+        build_number = settings.BUILD_NUMBER
+
+        # Human-readable marker shown in the login footer: vMMDD-N,
+        # where MMDD is the UTC deploy date sliced from the ISO
+        # BUILD_TIME and N is the commit count on main (BUILD_NUMBER),
+        # which increases with every merge.
+        if build_time and build_number:
+            label = f"v{build_time[5:7]}{build_time[8:10]}-{build_number}"
+        else:
+            label = "dev"
+
         return Response(
             {
+                "label": label,
                 "version": sha[:7] if sha else "dev",
-                "build": settings.BUILD_NUMBER or None,
-                "built_at": settings.BUILD_TIME or None,
+                "build": build_number or None,
+                "built_at": build_time or None,
             }
         )

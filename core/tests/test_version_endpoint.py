@@ -19,6 +19,7 @@ def test_version_reports_dev_when_unset(settings):
     settings.BUILD_NUMBER = ""
     settings.BUILD_TIME = ""
     data = APIClient().get(URL).json()["data"]
+    assert data["label"] == "dev"
     assert data["version"] == "dev"
     assert data["build"] is None
     assert data["built_at"] is None
@@ -30,6 +31,7 @@ def test_version_reports_short_sha_and_build(settings):
     settings.BUILD_NUMBER = "512"
     settings.BUILD_TIME = "2026-07-05T00:00:00Z"
     data = APIClient().get(URL).json()["data"]
+    assert data["label"] == "v0705-512"
     assert data["version"] == "9195e6f"
     assert data["build"] == "512"
     assert data["built_at"] == "2026-07-05T00:00:00Z"
