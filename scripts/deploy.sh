@@ -375,6 +375,9 @@ dep_deploy() {
   # does, from the repo variable); manual deploys without it leave the
   # remote file alone. Validated here because an unparseable value
   # would crash Django at boot (env.bool raises on bad input).
+  # Whitespace is stripped first: a GitHub variable saved as " False"
+  # (stray space from pasting) must not fail the whole deploy.
+  PAYWALL_ENABLED="${PAYWALL_ENABLED//[[:space:]]/}"
   if [[ -n "$PAYWALL_ENABLED" ]]; then
     case "$PAYWALL_ENABLED" in
       True|true|False|false|1|0) ;;
