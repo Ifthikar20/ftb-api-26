@@ -1,28 +1,33 @@
 """
 Perplexity Search API client for Source Intelligence scans.
 
-Returns ranked whole-web results from Perplexity's own index, which is
-one of the AI-era engines the product tracks. Follows the module-level
-client conventions of apps/llm_ranking/services/google_search.py:
-is_configured() guard, per-user daily quota, circuit breaker, narrow
-exception handling, empty-list on failure.
+Facade over the sources service. The actual search client lives in
+services/sources/logic.py (framework-free, single source of truth).
+Two modes:
+
+- SOURCES_SERVICE_URL set (production): call the internal sources
+  service over HTTP with a bearer token.
+- unset (dev, tests, CI): run the shared logic in-process.
+
+Stateful guards stay HERE in both modes: the per-user daily quota and
+the circuit breaker are Django-side concerns (cache/Redis backed), so
+the service remains stateless.
 """
 
 from __future__ import annotations
 
 import logging
-from urllib.parse import urlparse
 
 import requests
 from django.conf import settings
 
 from core.quota import DailyQuota
 from core.resilience.circuit_breaker import CircuitBreaker
+from services.sources import logic as sources_logic
+from services.sources.logic import DEFAULT_MAX_RESULTS, SEARCH_ENDPOINT  # noqa: F401
 
 logger = logging.getLogger("apps")
 
-SEARCH_ENDPOINT = "https://api.perplexity.ai/search"
-DEFAULT_MAX_RESULTS = 10
 DEFAULT_DAILY_LIMIT_PER_USER = 200
 
 _breaker = CircuitBreaker(name="perplexity_search", failure_threshold=5, recovery_timeout=120)
@@ -35,12 +40,12 @@ _quota = DailyQuota(
 
 
 def is_configured() -> bool:
-    return bool(getattr(settings, "PERPLEXITY_API_KEY", ""))
-
-
-def _domain(url: str) -> str:
-    host = urlparse(url).hostname or ""
-    return host[4:] if host.startswith("www.") else host
+    # Configured means either the key is local (in-process mode) or the
+    # sources service owns the key (HTTP mode).
+    return bool(
+        getattr(settings, "PERPLEXITY_API_KEY", "")
+        or getattr(settings, "SOURCES_SERVICE_URL", "")
+    )
 
 
 def search_web(
@@ -68,38 +73,39 @@ def search_web(
         logger.warning("Perplexity search daily quota exhausted for user %s", user_id)
         return []
 
+    service_url = getattr(settings, "SOURCES_SERVICE_URL", "") or ""
+    if service_url:
+        try:
+            resp = requests.post(
+                f"{service_url.rstrip('/')}/v1/search",
+                json={"query": query, "max_results": max_results, "timeout": timeout},
+                headers={
+                    "Authorization": f"Bearer {getattr(settings, 'SOURCES_AUTH_TOKEN', '')}",
+                },
+                timeout=timeout + 5,
+            )
+            resp.raise_for_status()
+            body = resp.json()
+        except (requests.RequestException, ValueError) as exc:
+            _breaker.record_failure()
+            logger.warning("Sources service search failed for %r: %s", query, exc)
+            return []
+        _breaker.record_success()
+        return body.get("results") or []
+
     try:
-        resp = requests.post(
-            SEARCH_ENDPOINT,
-            json={"query": query, "max_results": max(1, min(int(max_results), 20))},
-            headers={
-                "Authorization": f"Bearer {settings.PERPLEXITY_API_KEY}",
-                "Content-Type": "application/json",
-            },
+        results = sources_logic.perplexity_search(
+            query,
+            api_key=settings.PERPLEXITY_API_KEY,
+            max_results=max_results,
             timeout=timeout,
         )
-        resp.raise_for_status()
-        body = resp.json()
-        _breaker.record_success()
-    except requests.RequestException as exc:
+    except sources_logic.SearchRequestError as exc:
         _breaker.record_failure()
         logger.warning("Perplexity search failed for %r: %s", query, exc)
         return []
-    except ValueError as exc:
+    except sources_logic.SearchParseError as exc:
         logger.warning("Perplexity search returned non-JSON for %r: %s", query, exc)
         return []
-
-    raw = body.get("results") or body.get("web_results") or []
-    results = []
-    for idx, item in enumerate(raw[:max_results], start=1):
-        url = (item.get("url") or item.get("link") or "").strip()
-        if not url:
-            continue
-        results.append({
-            "rank": idx,
-            "url": url,
-            "domain": _domain(url),
-            "title": item.get("title", "") or "",
-            "snippet": (item.get("snippet") or item.get("description") or "")[:1000],
-        })
+    _breaker.record_success()
     return results

@@ -71,6 +71,54 @@ services:
       start_period: 30s
     restart: "no"  # Disabled: OpenClaw gateway not yet functional, was crash-looping
 
+  # Internal services: reachable only on the compose network via their
+  # aliases; no published ports, no nginx routes, no public DNS. Auth is
+  # a static bearer token from .env.prod shared with web/celery. Django
+  # enters HTTP mode only when the *_SERVICE_URL vars are present in
+  # .env.prod; without them the facades run the same logic in-process,
+  # so these containers can never block a deploy (hence no depends_on).
+  intelligence:
+    build:
+      context: ..
+      dockerfile: services/intelligence/Dockerfile
+    env_file: ../.env.prod
+    networks:
+      default:
+        aliases:
+          - intelligence.ftb.internal
+    deploy:
+      resources:
+        limits:
+          memory: 150M
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  sources:
+    build:
+      context: ..
+      dockerfile: services/sources/Dockerfile
+    env_file: ../.env.prod
+    networks:
+      default:
+        aliases:
+          - sources.ftb.internal
+    deploy:
+      resources:
+        limits:
+          memory: 150M
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
   web:
     build:
       context: ..

@@ -82,7 +82,7 @@ class TestOAuthCallback:
 
         assert response.status_code == 302
         assert response["Location"] == (
-            f"http://frontend.test/llm-ranking/{website.id}/search-performance?gsc=connected"
+            f"http://frontend.test/app/integrations?gsc=connected&website_id={website.id}"
         )
         integration = Integration.objects.get(website=website, type="gsc")
         assert integration.access_token == "at"

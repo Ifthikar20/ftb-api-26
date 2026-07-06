@@ -201,6 +201,13 @@ class SourceScanResult(TimestampMixin):
     )
     serp_title = models.CharField(max_length=500, blank=True)
     serp_snippet = models.TextField(blank=True)
+    # Publication dates as reported by the search engine (may be absent).
+    published_at = models.DateField(null=True, blank=True)
+    last_updated_at = models.DateField(null=True, blank=True)
+    # SERP relevance gate: off-topic results (e.g. designer "bags" for a
+    # "bagels" query) are excluded from fetching, analysis, and rollups.
+    relevant = models.BooleanField(default=True)
+    relevance_note = models.CharField(max_length=200, blank=True)
     # ok | blocked | error | skipped
     fetch_status = models.CharField(max_length=16, default="skipped")
     # reddit | page

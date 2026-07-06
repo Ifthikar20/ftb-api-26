@@ -363,6 +363,14 @@ GIT_SHA = env("GIT_SHA", default="")
 BUILD_NUMBER = env("BUILD_NUMBER", default="")
 BUILD_TIME = env("BUILD_TIME", default="")
 
+# Internal HTTP services (Docker-network only, never exposed via nginx).
+# Empty URLs mean the Django facades run the shared logic in-process,
+# which is the dev/test/CI default. See docs/ARCHITECTURE.md.
+INTELLIGENCE_SERVICE_URL = env("INTELLIGENCE_SERVICE_URL", default="")
+INTELLIGENCE_AUTH_TOKEN = env("INTELLIGENCE_AUTH_TOKEN", default="")
+SOURCES_SERVICE_URL = env("SOURCES_SERVICE_URL", default="")
+SOURCES_AUTH_TOKEN = env("SOURCES_AUTH_TOKEN", default="")
+
 SENDGRID_API_KEY = env("SENDGRID_API_KEY", default="")
 GOOGLE_OAUTH_CLIENT_ID = env("GOOGLE_OAUTH_CLIENT_ID", default="")
 GOOGLE_OAUTH_CLIENT_SECRET = env("GOOGLE_OAUTH_CLIENT_SECRET", default="")

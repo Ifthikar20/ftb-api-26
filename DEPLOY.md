@@ -11,13 +11,16 @@ see "Manual deploy" below.
 
 ## Architecture
 
-- **Host:** Ubuntu 22.04 EC2 instance (sized around t3.small; the deploy script
-  provisions a 2 GB swapfile to compensate for low RAM).
+- **Host:** Ubuntu 22.04 EC2 instance (sized around t3.small; a 2 GB swapfile
+  is recommended -- `deploy.sh` checks and warns if none is active but does
+  not create one).
 - **App directory on host:** `/opt/fetchbot/ftb-api-26`
 - **Orchestration:** `docker/docker-compose.prod.yml`
 - **Services:** `db` (Postgres 16), `redis`, `web` (Django/Gunicorn),
   `celery` (worker + beat in one container), `frontend` (Vue build artifact),
-  `nginx` (TLS termination + static), `openclaw` (currently `restart: "no"`).
+  `nginx` (TLS termination + static), `openclaw` (currently `restart: "no"`),
+  `intelligence` and `sources` (internal FastAPI sidecars, rebuilt by the
+  deploy build step; see docs/ARCHITECTURE.md "Internal services").
 - **Edge:** Cloudflare (SSL: Full Strict) → nginx container on ports 80/443.
   TLS certs are mounted from `/opt/fetchbot/ssl` on the host.
 - **Env file:** `/opt/fetchbot/ftb-api-26/.env.prod` (never committed; created

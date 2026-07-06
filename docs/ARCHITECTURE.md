@@ -230,7 +230,7 @@ Every LLM call funnels through `record_usage(...)`, which writes one row to `AIT
 ## 7. Deployment topology (recap)
 
 - **Image build:** all containers built on the host from the checked-out source by `docker compose -f docker/docker-compose.prod.yml up -d --build` inside `scripts/deploy.sh`. There is no registry; the host is the build farm.
-- **Resource limits:** db 300 M, redis 150 M, frontend (init) build, openclaw disabled, web 500 M, celery 400 M, nginx 50 M. Total fits a t3.small with the 2 GB swapfile the script provisions.
+- **Resource limits:** db 300 M, redis 150 M, frontend (init) build, openclaw disabled, web 500 M, celery 400 M, nginx 50 M, intelligence 150 M, sources 150 M. Limits total ~1.7 GB on a 2 GB t3.small; a 2 GB swapfile is assumed but NOT provisioned by the script -- `deploy.sh` preflight warns when no swap is active and prints the commands to add one.
 - **DB migrations:** `python manage.py migrate --noinput` runs at the end of `scripts/deploy.sh`. The new `apps/llm_ranking/migrations/0009_add_audit_logs.py` will be applied the next time deploy runs **after** it is committed and pushed.
 - **Frontend bundle:** the `frontend` service rebuilds via Vite at deploy time, so the `dist/` you see locally is irrelevant to prod — what matters is the source on the host at deploy time.
 - **No CI/CD deploy:** GitHub Actions only lints. Deploys are operator-driven SSH + script.
@@ -238,7 +238,51 @@ Every LLM call funnels through `record_usage(...)`, which writes one row to `AIT
 
 ---
 
-## 8. Action items implied by the current state
+## 8. Internal services (`services/`)
+
+Commonly used capability logic runs as owned downstream services, each in
+its own container with a unique internal FQDN:
+
+| Service | Internal FQDN | Owns |
+|---|---|---|
+| `intelligence` | `http://intelligence.ftb.internal:8000` | LLM brand/sentiment/issue extraction, SERP relevance gate |
+| `sources` | `http://sources.ftb.internal:8000` | Perplexity web search, Reddit/Yelp/page content readers (SSRF-guarded) |
+
+Pattern:
+
+- **Network:** compose default bridge only. The FQDNs are compose network
+  aliases; there are no published ports, no nginx routes, and no public
+  DNS. A browser can never reach these services -- only `web` and
+  `celery` can, over the Docker network.
+- **Auth:** static per-service bearer token (`INTELLIGENCE_AUTH_TOKEN`,
+  `SOURCES_AUTH_TOKEN`) from `.env.prod`, injected into both the service
+  and its Django callers -- same pattern as `OPENCLAW_AUTH_TOKEN`. A
+  service with an empty token refuses requests (503) rather than failing
+  open.
+- **Stateless services, stateful facades:** quotas (`core.quota`),
+  circuit breakers, and `AITokenUsage` cost recording stay in the Django
+  facade modules (`apps/citations/services/{source_sentiment,web_search,
+  content_reader}.py`). The services return usage numbers; the facades
+  record them.
+- **In-process fallback (single source of truth):** the pure logic lives
+  in `services/*/logic.py`, importable without FastAPI or Django. When
+  `INTELLIGENCE_SERVICE_URL` / `SOURCES_SERVICE_URL` are unset (dev,
+  tests, CI), the facades call that logic in-process with identical
+  behavior. Production sets the URLs in `.env.prod` to switch to HTTP.
+  Rollback is therefore instant: blank the URL vars and restart
+  web/celery.
+- **Fail-soft:** a down service degrades exactly like a missing API key
+  today -- single scan rows get error markers, the relevance gate fails
+  open, searches return empty. It never breaks request handling.
+- **SSRF note:** `services/sources/{url_safety,safe_http}.py` are
+  Django-free copies of `core/validators/*` (which other apps still
+  import and which raise Django `ValidationError`). Keep them in sync;
+  `services/sources/tests/test_sources_ssrf.py` mirrors the guard tests.
+
+---
+
+
+## 9. Action items implied by the current state
 
 1. **Commit the dirty tree** (don't lose the audit_logs work and the new migration `0009_add_audit_logs.py`).
 2. **Push to `origin/main`** and let CI lint pass.

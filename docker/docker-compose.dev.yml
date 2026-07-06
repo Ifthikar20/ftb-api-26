@@ -78,5 +78,34 @@ services:
       - ..:/app
     command: ["celery", "-A", "config.celery", "beat", "--loglevel=info", "--scheduler=django_celery_beat.schedulers:DatabaseScheduler"]
 
+  # Internal services (opt-in test rigs). Dev defaults to running the
+  # shared logic in-process inside Django; set the *_SERVICE_URL vars in
+  # ../.env to exercise the HTTP path against these containers.
+  intelligence:
+    build:
+      context: ..
+      dockerfile: services/intelligence/Dockerfile
+    env_file: ../.env
+    networks:
+      default:
+        aliases:
+          - intelligence.ftb.internal
+    volumes:
+      - ..:/app
+    command: ["uvicorn", "services.intelligence.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
+  sources:
+    build:
+      context: ..
+      dockerfile: services/sources/Dockerfile
+    env_file: ../.env
+    networks:
+      default:
+        aliases:
+          - sources.ftb.internal
+    volumes:
+      - ..:/app
+    command: ["uvicorn", "services.sources.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
 volumes:
   postgres_dev_data:

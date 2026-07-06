@@ -41,12 +41,15 @@ fi
 case "$env_choice" in
   local)
     base_url="${BASE_URL:-http://localhost:8000}"
+    frontend_base="${FRONTEND_BASE:-http://localhost:5173}"
     ;;
   prod)
     base_url="${BASE_URL:-https://fetchbot.ai}"
+    frontend_base="${FRONTEND_BASE:-https://fetchbot.ai}"
     ;;
   *)
     base_url="$env_choice"  # allow a full URL override
+    frontend_base="${FRONTEND_BASE:-$env_choice}"
     ;;
 esac
 
@@ -60,11 +63,17 @@ fi
 if [[ -z "$password_arg" ]]; then
   printf "${B}Password:${N} "
   # Read silently so the password doesn't show in the terminal or in
-  # shell history.
-  stty -echo
-  read -r password_arg
-  stty echo
-  printf "\n"
+  # shell history. stty only works on a real terminal; piped stdin
+  # (scripts, CI) falls back to a plain read.
+  if [[ -t 0 ]]; then
+    stty -echo
+    read -r password_arg
+    stty echo
+    printf "\n"
+  else
+    read -r password_arg
+    printf "\n"
+  fi
 fi
 [[ -z "$password_arg" ]] && { printf "${R}Password is required.${N}\n" >&2; exit 1; }
 
@@ -85,7 +94,8 @@ PY
 response=$(curl -s -w "\n%{http_code}" \
   -X POST "$base_url/api/v1/auth/login/" \
   -H "Content-Type: application/json" \
-  --data-binary "@$tmp_body")
+  --data-binary "@$tmp_body") \
+  || { printf "${R}✗ Could not reach %s — is the server up?${N}\n" "$base_url" >&2; exit 1; }
 
 status="${response##*$'\n'}"
 body="${response%$'\n'*}"
@@ -120,6 +130,10 @@ except Exception:
     printf "${D}(full token saved to /tmp/fb_access_token)${N}\n\n"
     printf "${B}Use it in follow-up calls:${N}\n"
     printf "  ${D}curl -H \"Authorization: Bearer \$(cat /tmp/fb_access_token)\" %s/api/v1/auth/me/${N}\n" "$base_url"
+    printf "\n${B}Or open the app already signed in:${N}\n"
+    printf "  %s/login?auto_token=%s\n" "$frontend_base" "$access"
+    printf "${D}(auto-token sessions last until the access token expires;${N}\n"
+    printf "${D} no refresh cookie is set by this path)${N}\n"
   fi
   exit 0
 fi
