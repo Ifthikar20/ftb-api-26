@@ -27,3 +27,7 @@ djangorestframework-stubs==3.15.*
 bandit==1.7.*
 safety==3.*
 semgrep==1.*
+
+# Internal-service test clients (FastAPI apps under services/)
+fastapi==0.115.*
+uvicorn==0.32.*

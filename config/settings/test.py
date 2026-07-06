@@ -32,3 +32,8 @@ EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
 PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
 
 FIELD_ENCRYPTION_KEY = "YJGq9tGE_J3DT8L-Gg9KBgBBqChfPg1UYGU1cWTc_zI="
+
+# Force in-process mode for the internal-service facades so exported
+# shell variables can never flip the suite into HTTP mode.
+INTELLIGENCE_SERVICE_URL = ""
+SOURCES_SERVICE_URL = ""

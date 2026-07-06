@@ -140,6 +140,21 @@ dep_preflight() {
     warn "Less than 5 GB free — Docker builds typically need 3-4 GB headroom."
     warn "Re-run with --clean to docker-system-prune before building."
   fi
+
+  # Compose memory limits total ~1.7 GB on a 2 GB box; builds spike
+  # higher. Swap is assumed by the docs but never provisioned here, so
+  # check and tell the operator instead of failing mid-build.
+  step "Remote swap"
+  local swap_kb
+  swap_kb=$(ssh_remote "awk '/SwapTotal/ {print \$2}' /proc/meminfo" 2>/dev/null || echo "")
+  if [[ -z "$swap_kb" || "$swap_kb" -eq 0 ]]; then
+    warn "No active swap on the host. To add a 2 GB swapfile:"
+    warn "  sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile"
+    warn "  sudo mkswap /swapfile && sudo swapon /swapfile"
+    warn "  echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab"
+  else
+    ok "Swap active: $((swap_kb / 1024)) MB"
+  fi
 }
 
 # Reclaim disk space on the remote. Two modes:
@@ -179,7 +194,7 @@ dep_validate_env() {
   # OPTIONAL — billing, OAuth, etc.
   local CRITICAL_STR="DJANGO_SECRET_KEY JWT_SIGNING_KEY DB_PASSWORD"
   local PROVIDER_STR="FIELD_ENCRYPTION_KEY ANTHROPIC_API_KEY OPENAI_API_KEY GEMINI_API_KEY PERPLEXITY_API_KEY GOOGLE_API_KEY|GOOGLE_SEARCH_API_KEY GOOGLE_CSE_ID|GOOGLE_SEARCH_ENGINE_ID"
-  local OPTIONAL_STR="DEEPSEEK_API_KEY SERPAPI_KEY STRIPE_SECRET_KEY SENDGRID_API_KEY GOOGLE_OAUTH_CLIENT_ID GOOGLE_CSE_DAILY_LIMIT_PER_USER CLAUDE_JUDGE_DAILY_LIMIT_PER_USER CLAUDE_REWRITE_DAILY_LIMIT_PER_USER"
+  local OPTIONAL_STR="DEEPSEEK_API_KEY SERPAPI_KEY STRIPE_SECRET_KEY SENDGRID_API_KEY GOOGLE_OAUTH_CLIENT_ID GOOGLE_CSE_DAILY_LIMIT_PER_USER CLAUDE_JUDGE_DAILY_LIMIT_PER_USER CLAUDE_REWRITE_DAILY_LIMIT_PER_USER INTELLIGENCE_AUTH_TOKEN SOURCES_AUTH_TOKEN"
 
   # macOS ships bash 3.2 which mis-parses heredocs inside command
   # substitution when the body contains ')' (every case pattern).
@@ -414,13 +429,13 @@ dep_deploy() {
   build_number=$(ssh_remote "cd $REMOTE_DIR && git rev-list --count HEAD")
   build_time=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
-  step "Rebuild backend (web + celery)"
+  step "Rebuild backend (web + celery + intelligence + sources)"
   remote_compose "build --build-arg CACHE_DATE=$cache_bust \
     --build-arg GIT_SHA=$new_sha \
     --build-arg BUILD_NUMBER=$build_number \
     --build-arg BUILD_TIME=$build_time \
-    web celery"
-  remote_compose "up -d web celery"
+    web celery intelligence sources"
+  remote_compose "up -d web celery intelligence sources"
   ok "Backend rebuilt and restarted"
 
   step "Pull frontend image from GHCR and refresh bundle"
