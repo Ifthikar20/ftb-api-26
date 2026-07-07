@@ -46,6 +46,12 @@ class ReadBody(BaseModel):
     url: str
 
 
+class SummarizeBody(BaseModel):
+    url: str
+    query: str = ""
+    timeout: float = 20.0
+
+
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok"}
@@ -82,3 +88,34 @@ def read(body: ReadBody) -> dict:
         body.url,
         yelp_api_key=os.environ.get("YELP_API_KEY", ""),
     )
+
+
+@app.post("/v1/summarize-url", dependencies=[Depends(require_token)])
+def summarize_url(body: SummarizeBody):
+    """Perplexity-backed fallback for URLs our direct fetcher can't reach.
+
+    Returns {"text": "...", "word_count": N} on success or
+    {"text": ""} when the model gives up (page has no useful content
+    or is inaccessible even to Perplexity).
+    """
+    api_key = os.environ.get("PERPLEXITY_API_KEY", "")
+    if not api_key:
+        return JSONResponse(status_code=503, content={"error": "not_configured"})
+    try:
+        result = logic.perplexity_summarize_url(
+            body.url,
+            query=body.query,
+            api_key=api_key,
+            timeout=body.timeout,
+        )
+    except logic.SearchRequestError as exc:
+        return JSONResponse(
+            status_code=502,
+            content={"error": "upstream_request_failed", "detail": str(exc)[:300]},
+        )
+    except logic.SearchParseError as exc:
+        return JSONResponse(
+            status_code=502,
+            content={"error": "upstream_parse_failed", "detail": str(exc)[:300]},
+        )
+    return result or {"text": "", "word_count": 0}

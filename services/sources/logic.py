@@ -37,6 +37,8 @@ MAX_REDDIT_COMMENTS = 40
 PAGE_TIMEOUT = 12.0
 
 SEARCH_ENDPOINT = "https://api.perplexity.ai/search"
+CHAT_ENDPOINT = "https://api.perplexity.ai/chat/completions"
+SUMMARIZE_MODEL = "sonar"
 DEFAULT_MAX_RESULTS = 10
 
 
@@ -102,6 +104,74 @@ def perplexity_search(
             "last_updated": (item.get("last_updated") or "").strip(),
         })
     return results
+
+
+def perplexity_summarize_url(
+    url: str,
+    *,
+    query: str,
+    api_key: str,
+    timeout: float = 20.0,
+) -> dict | None:
+    """Ask Perplexity to visit a URL and return a factual, brand-focused summary.
+
+    Returns {"text": <summary>, "word_count": N} or None when the API
+    is disabled/quotaless. Raises SearchRequestError / SearchParseError
+    on transport / decode failure — the caller owns breaker bookkeeping.
+
+    We steer the model toward name-preserving prose so the downstream
+    brand extractor has verbatim names to work with, and cap tokens so
+    a single fallback doesn't blow the quota on a 500-item scan.
+    """
+    if not api_key:
+        return None
+
+    system = (
+        "You visit the given URL and produce a factual summary of the "
+        "page's content that a brand analyst can use. Preserve brand, "
+        "product, and place names verbatim. Include any ratings, "
+        "complaints, and direct quotes from users if present. If the "
+        "page is inaccessible or contains no relevant content, reply "
+        "with only the word NONE."
+    )
+    user_msg = (
+        f"URL: {url}\n"
+        f"Query context: {query or '(no query)'}\n"
+        "Summary:"
+    )
+
+    try:
+        resp = requests.post(
+            CHAT_ENDPOINT,
+            json={
+                "model": SUMMARIZE_MODEL,
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user_msg},
+                ],
+                "max_tokens": 700,
+                "temperature": 0.2,
+            },
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            timeout=timeout,
+        )
+        resp.raise_for_status()
+        body = resp.json()
+    except requests.RequestException as exc:
+        raise SearchRequestError(str(exc)) from exc
+    except ValueError as exc:
+        raise SearchParseError(str(exc)) from exc
+
+    choices = body.get("choices") or []
+    if not choices:
+        return None
+    text = ((choices[0].get("message") or {}).get("content") or "").strip()
+    if not text or text.upper() == "NONE":
+        return None
+    return {"text": text[:MAX_TEXT_CHARS], "word_count": len(text.split())}
 
 
 # -- Shared result shaping ------------------------------------------------------

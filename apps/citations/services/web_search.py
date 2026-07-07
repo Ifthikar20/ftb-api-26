@@ -109,3 +109,63 @@ def search_web(
         return []
     _breaker.record_success()
     return results
+
+
+def summarize_url_with_perplexity(
+    url: str,
+    *,
+    query: str,
+    user_id: int | None = None,
+    timeout: float = 20.0,
+) -> dict | None:
+    """Ask Perplexity to visit a URL and return a factual summary.
+
+    Used as a fetch-fallback when our direct HTTP reader is blocked
+    (Reddit 403, paywalls, anti-bot walls). Returns a content-shaped
+    dict {text, word_count} on success, None on any failure. Fails
+    silent: this is a best-effort recovery path — the pipeline continues
+    normally if it returns None.
+    """
+    if not _breaker.allow():
+        logger.warning("Perplexity summarize breaker open; skipping %s", url)
+        return None
+    if user_id and not _quota.consume(user_id):
+        logger.warning("Perplexity summarize daily quota exhausted for user %s", user_id)
+        return None
+
+    service_url = getattr(settings, "SOURCES_SERVICE_URL", "") or ""
+    if service_url:
+        try:
+            resp = requests.post(
+                f"{service_url.rstrip('/')}/v1/summarize-url",
+                json={"url": url, "query": query, "timeout": timeout},
+                headers={
+                    "Authorization": f"Bearer {getattr(settings, 'SOURCES_AUTH_TOKEN', '')}",
+                },
+                timeout=timeout + 5,
+            )
+            resp.raise_for_status()
+            body = resp.json()
+        except (requests.RequestException, ValueError) as exc:
+            _breaker.record_failure()
+            logger.warning("Sources service summarize failed for %s: %s", url, exc)
+            return None
+        _breaker.record_success()
+        return body if body.get("text") else None
+
+    try:
+        summary = sources_logic.perplexity_summarize_url(
+            url,
+            query=query,
+            api_key=settings.PERPLEXITY_API_KEY,
+            timeout=timeout,
+        )
+    except sources_logic.SearchRequestError as exc:
+        _breaker.record_failure()
+        logger.warning("Perplexity summarize failed for %s: %s", url, exc)
+        return None
+    except sources_logic.SearchParseError as exc:
+        logger.warning("Perplexity summarize returned non-JSON for %s: %s", url, exc)
+        return None
+    _breaker.record_success()
+    return summary if summary and summary.get("text") else None

@@ -11,6 +11,7 @@ Runs the full pipeline for one SourceScan row:
 from __future__ import annotations
 
 import logging
+import re
 from collections import defaultdict
 from datetime import date
 
@@ -24,6 +25,28 @@ from apps.citations.services.url_normalizer import extract_apex_domain
 logger = logging.getLogger("apps")
 
 MAX_RESULTS_PER_SCAN = 10
+
+# Claude sometimes fabricates a plausible-sounding "issue" describing the
+# fetch failure itself (e.g. "Access denied error preventing content
+# review") when it's handed a blocked page as content. Since the
+# extractor runs after fetch validation guards this shouldn't normally
+# happen, but the model is unreliable enough that we filter as a belt.
+# UI mirrors this regex for older scans already in the DB.
+_JUNK_ISSUE_RE = re.compile(
+    r"access\s+denied|preventing\s+content|content\s+review|"
+    r"unable to (access|review|retrieve)|error preventing|"
+    r"no accessible|content is (blocked|unavailable)",
+    re.IGNORECASE,
+)
+
+
+def _strip_junk_issues(brands: list[dict]) -> list[dict]:
+    """Drop fetch-error hallucinations from each brand's issues list."""
+    for b in brands or []:
+        if not b.get("issues"):
+            continue
+        b["issues"] = [s for s in b["issues"] if s and not _JUNK_ISSUE_RE.search(str(s))]
+    return brands
 
 
 def run_scan(scan: SourceScan) -> SourceScan:
@@ -88,9 +111,31 @@ def run_scan(scan: SourceScan) -> SourceScan:
         result.content_kind = content["kind"]
         result.word_count = content["word_count"]
         if content["status"] != "ok" or not content["text"].strip():
-            result.analysis_error = content["detail"] or "no content"
-            result.save()
-            continue
+            # Direct fetch failed (403, blocked, empty body). Try
+            # Perplexity as a URL-aware summarizer so we can still
+            # extract brands from sources our fetcher can't reach
+            # (Reddit anti-bot walls, paywalled sites). The summary
+            # replaces the article body for the Claude extraction step.
+            fallback = web_search.summarize_url_with_perplexity(
+                result.url,
+                query=scan.query,
+                user_id=website.user_id,
+            )
+            if fallback and fallback.get("text", "").strip():
+                content = {
+                    "status": "ok",
+                    "kind": "perplexity",
+                    "text": fallback["text"],
+                    "word_count": fallback.get("word_count") or len(fallback["text"].split()),
+                    "detail": "perplexity fallback",
+                }
+                result.fetch_status = "ok"
+                result.content_kind = "perplexity"
+                result.word_count = content["word_count"]
+            else:
+                result.analysis_error = content["detail"] or "no content"
+                result.save()
+                continue
 
         analysis = source_sentiment.analyze_content(
             content["text"],
@@ -108,7 +153,7 @@ def run_scan(scan: SourceScan) -> SourceScan:
             result.analysis_error = "off_topic"
             result.brands = []
         else:
-            result.brands = analysis["brands"]
+            result.brands = _strip_junk_issues(analysis["brands"])
             analyzed += 1
         result.save()
 
