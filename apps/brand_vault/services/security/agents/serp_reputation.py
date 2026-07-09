@@ -11,7 +11,7 @@ alerting on:
 """
 from __future__ import annotations
 
-from apps.brand_vault.models import SafetyAlert
+from apps.brand_vault.models import SafetyAlert, SafetyPrompt
 
 from ..base import BaseSecurityAgent, Finding
 from ..judge import judge_finding
@@ -35,11 +35,38 @@ class SerpReputationAgent(BaseSecurityAgent):
     sources = (SafetyAlert.SOURCE_SERP,)
 
     def run(self, website, config):
+        own = website_domain(website)
+
+        user_prompts = list(
+            SafetyPrompt.objects.filter(
+                website=website,
+                agent_id=self.agent_id,
+                status=SafetyPrompt.STATUS_ACTIVE,
+            ).values_list("text", flat=True),
+        )
+        if user_prompts:
+            findings: list[Finding] = []
+            for query in user_prompts:
+                for result in serp.search(query, num=10):
+                    findings.append(Finding(
+                        source=SafetyAlert.SOURCE_SERP,
+                        title=result["title"],
+                        snippet=result.get("snippet") or "",
+                        source_url=result["url"],
+                        extra={
+                            "brand_query": query,
+                            "serp_rank": result.get("serp_rank"),
+                            "domain": result["domain"],
+                            "mode": "user_prompt",
+                            "own_page": bool(own and own in result["domain"]),
+                        },
+                    ))
+            return findings
+
         terms = brand_terms(website, config)
         if not terms:
             return []
         neg_words = negative_keywords(website, config)
-        own = website_domain(website)
 
         findings: list[Finding] = []
         for term in terms:
@@ -87,6 +114,14 @@ class SerpReputationAgent(BaseSecurityAgent):
                 f"Someone searched for '{query}' (our brand). Google returned"
                 f" this page at rank {rank}. Is it negative, misleading or"
                 " harmful toward our brand?"
+            )
+        elif mode == "user_prompt":
+            question = (
+                f"We are monitoring the query '{query}' for our brand-safety"
+                f" bank. Google returned this page at rank {rank}. Does its"
+                " content represent a brand-safety issue for our brand"
+                " (e.g. our product mentioned negatively, complaints, or a"
+                " competitor page dominating a query where we should appear)?"
             )
         else:
             question = (

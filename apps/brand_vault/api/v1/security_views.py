@@ -43,6 +43,63 @@ _SEVERITY_WEIGHTS = {
 }
 
 
+# Starter prompts seeded on first activation. {brand} is substituted with the
+# first brand term (falls back to website name/domain).
+_STARTER_PROMPTS: dict[str, tuple[str, ...]] = {
+    "llm_truth": (
+        "What is {brand}?",
+        "Is {brand} a scam?",
+        "Tell me about {brand}",
+        "Is {brand} legit?",
+    ),
+    "serp_reputation": (
+        "{brand} reviews",
+        "{brand} complaints",
+        "{brand} scam",
+        "{brand} lawsuit",
+    ),
+    "sentiment_pulse": (
+        "{brand}",
+        "bad experience with {brand}",
+        "{brand} review",
+        "is {brand} legit",
+    ),
+}
+
+
+def _resolve_brand_name(website) -> str:
+    """Best-effort brand name for prompt seeding. Falls back to website name."""
+    from apps.brand_vault.services.security.agents._helpers import brand_terms
+
+    terms = brand_terms(website, {})
+    if terms:
+        return terms[0]
+    return (website.name or "").strip() or "our brand"
+
+
+def _seed_starter_prompts(website, agent_id: str, user) -> int:
+    """Insert starter prompts for ``agent_id`` if the list is empty. Returns
+    the number of prompts inserted (0 if the agent has no starter set or
+    already had prompts).
+    """
+    templates = _STARTER_PROMPTS.get(agent_id)
+    if not templates:
+        return 0
+    if SafetyPrompt.objects.filter(website=website, agent_id=agent_id).exists():
+        return 0
+    brand = _resolve_brand_name(website)
+    inserted = 0
+    for tpl in templates:
+        text = tpl.format(brand=brand)[:500]
+        _, created = SafetyPrompt.objects.get_or_create(
+            website=website, agent_id=agent_id, text=text,
+            defaults={"created_by": user if user and user.is_authenticated else None},
+        )
+        if created:
+            inserted += 1
+    return inserted
+
+
 class BrandSecurityOverviewView(TenantScopedAPIView):
     """Top-of-page summary tiles: health, counters, and last-scan timing."""
 
@@ -148,9 +205,17 @@ class BrandSecurityAgentDetailView(TenantScopedAPIView):
         row = self._get(request, website_id, agent_id)
         ser = BrandSecurityAgentPatchSerializer(data=request.data, partial=True)
         ser.is_valid(raise_exception=True)
+        was_enabled = row.enabled
         for field, value in ser.validated_data.items():
             setattr(row, field, value)
         row.save()
+        # Seed starter prompts the first time a prompt-driven agent is
+        # activated so the user has a working list to edit.
+        if (
+            not was_enabled and row.enabled
+            and agent_id in _STARTER_PROMPTS
+        ):
+            _seed_starter_prompts(row.website, agent_id, request.user)
         return Response(BrandSecurityAgentSerializer(row).data)
 
 
@@ -253,11 +318,15 @@ class BrandSecurityConfigView(TenantScopedAPIView):
 
 
 class BrandSecurityPromptsView(TenantScopedListAPIView):
-    """List or create SafetyPrompts (used by LLM Truth)."""
+    """List or create SafetyPrompts. Filter by ``?agent_id=xxx`` to scope."""
 
     def get(self, request, website_id):
         website = self.get_website(website_id)
-        qs = SafetyPrompt.objects.filter(website=website).order_by("-created_at")
+        qs = SafetyPrompt.objects.filter(website=website)
+        agent_id = request.query_params.get("agent_id")
+        if agent_id:
+            qs = qs.filter(agent_id=agent_id)
+        qs = qs.order_by("-created_at")
         return self.paginated_response(qs, SafetyPromptSerializer)
 
     def post(self, request, website_id):
@@ -265,8 +334,9 @@ class BrandSecurityPromptsView(TenantScopedListAPIView):
         ser = SafetyPromptCreateSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         text = ser.validated_data["text"].strip()
+        agent_id = ser.validated_data.get("agent_id") or "llm_truth"
         prompt, created = SafetyPrompt.objects.get_or_create(
-            website=website, text=text,
+            website=website, agent_id=agent_id, text=text,
             defaults={"created_by": request.user},
         )
         return Response(

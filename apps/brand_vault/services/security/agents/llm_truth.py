@@ -35,7 +35,9 @@ class LLMTruthAgent(BaseSecurityAgent):
     def run(self, website, config):
         prompts = list(
             SafetyPrompt.objects.filter(
-                website=website, status=SafetyPrompt.STATUS_ACTIVE,
+                website=website,
+                agent_id=self.agent_id,
+                status=SafetyPrompt.STATUS_ACTIVE,
             ).values_list("text", flat=True),
         )
         if not prompts:

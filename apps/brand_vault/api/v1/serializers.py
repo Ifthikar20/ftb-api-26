@@ -79,7 +79,7 @@ class SafetyPromptSerializer(serializers.ModelSerializer):
     class Meta:
         model = SafetyPrompt
         fields = (
-            "id", "website", "text", "status",
+            "id", "website", "agent_id", "text", "status",
             "hits", "created_at", "updated_at",
         )
         read_only_fields = ("id", "website", "hits", "created_at", "updated_at")
@@ -87,6 +87,7 @@ class SafetyPromptSerializer(serializers.ModelSerializer):
 
 class SafetyPromptCreateSerializer(serializers.Serializer):
     text = serializers.CharField(max_length=500)
+    agent_id = serializers.CharField(max_length=40, required=False, default="llm_truth")
 
 
 class SafetyAlertSerializer(serializers.ModelSerializer):

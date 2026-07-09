@@ -168,6 +168,7 @@ class SafetyPrompt(TimestampMixin):
         related_name="safety_prompts",
         on_delete=models.CASCADE,
     )
+    agent_id = models.CharField(max_length=40, default="llm_truth")
     text = models.CharField(max_length=500)
     status = models.CharField(
         max_length=10, choices=STATUS_CHOICES, default=STATUS_ACTIVE,
@@ -181,8 +182,11 @@ class SafetyPrompt(TimestampMixin):
 
     class Meta:
         db_table = "brand_vault_safetyprompt"
-        unique_together = [("website", "text")]
-        indexes = [models.Index(fields=["website", "status"], name="bv_sp_w_s_idx")]
+        unique_together = [("website", "agent_id", "text")]
+        indexes = [
+            models.Index(fields=["website", "status"], name="bv_sp_w_s_idx"),
+            models.Index(fields=["website", "agent_id", "status"], name="bv_sp_w_a_s_idx"),
+        ]
         ordering = ["-created_at"]
 
     def __str__(self):

@@ -8,7 +8,7 @@ the underlying story is small.
 """
 from __future__ import annotations
 
-from apps.brand_vault.models import SafetyAlert
+from apps.brand_vault.models import SafetyAlert, SafetyPrompt
 
 from ..base import BaseSecurityAgent, Finding
 from ..judge import judge_finding
@@ -31,26 +31,34 @@ class SentimentPulseAgent(BaseSecurityAgent):
     sources = (SafetyAlert.SOURCE_REDDIT, SafetyAlert.SOURCE_X)
 
     def run(self, website, config):
-        terms = brand_terms(website, config)
-        if not terms:
+        user_prompts = list(
+            SafetyPrompt.objects.filter(
+                website=website,
+                agent_id=self.agent_id,
+                status=SafetyPrompt.STATUS_ACTIVE,
+            ).values_list("text", flat=True),
+        )
+        queries = user_prompts or brand_terms(website, config)
+        if not queries:
             return []
+
         findings: list[Finding] = []
-        for term in terms:
-            for post in reddit.search_mentions(term, limit=25):
+        for query in queries:
+            for post in reddit.search_mentions(query, limit=25):
                 findings.append(Finding(
                     source=SafetyAlert.SOURCE_REDDIT,
                     title=post["title"],
                     snippet=post.get("snippet") or "",
                     source_url=post.get("url") or "",
-                    extra={"brand_term": term, "subreddit": post.get("subreddit")},
+                    extra={"brand_term": query, "subreddit": post.get("subreddit")},
                 ))
-            for tweet in x.search_mentions(term, limit=25):
+            for tweet in x.search_mentions(query, limit=25):
                 findings.append(Finding(
                     source=SafetyAlert.SOURCE_X,
                     title=tweet["title"],
                     snippet=tweet.get("snippet") or "",
                     source_url=tweet.get("url") or "",
-                    extra={"brand_term": term, "author_id": tweet.get("author_id")},
+                    extra={"brand_term": query, "author_id": tweet.get("author_id")},
                 ))
         return findings
 
