@@ -1,0 +1,57 @@
+"""URL routes for the /api/v1/brand-security/ surface."""
+from django.urls import path
+
+from . import security_views as v
+
+urlpatterns = [
+    path(
+        "websites/<uuid:website_id>/overview/",
+        v.BrandSecurityOverviewView.as_view(),
+        name="brand-security-overview",
+    ),
+    path(
+        "websites/<uuid:website_id>/agents/",
+        v.BrandSecurityAgentsView.as_view(),
+        name="brand-security-agents",
+    ),
+    path(
+        "websites/<uuid:website_id>/agents/<str:agent_id>/",
+        v.BrandSecurityAgentDetailView.as_view(),
+        name="brand-security-agent-detail",
+    ),
+    path(
+        "websites/<uuid:website_id>/agents/<str:agent_id>/run/",
+        v.BrandSecurityAgentRunView.as_view(),
+        name="brand-security-agent-run",
+    ),
+    path(
+        "websites/<uuid:website_id>/scan/",
+        v.BrandSecurityScanView.as_view(),
+        name="brand-security-scan",
+    ),
+    path(
+        "websites/<uuid:website_id>/alerts/",
+        v.BrandSecurityAlertsView.as_view(),
+        name="brand-security-alerts",
+    ),
+    path(
+        "alerts/<uuid:alert_id>/<str:action>/",
+        v.BrandSecurityAlertActionView.as_view(),
+        name="brand-security-alert-action",
+    ),
+    path(
+        "websites/<uuid:website_id>/config/",
+        v.BrandSecurityConfigView.as_view(),
+        name="brand-security-config",
+    ),
+    path(
+        "websites/<uuid:website_id>/prompts/",
+        v.BrandSecurityPromptsView.as_view(),
+        name="brand-security-prompts",
+    ),
+    path(
+        "prompts/<uuid:prompt_id>/",
+        v.BrandSecurityPromptDetailView.as_view(),
+        name="brand-security-prompt-detail",
+    ),
+]

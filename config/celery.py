@@ -105,6 +105,11 @@ app.conf.beat_schedule = {
         "task": "apps.brand_vault.tasks.refresh_fact_embeddings",
         "schedule": crontab(minute=30, hour=3),
     },
+    # ── Brand Security ──
+    "dispatch-scheduled-security-agents": {
+        "task": "apps.brand_vault.tasks.dispatch_scheduled_security_agents",
+        "schedule": crontab(minute="*/15"),
+    },
     # ── Content Studio ──
     "generate-briefs-daily": {
         "task": "apps.content_studio.tasks.generate_briefs_daily",

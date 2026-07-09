@@ -3,6 +3,8 @@ from rest_framework import serializers
 
 from apps.brand_vault.models import (
     BrandFact,
+    BrandSecurityAgent,
+    BrandSecurityConfig,
     FactRevision,
     SafetyAlert,
     SafetyPrompt,
@@ -92,12 +94,65 @@ class SafetyAlertSerializer(serializers.ModelSerializer):
         model = SafetyAlert
         fields = (
             "id", "website", "prompt",
+            "agent_id", "source", "source_url", "title", "sentiment_score",
             "model", "prompt_text", "snippet",
             "issue", "detail", "severity", "status",
             "detected_at", "resolved_at",
             "created_at",
         )
         read_only_fields = fields
+
+
+class BrandSecurityAgentSerializer(serializers.ModelSerializer):
+    open_alerts = serializers.IntegerField(read_only=True, default=0)
+    open_high = serializers.IntegerField(read_only=True, default=0)
+    open_medium = serializers.IntegerField(read_only=True, default=0)
+    open_low = serializers.IntegerField(read_only=True, default=0)
+    display_name = serializers.CharField(read_only=True, default="")
+    tagline = serializers.CharField(read_only=True, default="")
+    color = serializers.CharField(read_only=True, default="slate")
+    sources = serializers.ListField(read_only=True, default=list)
+
+    class Meta:
+        model = BrandSecurityAgent
+        fields = (
+            "id", "website", "agent_id", "enabled", "sensitivity",
+            "schedule", "config",
+            "last_run_at", "next_run_at", "last_status", "last_error",
+            "open_alerts", "open_high", "open_medium", "open_low",
+            "display_name", "tagline", "color", "sources",
+            "created_at", "updated_at",
+        )
+        read_only_fields = (
+            "id", "website", "agent_id",
+            "last_run_at", "next_run_at", "last_status", "last_error",
+            "open_alerts", "open_high", "open_medium", "open_low",
+            "display_name", "tagline", "color", "sources",
+            "created_at", "updated_at",
+        )
+
+
+class BrandSecurityAgentPatchSerializer(serializers.Serializer):
+    enabled = serializers.BooleanField(required=False)
+    sensitivity = serializers.ChoiceField(
+        choices=[c[0] for c in BrandSecurityAgent.SENSITIVITY_CHOICES],
+        required=False,
+    )
+    schedule = serializers.ChoiceField(
+        choices=[c[0] for c in BrandSecurityAgent.SCHEDULE_CHOICES],
+        required=False,
+    )
+    config = serializers.DictField(required=False)
+
+
+class BrandSecurityConfigSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = BrandSecurityConfig
+        fields = (
+            "id", "website", "brand_terms", "negative_keywords",
+            "created_at", "updated_at",
+        )
+        read_only_fields = ("id", "website", "created_at", "updated_at")
 
 
 class FactImportItemSerializer(serializers.Serializer):

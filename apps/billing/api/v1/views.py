@@ -5,12 +5,16 @@ All views handle Stripe unavailability gracefully by returning cached data.
 """
 
 import logging
+from datetime import timedelta
 
+from django.db.models import Sum
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.accounts.models import AITokenUsage
 from apps.billing.models import Invoice, Subscription
 from apps.billing.services.plan_service import PlanService
 from apps.billing.services.stripe_service import StripeService
@@ -322,3 +326,75 @@ class UsageView(APIView):
             })
 
         return Response({"success": True, "data": metrics})
+
+
+class AITokenUsageView(APIView):
+    """Aggregate AI token spend for the current user.
+
+    Reads the AITokenUsage ledger (every LLM call adds a row) and
+    rolls it up per provider + per module for the last N days
+    (default 30). Powers the "AI usage" card on the billing page so
+    users can see how their token budget is being spent across
+    Claude / GPT / Gemini / etc.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        try:
+            days = max(1, min(int(request.query_params.get("days", 30)), 365))
+        except (TypeError, ValueError):
+            days = 30
+        since = timezone.now() - timedelta(days=days)
+
+        rows = AITokenUsage.objects.filter(user=request.user, created_at__gte=since)
+
+        totals = rows.aggregate(
+            input_tokens=Sum("input_tokens"),
+            output_tokens=Sum("output_tokens"),
+            total_tokens=Sum("total_tokens"),
+            cost_usd=Sum("estimated_cost_usd"),
+        )
+
+        by_provider = list(
+            rows.values("provider")
+            .annotate(
+                tokens=Sum("total_tokens"),
+                cost_usd=Sum("estimated_cost_usd"),
+            )
+            .order_by("-tokens")
+        )
+        by_module = list(
+            rows.values("module")
+            .annotate(
+                tokens=Sum("total_tokens"),
+                cost_usd=Sum("estimated_cost_usd"),
+            )
+            .order_by("-tokens")
+        )
+
+        # Normalise numerics to plain types the frontend can total /
+        # format without touching Decimal. call_count uses the raw row
+        # count so users can see how much activity backs the token
+        # spend (200 tokens over 50 calls vs. one 200-token call is a
+        # very different signal).
+        def _shape(x, key):
+            return {
+                key: x[key] or "",
+                "tokens": int(x["tokens"] or 0),
+                "cost_usd": float(x["cost_usd"] or 0),
+            }
+
+        payload = {
+            "window_days": days,
+            "call_count": rows.count(),
+            "totals": {
+                "input_tokens": int(totals["input_tokens"] or 0),
+                "output_tokens": int(totals["output_tokens"] or 0),
+                "total_tokens": int(totals["total_tokens"] or 0),
+                "cost_usd": float(totals["cost_usd"] or 0),
+            },
+            "by_provider": [_shape(r, "provider") for r in by_provider],
+            "by_module": [_shape(r, "module") for r in by_module],
+        }
+        return Response({"success": True, "data": payload})

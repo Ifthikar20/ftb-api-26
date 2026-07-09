@@ -401,3 +401,115 @@ class TestEnvironment(TimestampMixin):
 
     def __str__(self):
         return f"TestEnvironment({self.name} · w={self.website_id})"
+
+
+# ── Benchmark packs ──────────────────────────────────────────────────
+# Reference material a website uses as the ground truth its measured
+# prompts get scored against. Two source kinds: web URLs (crawled) and
+# raw markdown blobs (uploaded). The extract-claims service reads the
+# source, asks Claude for atomic factual claims a good LLM answer about
+# this business should mention (product names, customers, pricing,
+# differentiators), and persists them as BenchmarkClaim rows. When a
+# prompt is measured against providers later, each response is scored
+# on how many of the pack's claims it covers — that's the URL ×
+# provider × claim cube the dashboard renders.
+
+class BenchmarkPack(TimestampMixin):
+    SOURCE_URL = "url"
+    SOURCE_MARKDOWN = "markdown"
+    SOURCE_CHOICES = [
+        (SOURCE_URL, "URL"),
+        (SOURCE_MARKDOWN, "Markdown"),
+    ]
+
+    STATUS_PENDING = "pending"
+    STATUS_EXTRACTING = "extracting"
+    STATUS_READY = "ready"
+    STATUS_FAILED = "failed"
+    STATUS_CHOICES = [
+        (STATUS_PENDING, "Pending"),
+        (STATUS_EXTRACTING, "Extracting"),
+        (STATUS_READY, "Ready"),
+        (STATUS_FAILED, "Failed"),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    website = models.ForeignKey(
+        "websites.Website", on_delete=models.CASCADE,
+        related_name="benchmark_packs",
+    )
+    created_by = models.ForeignKey(
+        "accounts.User", on_delete=models.SET_NULL,
+        related_name="benchmark_packs", null=True, blank=True,
+    )
+    source_kind = models.CharField(max_length=16, choices=SOURCE_CHOICES)
+    # For url sources: the canonical URL. For markdown sources: a
+    # user-provided title so packs are identifiable in the list.
+    label = models.CharField(max_length=500)
+    # url is empty for markdown packs, filled for url packs.
+    url = models.URLField(max_length=2000, blank=True)
+    # markdown_content is empty for url packs, filled for markdown
+    # packs. Truncated at 100k chars to keep the row tractable.
+    markdown_content = models.TextField(blank=True)
+    # Populated from the crawl step (title/summary from the fetched
+    # page). Left empty for markdown packs.
+    fetched_title = models.CharField(max_length=500, blank=True)
+    fetched_summary = models.TextField(blank=True)
+    status = models.CharField(
+        max_length=16, choices=STATUS_CHOICES, default=STATUS_PENDING,
+        db_index=True,
+    )
+    extraction_error = models.TextField(blank=True)
+
+    class Meta:
+        db_table = "prompt_library_benchmarkpack"
+        indexes = [
+            models.Index(fields=["website", "-created_at"]),
+        ]
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"BenchmarkPack({self.label[:40]} · {self.source_kind})"
+
+
+class BenchmarkClaim(models.Model):
+    """One atomic factual claim extracted from a BenchmarkPack.
+
+    Kept flat and lightweight so the scoring step can `.values()` and
+    ship the whole set to the judge model in one call. `category` is a
+    coarse bucket (product / customer / pricing / feature / other) so
+    the dashboard can offer a per-category breakdown; the LLM picks it
+    at extraction time.
+    """
+
+    CATEGORY_CHOICES = [
+        ("product", "Product"),
+        ("customer", "Customer"),
+        ("pricing", "Pricing"),
+        ("feature", "Feature"),
+        ("proof", "Proof point"),
+        ("other", "Other"),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    pack = models.ForeignKey(
+        BenchmarkPack, on_delete=models.CASCADE,
+        related_name="claims",
+    )
+    category = models.CharField(max_length=16, choices=CATEGORY_CHOICES, default="other")
+    # One sentence, self-contained. Should be answerable with yes/no
+    # from a candidate LLM response.
+    text = models.CharField(max_length=500)
+    # Optional short quote from the source that supports the claim.
+    # Kept small so the scorer can include it as evidence in prompts.
+    evidence = models.CharField(max_length=500, blank=True)
+    # Position within the pack, used for stable ordering in the UI.
+    ordinal = models.IntegerField(default=0)
+
+    class Meta:
+        db_table = "prompt_library_benchmarkclaim"
+        ordering = ["ordinal", "id"]
+        indexes = [models.Index(fields=["pack", "ordinal"])]
+
+    def __str__(self):
+        return f"BenchmarkClaim({self.text[:60]!r})"

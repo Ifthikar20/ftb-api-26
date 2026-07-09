@@ -27,6 +27,7 @@ urlpatterns = [
     path("api/v1/prompt-library/", include("apps.prompt_library.api.v1.urls")),
     path("api/v1/citations/", include("apps.citations.api.v1.urls")),
     path("api/v1/brand-vault/", include("apps.brand_vault.api.v1.urls")),
+    path("api/v1/brand-security/", include("apps.brand_vault.api.v1.security_urls")),
     path("api/v1/content-studio/", include("apps.content_studio.api.v1.urls")),
     path("api/v1/agents/", include("apps.agents.api.v1.urls")),
     path("api/v1/search-console/", include("apps.search_console.api.v1.urls")),

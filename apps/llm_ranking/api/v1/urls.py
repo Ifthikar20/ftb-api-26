@@ -22,16 +22,17 @@ urlpatterns = [
     path("<uuid:website_id>/schedule/eta/", views.LLMRankingScheduleETAView.as_view(), name="llm-ranking-schedule-eta"),
     path("<uuid:website_id>/schedule/run-now/", views.LLMRankingScheduleRunNowView.as_view(), name="llm-ranking-schedule-run-now"),
     path("<uuid:website_id>/geo-tags/", views.LLMRankingGEOTagsView.as_view(), name="llm-ranking-geo-tags"),
-    path("<uuid:website_id>/model-test/", views.ModelTestRunView.as_view(), name="llm-ranking-model-test"),
-    path("<uuid:website_id>/model-test-history/", views.ModelTestHistoryView.as_view(), name="llm-ranking-model-test-history"),
-    path("<uuid:website_id>/model-test/<str:run_id>/", views.ModelTestStatusView.as_view(), name="llm-ranking-model-test-status"),
-    # GEO action endpoints (Aggarwal et al. 2024)
-    path("<uuid:website_id>/geo/rewrite/", views.GeoRewriteView.as_view(), name="llm-ranking-geo-rewrite"),
-    path("<uuid:website_id>/geo/judge/",   views.GeoJudgeView.as_view(),   name="llm-ranking-geo-judge"),
+    # Model Test + GEO endpoints removed 2026-07 — the multi-provider
+    # probe use case moves under the Prompts page auto-measurement flow.
     # Dashboard Visibility Overview card
     path(
         "<uuid:website_id>/visibility-overview/",
         views.VisibilityOverviewView.as_view(),
         name="llm-ranking-visibility-overview",
+    ),
+    path(
+        "<uuid:website_id>/dashboard-summary/",
+        views.DashboardSummaryView.as_view(),
+        name="llm-ranking-dashboard-summary",
     ),
 ]

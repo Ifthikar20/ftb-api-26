@@ -1368,385 +1368,309 @@ class ModelVariantsView(TenantScopedAPIView):
         })
 
 
-class ModelTestRunView(TenantScopedAPIView):
-    """
-    Start a Model Test probe in the background.
+class DashboardSummaryView(TenantScopedAPIView):
+    """Cross-feature rollup that powers the LLM Dashboard hero.
 
-    POST queues a Celery worker (`run_model_test`) that fires every
-    (prompt, model variant) pair and writes per-step progress into
-    Redis. Returns a `run_id` immediately so the UI can poll
-    `ModelTestStatusView` and render results as they land.
-    No LLMRankingAudit row is created — this is the lightweight
-    'did the model find me' probe.
-
-    Accepts either:
-      - `models`: list of `"<provider>:<model_id>"` variant strings
-        (preferred — lets the picker compare e.g. Sonnet 4 vs 4.5), or
-      - `providers`: legacy list of provider keys; each is expanded to
-        its default variant for backward compatibility.
-    """
-
-    MAX_PROMPTS = 25
-    MAX_VARIANTS = 8
-    MAX_PROMPT_CHARS = 2000
-
-    def post(self, request, website_id):
-        import uuid
-
-        from django.core.cache import cache
-
-        from apps.llm_ranking.providers import (
-            PROVIDERS,
-            default_variant_for,
-            list_model_variants,
-            parse_variant,
-        )
-        from apps.llm_ranking.tasks import (
-            MODEL_TEST_CACHE_KEY,
-            MODEL_TEST_TTL_SECONDS,
-            run_model_test,
-        )
-
-        website = self.get_website(website_id)
-
-        prompts = request.data.get("prompts", []) or []
-        models_in = request.data.get("models", []) or []
-        providers_in = request.data.get("providers", []) or []
-
-        if not isinstance(prompts, list) or not isinstance(models_in, list) or not isinstance(providers_in, list):
-            return Response(
-                {"error": "prompts, models, and providers must be arrays.",
-                 "code": "invalid_payload"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        # Normalise prompts. Reject empties, oversize, and runs that
-        # exceed the per-call cap. The cap exists because models reject
-        # very long inputs and our per-prompt cell rendering breaks
-        # under multi-page responses.
-        normalised: list[str] = []
-        for raw in prompts:
-            s = str(raw).strip()
-            if not s:
-                continue
-            if len(s) > self.MAX_PROMPT_CHARS:
-                return Response(
-                    {"error": f"Each prompt must be {self.MAX_PROMPT_CHARS} characters or fewer.",
-                     "code": "prompt_too_long",
-                     "max_chars": self.MAX_PROMPT_CHARS},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            normalised.append(s)
-        prompts = normalised
-        if not prompts:
-            return Response(
-                {"error": "At least one prompt is required.",
-                 "code": "no_prompts"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        if len(prompts) > self.MAX_PROMPTS:
-            return Response(
-                {"error": f"Max {self.MAX_PROMPTS} prompts per run.",
-                 "code": "too_many_prompts",
-                 "max_prompts": self.MAX_PROMPTS,
-                 "received": len(prompts)},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        # Pre-flight: at least one provider must have an API key. Without
-        # this guard a user with zero keys would queue a run, see every
-        # cell fail, and have no idea why. Surface the gap clearly.
-        catalogue = list_model_variants()
-        configured_keys = {v["provider"] for v in catalogue if v["configured"]}
-        if not configured_keys:
-            return Response(
-                {"error": "No LLM providers are configured. Add at least one "
-                          "provider API key (Anthropic, OpenAI, Gemini, or "
-                          "Perplexity) in Settings before running a Model Test.",
-                 "code": "no_providers_configured"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        # Build the variant list. If the FE supplied `models`, validate
-        # each as `"<provider>:<model_id>"`. Otherwise expand legacy
-        # provider keys to their default variants so old clients keep
-        # working without code changes.
-        valid_variant_ids = {v["id"] for v in catalogue}
-        variants: list[str] = []
-        unknown: list[str] = []
-        unconfigured: list[str] = []
-        if models_in:
-            seen: set[str] = set()
-            for raw in models_in:
-                vid = str(raw).strip()
-                if not vid or parse_variant(vid) is None:
-                    unknown.append(vid)
-                    continue
-                if vid in seen:
-                    continue
-                seen.add(vid)
-                if vid not in valid_variant_ids:
-                    unknown.append(vid)
-                    continue
-                pkey, _ = parse_variant(vid)
-                if pkey not in configured_keys:
-                    unconfigured.append(vid)
-                    continue
-                variants.append(vid)
-        else:
-            for raw in (providers_in or ["claude"]):
-                pkey = str(raw).strip().lower()
-                if pkey not in PROVIDERS:
-                    continue
-                if pkey not in configured_keys:
-                    unconfigured.append(pkey)
-                    continue
-                vid = default_variant_for(pkey)
-                if vid and vid not in variants:
-                    variants.append(vid)
-
-        variants = variants[: self.MAX_VARIANTS]
-        if not variants:
-            details = {}
-            if unknown:
-                details["unknown_models"] = unknown
-            if unconfigured:
-                details["unconfigured_models"] = unconfigured
-            return Response(
-                {"error": "Pick at least one configured model. The selection "
-                          "either references unknown variant ids or providers "
-                          "without an API key.",
-                 "code": "no_runnable_models",
-                 **details},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        # `providers` in the run state is the variant list — the FE keys
-        # results by these strings. Keep the name for backward compat
-        # with the existing status payload shape.
-        providers = variants
-
-        # Brand terms = the canonical name + any aliases on the Website
-        # row, then anything the user added via the "Compare against"
-        # editor on the Source Influence page (extra_brand_terms in the
-        # POST payload). Deduped case-insensitively while preserving the
-        # original casing of the first occurrence — the matcher is
-        # case-insensitive anyway, but the chips read better with the
-        # spelling the user typed.
-        brand_terms: list[str] = []
-        extra_in = request.data.get("extra_brand_terms") or []
-        if not isinstance(extra_in, list):
-            extra_in = []
-        for term in [
-            getattr(website, "business_name", None) or "",
-            getattr(website, "name", None) or "",
-            *(getattr(website, "brand_aliases", None) or []),
-            *extra_in,
-        ]:
-            term = (str(term) or "").strip()
-            if not term or len(term) > 80:
-                continue
-            if term.lower() not in {t.lower() for t in brand_terms}:
-                brand_terms.append(term)
-        # Hard cap on the merged list so a hostile / overzealous client
-        # can't blow up the matcher regex with thousands of terms.
-        brand_terms = brand_terms[:50]
-
-        run_id = uuid.uuid4().hex
-        # Pre-seed the state row so a fast first poll never 404s before
-        # the worker picks the job up.
-        cache.set(
-            MODEL_TEST_CACHE_KEY.format(run_id=run_id),
-            {
-                "status": "queued",
-                "website_id": str(website.id),
-                "prompts": prompts,
-                "providers": providers,
-                "brand_terms": brand_terms,
-                "total": len(prompts) * len(providers),
-                "completed": 0,
-                "current_prompt_index": 0,
-                "current_provider": providers[0],
-                "prompt_rows": [],
-                "summary": None,
-                "error": None,
-            },
-            timeout=MODEL_TEST_TTL_SECONDS,
-        )
-
-        run_model_test.delay(
-            run_id=run_id,
-            website_id=str(website.id),
-            user_id=getattr(request.user, "id", None),
-            prompts=prompts,
-            providers=providers,
-            brand_terms=brand_terms,
-        )
-        return Response({"run_id": run_id, "status": "queued"},
-                        status=status.HTTP_202_ACCEPTED)
-
-
-class ModelTestHistoryView(TenantScopedAPIView):
-    """
-    GET — return a paginated list of recent Model Test runs for this
-    website.
-
-    Each row carries enough to render a one-line history entry without
-    a follow-up call: status, timing, prompt/model counts, hit count,
-    discovery rate, and aggregate token usage. ``?limit=`` caps the
-    page; defaults to 20 and is hard-capped at 100 so a hostile client
-    can't drag the whole table over the wire.
+    Aggregates real activity across the three sub-tools instead of
+    boilerplate audit data: prompts (BrandPrompt / Prompt), model
+    visibility (LLMRankingResult scoped to this website via audit),
+    Search Insights (SourceScan + derived opportunities), and AI
+    spend (AITokenUsage for the caller). Every section fails soft;
+    empty rollups return zeros rather than raising so the dashboard
+    is never blocked by one missing dependency.
     """
 
     def get(self, request, website_id):
-        from apps.llm_ranking.models import ModelTestRun
-        self.get_website(website_id)
-        try:
-            limit = int(request.query_params.get("limit") or 20)
-        except (TypeError, ValueError):
-            limit = 20
-        limit = max(1, min(limit, 100))
+        website = self.get_website(website_id)
+        now = timezone.now()
+        week_ago = now - timedelta(days=7)
+        month_ago = now - timedelta(days=30)
 
-        qs = (
-            ModelTestRun.objects
-            .filter(website_id=website_id)
-            .order_by("-created_at")
-            .values(
-                "id", "status", "created_at", "completed_at",
-                "duration_seconds", "total_calls", "completed_calls",
-                "prompts", "providers", "summary", "error_message",
-            )[:limit]
-        )
-        rows = []
-        for r in qs:
-            summary = r.get("summary") or {}
-            rows.append({
-                "id": str(r["id"]),
-                "status": r["status"],
-                "created_at": r["created_at"].isoformat() if r["created_at"] else None,
-                "completed_at": r["completed_at"].isoformat() if r["completed_at"] else None,
-                "duration_seconds": r["duration_seconds"],
-                "prompts": len(r.get("prompts") or []),
-                "providers": len(r.get("providers") or []),
-                "providers_list": list(r.get("providers") or []),
-                "total_calls": r["total_calls"],
-                "completed_calls": r["completed_calls"],
-                "hits": summary.get("hits") or 0,
-                "prompts_with_hit": summary.get("prompts_with_hit") or 0,
-                "discovery_rate": summary.get("discovery_rate") or 0,
-                "total_input_tokens": summary.get("total_input_tokens") or 0,
-                "total_output_tokens": summary.get("total_output_tokens") or 0,
-                "total_tokens": summary.get("total_tokens") or 0,
-                "error": r.get("error_message") or "",
-            })
-        return Response({"runs": rows, "count": len(rows)})
-
-
-class ModelTestStatusView(TenantScopedAPIView):
-    """GET — return current state of a Model Test run for polling.
-
-    Reads from Redis first (the streaming source of truth while the run
-    is in flight). Falls back to the persisted ModelTestRun row when
-    Redis has expired so users can reopen historical runs.
-    """
-
-    def get(self, request, website_id, run_id):
-        from apps.llm_ranking.models import ModelTestRun
-        from apps.llm_ranking.tasks import _model_test_state_get
-        self.get_website(website_id)
-
-        state = _model_test_state_get(run_id)
-        if state:
-            if state.get("website_id") and str(state["website_id"]) != str(website_id):
-                return Response({"error": "Not found."},
-                                status=status.HTTP_404_NOT_FOUND)
-            return Response(state)
-
-        # Redis miss — try the durable archive.
-        run = (
-            ModelTestRun.objects
-            .filter(id=run_id, website_id=website_id)
-            .first()
-        )
-        if run is None:
-            return Response(
-                {"error": "Run not found or expired.", "code": "run_not_found"},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-        return Response(run.to_state_dict())
-
-
-# ── GEO actions (Aggarwal et al. 2024, KDD '24) ───────────────────────────
-
-
-class GeoRewriteView(TenantScopedAPIView):
-    """
-    Rewrite a chunk of source text using one of the paper-validated GEO
-    strategies (quotation_addition, statistics_addition, cite_sources,
-    fluency_optimization, authoritative).
-
-    Cost-controlled by ``CLAUDE_REWRITE_DAILY_LIMIT_PER_USER`` (default 30/day).
-    Input validation lives in :class:`GeoRewriteRequestSerializer` —
-    method allow-list, body size cap, non-empty source.
-    """
-
-    def post(self, request, website_id):
-        from apps.llm_ranking.services import geo_rewrite
-
-        self.get_website(website_id)
-        serializer = GeoRewriteRequestSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        data = serializer.validated_data
-
-        result = geo_rewrite.rewrite(
-            source_text=data["source_text"],
-            method=data["method"],
-            query=(data.get("query") or "").strip() or None,
-            user_id=getattr(request.user, "id", None),
-        )
-        if not result.get("ok"):
-            http = (
-                status.HTTP_429_TOO_MANY_REQUESTS
-                if result.get("error") == "quota_exceeded"
-                else status.HTTP_503_SERVICE_UNAVAILABLE
-            )
-            return Response(result, status=http)
-        return Response(result)
-
-
-class GeoJudgeView(TenantScopedAPIView):
-    """
-    Score one citation across the 7 G-Eval sub-metrics (Relevance,
-    Influence, Uniqueness, Diversity, FollowUp, Subjective Position,
-    Subjective Count) via Claude-as-judge.
-
-    Cost-controlled by ``CLAUDE_JUDGE_DAILY_LIMIT_PER_USER`` (default 200/day).
-    Input validation lives in :class:`GeoJudgeRequestSerializer` —
-    non-empty query/response, sample count clamped to MAX_SAMPLES.
-    """
-
-    def post(self, request, website_id):
-        from apps.llm_ranking.services import subjective_impression
-
-        self.get_website(website_id)
-        serializer = GeoJudgeRequestSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        data = serializer.validated_data
-        user_id = getattr(request.user, "id", None)
-
-        scores = subjective_impression.score_citation(
-            query=data["query"],
-            response_text=data["response_text"],
-            citation_index=data["citation_index"],
-            citation_url=data.get("citation_url", ""),
-            samples=data.get("samples", 1),
-            user_id=user_id,
-        )
         return Response({
-            "scores":          scores,
-            "quota_remaining": subjective_impression.quota_remaining(user_id),
-            "daily_limit":     subjective_impression.quota_for_user(user_id),
+            "prompt_coverage": _prompt_coverage(website, week_ago),
+            "model_visibility": _model_visibility(website, month_ago),
+            "top_prompts": _top_prompts(website, limit=5, descending=True),
+            "bottom_prompts": _top_prompts(website, limit=5, descending=False),
+            "search_insights": _search_insights_summary(website, week_ago),
+            "chip_in_queue": _chip_in_queue(website, limit=8),
+            "ai_spend_30d": _ai_spend_30d(request.user, month_ago),
+            "performance_matrix": _performance_matrix(website),
         })
+
+
+def _prompt_coverage(website, since):
+    from apps.prompt_library.models import BrandPrompt, PromptCrawlRun
+
+    brand_prompts = BrandPrompt.objects.filter(website=website)
+    total_prompts = brand_prompts.count()
+    prompt_ids = list(brand_prompts.values_list("prompt_id", flat=True))
+
+    measured_recent = (
+        PromptCrawlRun.objects.filter(
+            website=website, created_at__gte=since,
+        )
+        .values("prompt_id").distinct().count()
+    )
+    eff_agg = brand_prompts.select_related("prompt").aggregate(
+        avg=Avg("prompt__effectiveness_score"),
+    )
+    return {
+        "total_prompts": total_prompts,
+        "measured_last_7d": measured_recent,
+        "avg_effectiveness": round(float(eff_agg["avg"] or 0), 2),
+        "unique_prompt_ids_scanned": len(set(prompt_ids)),
+    }
+
+
+def _model_visibility(website, since):
+    """Per-provider mention-rate across every audit for this website.
+
+    Only counts rows where the query actually succeeded — API errors
+    would otherwise deflate visibility with no signal about mention
+    quality.
+    """
+    rows = (
+        LLMRankingResult.objects
+        .filter(
+            audit__website=website,
+            created_at__gte=since,
+            query_succeeded=True,
+        )
+        .values("provider")
+        .annotate(
+            evaluated=Count("id"),
+            mentioned=Count("id", filter=Q(is_mentioned=True)),
+            avg_rank=Avg("mention_rank", filter=Q(is_mentioned=True)),
+        )
+        .order_by("-evaluated")
+    )
+    out = []
+    for r in rows:
+        evaluated = r["evaluated"] or 0
+        mentioned = r["mentioned"] or 0
+        out.append({
+            "provider": r["provider"],
+            "evaluated": evaluated,
+            "mentioned": mentioned,
+            "mention_rate": round((mentioned / evaluated) if evaluated else 0.0, 3),
+            "avg_position": round(float(r["avg_rank"]), 2) if r["avg_rank"] else None,
+        })
+    return out
+
+
+def _top_prompts(website, limit, descending):
+    from apps.prompt_library.models import BrandPrompt
+
+    ordering = "-prompt__effectiveness_score" if descending else "prompt__effectiveness_score"
+    brand_prompts = (
+        BrandPrompt.objects.filter(website=website)
+        .select_related("prompt")
+        .filter(prompt__effectiveness_score__gt=0)
+        .order_by(ordering)[:limit]
+    )
+    return [
+        {
+            "id": str(bp.prompt.id),
+            "text": (bp.prompt.text or "")[:140],
+            "effectiveness_score": round(bp.prompt.effectiveness_score or 0, 2),
+        }
+        for bp in brand_prompts
+    ]
+
+
+def _search_insights_summary(website, since):
+    from apps.citations.models import SourceScan
+
+    scans = SourceScan.objects.filter(website=website)
+    recent = scans.filter(created_at__gte=since)
+
+    # Roll up brands across recent scans. Each scan's .brands is a JSON
+    # list of {name, mentions, sentiment, ...}. Cheap in-Python because
+    # a scan has ≤25 brands and users have ≤10 recent scans.
+    brand_bucket = {}
+    own_present_count = 0
+    for scan in recent:
+        if scan.own_brand_present:
+            own_present_count += 1
+        for b in scan.brands or []:
+            key = (b.get("name") or "").strip().lower()
+            if not key:
+                continue
+            slot = brand_bucket.setdefault(
+                key, {"name": b.get("name"), "mentions": 0, "in_scans": 0},
+            )
+            slot["mentions"] += int(b.get("mentions") or 0)
+            slot["in_scans"] += 1
+
+    top_brands = sorted(
+        brand_bucket.values(),
+        key=lambda x: (x["in_scans"], x["mentions"]),
+        reverse=True,
+    )[:8]
+
+    total_recent = recent.count()
+    return {
+        "total_scans": scans.count(),
+        "scans_last_7d": total_recent,
+        "own_brand_present_rate": (
+            round(own_present_count / total_recent, 2) if total_recent else 0.0
+        ),
+        "top_brands": top_brands,
+    }
+
+
+def _chip_in_queue(website, limit):
+    """Recent scans + their engageable opportunities, flattened for
+    the dashboard queue. Reuses derive_opportunities so the same gate
+    (source_class in {reddit, forum, quora, youtube}) applies here as
+    on the Search Insights page.
+    """
+    from apps.citations.models import SourceScan
+    from apps.citations.services.source_scan import derive_opportunities
+
+    recent = (
+        SourceScan.objects.filter(website=website, status="complete")
+        .order_by("-created_at")[:10]
+    )
+    queue = []
+    for scan in recent:
+        for opp in derive_opportunities(scan):
+            queue.append({
+                "query": scan.query,
+                "rank": opp.get("rank"),
+                "url": opp.get("url"),
+                "domain": opp.get("domain"),
+                "source_class": opp.get("source_class"),
+                "competitors": (opp.get("competitors") or [])[:3],
+            })
+            if len(queue) >= limit:
+                return queue
+    return queue
+
+
+def _performance_matrix(website):
+    """Real AI-models × Brands visibility matrix.
+
+    Rows: the website's own brand (marked `you=True`) plus the top
+    competitors seen in recent SourceScan aggregations. Columns: any
+    provider we actually have LLMRankingResult rows for. Cell value:
+    percentage of the provider's succeeded rows on this website
+    where that brand shows up (own brand → is_mentioned; competitor
+    → present in competitors_mentioned).
+
+    Empty rows / columns are elided so the card doesn't render a
+    grid of zeros — the frontend shows an empty state when the
+    matrix has no meaningful data.
+    """
+    from apps.citations.models import SourceScan
+
+    # Pick top competitors from the Search Insights rollup — that's
+    # where "who else came up for this brand's queries" lives with
+    # useful volume, and it doesn't depend on audits actually
+    # succeeding on the ranking side.
+    counts = {}
+    for scan in SourceScan.objects.filter(website=website):
+        for b in scan.brands or []:
+            name = (b.get("name") or "").strip()
+            if not name:
+                continue
+            counts[name] = counts.get(name, 0) + int(b.get("mentions") or 0)
+
+    own = (website.name or "").strip()
+    own_lower = own.lower()
+    # Fuzzy dedupe: don't list own brand as a competitor even if
+    # aggregation gave a slightly different spelling.
+    ranked = sorted(
+        (n for n in counts if n.lower() != own_lower),
+        key=lambda n: counts[n], reverse=True,
+    )[:7]
+
+    row_brands = ([own] if own else []) + ranked
+    if not row_brands:
+        return {"models": [], "rows": []}
+
+    # Providers we actually have data for on this website.
+    result_rows = LLMRankingResult.objects.filter(
+        audit__website=website, query_succeeded=True,
+    )
+    provider_totals = list(
+        result_rows.values("provider")
+        .annotate(total=Count("id"))
+        .order_by("-total")
+    )
+    if not provider_totals:
+        return {"models": [], "rows": []}
+
+    providers = [p["provider"] for p in provider_totals]
+    provider_display = {
+        "openai": "GPT-4",
+        "anthropic": "Claude",
+        "claude": "Claude",
+        "google": "Gemini",
+        "gemini": "Gemini",
+        "perplexity": "Perplexity",
+        "xai": "Grok",
+        "grok": "Grok",
+    }
+    models = [provider_display.get(p, p.title()) for p in providers]
+
+    # Own brand hits: rely on is_mentioned. Competitor hits: scan the
+    # competitors_mentioned JSON list case-insensitively.
+    rows = []
+    for brand in row_brands:
+        is_own = brand.lower() == own_lower
+        values = []
+        for provider in providers:
+            total = provider_totals[providers.index(provider)]["total"] or 1
+            if is_own:
+                hits = result_rows.filter(provider=provider, is_mentioned=True).count()
+            else:
+                brand_l = brand.lower()
+                # In-python scan: competitors_mentioned is a JSON list
+                # of {name, position, linked}; ORM contains queries on
+                # JSON lists vary by DB backend, so we take the safe
+                # cross-DB path.
+                hits = 0
+                for row in result_rows.filter(provider=provider).only("competitors_mentioned"):
+                    for c in (row.competitors_mentioned or []):
+                        cname = (c.get("name") if isinstance(c, dict) else str(c)) or ""
+                        if brand_l in cname.strip().lower():
+                            hits += 1
+                            break
+            values.append(round(100.0 * hits / total, 1))
+        rows.append({"brand": brand, "you": is_own, "values": values})
+
+    return {"models": models, "rows": rows}
+
+
+def _ai_spend_30d(user, since):
+    from apps.accounts.models import AITokenUsage
+    from django.db.models import Sum
+
+    rows = AITokenUsage.objects.filter(user=user, created_at__gte=since)
+    agg = rows.aggregate(
+        total_tokens=Sum("total_tokens"),
+        cost_usd=Sum("estimated_cost_usd"),
+        calls=Count("id"),
+    )
+    top_provider = (
+        rows.values("provider")
+        .annotate(cost=Sum("estimated_cost_usd"))
+        .order_by("-cost").first()
+    )
+    return {
+        "total_tokens": int(agg["total_tokens"] or 0),
+        "cost_usd": float(agg["cost_usd"] or 0),
+        "calls": agg["calls"] or 0,
+        "top_provider": top_provider["provider"] if top_provider else None,
+    }
+
+
+# Model Test + GEO endpoints removed 2026-07 — the multi-provider
+# probe use case moves to the Prompts page auto-measurement flow.
+# See git history if you need to resurrect the run_model_test task,
+# ModelTestRunView, ModelTestHistoryView, ModelTestStatusView,
+# GeoRewriteView, or GeoJudgeView.
 
 
 class VisibilityOverviewView(TenantScopedAPIView):

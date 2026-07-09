@@ -1846,3 +1846,118 @@ class PromptCrawlTriggerView(APIView):
             queued = False
         return Response({"queued": queued, "website_id": str(website.id),
                          "prompt_id": str(prompt.id)})
+
+
+# ── Benchmark packs ──────────────────────────────────────────────────
+
+def _serialize_pack(pack, *, include_claims: bool = False) -> dict:
+    payload = {
+        "id": str(pack.id),
+        "source_kind": pack.source_kind,
+        "label": pack.label,
+        "url": pack.url,
+        "fetched_title": pack.fetched_title,
+        "fetched_summary": pack.fetched_summary,
+        "status": pack.status,
+        "extraction_error": pack.extraction_error,
+        "created_at": pack.created_at.isoformat() if pack.created_at else None,
+    }
+    if include_claims:
+        payload["claims"] = [
+            {
+                "id": str(c.id),
+                "category": c.category,
+                "text": c.text,
+                "evidence": c.evidence,
+                "ordinal": c.ordinal,
+            }
+            for c in pack.claims.all()
+        ]
+    return payload
+
+
+class BenchmarkPackListCreateView(APIView):
+    """List a website's benchmark packs, or create a new one.
+
+    POST body:
+        {"source_kind": "url", "label": "...", "url": "https://..."}
+        OR
+        {"source_kind": "markdown", "label": "...", "markdown_content": "..."}
+
+    Extraction runs inline (small material, ≤1 Claude call). Later we
+    can push it into a Celery task if latency becomes a concern.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, website_id):
+        from apps.prompt_library.models import BenchmarkPack
+        from apps.websites.services.website_service import WebsiteService
+
+        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        packs = BenchmarkPack.objects.filter(website_id=website_id).prefetch_related("claims")
+        return Response({"packs": [_serialize_pack(p, include_claims=True) for p in packs]})
+
+    def post(self, request, website_id):
+        from apps.prompt_library.models import BenchmarkPack
+        from apps.prompt_library.services.benchmark_extractor import extract_pack
+        from apps.websites.services.website_service import WebsiteService
+
+        website = WebsiteService.get_for_user(user=request.user, website_id=website_id)
+
+        source_kind = (request.data.get("source_kind") or "").strip().lower()
+        if source_kind not in {BenchmarkPack.SOURCE_URL, BenchmarkPack.SOURCE_MARKDOWN}:
+            return Response({"error": "source_kind must be 'url' or 'markdown'"}, status=400)
+
+        label = (request.data.get("label") or "").strip()[:500]
+        if source_kind == BenchmarkPack.SOURCE_URL:
+            url = (request.data.get("url") or "").strip()[:2000]
+            if not url or not url.lower().startswith(("http://", "https://")):
+                return Response({"error": "url is required and must start with http(s)://"}, status=400)
+            if not label:
+                label = url
+            pack = BenchmarkPack.objects.create(
+                website=website, created_by=request.user,
+                source_kind=source_kind, url=url, label=label,
+            )
+        else:
+            content = (request.data.get("markdown_content") or "")[:100_000]
+            if not content.strip():
+                return Response({"error": "markdown_content is required"}, status=400)
+            if not label:
+                label = "Markdown pack"
+            pack = BenchmarkPack.objects.create(
+                website=website, created_by=request.user,
+                source_kind=source_kind, label=label, markdown_content=content,
+            )
+
+        extract_pack(pack)  # inline; sets status → ready/failed
+        pack.refresh_from_db()
+        pack = type(pack).objects.prefetch_related("claims").get(pk=pack.pk)
+        return Response(_serialize_pack(pack, include_claims=True), status=201)
+
+
+class BenchmarkPackDetailView(APIView):
+    """Retrieve or delete a single benchmark pack."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, website_id, pack_id):
+        from apps.prompt_library.models import BenchmarkPack
+        from apps.websites.services.website_service import WebsiteService
+
+        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        pack = get_object_or_404(
+            BenchmarkPack.objects.prefetch_related("claims"),
+            pk=pack_id, website_id=website_id,
+        )
+        return Response(_serialize_pack(pack, include_claims=True))
+
+    def delete(self, request, website_id, pack_id):
+        from apps.prompt_library.models import BenchmarkPack
+        from apps.websites.services.website_service import WebsiteService
+
+        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        pack = get_object_or_404(BenchmarkPack, pk=pack_id, website_id=website_id)
+        pack.delete()
+        return Response(status=204)

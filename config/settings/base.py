@@ -378,6 +378,12 @@ SENTRY_DSN = env("SENTRY_DSN", default="")
 DATAFORSEO_LOGIN = env("DATAFORSEO_LOGIN", default="")
 DATAFORSEO_PASSWORD = env("DATAFORSEO_PASSWORD", default="")
 X_BEARER_TOKEN = env("X_BEARER_TOKEN", default="")  # X (Twitter) API for trending topics
+# Brand Security uses X_BEARER_TOKEN via TWITTER_BEARER_TOKEN alias so the
+# security clients read a single well-known env var. Feature-flagged so the
+# UI can render the X source toggle as "not configured" when disabled.
+TWITTER_BEARER_TOKEN = env("TWITTER_BEARER_TOKEN", default=X_BEARER_TOKEN)
+FEATURE_X_SCANNER = env.bool("FEATURE_X_SCANNER", default=False)
+SERPAPI_KEY = env("SERPAPI_KEY", default="")
 
 # ── OpenClaw AI Agent ──
 OPENCLAW_GATEWAY_URL = env("OPENCLAW_GATEWAY_URL", default="")

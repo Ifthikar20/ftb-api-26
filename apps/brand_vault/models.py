@@ -73,9 +73,9 @@ class BrandFact(TimestampMixin):
     class Meta:
         db_table = "brand_vault_brandfact"
         indexes = [
-            models.Index(fields=["website", "status", "version_to"]),
-            models.Index(fields=["website", "subject", "predicate"]),
-            models.Index(fields=["website", "product_line"]),
+            models.Index(fields=["website", "status", "version_to"], name="bv_fact_w_st_vt_idx"),
+            models.Index(fields=["website", "subject", "predicate"], name="bv_fact_w_subj_pred_idx"),
+            models.Index(fields=["website", "product_line"], name="bv_fact_w_pl_idx"),
         ]
 
     def __str__(self):
@@ -142,7 +142,7 @@ class ToneSample(TimestampMixin):
     class Meta:
         db_table = "brand_vault_tonesample"
         unique_together = [("website", "text_hash")]
-        indexes = [models.Index(fields=["website"])]
+        indexes = [models.Index(fields=["website"], name="bv_tone_w_idx")]
 
     def __str__(self):
         return f"ToneSample({self.website_id}, {self.word_count}w)"
@@ -182,7 +182,7 @@ class SafetyPrompt(TimestampMixin):
     class Meta:
         db_table = "brand_vault_safetyprompt"
         unique_together = [("website", "text")]
-        indexes = [models.Index(fields=["website", "status"])]
+        indexes = [models.Index(fields=["website", "status"], name="bv_sp_w_s_idx")]
         ordering = ["-created_at"]
 
     def __str__(self):
@@ -190,7 +190,7 @@ class SafetyPrompt(TimestampMixin):
 
 
 class SafetyAlert(TimestampMixin):
-    """A flagged AI response that mentions the brand in a risky or inaccurate way."""
+    """A flagged finding raised by a Brand Security agent."""
 
     SEVERITY_HIGH = "high"
     SEVERITY_MEDIUM = "medium"
@@ -206,12 +206,39 @@ class SafetyAlert(TimestampMixin):
     ISSUE_OUTDATED = "outdated"
     ISSUE_HARMFUL = "harmful"
     ISSUE_NEGATIVE = "negative"
+    ISSUE_EMERGING_NARRATIVE = "emerging_narrative"
+    ISSUE_NEGATIVE_OUTRANKING = "negative_outranking"
+    ISSUE_RANKING_FOR_BAD_QUERY = "ranking_for_bad_query"
+    ISSUE_SGE_MISREPRESENTATION = "sge_misrepresentation"
+    ISSUE_SENTIMENT_DROP = "sentiment_drop"
+    ISSUE_IMPERSONATION = "impersonation"
     ISSUE_CHOICES = [
         (ISSUE_HALLUCINATION, "Hallucination"),
         (ISSUE_UNVERIFIED, "Unverified claim"),
         (ISSUE_OUTDATED, "Outdated info"),
         (ISSUE_HARMFUL, "Harmful mention"),
         (ISSUE_NEGATIVE, "Negative mention"),
+        (ISSUE_EMERGING_NARRATIVE, "Emerging narrative"),
+        (ISSUE_NEGATIVE_OUTRANKING, "Negative page outranking"),
+        (ISSUE_RANKING_FOR_BAD_QUERY, "Ranking for negative query"),
+        (ISSUE_SGE_MISREPRESENTATION, "AI Overview misrepresentation"),
+        (ISSUE_SENTIMENT_DROP, "Sentiment drop"),
+        (ISSUE_IMPERSONATION, "Impersonation"),
+    ]
+
+    SOURCE_LLM = "llm"
+    SOURCE_SERP = "serp"
+    SOURCE_REDDIT = "reddit"
+    SOURCE_X = "x"
+    SOURCE_TRENDS = "trends"
+    SOURCE_WEB = "web"
+    SOURCE_CHOICES = [
+        (SOURCE_LLM, "LLM"),
+        (SOURCE_SERP, "SERP"),
+        (SOURCE_REDDIT, "Reddit"),
+        (SOURCE_X, "X"),
+        (SOURCE_TRENDS, "Google Trends"),
+        (SOURCE_WEB, "Web"),
     ]
 
     STATUS_OPEN = "open"
@@ -236,10 +263,18 @@ class SafetyAlert(TimestampMixin):
         related_name="alerts",
     )
 
-    model = models.CharField(max_length=40)
-    prompt_text = models.CharField(max_length=500)
+    # Which agent raised this alert. Blank for legacy rows created before agents.
+    agent_id = models.CharField(max_length=40, blank=True, db_index=True)
+    # Where the underlying signal came from. Blank on legacy rows.
+    source = models.CharField(max_length=20, choices=SOURCE_CHOICES, blank=True)
+    source_url = models.URLField(blank=True, max_length=1000)
+    title = models.CharField(max_length=300, blank=True)
+    sentiment_score = models.FloatField(null=True, blank=True)
+
+    model = models.CharField(max_length=40, blank=True)
+    prompt_text = models.CharField(max_length=500, blank=True)
     snippet = models.TextField()
-    issue = models.CharField(max_length=20, choices=ISSUE_CHOICES)
+    issue = models.CharField(max_length=32, choices=ISSUE_CHOICES)
     detail = models.TextField(blank=True)
     severity = models.CharField(max_length=10, choices=SEVERITY_CHOICES)
     status = models.CharField(
@@ -257,10 +292,97 @@ class SafetyAlert(TimestampMixin):
     class Meta:
         db_table = "brand_vault_safetyalert"
         indexes = [
-            models.Index(fields=["website", "status", "-detected_at"]),
-            models.Index(fields=["website", "severity"]),
+            models.Index(fields=["website", "status", "-detected_at"], name="bv_sa_w_s_dt_idx"),
+            models.Index(fields=["website", "severity"], name="bv_sa_w_sev_idx"),
+            models.Index(fields=["website", "agent_id", "status"], name="bv_sa_w_a_s_idx"),
         ]
         ordering = ["-detected_at"]
 
     def __str__(self):
-        return f"SafetyAlert({self.website_id}, {self.severity}, {self.issue})"
+        return f"SafetyAlert({self.website_id}, {self.agent_id}, {self.severity})"
+
+
+class BrandSecurityAgent(TimestampMixin):
+    """Per-website configuration and status for one Brand Security agent."""
+
+    STATUS_IDLE = "idle"
+    STATUS_RUNNING = "running"
+    STATUS_ERROR = "error"
+    STATUS_CHOICES = [
+        (STATUS_IDLE, "Idle"),
+        (STATUS_RUNNING, "Running"),
+        (STATUS_ERROR, "Error"),
+    ]
+
+    SENSITIVITY_LOW = "low"
+    SENSITIVITY_MEDIUM = "medium"
+    SENSITIVITY_HIGH = "high"
+    SENSITIVITY_CHOICES = [
+        (SENSITIVITY_LOW, "Low"),
+        (SENSITIVITY_MEDIUM, "Medium"),
+        (SENSITIVITY_HIGH, "High"),
+    ]
+
+    SCHEDULE_MANUAL = "manual"
+    SCHEDULE_HOURLY = "hourly"
+    SCHEDULE_DAILY = "daily"
+    SCHEDULE_WEEKLY = "weekly"
+    SCHEDULE_CHOICES = [
+        (SCHEDULE_MANUAL, "Manual"),
+        (SCHEDULE_HOURLY, "Hourly"),
+        (SCHEDULE_DAILY, "Daily"),
+        (SCHEDULE_WEEKLY, "Weekly"),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    website = models.ForeignKey(
+        "websites.Website",
+        related_name="security_agents",
+        on_delete=models.CASCADE,
+    )
+    agent_id = models.CharField(max_length=40)
+    enabled = models.BooleanField(default=True)
+    sensitivity = models.CharField(
+        max_length=10, choices=SENSITIVITY_CHOICES, default=SENSITIVITY_MEDIUM,
+    )
+    schedule = models.CharField(
+        max_length=10, choices=SCHEDULE_CHOICES, default=SCHEDULE_DAILY,
+    )
+    config = models.JSONField(default=dict, blank=True)
+
+    last_run_at = models.DateTimeField(null=True, blank=True)
+    next_run_at = models.DateTimeField(null=True, blank=True)
+    last_status = models.CharField(
+        max_length=10, choices=STATUS_CHOICES, default=STATUS_IDLE,
+    )
+    last_error = models.TextField(blank=True)
+
+    class Meta:
+        db_table = "brand_vault_securityagent"
+        unique_together = [("website", "agent_id")]
+        indexes = [
+            models.Index(fields=["website", "enabled"], name="bv_sag_w_en_idx"),
+            models.Index(fields=["enabled", "next_run_at"], name="bv_sag_en_nr_idx"),
+        ]
+
+    def __str__(self):
+        return f"BrandSecurityAgent({self.website_id}, {self.agent_id})"
+
+
+class BrandSecurityConfig(TimestampMixin):
+    """Per-website global config for Brand Security scanning."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    website = models.OneToOneField(
+        "websites.Website",
+        related_name="security_config",
+        on_delete=models.CASCADE,
+    )
+    brand_terms = models.JSONField(default=list, blank=True)
+    negative_keywords = models.JSONField(default=list, blank=True)
+
+    class Meta:
+        db_table = "brand_vault_securityconfig"
+
+    def __str__(self):
+        return f"BrandSecurityConfig({self.website_id})"

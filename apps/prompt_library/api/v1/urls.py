@@ -160,4 +160,15 @@ urlpatterns = [
         views.TestEnvironmentPromptsView.as_view(),
         name="prompt-library-test-environment-prompts",
     ),
+    # ── Benchmark packs (Prompts page → Benchmark material) ────────
+    path(
+        "websites/<uuid:website_id>/benchmarks/",
+        views.BenchmarkPackListCreateView.as_view(),
+        name="prompt-library-benchmarks",
+    ),
+    path(
+        "websites/<uuid:website_id>/benchmarks/<uuid:pack_id>/",
+        views.BenchmarkPackDetailView.as_view(),
+        name="prompt-library-benchmark-detail",
+    ),
 ]

@@ -258,21 +258,30 @@ def _aggregate(scan: SourceScan, target_brand: str) -> list[dict]:
     return rollup[:25]
 
 
-# Source classes where a brand can realistically join the conversation.
-_ENGAGEABLE_CLASS_BOOST = {"reddit": 1.5, "forum": 1.5, "quora": 1.5}
+# Source classes where a brand can realistically join the conversation:
+# a comment, reply, or answer box exists on the page. A blog post or
+# news article with no comment section is not an opportunity even if
+# competitors dominate it — there's nowhere to chip in.
+_ENGAGEABLE_CLASSES = {"reddit", "forum", "quora", "youtube"}
+_ENGAGEABLE_CLASS_BOOST = {c: 1.5 for c in _ENGAGEABLE_CLASSES}
 
 
 def derive_opportunities(scan: SourceScan) -> list[dict]:
-    """Sources where the conversation is active but the own brand is absent.
+    """Sources where the conversation is active AND the own brand is absent
+    AND the user can actually post something on the page.
 
     Computed at read time (works retroactively on old scans, no schema).
-    Score favors high-ranking sources with strong competitor presence,
-    boosted for community sources the owner can actually post to.
+    Score favors high-ranking sources with strong competitor presence.
     """
     target = scan.website.name or ""
     opportunities = []
     for result in scan.results.all():
         if not result.relevant or result.fetch_status != "ok":
+            continue
+        # Hard gate: only surface sources with a comment/reply surface.
+        # News, blogs, guides, review aggregators without user contribution
+        # are excluded even if competitors dominate them.
+        if result.source_class not in _ENGAGEABLE_CLASSES:
             continue
         brands = result.brands or []
         if not brands or any(_matches_target(b.get("name", ""), target) for b in brands):
@@ -286,9 +295,8 @@ def derive_opportunities(scan: SourceScan) -> list[dict]:
         issues = []
         for b in brands:
             issues.extend((b.get("issues") or [])[:2])
-        kind = "community thread" if boost > 1.0 else "source"
         reason = (
-            f"Active {kind} ranking #{result.rank} for this query mentions "
+            f"Active thread ranking #{result.rank} for this query mentions "
             f"{', '.join(competitors[:3])} but not {target or 'your brand'}."
         )
         opportunities.append({

@@ -51,3 +51,68 @@ def refresh_fact_embeddings() -> int:
         except Exception as exc:  # pragma: no cover
             logger.warning("refresh_fact_embeddings(%s) failed: %s", fact.id, exc)
     return count
+
+
+# ── Brand Security ────────────────────────────────────────────────────────
+
+@shared_task(name="apps.brand_vault.tasks.run_security_agent")
+def run_security_agent(website_id: str, agent_id: str) -> dict:
+    """Run one Brand Security agent for one website."""
+    from apps.brand_vault.services.security.orchestrator import run_agent
+    from apps.websites.models import Website
+
+    try:
+        website = Website.objects.get(pk=website_id)
+    except Website.DoesNotExist:
+        return {"agent_id": agent_id, "error": "website_not_found"}
+    try:
+        return run_agent(website, agent_id)
+    except Exception as exc:  # pragma: no cover
+        logger.exception("run_security_agent(%s,%s) failed: %s", website_id, agent_id, exc)
+        return {"agent_id": agent_id, "error": str(exc)[:200]}
+
+
+@shared_task(name="apps.brand_vault.tasks.run_security_scan")
+def run_security_scan(website_id: str, only: list[str] | None = None) -> dict:
+    """Run every enabled Brand Security agent for one website."""
+    from apps.brand_vault.services.security.orchestrator import run_all_agents
+    from apps.websites.models import Website
+
+    try:
+        website = Website.objects.get(pk=website_id)
+    except Website.DoesNotExist:
+        return {"error": "website_not_found"}
+    try:
+        return run_all_agents(website, only=only)
+    except Exception as exc:  # pragma: no cover
+        logger.exception("run_security_scan(%s) failed: %s", website_id, exc)
+        return {"error": str(exc)[:200]}
+
+
+@shared_task(name="apps.brand_vault.tasks.dispatch_scheduled_security_agents")
+def dispatch_scheduled_security_agents() -> int:
+    """Beat entry — fires any agent whose ``next_run_at`` is due.
+
+    We deliberately dispatch per (website, agent) so an unhealthy agent
+    can't block the rest of a scan run.
+    """
+    from django.utils import timezone
+
+    from apps.brand_vault.models import BrandSecurityAgent
+
+    now = timezone.now()
+    due = BrandSecurityAgent.objects.filter(
+        enabled=True,
+        next_run_at__lte=now,
+    ).exclude(
+        schedule=BrandSecurityAgent.SCHEDULE_MANUAL,
+    ).values("website_id", "agent_id")
+
+    dispatched = 0
+    for row in due:
+        try:
+            run_security_agent.delay(str(row["website_id"]), row["agent_id"])
+            dispatched += 1
+        except Exception as exc:  # pragma: no cover
+            logger.warning("dispatch_scheduled_security_agents queue failed: %s", exc)
+    return dispatched

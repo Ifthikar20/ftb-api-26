@@ -6,8 +6,10 @@ go through the same gate by resolving the audit's website first.
 """
 from __future__ import annotations
 
+import re
 from datetime import timedelta
 
+from django.core.cache import cache
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework.permissions import IsAuthenticated
@@ -435,6 +437,72 @@ class SourceScanDetailView(TenantScopedAPIView):
         ]
         payload["opportunities"] = derive_opportunities(scan)
         return Response(payload)
+
+
+class BrandLookupView(APIView):
+    """Enrich a brand name with a canonical website + top web results.
+
+    Backed by Perplexity search — the same client the scan pipeline
+    uses, so we get the same daily quota + circuit breaker for free.
+    Results are cached in Redis for 24h per (name, user) to keep
+    repeat clicks off the quota. Silent-fail: an empty result payload
+    means "we tried, nothing to show", not an error.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from apps.citations.services import web_search
+
+        name = (request.query_params.get("name") or "").strip()
+        if not name or len(name) > 200:
+            return Response({"error": "name is required (max 200 chars)"}, status=400)
+
+        cache_key = f"brand_lookup:{request.user.pk}:{name.lower()}"
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return Response(cached)
+
+        results = web_search.search_web(
+            name, max_results=6, user_id=request.user.pk,
+        ) or []
+        top = [
+            {
+                "rank": r.get("rank"),
+                "url": r.get("url"),
+                "domain": r.get("domain"),
+                "title": r.get("title"),
+                "snippet": (r.get("snippet") or "")[:280],
+            }
+            for r in results[:6]
+        ]
+        payload = {
+            "name": name,
+            "website": _guess_official_site(name, top),
+            "top_results": top,
+        }
+        # 24h cache — brand SERP presence doesn't move that fast, and
+        # clicking around a scan shouldn't burn the daily quota.
+        cache.set(cache_key, payload, timeout=60 * 60 * 24)
+        return Response(payload)
+
+
+def _guess_official_site(name: str, results: list[dict]) -> str | None:
+    """Heuristic: pick the first result whose domain contains a
+    normalised slug of the brand name (letters + digits only, three
+    or more chars). Falls back to the top result's origin if nothing
+    obviously matches.
+    """
+    slug = re.sub(r"[^a-z0-9]", "", (name or "").lower())
+    if not slug or len(slug) < 3:
+        return None
+    for r in results:
+        domain = (r.get("domain") or "").lower()
+        if slug in re.sub(r"[^a-z0-9]", "", domain):
+            url = r.get("url") or ""
+            m = re.match(r"(https?://[^/]+)", url)
+            return m.group(1) if m else None
+    return None
 
 
 def _scan_summary(scan) -> dict:

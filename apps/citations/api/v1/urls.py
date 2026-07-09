@@ -54,4 +54,9 @@ urlpatterns = [
         views.SourceScanDetailView.as_view(),
         name="citations-source-scan-detail",
     ),
+    path(
+        "brand-lookup/",
+        views.BrandLookupView.as_view(),
+        name="citations-brand-lookup",
+    ),
 ]
