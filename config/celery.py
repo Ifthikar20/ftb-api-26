@@ -78,6 +78,11 @@ app.conf.beat_schedule = {
         "task": "apps.agents.tasks.dispatch_agent_runs",
         "schedule": crontab(minute="*/15"),  # Every 15 min — checks next_run_at
     },
+    # ── Brand Security ──
+    "brand-security-schedule-dispatcher": {
+        "task": "apps.brand_vault.tasks.dispatch_scheduled_security_agents",
+        "schedule": crontab(minute="*/15"),  # Every 15 min — checks next_run_at
+    },
     # ── Prompt Library ──
     "mine-daily-prompts": {
         "task": "apps.prompt_library.tasks.mine_daily_prompts",

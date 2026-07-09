@@ -96,14 +96,17 @@ def dispatch_scheduled_security_agents() -> int:
     We deliberately dispatch per (website, agent) so an unhealthy agent
     can't block the rest of a scan run.
     """
+    from django.db.models import Q
     from django.utils import timezone
 
     from apps.brand_vault.models import BrandSecurityAgent
 
     now = timezone.now()
+    # Newly-activated agents have next_run_at=NULL and should fire on the
+    # next tick, then the orchestrator sets a real next_run_at.
     due = BrandSecurityAgent.objects.filter(
+        Q(next_run_at__lte=now) | Q(next_run_at__isnull=True),
         enabled=True,
-        next_run_at__lte=now,
     ).exclude(
         schedule=BrandSecurityAgent.SCHEDULE_MANUAL,
     ).values("website_id", "agent_id")
