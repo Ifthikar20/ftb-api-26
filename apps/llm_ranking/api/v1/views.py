@@ -9,8 +9,6 @@ from rest_framework.response import Response
 
 from apps.llm_ranking.api.v1.serializers import (
     CreateScheduleSerializer,
-    GeoJudgeRequestSerializer,
-    GeoRewriteRequestSerializer,
     LLMRankingAuditListSerializer,
     LLMRankingAuditSerializer,
     LLMRankingScheduleSerializer,
@@ -1644,8 +1642,9 @@ def _performance_matrix(website):
 
 
 def _ai_spend_30d(user, since):
-    from apps.accounts.models import AITokenUsage
     from django.db.models import Sum
+
+    from apps.accounts.models import AITokenUsage
 
     rows = AITokenUsage.objects.filter(user=user, created_at__gte=since)
     agg = rows.aggregate(

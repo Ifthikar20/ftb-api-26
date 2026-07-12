@@ -15,7 +15,6 @@ from ..judge import judge_finding
 from ..sources import llms
 from ._helpers import brand_terms
 
-
 ALLOWED_ISSUES = (
     SafetyAlert.ISSUE_HALLUCINATION,
     SafetyAlert.ISSUE_UNVERIFIED,

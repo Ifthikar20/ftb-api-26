@@ -1,5 +1,4 @@
 import logging
-import re as _re
 from datetime import timedelta
 
 from celery import chord, shared_task
