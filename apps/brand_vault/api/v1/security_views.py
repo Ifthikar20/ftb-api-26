@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from collections import Counter
 
-from django.db.models import Count, Q
+from django.db.models import Count
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.response import Response

@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from apps.brand_vault.services.security.judge import _parse_verdict
 
-
 ALLOWED = ("hallucination", "negative")
 
 

@@ -20,7 +20,6 @@ from ..judge import judge_finding
 from ..sources import reddit, serp
 from ._helpers import brand_terms, website_domain
 
-
 ALLOWED_ISSUES = (
     SafetyAlert.ISSUE_IMPERSONATION,
     SafetyAlert.ISSUE_HARMFUL,

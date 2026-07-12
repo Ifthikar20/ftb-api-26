@@ -18,7 +18,6 @@ from ..judge import judge_finding
 from ..sources import serp
 from ._helpers import brand_terms, negative_keywords, website_domain
 
-
 ALLOWED_ISSUES = (
     SafetyAlert.ISSUE_NEGATIVE_OUTRANKING,
     SafetyAlert.ISSUE_RANKING_FOR_BAD_QUERY,

@@ -19,7 +19,6 @@ from ..judge import judge_finding
 from ..sources import reddit, trends
 from ._helpers import brand_terms
 
-
 ALLOWED_ISSUES = (
     SafetyAlert.ISSUE_EMERGING_NARRATIVE,
     SafetyAlert.ISSUE_NEGATIVE,

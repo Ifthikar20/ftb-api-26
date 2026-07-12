@@ -15,7 +15,6 @@ from ..judge import judge_finding
 from ..sources import reddit, x
 from ._helpers import brand_terms
 
-
 ALLOWED_ISSUES = (
     SafetyAlert.ISSUE_SENTIMENT_DROP,
     SafetyAlert.ISSUE_NEGATIVE,
