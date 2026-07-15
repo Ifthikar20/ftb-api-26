@@ -15,9 +15,15 @@ def no_openai(settings):
 
 
 def _seed_chunks(user, website, texts):
+    # Hash the full first text so two seed calls with the same 10-char
+    # prefix (e.g. "FetchBot analytics blog" vs "FetchBot analytics home")
+    # produce distinct URLs and don't collide on the (user, website, url)
+    # unique constraint.
+    import hashlib
+    slug = hashlib.sha1(texts[0].encode("utf-8")).hexdigest()[:12]
     source = KnowledgeSource.objects.create(
         user=user, website=website,
-        url=f"https://example.com/{texts[0][:10]}",
+        url=f"https://example.com/{slug}",
         kind=KnowledgeSource.KIND_HOMEPAGE,
         status=KnowledgeSource.STATUS_READY,
     )

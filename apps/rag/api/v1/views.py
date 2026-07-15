@@ -9,14 +9,18 @@ unique constraint on KnowledgeSource enforces it).
 from rest_framework import status
 from rest_framework.response import Response
 
+import hashlib
+
 from apps.rag.api.v1.serializers import (
     HitSerializer,
     IngestURLSerializer,
     KnowledgeChunkSerializer,
     KnowledgeSourceSerializer,
     RetrieveSerializer,
+    UploadTextSerializer,
 )
 from apps.rag.models import KnowledgeChunk, KnowledgeSource
+from apps.rag.services.ingest_service import ingest_url
 from apps.rag.services.retriever import retrieve
 from core.resilience import TokenBucket
 from core.views.base import TenantScopedAPIView
@@ -125,6 +129,59 @@ class KnowledgeSourceDetailView(TenantScopedAPIView):
         )
         source.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class UploadTextView(TenantScopedAPIView):
+    """
+    Paste raw text or markdown into the knowledge base.
+
+    Reuses the same ingest pipeline as URL ingest by handing the text
+    directly to ``ingest_url(text=...)``. The pseudo-URL is derived
+    from a SHA-256 of the text so the (user, website, url) uniqueness
+    constraint deduplicates identical pastes.
+    """
+
+    def post(self, request, website_id):
+        website = self.get_website(website_id)
+
+        if not _ingest_bucket(request.user.id).try_acquire(1):
+            return Response(
+                {"error": "Rate limit exceeded for RAG ingest. "
+                          "Slow down and retry shortly."},
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+
+        serializer = UploadTextSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        # Stable pseudo-URL so re-pasting identical content updates the
+        # same source instead of creating duplicates.
+        digest = hashlib.sha256(data["text"].encode("utf-8")).hexdigest()[:16]
+        pseudo_url = f"paste://{website.id}/{digest}"
+
+        result = ingest_url(
+            user=request.user, website=website,
+            url=pseudo_url,
+            kind=data.get("kind") or KnowledgeSource.KIND_OTHER,
+            title=data["title"],
+            text=data["text"],
+        )
+
+        source = KnowledgeSource.objects.get(id=result.source_id)
+        return Response(
+            {
+                "source": KnowledgeSourceSerializer(source).data,
+                "chunk_count": result.chunk_count,
+                "skipped_unchanged": result.skipped_unchanged,
+                "error": result.error,
+            },
+            status=(
+                status.HTTP_201_CREATED
+                if result.status == KnowledgeSource.STATUS_READY
+                else status.HTTP_400_BAD_REQUEST
+            ),
+        )
 
 
 class RetrieveView(TenantScopedAPIView):

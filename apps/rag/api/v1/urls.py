@@ -9,6 +9,11 @@ urlpatterns = [
         name="rag-source-list",
     ),
     path(
+        "<uuid:website_id>/sources/upload/",
+        views.UploadTextView.as_view(),
+        name="rag-source-upload",
+    ),
+    path(
         "<uuid:website_id>/sources/<uuid:source_id>/",
         views.KnowledgeSourceDetailView.as_view(),
         name="rag-source-detail",

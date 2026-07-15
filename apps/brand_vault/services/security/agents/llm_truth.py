@@ -9,11 +9,16 @@ answer so the user knows *which* LLM is misbehaving.
 from __future__ import annotations
 
 from apps.brand_vault.models import SafetyAlert, SafetyPrompt
+from apps.rag.services.retriever import retrieve
 
 from ..base import BaseSecurityAgent, Finding
 from ..judge import judge_finding
 from ..sources import llms
 from ._helpers import brand_terms
+
+# Ground each LLM answer in up to this many chunks from the client's own
+# knowledge base when judging. Keeps the judge prompt bounded.
+_GROUND_TRUTH_TOP_K = 5
 
 ALLOWED_ISSUES = (
     SafetyAlert.ISSUE_HALLUCINATION,
@@ -70,6 +75,39 @@ class LLMTruthAgent(BaseSecurityAgent):
     def judge(self, website, finding):
         terms = brand_terms(website, {})
         brand = terms[0] if terms else website.name
+
+        # Pull the client's own statements about this topic from their RAG
+        # knowledge base. The query is the prompt the LLM was asked, so we
+        # retrieve the chunks most relevant to that question -- the same
+        # facts a human reviewer would open the brand docs to check.
+        hits: list = []
+        query = finding.prompt_text or finding.title or brand
+        try:
+            hits = retrieve(
+                user=website.user,
+                website=website,
+                query=query,
+                top_k=_GROUND_TRUTH_TOP_K,
+            )
+        except Exception:
+            # Retrieval must never break the agent -- fall back to
+            # unrounded judging if the RAG layer errors out.
+            hits = []
+
+        ground_truth = [
+            {
+                "chunk_id": h.chunk_id,
+                "source_id": h.source_id,
+                "source_url": h.source_url,
+                "section_label": h.section_label,
+                "text": h.text,
+                "score": h.score,
+            }
+            for h in hits
+        ]
+        # Stash on the finding so ``scan()`` can persist it on the alert.
+        finding.extra["evidence_chunks"] = ground_truth
+
         return judge_finding(
             question=(
                 "Does this LLM answer contain a factual error, outdated info,"
@@ -79,4 +117,5 @@ class LLMTruthAgent(BaseSecurityAgent):
             title=finding.prompt_text or finding.title,
             snippet=finding.snippet,
             allowed_issues=ALLOWED_ISSUES,
+            ground_truth=ground_truth,
         )

@@ -41,6 +41,17 @@ class IngestURLSerializer(serializers.Serializer):
             raise serializers.ValidationError(str(exc)) from exc
 
 
+class UploadTextSerializer(serializers.Serializer):
+    """Paste-in ingest: raw text or markdown, no URL required."""
+
+    title = serializers.CharField(max_length=500)
+    kind = serializers.ChoiceField(
+        choices=[c[0] for c in KnowledgeSource.KIND_CHOICES],
+        required=False, default=KnowledgeSource.KIND_OTHER,
+    )
+    text = serializers.CharField(min_length=20, max_length=200_000)
+
+
 class RetrieveSerializer(serializers.Serializer):
     query = serializers.CharField(max_length=2000)
     top_k = serializers.IntegerField(required=False, default=5, min_value=1, max_value=20)

@@ -111,6 +111,7 @@ class BaseSecurityAgent:
                 detail=verdict.detail,
                 severity=verdict.severity,
                 sentiment_score=verdict.sentiment_score,
+                evidence_chunks=finding.extra.get("evidence_chunks") or [],
             )
             alerts.append(alert)
         return alerts

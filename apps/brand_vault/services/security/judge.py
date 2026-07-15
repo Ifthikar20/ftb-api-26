@@ -21,6 +21,11 @@ from .base import Verdict
 
 logger = logging.getLogger("apps")
 
+# Maximum characters of brand ground-truth to include in a single judge
+# prompt. Enough for ~5 medium-sized chunks, well under the model's
+# context window.
+_MAX_GROUND_TRUTH_CHARS = 4000
+
 _MODEL = "claude-haiku-4-5-20251001"
 
 _VALID_ISSUES = {
@@ -38,21 +43,46 @@ def judge_finding(
     title: str,
     snippet: str,
     allowed_issues: tuple[str, ...],
+    ground_truth: list[dict] | None = None,
 ) -> Verdict:
     """Ask Claude Haiku to adjudicate one finding. Returns a ``Verdict``.
 
     ``question`` is agent-specific (e.g. "Is this LLM answer factually
     wrong about the brand?"). ``allowed_issues`` narrows the JSON contract
     so each agent only gets back issue classes it can raise.
+
+    ``ground_truth`` is an optional list of retrieval hits from the
+    client's own RAG knowledge base (dicts with at least ``text`` and
+    ``section_label``). When provided, the judge is told to prefer the
+    client's stated facts over its own priors, which converts vague
+    "does this sound off" adjudication into concrete contradiction
+    checking against the client's uploaded brand material.
     """
     api_key = getattr(settings, "ANTHROPIC_API_KEY", "") or ""
     if not api_key:
         return Verdict()
 
     issue_list = ", ".join(allowed_issues + ("none",))
+    ground_truth_block = _format_ground_truth(ground_truth or [])
+    if ground_truth_block:
+        grounding_preamble = (
+            "The client has provided the following statements about their own brand. "
+            "Treat these as the source of truth. If the content contradicts, "
+            "omits, or misrepresents them, flag it. If the content is consistent, "
+            'return issue="none".\n\n'
+            f"{ground_truth_block}\n\n"
+        )
+    else:
+        grounding_preamble = (
+            "The client has not uploaded any brand reference material yet, so "
+            "judge using general reasoning only. Be conservative: prefer "
+            'issue="none" unless the content is clearly wrong or harmful.\n\n'
+        )
+
     prompt = (
         f"You judge whether a piece of content is a brand-safety issue for the brand \"{brand}\".\n"
         f"Question: {question}\n\n"
+        f"{grounding_preamble}"
         f"Content title: {title}\n"
         f"Content snippet:\n{snippet}\n\n"
         "Respond with ONE JSON object and no prose. Schema:\n"
@@ -60,7 +90,8 @@ def judge_finding(
         f'  "issue": one of [{issue_list}],\n'
         '  "severity": one of [high, medium, low, none],\n'
         '  "sentiment_score": float between -1 and 1 (negative = hostile to the brand),\n'
-        '  "detail": one short sentence explaining the verdict\n'
+        '  "detail": one short sentence explaining the verdict, citing the brand'
+        ' fact that was contradicted when applicable\n'
         "}\n"
         'Use issue="none" and severity="none" if there is no brand-safety issue.'
     )
@@ -79,6 +110,27 @@ def judge_finding(
         return Verdict()
 
     return _parse_verdict(raw, allowed_issues)
+
+
+def _format_ground_truth(hits: list[dict]) -> str:
+    """Render retrieval hits as a bounded ``=== BRAND GROUND TRUTH ===`` block."""
+    if not hits:
+        return ""
+    lines = ["=== BRAND GROUND TRUTH ==="]
+    used = len(lines[0]) + 1
+    for i, h in enumerate(hits, start=1):
+        label = (h.get("section_label") or h.get("source_url") or "brand source")[:120]
+        text = (h.get("text") or "").strip()
+        if not text:
+            continue
+        block = f"[{i}] {label}\n{text}"
+        if used + len(block) > _MAX_GROUND_TRUTH_CHARS:
+            break
+        lines.append(block)
+        used += len(block) + 1
+    if len(lines) == 1:
+        return ""
+    return "\n\n".join(lines)
 
 
 def _parse_verdict(raw: str, allowed_issues: tuple[str, ...]) -> Verdict:
