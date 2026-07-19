@@ -33,9 +33,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Configure SSH
-        # EC2_SSH_KEY is the contents of fynda-deploy.pem stored as a
-        # repository secret. EC2_HOST defaults to 100.31.135.211 but
-        # can be overridden via the same-name secret if the box moves.
+        # EC2_SSH_KEY and EC2_HOST are read from repository secrets.
         env:
           EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
           EC2_HOST: ${{ secrets.EC2_HOST }}
@@ -44,15 +42,18 @@ jobs:
             echo "::error::Missing EC2_SSH_KEY repository secret. Add it under Settings > Secrets > Actions."
             exit 1
           fi
+          if [[ -z "$EC2_HOST" ]]; then
+            echo "::error::Missing EC2_HOST repository secret. Add it under Settings > Secrets > Actions."
+            exit 1
+          fi
           mkdir -p ~/.ssh
           printf '%s' "$EC2_SSH_KEY" > ~/.ssh/fynda-deploy.pem
           chmod 600 ~/.ssh/fynda-deploy.pem
-          host="${EC2_HOST:-100.31.135.211}"
-          ssh-keyscan -H "$host" >> ~/.ssh/known_hosts 2>/dev/null
+          ssh-keyscan -H "$EC2_HOST" >> ~/.ssh/known_hosts 2>/dev/null
 
       - name: Run deploy.sh against prod
         env:
-          EC2_HOST: ${{ secrets.EC2_HOST || '100.31.135.211' }}
+          EC2_HOST: ${{ secrets.EC2_HOST }}
           EC2_USER: ${{ secrets.EC2_USER || 'ubuntu' }}
           PEM_KEY: /home/runner/.ssh/fynda-deploy.pem
           REMOTE_DIR: ${{ secrets.REMOTE_DIR || '/opt/fetchbot/ftb-api-26' }}
