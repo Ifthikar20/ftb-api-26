@@ -6,6 +6,8 @@ identity comes from request.user — chunks are insulated from one user
 to another even within the same website (rare in practice, but the
 unique constraint on KnowledgeSource enforces it).
 """
+from django.db.models import Count, Q
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.response import Response
 
@@ -22,6 +24,7 @@ from apps.rag.api.v1.serializers import (
 from apps.rag.models import KnowledgeChunk, KnowledgeSource
 from apps.rag.services.ingest_service import ingest_url
 from apps.rag.services.retriever import retrieve
+from core.interceptors.pagination import StandardPagination
 from core.resilience import TokenBucket
 from core.views.base import TenantScopedAPIView
 
@@ -52,15 +55,87 @@ def _retrieve_bucket(user_id) -> TokenBucket:
     )
 
 
+def _source_stats(qs) -> dict:
+    """Aggregate counts by status for the filter chips.
+
+    Runs a single COUNT-with-FILTER query so the badges next to each
+    status filter reflect the unfiltered population, not the current
+    page — keeps the filter bar useful when a query has narrowed the list.
+    """
+    return qs.aggregate(
+        total=Count("id"),
+        ready=Count("id", filter=Q(status=KnowledgeSource.STATUS_READY)),
+        ingesting=Count("id", filter=Q(status=KnowledgeSource.STATUS_INGESTING)),
+        pending=Count("id", filter=Q(status=KnowledgeSource.STATUS_PENDING)),
+        failed=Count("id", filter=Q(status=KnowledgeSource.STATUS_FAILED)),
+    )
+
+
 class KnowledgeSourceListView(TenantScopedAPIView):
-    """GET = list sources for (user, website). POST = enqueue ingest."""
+    """GET = list sources for (user, website). POST = enqueue ingest.
+
+    GET supports filter + pagination query params:
+      status   — pending | ingesting | ready | failed
+      kind     — homepage | blog | product | docs | review | other | audit_context
+      domain   — exact-match hostname filter, or "paste" for text uploads
+      search   — substring match on url or title (case-insensitive)
+      page, page_size — standard DRF pagination (default page_size=25, max=100)
+
+    A ``stats`` block is included so the UI can render status-count
+    badges without a second request.
+    """
 
     def get(self, request, website_id):
         website = self.get_website(website_id)
-        sources = KnowledgeSource.objects.filter(
+        base_qs = KnowledgeSource.objects.filter(
             user=request.user, website=website,
-        ).order_by("-created_at")
-        return Response(KnowledgeSourceSerializer(sources, many=True).data)
+        )
+
+        # Stats reflect the whole website corpus, not the current
+        # filter — badges are for navigation.
+        stats = _source_stats(base_qs)
+
+        qs = base_qs.order_by("-created_at")
+
+        status_param = request.query_params.get("status")
+        if status_param in {s for s, _ in KnowledgeSource.STATUS_CHOICES}:
+            qs = qs.filter(status=status_param)
+
+        kind_param = request.query_params.get("kind")
+        if kind_param in {k for k, _ in KnowledgeSource.KIND_CHOICES}:
+            qs = qs.filter(kind=kind_param)
+
+        domain_param = (request.query_params.get("domain") or "").strip().lower()
+        if domain_param == "paste":
+            qs = qs.filter(url__startswith="paste://")
+        elif domain_param:
+            # Match rows whose URL starts with ``scheme://<domain>/`` or
+            # equals ``scheme://<domain>`` (no trailing slash). Cheaper
+            # than parsing every URL in Python.
+            qs = qs.filter(
+                Q(url__istartswith=f"http://{domain_param}/")
+                | Q(url__istartswith=f"https://{domain_param}/")
+                | Q(url__iexact=f"http://{domain_param}")
+                | Q(url__iexact=f"https://{domain_param}")
+            )
+
+        search = (request.query_params.get("search") or "").strip()
+        if search:
+            qs = qs.filter(Q(url__icontains=search) | Q(title__icontains=search))
+
+        paginator = StandardPagination()
+        page = paginator.paginate_queryset(qs, request, view=self)
+        data = KnowledgeSourceSerializer(page if page is not None else qs, many=True).data
+
+        if page is not None:
+            resp = paginator.get_paginated_response(data)
+            # StandardPagination returns {count, next, previous, results}.
+            # Attach stats onto the same envelope so one round-trip
+            # yields both the page and the badge counts.
+            resp.data["stats"] = stats
+            return resp
+
+        return Response({"results": data, "stats": stats})
 
     def post(self, request, website_id):
         website = self.get_website(website_id)
@@ -131,6 +206,60 @@ class KnowledgeSourceDetailView(TenantScopedAPIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+class ReingestSourceView(TenantScopedAPIView):
+    """POST re-queues the URL for a fresh fetch + embed.
+
+    Only URL-backed sources can be reingested. Paste-uploaded text has
+    no source we can re-fetch — the user must re-upload to update. The
+    task is throttled through the same ingest bucket as the initial add.
+    """
+
+    def post(self, request, website_id, source_id):
+        website = self.get_website(website_id)
+        source = self.get_tenant_object(
+            KnowledgeSource.objects.filter(user=request.user, website=website),
+            id=source_id,
+        )
+
+        if source.url.startswith("paste://"):
+            return Response(
+                {"error": "Paste-uploaded sources cannot be reingested; "
+                          "re-upload the text to update it."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not _ingest_bucket(request.user.id).try_acquire(1):
+            return Response(
+                {"error": "Rate limit exceeded for RAG ingest. "
+                          "Slow down and retry shortly."},
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+
+        # Flip status back so the UI shows the row moving through the
+        # pipeline again. The task overwrites status when it runs.
+        source.status = KnowledgeSource.STATUS_PENDING
+        source.error_message = ""
+        source.save(update_fields=["status", "error_message", "updated_at"])
+
+        from apps.rag.tasks import ingest_url_task
+
+        ingest_url_task.delay(
+            user_id=request.user.id,
+            website_id=str(website.id),
+            url=source.url,
+            kind=source.kind,
+            title=source.title,
+        )
+        return Response(
+            {
+                "queued": True,
+                "source": KnowledgeSourceSerializer(source).data,
+                "reingest_requested_at": timezone.now().isoformat(),
+            },
+            status=status.HTTP_202_ACCEPTED,
+        )
+
+
 class UploadTextView(TenantScopedAPIView):
     """
     Paste raw text or markdown into the knowledge base.
@@ -185,7 +314,12 @@ class UploadTextView(TenantScopedAPIView):
 
 
 class RetrieveView(TenantScopedAPIView):
-    """POST a query, get top-k chunks back. Used by the prompt previewer + clients."""
+    """POST a query, get top-k chunks back. Used by the prompt previewer + clients.
+
+    Accepts an optional ``source_id`` to constrain the search to one
+    KnowledgeSource — the Brand Input detail drawer uses this so users
+    can preview what a specific source would surface for a query.
+    """
 
     def post(self, request, website_id):
         website = self.get_website(website_id)
@@ -202,10 +336,23 @@ class RetrieveView(TenantScopedAPIView):
         serializer = RetrieveSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
+
+        source_ids = None
+        if data.get("source_id"):
+            # Verify the source belongs to this (user, website) before
+            # letting it constrain retrieval — otherwise a caller could
+            # probe existence of other tenants' source_ids by timing.
+            source = self.get_tenant_object(
+                KnowledgeSource.objects.filter(user=request.user, website=website),
+                id=data["source_id"],
+            )
+            source_ids = [str(source.id)]
+
         hits = retrieve(
             user=request.user, website=website,
             query=data["query"], top_k=data["top_k"],
             kinds=data.get("kinds") or None,
+            source_ids=source_ids,
         )
         return Response({
             "query": data["query"],

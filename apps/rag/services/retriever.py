@@ -41,8 +41,13 @@ def retrieve(
     top_k: int = DEFAULT_TOP_K,
     min_score: float = DEFAULT_MIN_SCORE,
     kinds: list[str] | None = None,
+    source_ids: list[str] | None = None,
 ) -> list[Hit]:
-    """Return the top ``top_k`` chunks for the query, scoped to (user, website)."""
+    """Return the top ``top_k`` chunks for the query, scoped to (user, website).
+
+    ``source_ids`` narrows retrieval to specific KnowledgeSource rows,
+    powering the "test this source" affordance in the Brand Input drawer.
+    """
     if not query.strip():
         return []
 
@@ -53,6 +58,8 @@ def retrieve(
     )
     if kinds:
         qs = qs.filter(source__kind__in=kinds)
+    if source_ids:
+        qs = qs.filter(source_id__in=source_ids)
     candidates = list(qs.only(
         "id", "embedding", "embedding_dim", "text", "section_label",
         "source__id", "source__url", "source__kind",

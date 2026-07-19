@@ -1,3 +1,5 @@
+from urllib.parse import urlparse
+
 from rest_framework import serializers
 
 from apps.rag.models import KnowledgeChunk, KnowledgeSource
@@ -6,6 +8,8 @@ from apps.rag.models import KnowledgeChunk, KnowledgeSource
 class KnowledgeSourceSerializer(serializers.ModelSerializer):
     kind_display = serializers.CharField(source="get_kind_display", read_only=True)
     status_display = serializers.CharField(source="get_status_display", read_only=True)
+    is_paste = serializers.SerializerMethodField()
+    domain = serializers.SerializerMethodField()
 
     class Meta:
         model = KnowledgeSource
@@ -13,12 +17,30 @@ class KnowledgeSourceSerializer(serializers.ModelSerializer):
             "id", "url", "title", "kind", "kind_display",
             "status", "status_display", "chunk_count",
             "error_message", "last_ingested_at", "created_at", "updated_at",
+            "is_paste", "domain",
         ]
         read_only_fields = [
             "id", "kind_display", "status", "status_display",
             "chunk_count", "error_message", "last_ingested_at",
-            "created_at", "updated_at",
+            "created_at", "updated_at", "is_paste", "domain",
         ]
+
+    def get_is_paste(self, obj) -> bool:
+        return obj.url.startswith("paste://")
+
+    def get_domain(self, obj) -> str:
+        """Host portion of the source URL, or ``"paste"`` for uploaded text.
+
+        The frontend groups the source list by this field so a 50-page
+        crawl of the same site collapses into a single expandable node.
+        """
+        if obj.url.startswith("paste://"):
+            return "paste"
+        try:
+            host = urlparse(obj.url).hostname or ""
+        except ValueError:
+            host = ""
+        return host or "other"
 
 
 class IngestURLSerializer(serializers.Serializer):
@@ -59,6 +81,9 @@ class RetrieveSerializer(serializers.Serializer):
         child=serializers.ChoiceField(choices=[c[0] for c in KnowledgeSource.KIND_CHOICES]),
         required=False, default=list,
     )
+    # Optional: narrow retrieval to a specific source. Powers the
+    # "test this source" input in the Brand Input detail drawer.
+    source_id = serializers.UUIDField(required=False, allow_null=True)
 
 
 class HitSerializer(serializers.Serializer):
