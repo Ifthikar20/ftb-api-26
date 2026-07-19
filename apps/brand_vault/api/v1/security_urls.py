@@ -30,6 +30,11 @@ urlpatterns = [
         name="brand-security-scan",
     ),
     path(
+        "websites/<uuid:website_id>/scan/status/",
+        v.BrandSecurityScanStatusView.as_view(),
+        name="brand-security-scan-status",
+    ),
+    path(
         "websites/<uuid:website_id>/alerts/",
         v.BrandSecurityAlertsView.as_view(),
         name="brand-security-alerts",

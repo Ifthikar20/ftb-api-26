@@ -99,6 +99,7 @@ class SafetyAlertSerializer(serializers.ModelSerializer):
             "model", "prompt_text", "snippet",
             "issue", "detail", "severity", "status",
             "detected_at", "resolved_at",
+            "evidence_chunks",
             "created_at",
         )
         read_only_fields = fields

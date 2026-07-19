@@ -15,6 +15,7 @@ from __future__ import annotations
 from apps.brand_vault.models import SafetyAlert
 
 from ..base import BaseSecurityAgent, Finding
+from ..derived_terms import derived_search_terms
 from ..judge import judge_finding
 from ..sources import reddit, trends
 from ._helpers import brand_terms
@@ -39,6 +40,10 @@ class NarrativeWatchAgent(BaseSecurityAgent):
         terms = brand_terms(website, config)
         if not terms:
             return []
+        # Also watch phrases mined from the client's Brand Input material
+        # (product names, doc titles) — a narrative can form around a
+        # product without ever naming the brand.
+        terms = terms + derived_search_terms(website, exclude=terms)
 
         findings: list[Finding] = []
         spike_min = int(config.get("spike_min") or _SPIKE_MIN)

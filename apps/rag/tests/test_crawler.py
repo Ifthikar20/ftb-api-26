@@ -2,8 +2,11 @@
 Tests for the multi-page crawler.
 
 The HTTP-fetching paths (``crawl_site``, ``discover_from_sitemap``,
-``extract_same_domain_links``) are mocked at the ``requests.get`` boundary
-so the suite stays hermetic and never hits the network.
+``extract_same_domain_links``) are mocked at the SSRF-guarded
+``core.validators.safe_http.safe_get`` boundary so the suite stays
+hermetic and never hits the network. The crawler imports ``safe_get``
+at call time, so patching the attribute on the ``safe_http`` module is
+sufficient.
 """
 from unittest.mock import MagicMock, patch
 
@@ -18,6 +21,8 @@ from apps.rag.services.crawler import (
     discover_from_sitemap,
     extract_same_domain_links,
 )
+from core.validators import safe_http
+from core.validators.safe_http import FetchError
 
 
 class TestSitemapParsing:
@@ -87,31 +92,30 @@ class TestCanonicalAndDomain:
 
 class TestDiscoverFromSitemap:
     def test_returns_urls_when_sitemap_succeeds(self):
-        with patch.object(crawler, "requests") as req:
-            resp = MagicMock(status_code=200, text=(
+        with patch.object(safe_http, "safe_get") as get:
+            get.return_value = MagicMock(status_code=200, text=(
                 "<urlset>"
                 "<url><loc>https://example.com/a</loc></url>"
                 "<url><loc>https://example.com/b</loc></url>"
                 "</urlset>"
             ))
-            req.get.return_value = resp
             urls = discover_from_sitemap("https://example.com")
             assert urls == ["https://example.com/a", "https://example.com/b"]
 
     def test_returns_empty_when_sitemap_404(self):
-        with patch.object(crawler, "requests") as req:
-            req.get.return_value = MagicMock(status_code=404, text="")
+        with patch.object(safe_http, "safe_get") as get:
+            get.return_value = MagicMock(status_code=404, text="")
             assert discover_from_sitemap("https://example.com") == []
 
-    def test_swallows_request_errors(self):
-        with patch.object(crawler, "requests") as req:
-            req.get.side_effect = Exception("network down")
+    def test_swallows_fetch_errors(self):
+        with patch.object(safe_http, "safe_get") as get:
+            get.side_effect = FetchError("network down")
             assert discover_from_sitemap("https://example.com") == []
 
 
 class TestExtractSameDomainLinks:
     def _make_response(self, html: str, *, url: str = "https://example.com"):
-        return MagicMock(status_code=200, text=html, url=url)
+        return MagicMock(status_code=200, text=html, final_url=url)
 
     def test_returns_only_same_domain_links(self):
         html = (
@@ -120,8 +124,8 @@ class TestExtractSameDomainLinks:
             "<a href='https://other.com/x'>Other</a>"
             "<a href='https://www.example.com/contact'>Contact</a>"
         )
-        with patch.object(crawler, "requests") as req:
-            req.get.return_value = self._make_response(html)
+        with patch.object(safe_http, "safe_get") as get:
+            get.return_value = self._make_response(html)
             links = extract_same_domain_links("https://example.com", "example.com")
         assert any("/about" in link for link in links)
         assert any("/blog" in link for link in links)
@@ -130,8 +134,8 @@ class TestExtractSameDomainLinks:
 
     def test_skips_assets(self):
         html = "<a href='/x.pdf'>doc</a><a href='/foo'>foo</a>"
-        with patch.object(crawler, "requests") as req:
-            req.get.return_value = self._make_response(html)
+        with patch.object(safe_http, "safe_get") as get:
+            get.return_value = self._make_response(html)
             links = extract_same_domain_links("https://example.com", "example.com")
         assert any("/foo" in link for link in links)
         assert not any(".pdf" in link for link in links)
@@ -143,8 +147,8 @@ class TestExtractSameDomainLinks:
             "<a href='tel:+15551234'>tel</a>"
             "<a href='/foo'>foo</a>"
         )
-        with patch.object(crawler, "requests") as req:
-            req.get.return_value = self._make_response(html)
+        with patch.object(safe_http, "safe_get") as get:
+            get.return_value = self._make_response(html)
             links = extract_same_domain_links("https://example.com", "example.com")
         assert len(links) == 1
         assert "/foo" in links[0]
@@ -155,8 +159,8 @@ class TestExtractSameDomainLinks:
             "<a href='/foo'>foo2</a>"
             "<a href='/foo#anchor'>foo3</a>"
         )
-        with patch.object(crawler, "requests") as req:
-            req.get.return_value = self._make_response(html)
+        with patch.object(safe_http, "safe_get") as get:
+            get.return_value = self._make_response(html)
             links = extract_same_domain_links("https://example.com", "example.com")
         # All three render to the same canonical URL — dedup keeps one.
         assert len(links) == 1
@@ -197,8 +201,11 @@ class TestCrawlSiteIntegration:
             extract.assert_not_called()
 
     def test_off_domain_sitemap_entries_filtered(self):
-        with patch.object(crawler, "scan_domain", return_value={
-            "success": True, "content_summary": "x", "url": "https://example.com",
+        # side_effect returns a fresh dict per call: crawl_site stamps
+        # url/depth/kind onto the scan dict, so a shared return_value
+        # would make every result alias the last page crawled.
+        with patch.object(crawler, "scan_domain", side_effect=lambda url: {
+            "success": True, "content_summary": "x",
         }), patch.object(crawler, "discover_from_sitemap", return_value=[
             "https://other.com/leak",
             "https://example.com/legit",

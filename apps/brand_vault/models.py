@@ -293,6 +293,12 @@ class SafetyAlert(TimestampMixin):
         related_name="resolved_safety_alerts",
     )
 
+    # RAG grounding trail: list of {chunk_id, source_url, section_label,
+    # snippet, score} dicts the judge compared this finding against. Empty
+    # when the client has no knowledge base yet or no chunk cleared the
+    # relevance threshold.
+    evidence_chunks = models.JSONField(default=list, blank=True)
+
     class Meta:
         db_table = "brand_vault_safetyalert"
         indexes = [
@@ -310,10 +316,12 @@ class BrandSecurityAgent(TimestampMixin):
     """Per-website configuration and status for one Brand Security agent."""
 
     STATUS_IDLE = "idle"
+    STATUS_QUEUED = "queued"
     STATUS_RUNNING = "running"
     STATUS_ERROR = "error"
     STATUS_CHOICES = [
         (STATUS_IDLE, "Idle"),
+        (STATUS_QUEUED, "Queued"),
         (STATUS_RUNNING, "Running"),
         (STATUS_ERROR, "Error"),
     ]
