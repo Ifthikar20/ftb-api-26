@@ -223,3 +223,148 @@ def test_impersonation_flags_typosquat_domain(monkeypatch):
     assert any(a.source_url == "https://acme-support.com/login" for a in alerts)
     # Own-domain result must not be flagged.
     assert not any("acme.io/login" == a.source_url for a in alerts)
+
+
+# ── Knowledge-base-driven search + grounding ──────────────────────────────
+
+def _kb_source(website, title):
+    from apps.rag.models import KnowledgeSource
+
+    return KnowledgeSource.objects.create(
+        user=website.user, website=website,
+        url=f"https://acme.io/{abs(hash(title))}",
+        title=title, status=KnowledgeSource.STATUS_READY,
+    )
+
+
+def test_sentiment_pulse_searches_derived_terms_and_dedupes_urls(monkeypatch):
+    website = _website()
+    _kb_source(website, "Acme Widget Pro — Docs")
+
+    searched: list[str] = []
+
+    def fake_reddit(term, limit=25):
+        searched.append(term)
+        # Same post returned for every query — must yield one finding.
+        return [{"title": "WidgetPro broke", "snippet": "post",
+                 "url": "https://reddit/widget", "subreddit": "r/gadgets",
+                 "score": 1, "num_comments": 0, "created_utc": 0.0}]
+
+    monkeypatch.setattr(
+        "apps.brand_vault.services.security.sources.reddit.search_mentions",
+        fake_reddit,
+    )
+    monkeypatch.setattr(
+        "apps.brand_vault.services.security.sources.x.search_mentions",
+        lambda term, limit=25: [],
+    )
+    monkeypatch.setattr(
+        "apps.brand_vault.services.security.agents.sentiment_pulse.judge_finding",
+        lambda **kw: Verdict(issue=SafetyAlert.ISSUE_NEGATIVE, severity="medium"),
+    )
+
+    agent = SentimentPulseAgent()
+    findings = agent.run(website, {})
+
+    # Both the brand term and the KB-derived product term were searched.
+    assert "Acme" in searched
+    assert "Acme Widget Pro" in searched
+    # Identical post URL across queries produced a single finding.
+    assert len(findings) == 1
+    assert findings[0].extra["brand_term"] == "Acme"
+    assert findings[0].extra["derived_term"] is False
+
+
+def test_sentiment_pulse_judge_grounds_in_knowledge_base(monkeypatch):
+    from types import SimpleNamespace
+
+    website = _website()
+
+    hit = SimpleNamespace(
+        chunk_id="c1", source_id="s1", source_url="https://acme.io/about",
+        section_label="About", text="Acme has served 10k customers.",
+        score=0.91,
+    )
+    monkeypatch.setattr(
+        "apps.brand_vault.services.security.agents.sentiment_pulse.retrieve",
+        lambda **kw: [hit],
+    )
+
+    captured: dict = {}
+
+    def fake_judge(**kw):
+        captured.update(kw)
+        return Verdict(issue=SafetyAlert.ISSUE_NEGATIVE, severity="medium")
+
+    monkeypatch.setattr(
+        "apps.brand_vault.services.security.agents.sentiment_pulse.judge_finding",
+        fake_judge,
+    )
+    monkeypatch.setattr(
+        "apps.brand_vault.services.security.sources.reddit.search_mentions",
+        lambda term, limit=25: [
+            {"title": "Acme never had customers", "snippet": "claim",
+             "url": "https://reddit/claim", "subreddit": "r/biz",
+             "score": 1, "num_comments": 0, "created_utc": 0.0},
+        ],
+    )
+    monkeypatch.setattr(
+        "apps.brand_vault.services.security.sources.x.search_mentions",
+        lambda term, limit=25: [],
+    )
+
+    alerts = SentimentPulseAgent().scan(website, _row(website, "sentiment_pulse"))
+
+    # The judge received the retrieved chunks as ground truth.
+    assert captured["ground_truth"][0]["chunk_id"] == "c1"
+    # The alert persisted the evidence trail for the UI.
+    assert len(alerts) == 1
+    assert alerts[0].evidence_chunks[0]["source_url"] == "https://acme.io/about"
+
+
+def test_sentiment_pulse_judge_survives_retrieval_failure(monkeypatch):
+    website = _website()
+    monkeypatch.setattr(
+        "apps.brand_vault.services.security.agents.sentiment_pulse.retrieve",
+        lambda **kw: (_ for _ in ()).throw(RuntimeError("rag down")),
+    )
+    captured: dict = {}
+
+    def fake_judge(**kw):
+        captured.update(kw)
+        return Verdict(issue=SafetyAlert.ISSUE_NEGATIVE, severity="medium")
+
+    monkeypatch.setattr(
+        "apps.brand_vault.services.security.agents.sentiment_pulse.judge_finding",
+        fake_judge,
+    )
+    from apps.brand_vault.services.security.base import Finding
+
+    verdict = SentimentPulseAgent().judge(website, Finding(
+        source=SafetyAlert.SOURCE_REDDIT, title="t", snippet="s",
+    ))
+    assert verdict.issue == SafetyAlert.ISSUE_NEGATIVE
+    assert captured["ground_truth"] == []
+
+
+def test_narrative_watch_searches_derived_terms(monkeypatch):
+    website = _website()
+    _kb_source(website, "Acme Widget Pro — Docs")
+
+    searched: list[str] = []
+    monkeypatch.setattr(
+        "apps.brand_vault.services.security.sources.trends.rising_related",
+        lambda term: [],
+    )
+
+    def fake_reddit(term, limit=15):
+        searched.append(term)
+        return []
+
+    monkeypatch.setattr(
+        "apps.brand_vault.services.security.sources.reddit.search_mentions",
+        fake_reddit,
+    )
+    NarrativeWatchAgent().run(website, {})
+    assert "Acme" in searched
+    assert "Acme Widget Pro" in searched

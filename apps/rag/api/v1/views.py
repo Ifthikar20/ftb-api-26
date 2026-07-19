@@ -6,12 +6,12 @@ identity comes from request.user — chunks are insulated from one user
 to another even within the same website (rare in practice, but the
 unique constraint on KnowledgeSource enforces it).
 """
+import hashlib
+
 from django.db.models import Count, Q
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.response import Response
-
-import hashlib
 
 from apps.rag.api.v1.serializers import (
     HitSerializer,

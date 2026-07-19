@@ -38,8 +38,10 @@ def user(db):
 
 
 @pytest.fixture
-def website(db):
-    return WebsiteFactory()
+def website(user):
+    # Owned by the authenticated user — TenantScopedAPIView 404s
+    # requests for websites the caller does not own.
+    return WebsiteFactory(user=user)
 
 
 @pytest.mark.django_db

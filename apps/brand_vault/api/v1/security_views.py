@@ -7,6 +7,7 @@ keep working while we migrate. Prefer these views for new work.
 from __future__ import annotations
 
 from collections import Counter
+from datetime import timedelta
 
 from django.db.models import Count
 from django.utils import timezone
@@ -30,7 +31,6 @@ from apps.brand_vault.models import (
 from apps.brand_vault.services.security.orchestrator import (
     ensure_agent_rows,
     run_agent,
-    run_all_agents,
 )
 from apps.brand_vault.services.security.registry import AGENTS, agent_catalog
 from core.exceptions import ResourceNotFound
@@ -231,15 +231,78 @@ class BrandSecurityAgentRunView(TenantScopedAPIView):
 
 
 class BrandSecurityScanView(TenantScopedAPIView):
-    """Run every enabled agent for this website."""
+    """Queue a background scan of every enabled agent for this website.
+
+    Returns 202 immediately; the scan runs on the Celery ``ai`` queue.
+    Enabled agent rows are stamped ``queued`` before the task is enqueued
+    so the status endpoint reports the scan as running from the moment
+    the client's POST returns, even before a worker picks the job up.
+    """
 
     def post(self, request, website_id):
         website = self.get_website(website_id)
         only = request.data.get("only") if isinstance(request.data, dict) else None
         if only is not None and not isinstance(only, list):
             only = None
-        result = run_all_agents(website, only=only)
-        return Response(result)
+
+        queued_ids: list[str] = []
+        for row in ensure_agent_rows(website):
+            if not row.enabled:
+                continue
+            if only is not None and row.agent_id not in only:
+                continue
+            row.last_status = BrandSecurityAgent.STATUS_QUEUED
+            row.save(update_fields=["last_status", "updated_at"])
+            queued_ids.append(row.agent_id)
+
+        if not queued_ids:
+            return Response({"queued": False, "agents": []})
+
+        from apps.brand_vault.tasks import run_security_scan
+
+        run_security_scan.delay(website_id=str(website.id), only=only)
+        return Response(
+            {"queued": True, "agents": queued_ids},
+            status=status.HTTP_202_ACCEPTED,
+        )
+
+
+class BrandSecurityScanStatusView(TenantScopedAPIView):
+    """Lightweight polling endpoint for scan progress.
+
+    ``running`` is true while any enabled agent row is queued or running.
+    Rows stuck in those states for more than 15 minutes (a worker died
+    mid-run) are treated as finished so the UI never spins forever.
+    """
+
+    STALE_AFTER = timedelta(minutes=15)
+
+    def get(self, request, website_id):
+        website = self.get_website(website_id)
+        rows = list(
+            BrandSecurityAgent.objects.filter(website=website, enabled=True),
+        )
+        cutoff = timezone.now() - self.STALE_AFTER
+        active = [
+            r for r in rows
+            if r.last_status in (
+                BrandSecurityAgent.STATUS_QUEUED,
+                BrandSecurityAgent.STATUS_RUNNING,
+            )
+            and r.updated_at >= cutoff
+        ]
+        last_run_at = max(
+            (r.last_run_at for r in rows if r.last_run_at), default=None,
+        )
+        open_alerts = SafetyAlert.objects.filter(
+            website=website, status=SafetyAlert.STATUS_OPEN,
+        ).count()
+        return Response({
+            "running": bool(active),
+            "agents_running": sorted(r.agent_id for r in active),
+            "last_run_at": last_run_at,
+            "open_alerts": open_alerts,
+        })
 
 
 class BrandSecurityAlertsView(TenantScopedListAPIView):
