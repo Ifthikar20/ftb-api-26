@@ -316,10 +316,12 @@ class BrandSecurityAgent(TimestampMixin):
     """Per-website configuration and status for one Brand Security agent."""
 
     STATUS_IDLE = "idle"
+    STATUS_QUEUED = "queued"
     STATUS_RUNNING = "running"
     STATUS_ERROR = "error"
     STATUS_CHOICES = [
         (STATUS_IDLE, "Idle"),
+        (STATUS_QUEUED, "Queued"),
         (STATUS_RUNNING, "Running"),
         (STATUS_ERROR, "Error"),
     ]

@@ -182,3 +182,136 @@ class TestConfig:
         cfg = BrandSecurityConfig.objects.get(website=website)
         assert cfg.brand_terms == ["Acme", "acme.io"]
         assert cfg.negative_keywords == ["scam"]
+
+
+class TestScanQueue:
+    def test_scan_returns_202_and_stamps_rows_queued(self, auth, monkeypatch):
+        client, user = auth
+        website = WebsiteFactory(user=user)
+        captured = {}
+
+        from apps.brand_vault import tasks
+
+        monkeypatch.setattr(
+            tasks.run_security_scan, "delay",
+            lambda **kwargs: captured.update(kwargs),
+        )
+
+        resp = client.post(
+            reverse("brand-security-scan", args=[website.id]), {}, format="json",
+        )
+        assert resp.status_code == 202
+        assert resp.data["queued"] is True
+
+        from apps.brand_vault.services.security.registry import AGENTS
+
+        assert set(resp.data["agents"]) == set(AGENTS)
+        assert captured["website_id"] == str(website.id)
+
+        statuses = set(
+            BrandSecurityAgent.objects.filter(website=website)
+            .values_list("last_status", flat=True),
+        )
+        assert statuses == {BrandSecurityAgent.STATUS_QUEUED}
+
+    def test_scan_with_all_agents_disabled_does_not_queue(self, auth, monkeypatch):
+        client, user = auth
+        website = WebsiteFactory(user=user)
+
+        from apps.brand_vault.services.security.orchestrator import ensure_agent_rows
+
+        ensure_agent_rows(website)
+        BrandSecurityAgent.objects.filter(website=website).update(enabled=False)
+
+        from apps.brand_vault import tasks
+
+        calls = []
+        monkeypatch.setattr(
+            tasks.run_security_scan, "delay",
+            lambda **kwargs: calls.append(kwargs),
+        )
+
+        resp = client.post(
+            reverse("brand-security-scan", args=[website.id]), {}, format="json",
+        )
+        assert resp.status_code == 200
+        assert resp.data["queued"] is False
+        assert calls == []
+
+    def test_scan_only_filters_queued_agents(self, auth, monkeypatch):
+        client, user = auth
+        website = WebsiteFactory(user=user)
+
+        from apps.brand_vault import tasks
+
+        captured = {}
+        monkeypatch.setattr(
+            tasks.run_security_scan, "delay",
+            lambda **kwargs: captured.update(kwargs),
+        )
+
+        resp = client.post(
+            reverse("brand-security-scan", args=[website.id]),
+            {"only": ["llm_truth"]}, format="json",
+        )
+        assert resp.status_code == 202
+        assert resp.data["agents"] == ["llm_truth"]
+        assert captured["only"] == ["llm_truth"]
+        queued = BrandSecurityAgent.objects.filter(
+            website=website, last_status=BrandSecurityAgent.STATUS_QUEUED,
+        )
+        assert [row.agent_id for row in queued] == ["llm_truth"]
+
+
+class TestScanStatus:
+    def test_running_true_while_rows_queued(self, auth):
+        client, user = auth
+        website = WebsiteFactory(user=user)
+        BrandSecurityAgent.objects.create(
+            website=website, agent_id="llm_truth", enabled=True,
+            last_status=BrandSecurityAgent.STATUS_QUEUED,
+        )
+        resp = client.get(
+            reverse("brand-security-scan-status", args=[website.id]),
+        )
+        assert resp.status_code == 200
+        assert resp.data["running"] is True
+        assert resp.data["agents_running"] == ["llm_truth"]
+
+    def test_idle_rows_report_not_running_and_count_open_alerts(self, auth):
+        client, user = auth
+        website = WebsiteFactory(user=user)
+        BrandSecurityAgent.objects.create(
+            website=website, agent_id="llm_truth", enabled=True,
+            last_status=BrandSecurityAgent.STATUS_IDLE,
+        )
+        _make_alert(website)
+        _make_alert(website, status=SafetyAlert.STATUS_RESOLVED)
+
+        resp = client.get(
+            reverse("brand-security-scan-status", args=[website.id]),
+        )
+        assert resp.status_code == 200
+        assert resp.data["running"] is False
+        assert resp.data["agents_running"] == []
+        assert resp.data["open_alerts"] == 1
+
+    def test_stale_running_rows_are_treated_as_finished(self, auth):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        client, user = auth
+        website = WebsiteFactory(user=user)
+        row = BrandSecurityAgent.objects.create(
+            website=website, agent_id="llm_truth", enabled=True,
+            last_status=BrandSecurityAgent.STATUS_RUNNING,
+        )
+        BrandSecurityAgent.objects.filter(pk=row.pk).update(
+            updated_at=timezone.now() - timedelta(minutes=30),
+        )
+        resp = client.get(
+            reverse("brand-security-scan-status", args=[website.id]),
+        )
+        assert resp.status_code == 200
+        assert resp.data["running"] is False
