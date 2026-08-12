@@ -176,6 +176,13 @@ brand vault (`_from_vault`), a prompt-library sample (`_from_library_sample`), o
 hybrid of both, and writes it onto the audit. `gather_prompts()` is the read-only
 equivalent used by preview endpoints.
 
+Note where generation actually happens. On the **manual** path,
+`LLMRankingService.generate_prompts()` runs **synchronously inside the POST handler** —
+a RAG retrieval plus a Claude Sonnet call on the request thread, before the audit row
+exists. Only the **scheduled** path generates prompts inside the Celery task. The
+prompt count is capped per plan by `max_prompts_for_user` (Individual 5, Pro 15,
+Business 50), not by a fixed constant.
+
 ### Orchestration — `apps/llm_ranking/tasks.py`
 
 1. `run_llm_ranking_audit(audit_id)` calls `LLMRankingService.prepare_audit()`, which
@@ -203,19 +210,32 @@ inline run (`run_audit_sync()`), and dev settings set `CELERY_TASK_ALWAYS_EAGER`
 ### Live progress
 
 ```
-UI ──poll──> GET /audits/<aid>/logs/?after=<ts>
+UI ──poll──> GET /audits/<aid>/logs/?after=<ISO8601>
               │
               ▼
      LLMRankingAuditLogsView returns audit.audit_logs
-              ▲
-              │ append
-   Celery cell tasks
-     ├─ "Starting audit for FetchBot"        (info)
-     ├─ "Generated 8 prompts"                (info)
-     ├─ "Claude query 1/8 succeeded (842ms)" (success)
-     ├─ "OpenAI query 2/8 failed: rate limit"(warn)
-     └─ "Audit completed: score 73"          (success)
 ```
+
+**The two runners emit very different feeds — know which one you are looking at.**
+
+*Chord path (production).* `prepare_audit` writes six to eight setup lines and buffers
+them in memory, saving only when prep finishes — so nothing appears until enrichment is
+done. `run_audit_cell` then emits **no log lines at all**; the only live signal during
+the run is `queries_completed` ticking up. `finalise_audit` writes a single closing
+line. The feed therefore looks like a burst, a long silence, then one completion line.
+
+*Legacy path* (`run_audit`, used by `POST audits/<aid>/run/` and by eager test runs).
+Saves each entry immediately and produces the rich per-query narration — "Querying
+Claude", "responded (1,842 chars)", "mentioned at rank #3", per-provider summaries. It
+also sleeps 250 ms between cells so rows arrive one at a time.
+
+Any UI copy or documentation promising a live per-query ticker is describing the legacy
+path, not what a production audit produces.
+
+Two further details: `audit_logs` is capped at 1000 entries with the oldest dropped, and
+every message is passed through `_redact_log_message` before being returned. Provider
+stack traces occasionally carry API keys or internal URLs, and those are scrubbed even
+for the tenant who owns the audit.
 
 ---
 
