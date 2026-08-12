@@ -280,30 +280,40 @@ The single tightest number is **Celery concurrency = 2**. This is the ceiling on
 
 ## 6. Known infrastructure issues
 
-### Docker Compose `command:` uses YAML folded scalar incorrectly
+### RESOLVED — Docker Compose `command:` used a YAML folded scalar incorrectly
 
-`docker/docker-compose.prod.yml` for the `celery` service uses `>` folded scalar with continuation lines indented deeper than the first content line. YAML preserves the extra indentation as literal newlines, so bash receives a multi-line script and treats each line as a separate command:
+Kept as a record because the failure mode is silent and easy to reintroduce.
 
-```yaml
-command: >
-  bash -c "
-    celery -A config.celery worker
-      --loglevel=info
-      --concurrency=2
-      --queues=default,high,low,ai,integrations,webhooks &
-    ...
-  "
+The `celery` service in `docker/docker-compose.prod.yml` used a `>` folded scalar with
+continuation lines indented deeper than the first content line. YAML preserves the
+extra indentation as literal newlines, so `bash -c` received a multi-line script and
+treated each line as a separate command. Bash ran `celery -A config.celery worker`
+with no flags and blocked there, never reaching the rest.
+
+**Symptom:** the worker consumed only the `default` queue, so anything routed to `ai`,
+`integrations` or `webhooks` sat in Redis unprocessed and scans stayed `pending`
+forever. `--concurrency=2` never applied. Celery beat never started at all, so no
+scheduled task ran. Dev and CI were unaffected because both set
+`CELERY_TASK_ALWAYS_EAGER`, which is why it survived so long.
+
+**Fix applied:** the command is now a single-line `>-` scalar, with a comment above it
+explaining why it must stay that way. Verify after any edit to that block:
+
+```bash
+python3 -c "import yaml; c=yaml.safe_load(open('docker/docker-compose.prod.yml'))['services']['celery']['command']; assert '\n' not in c; print(c)"
 ```
 
-Bash then runs `celery -A config.celery worker` on line 1 (no flags), and tries to execute `--loglevel=info`, `--queues=...` and so on as their own commands (they fail silently). The worker starts with defaults and consumes only the `default` queue.
+The `db` service uses the same folded style but is not affected — its command is a
+plain argv list, and Compose shlex-splits it, so newlines collapse to whitespace. Only
+a `bash -c "..."` wrapper turns the preserved newlines into separate commands.
 
-**Symptom:** any task routed to `ai`, `integrations`, or `webhooks` is queued in Redis and never processed. Search Insights scans stay in `pending` forever.
+Post-deploy confirmation:
 
-**Fix:** flatten the `command:` block to one line, or use `|-` literal style with matching indentation:
-
-```yaml
-command: >-
-  bash -c "celery -A config.celery worker --loglevel=info --concurrency=2 --queues=default,high,low,ai,integrations,webhooks & celery -A config.celery beat --loglevel=info --scheduler=django_celery_beat.schedulers:DatabaseScheduler & wait"
+```bash
+docker compose -f docker/docker-compose.prod.yml exec celery celery -A config.celery inspect active_queues
+# expect: default, high, low, ai, integrations, webhooks
+docker compose -f docker/docker-compose.prod.yml logs celery | grep -i beat
+# expect beat to have started
 ```
 
 ### Elastic IP is not attached at instance launch

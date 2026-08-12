@@ -158,17 +158,12 @@ services:
       DB_HOST: db
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/1
-    command: >
-      bash -c "
-        celery -A config.celery worker
-          --loglevel=info
-          --concurrency=2
-          --queues=default,high,low,ai,integrations,webhooks &
-        celery -A config.celery beat
-          --loglevel=info
-          --scheduler=django_celery_beat.schedulers:DatabaseScheduler &
-        wait
-      "
+    # Must stay on ONE line. A `>` folded scalar with deeper-indented
+    # continuation lines preserves the newlines, so bash would receive a
+    # multi-line script, run `celery ... worker` with no flags (default
+    # queue only) and never reach beat. See docs/INFRASTRUCTURE.md.
+    command: >-
+      bash -c "celery -A config.celery worker --loglevel=info --concurrency=2 --queues=default,high,low,ai,integrations,webhooks & celery -A config.celery beat --loglevel=info --scheduler=django_celery_beat.schedulers:DatabaseScheduler & wait"
     depends_on:
       db:
         condition: service_healthy
