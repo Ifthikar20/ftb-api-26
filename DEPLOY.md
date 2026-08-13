@@ -134,7 +134,9 @@ back.
 
 ## Things that are NOT automated
 
-- Pushing to `main` does **not** deploy. CI only lints.
+- CI does **not** run the test suite. The `Lint` job runs `ruff check .` only,
+  and that is the sole gate the deploy workflow waits on. Run `pytest` locally
+  before merging.
 - There is no blue/green or canary. The deploy script takes the stack down
   with `docker compose down` before bringing it back up, so expect a brief
   outage on every release.

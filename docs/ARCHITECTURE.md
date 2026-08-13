@@ -1,247 +1,408 @@
-# FetchBot Architecture & Deployment Status
+# FetchBot Architecture
 
-Date of report: 2026-04-25
-Working copy: `/Users/ifthikaraliseyed/Desktop/FTB_APP/ftb-api-26`
-Local HEAD: `11d0456` ("some")
-Remote: `git@github.com:Ifthikar20/ftb-api-26.git`
-
----
-
-## 1. Deployment Status — short answer
-
-**The frontend you see in production is almost certainly stale, and you also have unpushed/uncommitted work locally.** Three independent signals confirm this:
-
-| Signal | Evidence | Implication |
-|---|---|---|
-| Built bundle older than source | `frontend/dist/index.html` modified `Apr 24 10:30`. `frontend/src/pages/LLMRankingPage.vue` modified `Apr 25 20:14`. | The dist/ artifact was built before the latest UI work. If the prod container is built from the current commit, it would still rebuild — but if the host hasn't pulled, prod is serving the old bundle. |
-| Working tree is dirty | `git status` shows modified files in `apps/llm_ranking/{models,services,views,urls}.py`, `frontend/src/pages/LLMRankingPage.vue`, `frontend/src/api/llm_ranking.js`, plus an untracked migration `apps/llm_ranking/migrations/0009_add_audit_logs.py`. | A large block of LLM ranking work (~330 lines across 6 files, including the `audit_logs` field) is **not even committed**, so it cannot be on prod. |
-| No automated deploy | `DEPLOY.md` and `.github/workflows/ci.yml` (per docs) confirm CI only lints on push to main. Production updates require an operator to SSH to EC2 and run `bash scripts/deploy.sh`. | "Code in main" ≠ "code in prod". Even committed changes are not on prod until someone runs the deploy script. |
-
-### What is actually on prod right now
-
-- **Backend:** whatever commit was last pulled by `scripts/deploy.sh` on the EC2 host. From local history, the most recent commit on `main` is `11d0456`. Anything you see locally that is not yet committed (the `audit_logs`/live-pipeline-log work) is **definitely not deployed**.
-- **Frontend:** the prod `frontend` container builds from source inside `docker/docker-compose.prod.yml` at deploy time, so a successful `scripts/deploy.sh` run would produce a fresh bundle. Your **local** `frontend/dist/` is stale, but that does not affect prod — prod doesn't ship your local dist/.
-- **Net effect:** prod is, at best, one deploy behind your local main, and definitely behind your uncommitted work.
-
-### How to verify against the live host
-
-```bash
-ssh -i fynda-deploy.pem ubuntu@<fetchbot-ec2-ip>
-cd /opt/fetchbot/ftb-api-26
-git rev-parse HEAD                                    # what commit is deployed
-docker compose -f docker/docker-compose.prod.yml ps   # which services are up
-docker compose -f docker/docker-compose.prod.yml logs --tail=50 web
-docker compose -f docker/docker-compose.prod.yml logs --tail=50 frontend
-curl -I https://fetchbot.ai/health/
-```
-
-If `git rev-parse HEAD` on the host is older than `11d0456`, the backend is behind. If you want the latest local work on prod, you must:
-1. Commit the dirty files (including the new migration `0009_add_audit_logs.py`).
-2. Push to `origin/main`.
-3. SSH to the host and run `bash scripts/deploy.sh`.
-
-### Why "the UI shows no reactions to what is happening"
-
-The branch you have locally is the one that adds live audit progress (the `audit_logs` JSON field on `LLMRankingAudit` and the `/audits/<aid>/logs/` endpoint that the UI polls to show "Generated 8 prompts", "Claude query succeeded", etc.). That is precisely the work that is **uncommitted on disk and not on prod**. So the deployed UI has no live feedback because the backend it talks to does not yet expose live progress, and the frontend bundle on prod does not poll for it. Ship the pending changes and the reactions show up.
+Companion documents: `docs/INFRASTRUCTURE.md` (what runs in production, capacity,
+inspection recipes) and `DEPLOY.md` (release flow). Per-app design notes live in
+`apps/<app>/ARCHITECTURE.md`.
 
 ---
 
-## 2. System overview
+## 1. System overview
 
-FetchBot is a Django + Vue SaaS that measures and improves how a brand appears in answers from large language models (Claude, GPT-4o, Gemini, Perplexity). The flagship feature is the **LLM Ranking Audit**: given a business profile, the system asks several LLMs the kinds of questions a buyer would ask, parses the answers, and scores brand visibility, citation share, and competitive ranking over time.
+FetchBot is a Django SaaS that measures and improves how a brand appears in answers
+from large language models. The flagship feature is the **LLM Ranking Audit**: given a
+business profile, the system asks several LLMs the kinds of questions a buyer would
+ask, parses the answers, and scores brand visibility, citation share, sentiment and
+competitive ranking over time.
 
 ```
 ┌────────────────────────────────────────────────────────────────────┐
-│                         Cloudflare (Full Strict TLS)               │
+│                   Cloudflare (Full Strict TLS)                     │
 └────────────────────────────────────────────────────────────────────┘
                                   │
 ┌────────────────────────────────────────────────────────────────────┐
-│                       EC2 (Ubuntu 22.04, t3.small)                 │
+│                     EC2 (Ubuntu 22.04, t3.small)                   │
 │                                                                    │
-│   nginx ─┬──> /api/*  ──> web (Django + Gunicorn, ASGI)            │
-│          ├──> /ws/*   ──> web (Channels, Daphne via Gunicorn-asgi) │
-│          └──> /       ──> frontend (Vue 3 build artifact)          │
+│   nginx ─┬──> /api/*  ──> web (Django + Gunicorn)                  │
+│          ├──> /ws/*   ──> web (Channels)                           │
+│          └──> /       ──> frontend (ftb-ui build artifact)         │
 │                                                                    │
-│   web ──┬──> Postgres 16  (audits, results, usage, accounts)       │
-│         ├──> Redis        (Channels layer + Celery broker)         │
-│         └──> Celery worker + beat (queue: ai, default, …)          │
-│                                          │                         │
-│                                          ▼                         │
-│   Celery worker ──> Anthropic / OpenAI / Google / Perplexity APIs  │
+│   web ──┬──> Postgres 16  (all application data)                   │
+│         ├──> Redis        (cache + Channels layer + Celery broker) │
+│         └──> Celery worker + beat                                  │
+│                       │                                            │
+│                       ├──> Anthropic / OpenAI / Google /           │
+│                       │    Perplexity / xAI APIs                   │
+│                       └──> intelligence, sources (internal only)   │
 └────────────────────────────────────────────────────────────────────┘
 ```
 
-7 containers: `db`, `redis`, `web`, `celery` (worker + beat in one), `frontend` (build artifact), `nginx`, `openclaw` (currently disabled, `restart: "no"`).
+Nine containers in `docker/docker-compose.prod.yml`:
+
+| Service | Memory cap | Source |
+|---|---|---|
+| `db` | 300M | `postgres:16-alpine` |
+| `redis` | 150M | `redis:7-alpine` |
+| `web` | 500M | built from `docker/Dockerfile` (Gunicorn, 2 sync workers) |
+| `celery` | 400M | built from `docker/Dockerfile.celery` (worker + beat in one container) |
+| `frontend` | — | pulled image `ghcr.io/ifthikar20/ftb-ui:${UI_VERSION:-latest}`, exports `dist` into a volume |
+| `nginx` | 50M | `nginx:alpine`, TLS termination, mounts certs from `/opt/fetchbot/ssl` |
+| `intelligence` | 150M | built from `services/intelligence/Dockerfile` (FastAPI, internal only) |
+| `sources` | 150M | built from `services/sources/Dockerfile` (FastAPI, internal only) |
+| `openclaw` | 400M | disabled — `restart: "no"` |
+
+With `openclaw` disabled the active limits total roughly 1.7 GB against a 2 GB
+instance. A swapfile is assumed; `scripts/deploy.sh` warns when none is active but
+does not create one.
 
 ---
 
-## 3. Frontend
+## 2. The UI is a separate repository
 
-- **Stack:** Vue 3 (composition API), Pinia, Vue Router 4, Tailwind 4, Vite 7, axios, Chart.js + vue-chartjs.
-- **Layout:** `frontend/src/{api,pages,components,stores,router,layouts,composables,constants}/`.
-- **HTTP client:** `frontend/src/api/client.js` — single axios instance, baseURL `/api/v1`, request interceptor injects Bearer token + `X-Request-ID`, response interceptor unwraps `{success, data}` envelope, performs silent token refresh on 401 with a queued-request retry, and exponentially backs off on 429.
-- **LLM ranking UI:** `frontend/src/pages/LLMRankingPage.vue` (≈196 KB; the heaviest screen). Renders the Brand Overview dashboard: KPI cards (visibility %, citation share, brand rank, closest competitor), provider/time/topic filters, competitor visibility line chart, competitor rankings table, citation share trend, top sources, and a per-model usage breakdown.
-- **Realtime:** WebSockets exist (`apps/analytics/consumers.py` `LiveAnalyticsConsumer`, `apps/notifications/consumers.py` `NotificationConsumer`, ASGI wired in `config/asgi.py`) and are used for visitor analytics and notifications. The **LLM ranking audit pipeline does not stream over WebSocket**; it uses REST polling against `/audits/<aid>/logs/`.
-- **No "thinking"/reasoning UI:** the frontend renders final responses, mention extraction, sentiment, and per-call token cost. It does not display extended thinking traces.
+The Vue 3 frontend lives in **`ftb-ui`** and is built and published by its own GitHub
+Action as `ghcr.io/ifthikar20/ftb-ui`. Production pulls that image; nothing in this
+repository builds it. The `frontend/` directory here is a leftover Vite cache.
+
+The contract the UI depends on, all defined in `core/`:
+
+- **Auth** — JWT bearer, `Authorization: Bearer <access>`. Access tokens last 7 days,
+  refresh tokens 60 days with rotation and blacklisting. The access token is returned
+  in the response body; the refresh token is set as an httpOnly cookie by
+  `apps/accounts/api/v1/views.py`, and `POST /api/v1/auth/refresh/` reads it from
+  there.
+- **Response envelope** — `core/interceptors/response_envelope.py` wraps every 2xx as
+  `{"success": true, "data": ..., "meta": {...}}`. Paginated responses move
+  `count`/`next`/`previous` into `meta`, along with any extra top-level keys a view
+  attached.
+- **Errors** — `core/interceptors/exception_handler.py` returns
+  `{"success": false, "error": {"code", "message"}, "request_id"}`. Internal exception
+  text is logged server-side and never returned.
+- **Pagination** — `core/interceptors/pagination.py::StandardPagination`, 25 per page,
+  max 100.
+- **Correlation** — `core.middleware.request_id` stamps a request ID that appears in
+  logs and in every error body.
+- **Schema** — OpenAPI at `/api/schema/`, Swagger UI at `/api/schema/swagger/`,
+  ReDoc at `/api/schema/redoc/`.
 
 ---
 
-## 4. Backend — LLM ranking pipeline
+## 3. Request handling
 
-### Apps relevant to the LLM product
-- `apps/llm_ranking/` — generative-engine-optimization (GEO) audits.
-- `apps/voice_agent/` — separate voice conversation product.
-- `apps/agents/` — older agent orchestration (recent commit `d9ac818` removed parts of it).
-- `apps/messaging/`, `apps/leads/`, `apps/social_leads/`, `apps/competitors/` — call into the same `core.ai_tracking` so all LLM spend lands in one ledger.
+### Tenant scoping
+
+`Website` (`apps/websites/models.py`) is the tenant root. Almost every other model
+hangs off it. Isolation is centralized rather than repeated per view:
+`core/views/base.py::TenantScopedAPIView` sets `permission_classes = [IsAuthenticated]`
+and exposes `get_website()`, which resolves the `website_id` URL kwarg through
+`WebsiteService.get_for_user()`. That helper raises `ResourceNotFound` — a 404, never
+a 403 — so object IDs cannot be probed. `TenantScopedListAPIView` adds
+`paginated_response()`.
+
+New endpoints should extend these bases rather than hand-rolling the ownership check.
+
+### Middleware chain
+
+Order matters; see `config/settings/base.py`. Request ID and security headers first,
+then the billing webhook rate limiter, CORS, request sanitization, auth, audit
+logging, the adaptive rate limiter, django-axes, and structlog correlation last.
+
+### Throttling
+
+`core/interceptors/throttling.py`: burst 500/min and sustained 20000/hour globally,
+plus `AuthRateThrottle` (60/min), `PasswordResetThrottle` (3/hour),
+`AIGenerationThrottle` (10/hour), and `PixelIngestThrottle` (10000/min, keyed on
+`pixel_key` rather than IP).
+
+### Unauthenticated surface
+
+`/health/`, `/api/v1/version/`, the AllowAny endpoints under `/api/v1/auth/`,
+`/api/v1/track/event|batch/` (authenticated by `pixel_key` in the payload),
+`/t/<tracking_key>/`, `/api/v1/billing/webhook/` (Stripe signature),
+`/api/v1/billing/health/`, `/api/v1/search-console/oauth/callback/` (signed `state`),
+and the analytics SEO script views.
+
+---
+
+## 4. The LLM Ranking pipeline
 
 ### Data model — `apps/llm_ranking/models.py`
-- **`LLMRankingAudit`** — one audit run.
-  - Inputs: `business_name`, `industry`, `location`, `keywords`, `description`, `context_urls`.
-  - Status: `pending → running → completed | failed`.
-  - Aggregates: `overall_score` (0-100), `mention_rate`, `avg_mention_rank`, Wilson 95 % CIs.
-  - Progress: `queries_completed / total_queries`, `started_at`, `completed_at`, `duration_seconds`.
-  - **`audit_logs`** (JSON, the new field in the uncommitted migration `0009_add_audit_logs.py`): `[{"ts": ISO8601, "level": "info|warn|success|error", "msg": str}]`. The UI polls this for live progress.
-  - `extraction_method` (heuristic vs LLM-based), `frequency` for periodic audits, snapshotted business context.
-- **`LLMRankingResult`** — one (prompt × provider) query.
-  - `provider ∈ {claude, gpt4, gemini, perplexity, meta_llama, mistral, cohere, deepseek, grok, amazon_nova}`.
-  - `prompt`, `response_text`, `is_mentioned`, `mention_rank`, `sentiment`, `confidence_score`, `mention_context`, `competitors_mentioned`, `citations`, `primary_recommendation`, `extraction_model`, `extraction_version`, `run_id`.
-- **`LLMRankingSchedule`** — cron-style configuration: providers, frequency, `next_run_at`, `last_run_at`.
 
-### Service layer — `apps/llm_ranking/services/ranking_service.py`
-`LLMRankingService`:
-1. **`generate_prompts()`** — pulls intent-balanced base prompts from `PromptLibrary` (recommendation, comparison, persona, etc.), then asks Claude (`claude-sonnet-4-20250514`, max 1024 tokens) to produce up to 10 natural-language variants.
-2. **Per-provider query methods**, each returning `(succeeded, response_text, error_message)`:
-   - `_query_claude()` → `anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)`, model `claude-sonnet-4-20250514`, system prompt enforces numbered lists for tool listings (so rank extraction is deterministic).
-   - `_query_openai()` → `openai.OpenAI()`, model `gpt-4o-mini`.
-   - `_query_gemini()` → `google.generativeai`, model `gemini-1.5-flash`.
-   - `_query_perplexity()` → REST `api.perplexity.ai/chat/completions`, model `llama-3.1-sonar-small-128k-online`.
-   - Meta / Mistral / Cohere / DeepSeek / Grok / Amazon Nova are wired in the schema/UI but not yet implemented in the service.
-3. **`_analyze_mention()`** — given a response, detects whether the brand was mentioned (name terms + keyword terms), regex-extracts the rank from numbered lists, classifies sentiment heuristically, returns `(is_mentioned, mention_rank, sentiment, confidence_score, mention_context)`.
-4. Every provider call records token usage via `core.ai_tracking.record_usage(...)`.
+- **`LLMRankingAudit`** — one audit run. Snapshots the business context
+  (`business_name`, `industry`, `location`, `keywords`, `description`, `context_urls`)
+  so historical runs stay interpretable. Status `pending → running → completed |
+  failed`. Aggregates: `overall_score` (0-100), `mention_rate` with Wilson 95%
+  confidence bounds, `mention_rate_smoothed` (Beta-Binomial), `avg_mention_rank`,
+  `brand_strengths` (Plackett-Luce). Progress: `queries_completed` / `total_queries`.
+  `audit_logs` is a JSON array of `{ts, level, msg}` that the UI polls for live
+  progress. `prompt_source` records whether prompts came from the vault, the library,
+  or both.
+- **`LLMRankingResult`** — one (prompt x provider) cell. Carries `response_text`,
+  `is_mentioned`, `mention_rank`, `sentiment`, `confidence_score`, `is_linked`,
+  `competitors_mentioned`, `citations`, `primary_recommendation`, plus provenance
+  (`extraction_model`, `extraction_version`, `run_id`). A `public_id` UUID gives the
+  UI a non-enumerable external identifier.
 
-### Async orchestration — `apps/llm_ranking/tasks.py` and `config/celery.py`
-- **`run_llm_ranking_audit(audit_id)`** — Celery task on the `ai` queue. `max_retries=1`, `countdown=30 s` on failure, sets audit `FAILED` + `error_message` on exception.
-- **`dispatch_scheduled_audits()`** — Celery beat task, runs every 15 minutes, finds enabled schedules with `next_run_at <= now`, creates the audit, enqueues `run_llm_ranking_audit.delay(...)`, and advances `next_run_at` by the configured frequency.
-- **Worker config** (`docker/docker-compose.prod.yml` `celery` service):
-  ```
-  celery -A config.celery worker --loglevel=info --concurrency=2 \
-    --queues=default,high,low,ai,integrations,webhooks
-  celery -A config.celery beat --loglevel=info \
-    --scheduler=django_celery_beat.schedulers:DatabaseScheduler
-  ```
+  The unique constraint on `(audit, prompt_index, provider, run_id)` is the
+  idempotency key: a retried cell task upserts instead of duplicating.
+- **`LLMRankingSchedule`** — periodic audits. Frequency, `next_run_at`,
+  `consecutive_failures` and `auto_pause_threshold` so a persistently failing schedule
+  disables itself.
+- **`ModelTestRun`** — durable archive of ad-hoc multi-model probes, with
+  `to_state_dict()` to replay the live-poll shape after the Redis TTL expires.
 
-### REST API — `apps/llm_ranking/api/v1/urls.py`
-| Method | Path (under `/api/v1/llm-ranking/<wid>/`) | View | Purpose |
-|---|---|---|---|
-| GET / POST | `audits/` | `LLMRankingAuditListView` | List / create (queues Celery task) |
-| GET | `audits/<aid>/` | `LLMRankingAuditDetailView` | Full audit + results |
-| POST | `audits/<aid>/run/` | `LLMRankingAuditRunView` | Manual trigger (used in dev with `CELERY_TASK_ALWAYS_EAGER`) |
-| GET | `audits/<aid>/logs/` | `LLMRankingAuditLogsView` | **Live pipeline log polling** (the new endpoint) |
-| GET | `audits/<aid>/breakdown/` | `LLMRankingProviderBreakdownView` | Per-provider mention stats |
-| GET | `audits/<aid>/recommendations/` | `LLMRankingRecommendationsView` | Actionable suggestions |
-| GET | `audits/<aid>/prompts/` | `LLMRankingPromptResultsView` | Filterable prompt-level results |
-| GET | `audits/<aid>/providers/<provider>/` | `LLMRankingProviderDetailView` | Per-provider deep-dive |
-| GET | `usage/` | `LLMRankingUsageView` | Token / cost metering |
-| GET | `history/` | `LLMRankingHistoryView` | Trend over time |
-| GET / POST / DELETE | `schedule/` | `LLMRankingScheduleView` | Manage periodic audits |
+### Providers — `apps/llm_ranking/providers/`
 
-All views inherit from `core.views.base.TenantScopedAPIView`, which enforces `IsAuthenticated` and calls `WebsiteService.get_for_user()` (raises 403 if the caller doesn't own the website) so multi-tenant isolation is centralized.
+`base.py::LLMProvider` owns the circuit breaker, token bucket, timing, error
+normalization into `ProviderResult`, and the mandatory write to `AITokenUsage`.
+Subclasses implement only `_call()`. This is deliberate: adding a provider cannot
+silently skip cost tracking.
 
-### Live progress flow (the bit the UI is missing in prod)
+Two registries in `providers/__init__.py`:
+
+- **`PROVIDERS`** — selectable for real audits: `claude`, `gpt4`, `gemini`,
+  `perplexity`, `grok`.
+- **`TOOLING_PROVIDERS`** — cheap synthesis only: `deepseek`, `claude`, `gpt4`.
+  DeepSeek is intentionally absent from `PROVIDERS` so the audit router can never
+  select it. Use `get_synthesis_provider()`, which reads
+  `settings.PROMPT_SYNTHESIS_PROVIDER` and falls back along the tooling chain.
+
+`MODEL_VARIANTS` maps each provider to its selectable models and drives the Model Test
+picker. Removing a variant does not break historical runs — results store the model id
+verbatim.
+
+### Prompt sourcing — `apps/llm_ranking/services/audit_runner.py`
+
+`apply_to_audit(audit, prompt_source=...)` resolves the final prompt list from the
+brand vault (`_from_vault`), a prompt-library sample (`_from_library_sample`), or a
+hybrid of both, and writes it onto the audit. `gather_prompts()` is the read-only
+equivalent used by preview endpoints.
+
+Note where generation actually happens. On the **manual** path,
+`LLMRankingService.generate_prompts()` runs **synchronously inside the POST handler** —
+a RAG retrieval plus a Claude Sonnet call on the request thread, before the audit row
+exists. Only the **scheduled** path generates prompts inside the Celery task. The
+prompt count is capped per plan by `max_prompts_for_user` (Individual 5, Pro 15,
+Business 50), not by a fixed constant.
+
+### Orchestration — `apps/llm_ranking/tasks.py`
+
+1. `run_llm_ranking_audit(audit_id)` calls `LLMRankingService.prepare_audit()`, which
+   validates providers and prompts, runs `ContentEnricher.enrich()`, flips the audit
+   to `running`, snapshots `total_queries`, ingests the enrichment back into the RAG
+   knowledge base, and runs the `business_story` DOM scan.
+2. It then fans out a **Celery chord** — one `query_provider_prompt_task` per
+   (prompt x provider) cell onto the `ai` queue.
+3. Each cell runs `LLMRankingService.run_audit_cell()`: restore enriched context,
+   per-prompt RAG retrieval, build the system prompt, call the provider (breaker,
+   rate limit and cost recording applied by the base class), extract mentions, then
+   `update_or_create` against the unique constraint. It dispatches citation extraction
+   fire-and-forget and atomically increments `queries_completed` with an `F()` update,
+   which is what drives the live progress bar and ETA.
+4. The chord callback `aggregate_audit_results_task` calls `finalise_audit()`, which
+   computes the aggregate scores, rolls up token cost, and marks the audit completed.
+
+`dispatch_scheduled_audits()` runs every 15 minutes from Celery beat, finds enabled
+schedules whose `next_run_at` has passed, creates and enqueues the audit, and advances
+the schedule.
+
+For local debugging, `LLM_SCAN_MODE` switches between the chord and an in-thread
+inline run (`run_audit_sync()`), and dev settings set `CELERY_TASK_ALWAYS_EAGER`.
+
+### Live progress
+
 ```
-UI ──poll──> GET /audits/<aid>/logs/?since=<ts>
+UI ──poll──> GET /audits/<aid>/logs/?after=<ISO8601>
               │
               ▼
-     LLMRankingAuditLogsView returns audit.audit_logs JSON
-              ▲
-              │ append
-   Celery task (run_llm_ranking_audit)
-     ├─ "Starting audit for FetchBot"           (info)
-     ├─ "Generated 8 prompts"                   (info)
-     ├─ "Claude query 1/8 succeeded (842ms)"    (success)
-     ├─ "OpenAI query 2/8 failed: rate limit"   (warn)
-     └─ "Audit completed: score 73"             (success)
+     LLMRankingAuditLogsView returns audit.audit_logs
 ```
-Once the migration is applied and the new code is deployed, the UI gets the live "what is happening" feedback you described as missing.
+
+**The two runners emit very different feeds — know which one you are looking at.**
+
+*Chord path (production).* `prepare_audit` writes six to eight setup lines and buffers
+them in memory, saving only when prep finishes — so nothing appears until enrichment is
+done. `run_audit_cell` then emits **no log lines at all**; the only live signal during
+the run is `queries_completed` ticking up. `finalise_audit` writes a single closing
+line. The feed therefore looks like a burst, a long silence, then one completion line.
+
+*Legacy path* (`run_audit`, used by `POST audits/<aid>/run/` and by eager test runs).
+Saves each entry immediately and produces the rich per-query narration — "Querying
+Claude", "responded (1,842 chars)", "mentioned at rank #3", per-provider summaries. It
+also sleeps 250 ms between cells so rows arrive one at a time.
+
+Any UI copy or documentation promising a live per-query ticker is describing the legacy
+path, not what a production audit produces.
+
+Two further details: `audit_logs` is capped at 1000 entries with the oldest dropped, and
+every message is passed through `_redact_log_message` before being returned. Provider
+stack traces occasionally carry API keys or internal URLs, and those are scrubbed even
+for the tenant who owns the audit.
 
 ---
 
-## 5. Which LLMs we prompt, and what we measure
+## 5. Cost governance
 
-### Models actively called from code today
-| Provider | Model | Where |
-|---|---|---|
-| Anthropic | `claude-sonnet-4-20250514` | Audit responses + prompt generation, `services/ranking_service.py` |
-| OpenAI | `gpt-4o-mini` | Audit responses |
-| Google | `gemini-1.5-flash` | Audit responses |
-| Perplexity | `llama-3.1-sonar-small-128k-online` | Audit responses (web-grounded) |
+Every LLM call funnels through `core/ai_tracking.py::record_usage()`, which writes one
+`AITokenUsage` row capturing module, provider, model, input/output tokens,
+`duration_ms`, `estimated_cost_usd` from a per-model price table, plus user, website
+and free-form metadata. `get_usage_summary()` rolls that up by module, model, provider
+and day; `month_to_date_cost()` powers the per-user spend cap.
 
-The DB schema and UI also enumerate Meta Llama, Mistral, Cohere, DeepSeek, Grok, and Amazon Nova; these are placeholders pending implementation in the service layer.
+Three layers of protection:
 
-### Metrics — `core/ai_tracking.py`
-Every LLM call funnels through `record_usage(...)`, which writes one row to `AITokenUsage` capturing:
-
-- `module` (`lead_finder`, `messaging`, `llm_ranking`, `seo_keywords`, `analytics`, …)
-- `provider` (`anthropic`, `openai`, `google`)
-- `model_name`
-- `input_tokens`, `output_tokens` → `total_tokens`
-- `duration_ms` (per-call latency)
-- `estimated_cost_usd` — computed from a hard-coded price table:
-  - `claude-sonnet-4-20250514`: **$3 / $15** per 1 M (input / output)
-  - `claude-haiku-4-5-20251001`: **$0.80 / $4** per 1 M
-  - `claude-3-5-sonnet-20241022`: **$3 / $15** per 1 M
-  - default fallback: $3 / $15
-- `user`, `website`, free-form `metadata`
-
-`get_usage_summary()` aggregates the table into:
-- totals (calls, input/output/total tokens, cost USD)
-- per-module breakdown
-- per-model breakdown
-- daily trend
-
-### Per-audit ranking metrics (from `LLMRankingAudit` and `LLMRankingResult`)
-- **`overall_score`** (0-100) — composite GEO score.
-- **`mention_rate`** — share of prompts where the brand was named, with Wilson 95 % CI (`mention_rate_ci_lower / _upper`) for statistical honesty given small `n`.
-- **`avg_mention_rank`** — average position when mentioned (lower is better).
-- **Per-result fields:** `is_mentioned`, `mention_rank`, `sentiment`, `confidence_score`, `mention_context`, `is_linked` (hyperlinked vs plain mention), `competitors_mentioned` (list with their position + linked flag), `primary_recommendation`, `citations` (URL list).
-- **Provenance:** `extraction_model`, `extraction_version`, `run_id` (replicate index for multi-run audits) so historical scores remain comparable when the extraction logic changes.
+1. **Per-user monthly spend cap** — `User.monthly_ai_cost_cap_usd`. Checked before an
+   audit is created and again inside the task; exceeding it returns **HTTP 402**.
+2. **Per-user daily API budgets** — `core/quota.py::DailyQuota`, a Redis-backed counter
+   with a 26-hour TTL, one namespace per feature (Google CSE, the Claude judge, GEO
+   rewrite, Perplexity search, GSC).
+3. **Circuit breakers and token buckets** — `core/resilience/`, applied inside the
+   provider base class. Both fail open if the cache is unavailable.
 
 ---
 
-## 6. End-to-end request lifecycle (LLM audit)
+## 6. Subsystems
 
-1. **User clicks "Run audit"** in `LLMRankingPage.vue`.
-2. **POST `/api/v1/llm-ranking/<wid>/audits/`** → `LLMRankingAuditListView` validates with `RunAuditSerializer`, falls back to the website's stored fields when inputs are omitted, auto-detects configured providers, persists the `LLMRankingAudit` row, and returns **202 Accepted** with the lightweight serializer.
-3. **Celery enqueue:** unless `CELERY_TASK_ALWAYS_EAGER`, the view calls `run_llm_ranking_audit.delay(audit_id=str(audit.id))` onto the `ai` queue.
-4. **Worker (`celery` container)** runs `LLMRankingService.run_audit(audit_id)`:
-   1. Sets status `running`, snapshots business context, appends `"Starting audit"` to `audit_logs`.
-   2. `generate_prompts()` calls Claude to produce variants (recorded to `AITokenUsage`).
-   3. For each `(prompt, provider)`:
-      - Query the provider, capture latency, record token usage.
-      - `_analyze_mention()` extracts rank, sentiment, competitors, citations.
-      - Persist a `LLMRankingResult`.
-      - Append a log line; bump `queries_completed`.
-   4. Compute aggregates (mention rate + Wilson CI, avg rank, overall score).
-   5. Status `completed`, set `completed_at` / `duration_seconds`, append final log line.
-5. **Frontend poll loop:** while the audit is `running`, the UI polls `/audits/<aid>/logs/` for new log lines and `/audits/<aid>/` for live aggregates, then renders the dashboard from `breakdown/`, `recommendations/`, `prompts/`, and per-provider endpoints once `completed`.
+### `apps/prompt_library` — the demand side
+
+Models what people actually ask, so audits probe realistic questions rather than
+invented ones. `Industry`, `Prompt`, `PromptVariation`, `IntentBucket`,
+`IndustryTrend`, `BrandPrompt`, `PromptFanout`, `BenchmarkPack`. Pluggable miners
+(Reddit, SerpAPI / DataForSEO, LLM synthesis) degrade to no-ops when API keys are
+absent. Services cover dedup (embedding cosine with a trigram fallback), paraphrase,
+stratified sampling with seeded reproducibility, demand scoring, and effectiveness
+scoring. Beat jobs mine daily and recompute scores nightly.
+
+### `apps/citations` — source influence
+
+`Citation`, `DomainClassification` (cache), `SourceInfluenceSnapshot` (per provider x
+industry x website x period), `SourceScan` / `SourceScanResult`. Extractors are
+pluggable: Perplexity native, Gemini grounding chunks, a regex fallback, and an
+optional LLM-assisted supplement. `domain_classifier` labels each domain and detects
+per-tenant `your_site` versus `competitor_site`. Runs as a post-save hook on
+`LLMRankingResult`, gated by `CITATION_EXTRACTION_ENABLED`.
+
+### `apps/rag` — the per-tenant knowledge base
+
+`KnowledgeSource` (one ingested URL) to `KnowledgeChunk` (embedded segments).
+Embeddings are OpenAI `text-embedding-3-small` (1536-dim) with a deterministic 256-dim
+hash fallback for tests and key-less environments.
+
+**Storage is a `JSONField`, not pgvector.** Cosine similarity is computed in Python
+over a candidate set scoped to `(user, website)`, which keeps brute-force scoring
+fast at the corpus sizes expected per tenant. The rationale is documented at
+`apps/rag/models.py` and `apps/rag/ARCHITECTURE.md`; migrating to pgvector with an
+HNSW index is a tracked follow-up in `apps/rag/.todo.md`, gated on any single tenant
+exceeding 10k chunks. `retrieve()` is the only call site that touches embeddings, so
+the swap stays local.
+
+Each audit ingests its own enrichment context back into the knowledge base, so
+subsequent audits draw from a richer seed.
+
+### `apps/brand_vault` — ground truth and Brand Security
+
+Two related surfaces in one app.
+
+**Brand Vault** (`/api/v1/brand-vault/`) stores `BrandFact` subject-predicate-object
+triples extracted from the knowledge base, with `source_chunk` provenance, confidence,
+approval status, and temporal versioning (`version_from`, `version_to`,
+`superseded_by`). `FactRevision` keeps a before/after audit trail. `ToneSample`
+captures brand voice for the content studio.
+
+**Brand Security** (`/api/v1/brand-security/`) is a scheduled monitoring framework.
+`apps/brand_vault/services/security/registry.py` registers five agents:
+
+| Agent | Watches for |
+|---|---|
+| `narrative_watch` | Emerging narratives before they trend |
+| `llm_truth` | Wrong, outdated or harmful claims LLMs make about you |
+| `serp_reputation` | Negative pages outranking you, bad queries you rank for |
+| `sentiment_pulse` | Sentiment shifts and harmful mentions across social |
+| `impersonation` | Typosquat domains and fake handles using your brand |
+
+They draw on pluggable sources in `apps/brand_vault/services/security/sources/` (SERP,
+Reddit, X, Google Trends, LLMs) and emit `SafetyAlert` rows. `judge.py` grounds
+severity judgements in per-tenant RAG chunks rather than asking a model cold.
+`BrandSecurityAgent` holds per-website enablement, sensitivity and schedule;
+`orchestrator.py` runs them and advances `next_run_at`. Scans are queued
+asynchronously and polled via `scan/status/`.
+
+### `apps/content_studio`
+
+Turns visibility gaps into content. `ContentBrief` records the gap type, impact score,
+target format and target prompt, and links the `BrandFact` rows the draft must stay
+consistent with. `ContentDraft` holds markdown, HTML, JSON-LD, a voice score and an
+accuracy score, behind an approve/regenerate workflow. A daily beat job generates
+briefs; gated by `CONTENT_STUDIO_BRIEF_GENERATION_ENABLED`.
+
+### `apps/agents` — hireable agents
+
+Agent *types* are defined in code (`apps/agents/catalog.py`): `visibility_analyst`,
+`citation_hunter`, `content_strategist`, `lead_scout`, `brand_watchdog`. Each spec
+carries a persona prompt, a gatherer callable and an allowlist of action types.
+`HiredAgent` stores per-user, per-website state — schedule, config, and the Slack or
+Discord connection for the digest. Runs produce `AgentInsight` rows, which propose
+`AgentAction` rows. **Every action is human-approval-gated**; actions are limited to
+`ingest_url`, `draft_brief` and `notify`. `AgentMessage` holds the chat transcript.
+Scheduling mirrors `LLMRankingSchedule` so dispatcher logic stays consistent.
+
+### `apps/search_console`
+
+Google Search Console OAuth and sync. `GscDailyTotal`, `GscQueryStat`, `GscPageStat`
+all extend an abstract metrics base. Real search queries feed back into the prompt
+library. Daily sync with per-user API budgets and a retention window.
+
+### `apps/analytics`
+
+First-party web analytics from the JS pixel in `pixel/`. `Visitor` (fingerprint and IP
+are hashed, not stored raw) to `Session` to `PageEvent`, plus funnels, tracked links
+and an access log. Ingest is public, authenticated by `pixel_key`, and accepts
+`text/plain` so `navigator.sendBeacon` works. Live views stream over Channels
+(`ws/analytics/<website_id>/live/`).
+
+### `apps/accounts`, `apps/billing`, `apps/websites`, `apps/notifications`, `apps/onboarding`
+
+Custom `AUTH_USER_MODEL`, organizations and memberships, OTP email verification,
+Google OAuth, and the `AITokenUsage` ledger. Stripe subscriptions with an idempotency
+ledger (`BillingEvent`) keyed on the Stripe event id. Websites own settings,
+memberships, webhook endpoints and integrations, with OAuth tokens and webhook secrets
+stored through `core/encryption/field_encryption.py::EncryptedTextField`. Notification
+delivery covers in-app, email, Slack, Discord and Telegram. Onboarding drives the
+Login to Onboarding to Paywall to App flow; `GET /api/v1/auth/session/` returns the
+`next_route` the client should send the user to.
+
+`apps/leads` is a stub. Its models are `managed=False` and exist only to satisfy
+historical lazy FK references from analytics migrations.
 
 ---
 
-## 7. Deployment topology (recap)
+## 7. Background jobs
 
-- **Image build:** all containers built on the host from the checked-out source by `docker compose -f docker/docker-compose.prod.yml up -d --build` inside `scripts/deploy.sh`. There is no registry; the host is the build farm.
-- **Resource limits:** db 300 M, redis 150 M, frontend (init) build, openclaw disabled, web 500 M, celery 400 M, nginx 50 M, intelligence 150 M, sources 150 M. Limits total ~1.7 GB on a 2 GB t3.small; a 2 GB swapfile is assumed but NOT provisioned by the script -- `deploy.sh` preflight warns when no swap is active and prints the commands to add one.
-- **DB migrations:** `python manage.py migrate --noinput` runs at the end of `scripts/deploy.sh`. The new `apps/llm_ranking/migrations/0009_add_audit_logs.py` will be applied the next time deploy runs **after** it is committed and pushed.
-- **Frontend bundle:** the `frontend` service rebuilds via Vite at deploy time, so the `dist/` you see locally is irrelevant to prod — what matters is the source on the host at deploy time.
-- **No CI/CD deploy:** GitHub Actions only lints. Deploys are operator-driven SSH + script.
-- **No blue/green:** `docker compose down` then `up` produces a brief outage on every release.
+`config/celery.py` defines the queue topology and the beat schedule.
+
+| Queue | Carries |
+|---|---|
+| `default` | analytics, pixel, accounts — fast in-process work |
+| `ai` | `llm_ranking`, `citations`, `brand_vault`, `content_studio`, agent runs |
+| `integrations` | Search Console, OAuth token refresh, agent action execution |
+| `webhooks` | Outbound webhook delivery to user-controlled URLs |
+
+The prod worker consumes `default,high,low,ai,integrations,webhooks`.
+
+Scheduled work includes three 15-minute dispatchers (`dispatch_scheduled_audits`,
+`dispatch_agent_runs`, `dispatch_scheduled_security_agents`), OAuth token refresh
+every 15 minutes, hourly analytics aggregation, and a nightly block: GSC sync 03:00,
+fact-embedding refresh 03:30, prompt mining 04:00, demand scores 05:00,
+source-influence snapshots 05:30, domain classification 06:00, content briefs 06:15.
+Monthly jobs hard-delete soft-deleted rows and check encryption-key rotation.
+
+Note that `CELERY_TASK_TIME_LIMIT` is 300 seconds. Individual cell tasks fit
+comfortably; long serial operations should be decomposed rather than run as one task.
 
 ---
 
 ## 8. Internal services (`services/`)
 
-Commonly used capability logic runs as owned downstream services, each in
-its own container with a unique internal FQDN:
+Commonly used capability logic runs as owned downstream services, each in its own
+container with a unique internal FQDN:
 
 | Service | Internal FQDN | Owns |
 |---|---|---|
@@ -250,45 +411,50 @@ its own container with a unique internal FQDN:
 
 Pattern:
 
-- **Network:** compose default bridge only. The FQDNs are compose network
-  aliases; there are no published ports, no nginx routes, and no public
-  DNS. A browser can never reach these services -- only `web` and
-  `celery` can, over the Docker network.
+- **Network:** compose default bridge only. The FQDNs are compose network aliases;
+  there are no published ports, no nginx routes, and no public DNS. A browser can
+  never reach these services — only `web` and `celery` can, over the Docker network.
 - **Auth:** static per-service bearer token (`INTELLIGENCE_AUTH_TOKEN`,
-  `SOURCES_AUTH_TOKEN`) from `.env.prod`, injected into both the service
-  and its Django callers -- same pattern as `OPENCLAW_AUTH_TOKEN`. A
-  service with an empty token refuses requests (503) rather than failing
-  open.
-- **Stateless services, stateful facades:** quotas (`core.quota`),
-  circuit breakers, and `AITokenUsage` cost recording stay in the Django
-  facade modules (`apps/citations/services/{source_sentiment,web_search,
-  content_reader}.py`). The services return usage numbers; the facades
-  record them.
-- **In-process fallback (single source of truth):** the pure logic lives
-  in `services/*/logic.py`, importable without FastAPI or Django. When
-  `INTELLIGENCE_SERVICE_URL` / `SOURCES_SERVICE_URL` are unset (dev,
-  tests, CI), the facades call that logic in-process with identical
-  behavior. Production sets the URLs in `.env.prod` to switch to HTTP.
-  Rollback is therefore instant: blank the URL vars and restart
-  web/celery.
-- **Fail-soft:** a down service degrades exactly like a missing API key
-  today -- single scan rows get error markers, the relevance gate fails
-  open, searches return empty. It never breaks request handling.
-- **SSRF note:** `services/sources/{url_safety,safe_http}.py` are
-  Django-free copies of `core/validators/*` (which other apps still
-  import and which raise Django `ValidationError`). Keep them in sync;
-  `services/sources/tests/test_sources_ssrf.py` mirrors the guard tests.
+  `SOURCES_AUTH_TOKEN`) from `.env.prod`, injected into both the service and its
+  Django callers. A service with an empty token refuses requests (503) rather than
+  failing open.
+- **Stateless services, stateful facades:** quotas (`core.quota`), circuit breakers
+  and `AITokenUsage` cost recording stay in the Django facade modules
+  (`apps/citations/services/{source_sentiment,web_search,content_reader}.py`). The
+  services return usage numbers; the facades record them.
+- **In-process fallback (single source of truth):** the pure logic lives in
+  `services/*/logic.py`, importable without FastAPI or Django. When
+  `INTELLIGENCE_SERVICE_URL` / `SOURCES_SERVICE_URL` are unset (dev, tests, CI), the
+  facades call that logic in-process with identical behavior. Production sets the URLs
+  in `.env.prod` to switch to HTTP. Rollback is therefore instant: blank the URL vars
+  and restart web/celery.
+- **Fail-soft:** a down service degrades exactly like a missing API key — single scan
+  rows get error markers, the relevance gate fails open, searches return empty. It
+  never breaks request handling.
+- **SSRF note:** `services/sources/{url_safety,safe_http}.py` are Django-free copies of
+  `core/validators/*` (which other apps still import and which raise Django
+  `ValidationError`). Keep them in sync; `services/sources/tests/test_sources_ssrf.py`
+  mirrors the guard tests.
 
 ---
 
+## 9. Deployment
 
-## 9. Action items implied by the current state
+Merging to `main` deploys to production. `.github/workflows/deploy.yml` waits for the
+`Lint` check on the same commit, SSHes to the EC2 host, and runs
+`bash scripts/deploy.sh deploy --clean`, which pulls, rebuilds the images on the host,
+migrates, collects static files and smoke-tests `/health/`.
 
-1. **Commit the dirty tree** (don't lose the audit_logs work and the new migration `0009_add_audit_logs.py`).
-2. **Push to `origin/main`** and let CI lint pass.
-3. **SSH to the EC2 host and run `bash scripts/deploy.sh`** so the backend gets the new endpoint + migration and the frontend container rebuilds with the live-progress UI.
-4. **Verify on prod:**
-   - `docker compose -f docker/docker-compose.prod.yml exec web python manage.py showmigrations llm_ranking` — confirm `0009_add_audit_logs` is applied.
-   - Trigger a new audit from the UI and watch the activity feed populate.
-   - `curl -I https://fetchbot.ai/health/` returns 200.
-5. **Optional cleanup unrelated to this report:** Meta / Mistral / Cohere / DeepSeek / Grok / Amazon Nova are advertised in the model dropdown but not implemented in `ranking_service.py`. Either ship the integrations or hide the options until they exist.
+Consequences worth knowing:
+
+- **Images are built on the host.** There is no registry for the backend; the EC2 box
+  is the build farm. The one pulled image is the UI.
+- **No blue/green.** The deploy takes the stack down before bringing it back up, so
+  every release causes a brief outage.
+- **No automated rollback.** Reverting means checking out an earlier SHA on the host
+  and rebuilding; a forward migration that is not safely reversible needs a database
+  restore first.
+- **CI runs `ruff check .` and nothing else.** The test suite is not yet part of the
+  gate that protects the auto-deploying branch. Run `pytest` locally before merging.
+
+Full runbook, required secrets and the paywall entitlement switch: `DEPLOY.md`.
