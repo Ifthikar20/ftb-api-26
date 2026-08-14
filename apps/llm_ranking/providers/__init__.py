@@ -28,18 +28,32 @@ PROVIDERS: dict[str, type[LLMProvider]] = {
 }
 
 
-# Selectable model variants per provider. Order matters — the first entry
-# in each list is the default when only a provider key is supplied. Each
-# variant tuple is (label, model_id, is_default).
+# Selectable model variants per provider. Each tuple is
+# (label, model_id, is_default); the entry flagged is_default wins, and list
+# order is only the fallback when none is flagged (see default_variant_for).
 #
 # Adding a model here exposes it in the Model Test picker. Removing one
 # does not break historical runs (results store the model_id verbatim).
+#
+# Every model_id added here MUST also get an entry in core.ai_tracking.PRICING,
+# or its spend is booked at the default $3/$15 and both the usage ledger and
+# the monthly cost cap go wrong for it. test_pricing_covers_variants enforces
+# this. Retired ids must be removed — they 404 at call time, and a variant
+# nobody can select is worse than no variant at all.
 MODEL_VARIANTS: dict[str, list[tuple[str, str, bool]]] = {
+    # The default here MUST match ClaudeProvider.DEFAULT_MODEL — the audit
+    # router reads that, the Model Test picker reads this, and when they
+    # disagreed "claude" silently meant two different models depending on
+    # which code path you came through. test_default_variant_matches_provider
+    # pins them together.
+    #
+    # Prefer aliases (claude-opus-5) over dated ids: they don't need a code
+    # change when a snapshot rolls, and they're what PRICING is keyed on.
     "claude": [
+        ("Opus 5",     "claude-opus-5",              False),
+        ("Sonnet 5",   "claude-sonnet-5",            False),
         ("Sonnet 4.5", "claude-sonnet-4-5-20250929", False),
-        ("Sonnet 4",   "claude-sonnet-4-20250514",   True),
-        ("Opus 4.1",   "claude-opus-4-1-20250805",   False),
-        ("Haiku 4.5",  "claude-haiku-4-5-20251001",  False),
+        ("Haiku 4.5",  "claude-haiku-4-5",           True),
     ],
     "gpt4": [
         ("GPT-4o",      "gpt-4o",       False),

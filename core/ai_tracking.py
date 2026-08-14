@@ -16,39 +16,75 @@ logger = logging.getLogger(__name__)
 
 
 # ── Pricing (per 1M tokens) ──
+# Every model id reachable from apps.llm_ranking.providers.MODEL_VARIANTS must
+# have an entry here, or its spend is booked at ``default`` and the per-user
+# spend cap silently under- or over-counts. ``test_pricing_covers_variants``
+# enforces that; do not add a variant without adding its price.
+#
 # Sources:
-#   Anthropic — https://docs.anthropic.com/en/docs/about-claude/models
-#   OpenAI    — https://openai.com/api/pricing
-#   Google    — https://ai.google.dev/pricing
+#   Anthropic  — https://docs.anthropic.com/en/docs/about-claude/models
+#   OpenAI     — https://openai.com/api/pricing
+#   Google     — https://ai.google.dev/gemini-api/docs/pricing
 #   Perplexity — https://docs.perplexity.ai/docs/pricing
+#   xAI        — https://docs.x.ai/docs/models
+#   DeepSeek   — https://api-docs.deepseek.com/quick_start/pricing
 PRICING = {
-    # Anthropic
+    # ── Anthropic ──
+    "claude-opus-5": {"input": 5.00, "output": 25.00},
+    "claude-sonnet-5": {"input": 3.00, "output": 15.00},
+    "claude-opus-4-8": {"input": 5.00, "output": 25.00},
+    "claude-sonnet-4-6": {"input": 3.00, "output": 15.00},
+    "claude-sonnet-4-5-20250929": {"input": 3.00, "output": 15.00},
     "claude-sonnet-4-20250514": {"input": 3.00, "output": 15.00},
     "claude-3-5-sonnet-20241022": {"input": 3.00, "output": 15.00},
-    "claude-sonnet-4-6": {"input": 3.00, "output": 15.00},
-    "claude-haiku-4-5-20251001": {"input": 0.80, "output": 4.00},
-    "claude-haiku-4-5": {"input": 0.80, "output": 4.00},
+    # Haiku 4.5 is the highest-volume model in the system — it backs both the
+    # default `claude` provider and every extraction call — so an error here
+    # skews the whole ledger. Was $0.80/$4.00, which understated it by 25%.
+    "claude-haiku-4-5-20251001": {"input": 1.00, "output": 5.00},
+    "claude-haiku-4-5": {"input": 1.00, "output": 5.00},
     "claude-3-haiku-20240307": {"input": 0.25, "output": 1.25},
-    # OpenAI
+    # ── OpenAI ──
     "gpt-4o-mini": {"input": 0.15, "output": 0.60},
     "gpt-4o": {"input": 2.50, "output": 10.00},
     "gpt-4-turbo": {"input": 10.00, "output": 30.00},
-    # Google
+    # ── Google ──
     "gemini-1.5-flash": {"input": 0.075, "output": 0.30},
     "gemini-1.5-pro": {"input": 1.25, "output": 5.00},
-    # Perplexity (Sonar online models)
+    "gemini-2.0-flash": {"input": 0.10, "output": 0.40},  # UNVERIFIED
+    # ── Perplexity (Sonar online models) ──
     "llama-3.1-sonar-small-128k-online": {"input": 0.20, "output": 0.20},
     "llama-3.1-sonar-large-128k-online": {"input": 1.00, "output": 1.00},
-    # Fallback for unknown models — conservative estimate
+    # ── xAI ── UNVERIFIED
+    "grok-4": {"input": 3.00, "output": 15.00},
+    "grok-3": {"input": 3.00, "output": 15.00},
+    # ── DeepSeek ── UNVERIFIED
+    "deepseek-chat": {"input": 0.27, "output": 1.10},
+    "deepseek-reasoner": {"input": 0.55, "output": 2.19},
+    # Fallback for unknown models. Deliberately expensive: over-counting spend
+    # trips the cap early, which is recoverable; under-counting bills the user
+    # for a runaway, which is not. `_estimate_cost` warns when this is hit.
     "default": {"input": 3.00, "output": 15.00},
 }
+
+# Entries tagged UNVERIFIED above were added from memory because the vendor
+# pricing pages are unreachable from the build environment (egress proxy
+# blocks ai.google.dev, docs.x.ai, api-docs.deepseek.com). They are far
+# closer than the $3/$15 fallback they replace, but check them against the
+# live pricing pages before using this ledger to set customer rates.
+UNVERIFIED_PRICES = frozenset({
+    "gemini-2.0-flash", "grok-4", "grok-3", "deepseek-chat", "deepseek-reasoner",
+})
 
 
 # Map known model names to canonical provider keys used in AITokenUsage.provider.
 MODEL_PROVIDER = {
+    "claude-opus-5": "anthropic",
+    "claude-sonnet-5": "anthropic",
+    "claude-opus-4-8": "anthropic",
+    "claude-sonnet-4-6": "anthropic",
+    "claude-sonnet-4-5-20250929": "anthropic",
     "claude-sonnet-4-20250514": "anthropic",
     "claude-3-5-sonnet-20241022": "anthropic",
-    "claude-sonnet-4-6": "anthropic",
     "claude-haiku-4-5-20251001": "anthropic",
     "claude-haiku-4-5": "anthropic",
     "claude-3-haiku-20240307": "anthropic",
@@ -57,14 +93,43 @@ MODEL_PROVIDER = {
     "gpt-4-turbo": "openai",
     "gemini-1.5-flash": "google",
     "gemini-1.5-pro": "google",
+    "gemini-2.0-flash": "google",
     "llama-3.1-sonar-small-128k-online": "perplexity",
     "llama-3.1-sonar-large-128k-online": "perplexity",
+    "grok-4": "xai",
+    "grok-3": "xai",
+    "deepseek-chat": "deepseek",
+    "deepseek-reasoner": "deepseek",
 }
 
 
+# Model names already reported as unpriced. Warning once per name per process
+# keeps the signal visible in logs without emitting a line on every call.
+_WARNED_UNPRICED: set[str] = set()
+
+
 def _estimate_cost(model_name: str, input_tokens: int, output_tokens: int) -> float:
-    """Calculate estimated USD cost based on model pricing."""
-    pricing = PRICING.get(model_name, PRICING["default"])
+    """Calculate estimated USD cost based on model pricing.
+
+    An unknown model falls back to ``PRICING["default"]`` rather than raising,
+    because a missing price must never break a working audit. It does warn —
+    once per model name — so the gap surfaces in logs instead of silently
+    mis-billing every call. The CI guard in ``core/tests/test_pricing.py``
+    catches this for models reachable from ``MODEL_VARIANTS``; the warning is
+    the backstop for ids injected at runtime via ``LLM_CLAUDE_MODEL`` or
+    ``LLM_EXTRACTION_MODEL``.
+    """
+    pricing = PRICING.get(model_name)
+    if pricing is None:
+        pricing = PRICING["default"]
+        if model_name not in _WARNED_UNPRICED:
+            _WARNED_UNPRICED.add(model_name)
+            logger.warning(
+                "No PRICING entry for model %r — billing at the default "
+                "$%.2f/$%.2f per 1M tokens. Spend tracking and the monthly "
+                "cost cap will be wrong for this model until it is added.",
+                model_name, pricing["input"], pricing["output"],
+            )
     input_cost = (input_tokens / 1_000_000) * pricing["input"]
     output_cost = (output_tokens / 1_000_000) * pricing["output"]
     return round(input_cost + output_cost, 6)
