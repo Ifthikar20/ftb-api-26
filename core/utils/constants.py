@@ -118,6 +118,27 @@ PLAN_LIMITS[Plan.GROWTH] = PLAN_LIMITS[Plan.INDIVIDUAL]
 PLAN_LIMITS[Plan.SCALE] = PLAN_LIMITS[Plan.ENTERPRISE]
 
 
+def limits_for_user(user) -> dict:
+    """
+    Return the ``PLAN_LIMITS`` entry governing ``user``.
+
+    When ``PAYWALL_ENABLED`` is false — the default — everyone gets the
+    Enterprise limits, so every plan gate downstream of this is a no-op
+    until the paywall is switched on. Falls back to the Individual entry
+    when the user has no subscription or the plan isn't recognised.
+    """
+    from django.conf import settings
+
+    if not settings.PAYWALL_ENABLED:
+        return PLAN_LIMITS[Plan.ENTERPRISE]
+    try:
+        sub = getattr(user, "subscription", None)
+        plan = getattr(sub, "plan", None) if sub else None
+    except Exception:
+        plan = None
+    return PLAN_LIMITS.get(plan) or PLAN_LIMITS[Plan.INDIVIDUAL]
+
+
 def max_prompts_for_user(user) -> int:
     """
     Return the prompts-per-audit cap for ``user``'s current plan.
@@ -127,20 +148,28 @@ def max_prompts_for_user(user) -> int:
     a user with no subscription can run a tiny 5-prompt audit so the
     "first run" experience isn't gated.
     """
-    from django.conf import settings
-
-    if not settings.PAYWALL_ENABLED:
-        limits = PLAN_LIMITS[Plan.ENTERPRISE]
-    else:
-        try:
-            sub = getattr(user, "subscription", None)
-            plan = getattr(sub, "plan", None) if sub else None
-        except Exception:
-            plan = None
-        limits = PLAN_LIMITS.get(plan) or PLAN_LIMITS[Plan.INDIVIDUAL]
+    limits = limits_for_user(user)
     raw = limits.get("max_prompts_per_audit") or 5
     cap = int(raw) if isinstance(raw, int | float) else 5
     return cap if cap > 0 else 50  # treat -1 as "effectively unlimited"
+
+
+def providers_allowed_for_user(user) -> list[str]:
+    """
+    Return the provider keys ``user``'s plan entitles them to query.
+
+    The pricing table advertises this as a tier feature ("Providers
+    allowed: claude, gpt4") but nothing read it until now — every user
+    got every provider with a configured API key, which is both a
+    revenue leak and a cost multiplier the tier price never covered.
+
+    An empty or missing list means "no restriction" rather than "no
+    providers", so a malformed plan entry can never lock a paying
+    customer out of the product entirely.
+    """
+    limits = limits_for_user(user)
+    allowed = limits.get("providers_allowed") or []
+    return [str(k) for k in allowed]
 
 
 class UserRole(models.TextChoices):

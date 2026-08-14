@@ -350,9 +350,11 @@ class WebsitePromptCreateView(APIView):
             return Response({"error": "no_prompts"}, status=status.HTTP_400_BAD_REQUEST)
 
         # Auto-scan: run the new prompts through the ranking pipeline so they
-        # start collecting mentions/citations. Best-effort — never blocks or
-        # fails the create if the queue or provider keys are unavailable.
-        scan_audit_id = self._trigger_scan(
+        # start collecting mentions/citations. Subject to the same spend cap
+        # and plan limits as the Run Audit modal. Never fails the create — the
+        # prompts are saved regardless — but a blocked or failed scan is
+        # reported rather than swallowed.
+        scan = self._trigger_scan(
             website, request.user, [p.text for p in created_prompts], location,
         )
 
@@ -360,24 +362,48 @@ class WebsitePromptCreateView(APIView):
         payload["brand_prompt_id"] = brand_prompt_ids[0]
         payload["brand_prompt_ids"] = brand_prompt_ids
         payload["created_count"] = len(created_prompts)
-        payload["scan_audit_id"] = scan_audit_id
+        if isinstance(scan, dict):
+            payload["scan_audit_id"] = None
+            payload["scan_status"] = scan
+        else:
+            payload["scan_audit_id"] = scan
+            payload["scan_status"] = {"started": scan is not None}
         return Response(payload, status=status.HTTP_201_CREATED)
 
     @staticmethod
     def _trigger_scan(website, user, prompts, location):
-        """Kick off an LLM ranking audit for freshly added prompts."""
-        try:
-            from django.conf import settings as dj_settings
+        """Kick off an LLM ranking audit for freshly added prompts.
 
+        This is the second path that creates an audit and spends money. It
+        goes through the same entitlement gate as the Run Audit modal — see
+        apps/llm_ranking/services/entitlements.py. Before that gate existed
+        this path had none: no spend cap, every configured provider
+        regardless of plan, and no prompt cap, which made bulk prompt upload
+        an unmetered way to run large audits.
+
+        Returns the audit id, or a ``{"blocked": ...}`` marker when a plan
+        limit stopped the run. Never raises — prompt creation succeeds either
+        way — but the caller surfaces the reason instead of failing silently.
+        """
+        from apps.llm_ranking.services.entitlements import (
+            AuditNotAllowed,
+            assert_within_spend_cap,
+            cap_prompts,
+            resolve_providers,
+        )
+
+        try:
+            assert_within_spend_cap(user)
+        except AuditNotAllowed as exc:
+            logger.info("auto-scan blocked for user %s: %s", getattr(user, "id", None), exc.code)
+            return {"blocked": exc.code, "detail": exc.detail}
+
+        try:
             from apps.llm_ranking.models import LLMRankingAudit
-            from apps.llm_ranking.providers import PROVIDERS as PROV_REGISTRY
             from apps.llm_ranking.services.regions import region_for_country
             from apps.llm_ranking.services.scan_dispatch import dispatch_scan
 
-            selected = [
-                k for k, prov in PROV_REGISTRY.items()
-                if getattr(dj_settings, prov.api_key_setting, "")
-            ] or ["claude"]
+            capped = cap_prompts(user, list(prompts))
             audit = LLMRankingAudit.objects.create(
                 website=website,
                 created_by=user,
@@ -386,14 +412,20 @@ class WebsitePromptCreateView(APIView):
                 industry=getattr(website, "industry", "") or "",
                 location=location or "",
                 region=region_for_country(location),
-                prompts=list(prompts),
-                providers_queried=selected,
+                prompts=capped,
+                providers_queried=resolve_providers(user, None),
             )
             dispatch_scan(str(audit.id))
             return str(audit.id)
-        except Exception:  # pragma: no cover - scan is best-effort
-            logger.exception("auto-scan dispatch failed")
-            return None
+        except Exception:
+            # Prompt creation still succeeded, so don't fail the request — but
+            # this is a real failure, not an expected branch. It was previously
+            # swallowed with no signal at all beyond a log line.
+            logger.exception(
+                "auto-scan dispatch failed for website %s", getattr(website, "id", None),
+            )
+            return {"blocked": "scan_dispatch_failed",
+                    "detail": "Prompts were saved but the scan could not be started."}
 
 
 class PromptPreviewView(APIView):

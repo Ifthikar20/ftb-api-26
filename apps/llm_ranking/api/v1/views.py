@@ -43,28 +43,21 @@ class LLMRankingAuditListView(TenantScopedListAPIView):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
-        from apps.llm_ranking.providers import PROVIDERS
+        from apps.llm_ranking.services.entitlements import (
+            AuditNotAllowed,
+            assert_within_spend_cap,
+            cap_prompts,
+            resolve_providers,
+        )
         from apps.llm_ranking.services.ranking_service import LLMRankingService
 
-        # Enforce per-user monthly AI spend cap before queuing more work.
-        # 0 = no cap; spend covers every module that writes to AITokenUsage.
-        cap = float(getattr(request.user, "monthly_ai_cost_cap_usd", 0) or 0)
-        if cap > 0:
-            from core.ai_tracking import month_to_date_cost
-            spent = month_to_date_cost(request.user)
-            if spent >= cap:
-                return Response(
-                    {
-                        "error": "monthly_ai_cost_cap_exceeded",
-                        "detail": (
-                            f"Month-to-date AI spend ${spent:.2f} has reached "
-                            f"your cap of ${cap:.2f}. Raise the cap in Settings "
-                            f"or wait until the next billing month."
-                        ),
-                        "cap_status": {"spent_usd": round(spent, 4), "cap_usd": cap},
-                    },
-                    status=402,
-                )
+        # Shared with the Prompts-page auto-scan path — see
+        # apps/llm_ranking/services/entitlements.py for why this lives in a
+        # service rather than inline here.
+        try:
+            assert_within_spend_cap(request.user)
+        except AuditNotAllowed as exc:
+            return Response(exc.payload, status=exc.http_status)
 
         # Fall back to Website row fields when the client omits them. This is
         # the source of truth — the form doesn't need to resend what the
@@ -118,18 +111,13 @@ class LLMRankingAuditListView(TenantScopedListAPIView):
                 website=website,
             )
 
-        # Selected providers must be implemented AND configured. Stub providers
-        # in PROVIDER_CHOICES (meta_llama, mistral, etc.) are filtered out so
-        # the UI can never queue a run that would silently produce no results.
-        requested = data.get("providers") or list(PROVIDERS.keys())
-        configured = []
-        for key in requested:
-            if key not in PROVIDERS:
-                continue
-            cls = PROVIDERS[key]
-            if getattr(settings, cls.api_key_setting, ""):
-                configured.append(key)
-        selected_providers = configured or ["claude"]
+        # Implemented AND configured AND permitted by the caller's plan.
+        selected_providers = resolve_providers(request.user, data.get("providers"))
+
+        # The serializer caps custom_prompts at 10 with no reference to the
+        # plan, and generate_prompts only caps the auto-generated path, so
+        # apply the per-plan cap here for both.
+        prompts = cap_prompts(request.user, prompts)
 
         prompt_source = data.get("prompt_source", "vault") or "vault"
         if prompt_source not in ("vault", "library", "hybrid"):
