@@ -95,6 +95,10 @@ class SafetyAlertSerializer(serializers.ModelSerializer):
         model = SafetyAlert
         fields = (
             "id", "website", "prompt",
+            # The audit response this finding was raised from, when it came
+            # from the response auditor. Lets the prompt detail page show
+            # findings against the exact answer that produced them.
+            "result",
             "agent_id", "source", "source_url", "title", "sentiment_score",
             "model", "prompt_text", "snippet",
             "issue", "detail", "severity", "status",

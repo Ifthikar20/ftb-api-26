@@ -941,6 +941,18 @@ class WebsiteSafetyAlertsView(TenantScopedListAPIView):
         if severity:
             qs = qs.filter(severity=severity)
 
+        # Scope to the findings raised from one audit response, or from every
+        # response for a given library prompt. This is what lets the prompt
+        # detail page show "this answer produced these findings" instead of
+        # sending the reader to a global alert list to hunt for them.
+        result_id = request.query_params.get("result")
+        if result_id:
+            qs = qs.filter(result_id=result_id)
+
+        source_prompt = request.query_params.get("source_prompt")
+        if source_prompt:
+            qs = qs.filter(result__source_prompt_id=source_prompt)
+
         qs = qs.order_by("-detected_at")
         return self.paginated_response(qs, SafetyAlertSerializer)
 
