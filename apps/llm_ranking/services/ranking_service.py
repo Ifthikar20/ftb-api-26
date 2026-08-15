@@ -315,7 +315,20 @@ class LLMRankingService:
         # prompts, but Claude's 4 variants can push the deduped list
         # back above the limit — re-trim here so the cap is enforced
         # regardless of which path produced the prompt.
-        return deduped[:cap]
+        final = deduped[:cap]
+
+        # Register the generated set in the prompt library so each prompt
+        # has an id. Without this the audit measures strings that nothing
+        # can link to: ``source_prompt`` stays null on every result and the
+        # library never reflects what was actually asked. Best-effort — a
+        # registration failure must not stop the audit.
+        if website is not None:
+            from apps.llm_ranking.services.prompt_registrar import (
+                register_generated_prompts,
+            )
+            register_generated_prompts(final, website)
+
+        return final
 
     # ── Per-provider query methods ─────────────────────────────────────────
     #
@@ -1035,6 +1048,21 @@ class LLMRankingService:
         except Exception as exc:  # pragma: no cover
             logger.debug("notification dispatch failed for %s: %s", audit_id, exc)
 
+        # Brand Security findings are derived from the responses this audit
+        # just stored — there is no separate scan to run. Raising them here
+        # means an alert exists the moment the answer that caused it does.
+        try:
+            from apps.brand_vault.services.security.response_auditor import (
+                audit_results_for_website,
+            )
+            raised = audit_results_for_website(audit.website, audit=audit)
+            if raised:
+                logger.info(
+                    "brand security: %s finding(s) from audit %s", raised, audit_id,
+                )
+        except Exception as exc:  # pragma: no cover — never fail an audit for this
+            logger.warning("brand security audit failed for %s: %s", audit_id, exc)
+
         # Phase 4 — generate Content Studio briefs from the latest gaps.
         try:
             from django.conf import settings as _settings_phase4
@@ -1449,6 +1477,21 @@ class LLMRankingService:
             record_audit_events(audit)
         except Exception as exc:  # pragma: no cover
             logger.debug("notification dispatch failed for %s: %s", audit_id, exc)
+
+        # Brand Security findings are derived from the responses this audit
+        # just stored — there is no separate scan to run. Raising them here
+        # means an alert exists the moment the answer that caused it does.
+        try:
+            from apps.brand_vault.services.security.response_auditor import (
+                audit_results_for_website,
+            )
+            raised = audit_results_for_website(audit.website, audit=audit)
+            if raised:
+                logger.info(
+                    "brand security: %s finding(s) from audit %s", raised, audit_id,
+                )
+        except Exception as exc:  # pragma: no cover — never fail an audit for this
+            logger.warning("brand security audit failed for %s: %s", audit_id, exc)
 
         logger.info(
             "LLMRankingAudit %s completed: score=%d, mention_rate=%.1f%%",

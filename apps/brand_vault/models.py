@@ -266,6 +266,17 @@ class SafetyAlert(TimestampMixin):
         on_delete=models.SET_NULL,
         related_name="alerts",
     )
+    # The exact audit response this finding came from, when the alert was
+    # raised by analysing an existing LLM ranking result rather than by
+    # re-querying providers. Gives every such alert a traceable origin: the
+    # prompt detail page can show "this answer produced these findings",
+    # and a reader can read the response the judgement was made against.
+    result = models.ForeignKey(
+        "llm_ranking.LLMRankingResult",
+        null=True, blank=True,
+        on_delete=models.CASCADE,
+        related_name="safety_alerts",
+    )
 
     # Which agent raised this alert. Blank for legacy rows created before agents.
     agent_id = models.CharField(max_length=40, blank=True, db_index=True)

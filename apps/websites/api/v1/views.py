@@ -118,6 +118,66 @@ class WebsiteSettingsView(APIView):
         return Response(serializer.data)
 
 
+def _setup_state(user, website) -> dict:
+    """Which setup step the user still owes before the dashboard has data.
+
+    The dashboard renders guidance instead of empty cards until the user
+    has completed audits, so it needs to know *which* step to point at.
+    Returns the first incomplete step, or ``ready`` once results exist.
+    """
+    from apps.llm_ranking.models import LLMRankingAudit
+    from apps.prompt_library.models import BrandPrompt
+
+    if website is None:
+        return {
+            "step": "add_website",
+            "title": "Add your website to get started",
+            "body": "FetchBot measures how often AI assistants recommend your "
+                    "brand. Add the site you want tracked and we'll scan it.",
+            "cta_label": "Add a website",
+            "cta_to": "/websites",
+        }
+
+    wid = str(website.id)
+
+    if not BrandPrompt.objects.filter(website=website).exists():
+        return {
+            "step": "add_prompts",
+            "title": "Build your prompt library",
+            "body": "Prompts are the questions we ask each AI model on your "
+                    "behalf. Add the ones your customers would actually ask.",
+            "cta_label": "Add prompts",
+            "cta_to": f"/llm-ranking/{wid}/prompts",
+        }
+
+    audits = LLMRankingAudit.objects.filter(created_by=user)
+    if audits.filter(
+        status__in=[LLMRankingAudit.STATUS_PENDING, LLMRankingAudit.STATUS_RUNNING],
+    ).exists():
+        return {
+            "step": "audit_running",
+            "title": "Your first audit is running",
+            "body": "We're querying each AI model with your prompts. Results "
+                    "appear on this page as soon as the run finishes.",
+            # No CTA: the audit is already in flight and scheduling now lives
+            # on this same page, so there is nowhere useful to send the user.
+            "cta_label": "",
+            "cta_to": "",
+        }
+
+    if not audits.filter(status=LLMRankingAudit.STATUS_COMPLETED).exists():
+        return {
+            "step": "run_audit",
+            "title": "Run your first audit",
+            "body": "Nothing has been measured yet. Use Run now above to see "
+                    "which brands the AI models name — and where you place.",
+            "cta_label": "",
+            "cta_to": "",
+        }
+
+    return {"step": "ready"}
+
+
 class DashboardView(APIView):
     """Aggregated dashboard stats for the logged-in user."""
     permission_classes = [IsAuthenticated]
@@ -133,6 +193,9 @@ class DashboardView(APIView):
         from apps.llm_ranking.services.geo_stats import (
             build_breakdowns_for_user,
             build_kpis_for_user,
+        )
+        from apps.llm_ranking.services.overview_stats import (
+            build_overview_for_user,
         )
         from apps.notifications.models import Notification
 
@@ -212,6 +275,14 @@ class DashboardView(APIView):
         )
         visibility_series = build_visibility_series(request.user)
 
+        # Overview tab: top brands, per-model matrix, cited domains. Returns
+        # has_data=False with empty collections when nothing has been
+        # measured yet so the frontend can render guidance rather than
+        # placeholder numbers.
+        overview = build_overview_for_user(
+            request.user, start=start_dt, end=end_dt, prompts=prompt_filter,
+        )
+
         return Response({
             'stats': stats,
             'activity': activity,
@@ -221,6 +292,10 @@ class DashboardView(APIView):
             'analytics_breakdowns': analytics_breakdowns,
             'analytics_deep_dive': analytics_deep_dive,
             'applied_filter': applied_filter,
+            'overview': overview,
+            # Drives the dashboard's first-run guidance: which step the user
+            # should take next when there is nothing to show yet.
+            'setup_state': _setup_state(request.user, website),
         })
 
 

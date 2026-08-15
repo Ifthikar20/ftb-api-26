@@ -88,8 +88,9 @@ def build_overview_for_website(user, website) -> dict:
 
     # Walk each month once, collecting brand rate + per-competitor breakdown
     # in a single pass so we don't query the audit table N + N×K times.
-    brand: list[float] = []
+    brand: list[float | None] = []
     breakdowns: list[dict[str, float]] = []
+    measured_mask: list[bool] = []
     for start, end in ranges:
         qs = LLMRankingAudit.objects.filter(
             created_by=user, website=website,
@@ -97,6 +98,9 @@ def build_overview_for_website(user, website) -> dict:
             completed_at__gte=start, completed_at__lt=end,
         )
         audit_ids = list(qs.values_list("id", flat=True))
+        # Track which buckets were actually measured so competitor series
+        # can carry the same gaps the brand series does.
+        measured_mask.append(bool(audit_ids))
         brand.append(_brand_rate(audit_ids))
         breakdowns.append(_competitor_breakdown(audit_ids))
 
@@ -110,7 +114,12 @@ def build_overview_for_website(user, website) -> dict:
 
     competitors = []
     for name in top_names:
-        series = [round(b.get(name, 0.0), 1) for b in breakdowns]
+        # Within a measured bucket, a competitor absent from the breakdown
+        # genuinely scored zero. In an unmeasured bucket it is a gap.
+        series = [
+            round(b.get(name, 0.0), 1) if measured else None
+            for b, measured in zip(breakdowns, measured_mask)
+        ]
         competitors.append({
             "name": name,
             "series": series,
@@ -119,17 +128,16 @@ def build_overview_for_website(user, website) -> dict:
         })
 
     # The "Competitor Avg" line: per-bucket mean across the top-N competitor
-    # rates. If a bucket has fewer than N competitors mentioned, the missing
-    # ones contribute zero, which reads as "they were silent in that month."
-    if top_names:
-        competitor_avg = []
-        for i in range(len(labels)):
-            values = [c["series"][i] for c in competitors]
-            competitor_avg.append(round(sum(values) / len(values), 1))
-    else:
-        competitor_avg = [0.0] * len(labels)
+    # rates, computed only for buckets that were measured.
+    competitor_avg: list[float | None] = []
+    for i in range(len(labels)):
+        if not top_names or not measured_mask[i]:
+            competitor_avg.append(None)
+            continue
+        values = [c["series"][i] for c in competitors if c["series"][i] is not None]
+        competitor_avg.append(round(sum(values) / len(values), 1) if values else None)
 
-    has_data = any(v > 0 for v in brand) or any(v > 0 for v in competitor_avg)
+    has_data = any(v for v in brand if v) or any(v for v in competitor_avg if v)
 
     return {
         "labels": labels,
@@ -141,33 +149,42 @@ def build_overview_for_website(user, website) -> dict:
         "competitor_delta_pct": _trend_delta(competitor_avg),
         "competitors": competitors,
         "has_data": has_data,
+        # How many buckets actually contain audits. The UI needs this to
+        # decide whether a trend line is meaningful at all.
+        "measured_periods": sum(1 for m in measured_mask if m),
     }
 
 
-def _current(series: list[float]) -> float:
-    """Most recent populated value, or the very last value if all are zero."""
+def _current(series: list[float | None]) -> float:
+    """Most recent measured value. Unmeasured buckets (None) are skipped."""
     if not series:
         return 0.0
     for value in reversed(series):
-        if value:
+        if value is not None:
             return round(value, 1)
-    return round(series[-1], 1)
+    return 0.0
 
 
-def _trend_delta(series: list[float]) -> float:
-    """Percent change of the last 3-mo mean vs the prior 3-mo mean."""
-    if not series or len(series) < 2:
+def _trend_delta(series: list[float | None]) -> float:
+    """Percent change of the last 3 measured buckets vs the 3 before them.
+
+    Operates on measured buckets only. With fewer than two measured points
+    there is no trend to report, so it returns 0.0 and the UI hides the
+    badge rather than implying movement that was never observed.
+    """
+    points = [v for v in (series or []) if v is not None]
+    if len(points) < 2:
         return 0.0
-    if len(series) >= 6:
-        tail = series[-3:]
-        prev = series[-6:-3]
+    if len(points) >= 6:
+        tail = points[-3:]
+        prev = points[-6:-3]
         tail_avg = sum(tail) / len(tail)
         prev_avg = sum(prev) / len(prev)
         if prev_avg == 0:
             return 0.0
         return round((tail_avg - prev_avg) / prev_avg * 100, 1)
-    first = series[0] or 1
-    last = series[-1]
+    first = points[0] or 1
+    last = points[-1]
     return round((last - first) / abs(first) * 100, 1)
 
 
@@ -222,8 +239,9 @@ def _series_for_ranges(
     consistent with the existing tooltip format. When ``website`` is given,
     the audit filter is restricted to that website only.
     """
-    brand: list[float] = []
-    competitor: list[float] = []
+    brand: list[float | None] = []
+    competitor: list[float | None] = []
+    measured = 0
     for start, end in ranges:
         qs = LLMRankingAudit.objects.filter(
             created_by=user,
@@ -234,26 +252,43 @@ def _series_for_ranges(
         if website is not None:
             qs = qs.filter(website=website)
         audit_ids = list(qs.values_list("id", flat=True))
+        if audit_ids:
+            measured += 1
         brand.append(_brand_rate(audit_ids))
         competitor.append(_competitor_rate(audit_ids))
-    return {"labels": labels, "brand": brand, "competitor": competitor}
+    # ``measured_periods`` lets the frontend refuse to draw a trend from a
+    # single point. A 12-month line built from one audit is not a trend.
+    return {
+        "labels": labels,
+        "brand": brand,
+        "competitor": competitor,
+        "measured_periods": measured,
+    }
 
 
-def _brand_rate(audit_ids: list) -> float:
-    """Average mention_rate across this bucket's audits, in percent."""
+def _brand_rate(audit_ids: list) -> float | None:
+    """Average mention_rate across this bucket's audits, in percent.
+
+    Returns ``None`` — not 0.0 — when the bucket contains no audits. A
+    month you never measured is a gap in the series, not a month where
+    the brand scored zero; charting it as zero states something false.
+    """
     if not audit_ids:
-        return 0.0
+        return None
     audits = LLMRankingAudit.objects.filter(id__in=audit_ids)
     rates = [a.mention_rate for a in audits if a.mention_rate is not None]
     if not rates:
-        return 0.0
+        return None
     return round(sum(rates) / len(rates), 1)
 
 
-def _competitor_rate(audit_ids: list) -> float:
-    """Share of successful AI answers in this bucket that mention any competitor."""
+def _competitor_rate(audit_ids: list) -> float | None:
+    """Share of successful AI answers in this bucket that mention any competitor.
+
+    ``None`` for unmeasured buckets, for the same reason as ``_brand_rate``.
+    """
     if not audit_ids:
-        return 0.0
+        return None
     succeeded = LLMRankingResult.objects.filter(
         audit_id__in=audit_ids, query_succeeded=True,
     )
