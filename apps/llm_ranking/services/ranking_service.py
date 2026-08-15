@@ -15,6 +15,22 @@ from django.utils import timezone
 logger = logging.getLogger("apps")
 
 
+def _merge_citation_lists(provider_urls, extracted) -> list:
+    """Union of provider-reported and text-extracted source URLs.
+
+    Web-grounded providers (Perplexity) report their sources out-of-band —
+    the answer text only carries [1][2] markers — so text extraction alone
+    misses them entirely. Provider order first: those URLs are authoritative.
+    """
+    seen: set[str] = set()
+    merged: list = []
+    for url in list(provider_urls or []) + list(extracted or []):
+        if isinstance(url, str) and url and url not in seen:
+            seen.add(url)
+            merged.append(url)
+    return merged
+
+
 def _country_counts_for(citations) -> dict:
     """Local helper — silently degrades to {} if citation_geo isn't importable."""
     try:
@@ -340,46 +356,58 @@ class LLMRankingService:
     @staticmethod
     def _query_claude(prompt: str, system_prompt: str = "",
                       *, user=None, website=None, audit_id=None,
-                      region: str = "") -> tuple[bool, str, str]:
+                      region: str = "") -> tuple[bool, str, str, list]:
         from apps.llm_ranking.providers import ClaudeProvider
         result = ClaudeProvider().query(
             prompt, system_prompt, user=user, website=website,
             audit_id=audit_id, region=region,
         )
-        return result.succeeded, result.text, result.error
+        return (
+            result.succeeded, result.text, result.error,
+            getattr(result, "citations", []) or [],
+        )
 
     @staticmethod
     def _query_openai(prompt: str, system_prompt: str = "",
                       *, user=None, website=None, audit_id=None,
-                      region: str = "") -> tuple[bool, str, str]:
+                      region: str = "") -> tuple[bool, str, str, list]:
         from apps.llm_ranking.providers import OpenAIProvider
         result = OpenAIProvider().query(
             prompt, system_prompt, user=user, website=website,
             audit_id=audit_id, region=region,
         )
-        return result.succeeded, result.text, result.error
+        return (
+            result.succeeded, result.text, result.error,
+            getattr(result, "citations", []) or [],
+        )
 
     @staticmethod
     def _query_gemini(prompt: str, system_prompt: str = "",
                       *, user=None, website=None, audit_id=None,
-                      region: str = "") -> tuple[bool, str, str]:
+                      region: str = "") -> tuple[bool, str, str, list]:
         from apps.llm_ranking.providers import GeminiProvider
         result = GeminiProvider().query(
             prompt, system_prompt, user=user, website=website,
             audit_id=audit_id, region=region,
         )
-        return result.succeeded, result.text, result.error
+        return (
+            result.succeeded, result.text, result.error,
+            getattr(result, "citations", []) or [],
+        )
 
     @staticmethod
     def _query_perplexity(prompt: str, system_prompt: str = "",
                           *, user=None, website=None, audit_id=None,
-                          region: str = "") -> tuple[bool, str, str]:
+                          region: str = "") -> tuple[bool, str, str, list]:
         from apps.llm_ranking.providers import PerplexityProvider
         result = PerplexityProvider().query(
             prompt, system_prompt, user=user, website=website,
             audit_id=audit_id, region=region,
         )
-        return result.succeeded, result.text, result.error
+        return (
+            result.succeeded, result.text, result.error,
+            getattr(result, "citations", []) or [],
+        )
 
     # ── Response analysis ──────────────────────────────────────────────────
 
@@ -828,7 +856,12 @@ class LLMRankingService:
         from apps.llm_ranking.services.source_prompt_resolver import (
             resolve_source_prompt_id,
         )
-        source_prompt_id = resolve_source_prompt_id(prompt_text)
+        # Saved-library prompts carry their Prompt id directly; the text
+        # resolver is only a fallback for custom/legacy prompts, because
+        # variable-filled text never hash-matches Prompt.text.
+        source_prompt_id = (
+            prompt_entry.get("prompt_id") if isinstance(prompt_entry, dict) else None
+        ) or resolve_source_prompt_id(prompt_text)
         result_obj, _ = LLMRankingResult.objects.update_or_create(
             audit=audit, prompt_index=prompt_index, provider=provider, run_id=0,
             defaults={
@@ -845,8 +878,14 @@ class LLMRankingService:
                 "is_linked": analysis.get("is_linked", False),
                 "competitors_mentioned": analysis.get("competitors_mentioned", []),
                 "primary_recommendation": analysis.get("primary_recommendation", ""),
-                "citations": analysis.get("citations", []),
-                "citation_countries": _country_counts_for(analysis.get("citations", [])),
+                "citations": _merge_citation_lists(
+                    getattr(result, "citations", None), analysis.get("citations"),
+                ),
+                "citation_countries": _country_counts_for(
+                    _merge_citation_lists(
+                        getattr(result, "citations", None), analysis.get("citations"),
+                    ),
+                ),
                 "extraction_model": analysis.get("extraction_model", ""),
                 "extraction_version": analysis.get("extraction_version", ""),
             },
@@ -1222,9 +1261,15 @@ class LLMRankingService:
         prompt_items = []
         for p in audit.prompts:
             if isinstance(p, dict):
-                prompt_items.append({"text": p.get("text", ""), "type": p.get("type", "custom")})
+                # prompt_id is carried through so results link source_prompt
+                # directly (variable-filled text won't hash-match Prompt.text).
+                prompt_items.append({
+                    "text": p.get("text", ""),
+                    "type": p.get("type", "custom"),
+                    "prompt_id": p.get("prompt_id"),
+                })
             else:
-                prompt_items.append({"text": str(p), "type": "custom"})
+                prompt_items.append({"text": str(p), "type": "custom", "prompt_id": None})
 
         total = len(selected_providers) * len(prompt_items)
         _audit_log(audit, f"🚀 Running {total} queries ({len(prompt_items)} prompts × {len(selected_providers)} providers)")
@@ -1282,14 +1327,14 @@ class LLMRankingService:
                         )
                     else:
                         sys_prompt = enriched_system if enriched_context else ""
-                    succeeded, response_text, error = query_fn(
+                    succeeded, response_text, error, provider_citations = query_fn(
                         prompt_text, sys_prompt,
                         user=audit.created_by, website=audit.website,
                         audit_id=str(audit.id),
                         region=getattr(audit, "region", "") or "",
                     )
                 except Exception as exc:
-                    succeeded, response_text, error = False, "", str(exc)
+                    succeeded, response_text, error, provider_citations = False, "", str(exc), []
                     logger.warning("Provider %s threw for audit %s: %s", provider, audit_id, exc)
                     _audit_log(audit, f"❌ {plabel} error: {str(exc)[:80]}", "error")
 
@@ -1342,7 +1387,10 @@ class LLMRankingService:
                 from apps.llm_ranking.services.source_prompt_resolver import (
                     resolve_source_prompt_id as _resolve_source_prompt_id,
                 )
-                _src_prompt_id = _resolve_source_prompt_id(prompt_text)
+                _src_prompt_id = (
+                    prompt_item.get("prompt_id")
+                    or _resolve_source_prompt_id(prompt_text)
+                )
                 result, _ = LLMRankingResult.objects.update_or_create(
                     audit=audit,
                     prompt_index=prompt_index,
@@ -1362,8 +1410,14 @@ class LLMRankingService:
                         "is_linked": analysis.get("is_linked", False),
                         "competitors_mentioned": analysis.get("competitors_mentioned", []),
                         "primary_recommendation": analysis.get("primary_recommendation", ""),
-                        "citations": analysis.get("citations", []),
-                        "citation_countries": _country_counts_for(analysis.get("citations", [])),
+                        "citations": _merge_citation_lists(
+                            provider_citations, analysis.get("citations"),
+                        ),
+                        "citation_countries": _country_counts_for(
+                            _merge_citation_lists(
+                                provider_citations, analysis.get("citations"),
+                            ),
+                        ),
                         "extraction_model": analysis.get("extraction_model", ""),
                         "extraction_version": analysis.get("extraction_version", ""),
                     },

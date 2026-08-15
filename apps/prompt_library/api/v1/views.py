@@ -1450,45 +1450,12 @@ class WebsiteSavedPromptsAggView(APIView):
 
     permission_classes = [IsAuthenticated]
 
-    # Number of library prompts we auto-attach to a brand-new website
-    # the first time someone opens the Prompts dashboard. Keeps the
-    # page from looking empty on a fresh signup.
-    AUTOSEED_LIMIT = 12
-
-    def _maybe_autoseed(self, website):
-        """If this website has no BrandPrompts yet, copy the top library
-        prompts in its industry over so the page lands populated.
-        Idempotent — runs only when the count is exactly zero."""
-        if BrandPrompt.objects.filter(website=website).exists():
-            return
-
-        industry_slug = (website.industry or "").strip().lower()
-        candidates = Prompt.objects.filter(is_active=True)
-        industry = None
-        if industry_slug:
-            industry = (
-                Industry.objects
-                .filter(is_active=True)
-                .filter(slug__iexact=industry_slug)
-                .first()
-                or Industry.objects
-                .filter(is_active=True, name__iexact=website.industry)
-                .first()
-            )
-        if industry is not None:
-            candidates = candidates.filter(industry=industry)
-        else:
-            # No industry match — fall back to top-demand prompts across
-            # the library so we still seed something useful.
-            candidates = candidates.select_related("industry")
-
-        seed = list(candidates.order_by("-demand_score", "-created_at")[: self.AUTOSEED_LIMIT])
-        if not seed:
-            return
-        BrandPrompt.objects.bulk_create(
-            [BrandPrompt(website=website, prompt=p) for p in seed],
-            ignore_conflicts=True,
-        )
+    # The saved list is never auto-populated. Audits run exactly what the
+    # user saved, so a seeded list would silently decide what gets measured
+    # on their behalf. A fresh website lands on an empty Active tab; the
+    # Suggested tab is where library prompts are offered for explicit
+    # adoption. (An autoseed used to copy 12 library prompts here on first
+    # visit — removed 2026-08.)
 
     def get(self, request, website_id):
         from collections import Counter, defaultdict
@@ -1496,7 +1463,6 @@ class WebsiteSavedPromptsAggView(APIView):
         from apps.llm_ranking.models import LLMRankingResult
 
         website = WebsiteService.get_for_user(user=request.user, website_id=website_id)
-        self._maybe_autoseed(website)
 
         bps = (
             BrandPrompt.objects

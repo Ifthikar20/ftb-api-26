@@ -33,10 +33,10 @@ def dispatch_agent_runs() -> None:
 
     for agent in due:
         try:
-            cap = float(getattr(agent.user, "monthly_ai_cost_cap_usd", 0) or 0)
-            if cap > 0:
-                from core.ai_tracking import month_to_date_cost
+            from core.ai_tracking import effective_ai_cap, month_to_date_cost
 
+            cap = effective_ai_cap(agent.user)
+            if cap > 0:
                 if month_to_date_cost(agent.user) >= cap:
                     logger.warning(
                         "Skipping agent %s: user %s at AI spend cap.",

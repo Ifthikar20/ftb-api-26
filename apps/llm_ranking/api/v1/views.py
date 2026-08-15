@@ -44,13 +44,14 @@ class LLMRankingAuditListView(TenantScopedListAPIView):
         data = serializer.validated_data
 
         from apps.llm_ranking.providers import PROVIDERS
-        from apps.llm_ranking.services.ranking_service import LLMRankingService
 
-        # Enforce per-user monthly AI spend cap before queuing more work.
-        # 0 = no cap; spend covers every module that writes to AITokenUsage.
-        cap = float(getattr(request.user, "monthly_ai_cost_cap_usd", 0) or 0)
+        # Enforce the monthly AI allowance before queuing more work. The
+        # cap derives from the plan price (65% of it) via effective_ai_cap;
+        # the provider layer enforces the same wall per-call, this check
+        # just refuses early with a friendlier error.
+        from core.ai_tracking import effective_ai_cap, month_to_date_cost
+        cap = effective_ai_cap(request.user)
         if cap > 0:
-            from core.ai_tracking import month_to_date_cost
             spent = month_to_date_cost(request.user)
             if spent >= cap:
                 return Response(
@@ -58,8 +59,8 @@ class LLMRankingAuditListView(TenantScopedListAPIView):
                         "error": "monthly_ai_cost_cap_exceeded",
                         "detail": (
                             f"Month-to-date AI spend ${spent:.2f} has reached "
-                            f"your cap of ${cap:.2f}. Raise the cap in Settings "
-                            f"or wait until the next billing month."
+                            f"this account's monthly allowance of ${cap:.2f}. "
+                            f"It resets on the 1st of next month."
                         ),
                         "cap_status": {"spent_usd": round(spent, 4), "cap_usd": cap},
                     },
@@ -105,18 +106,26 @@ class LLMRankingAuditListView(TenantScopedListAPIView):
                 for p in data["custom_prompts"]
             ]
         else:
-            prompts = LLMRankingService.generate_prompts(
-                business_name=business_name,
-                industry=industry,
-                description=business_description,
-                keywords=keywords,
-                use_case=data["use_case"],
-                location=data.get("location", ""),
-                themes=data.get("themes") or None,
-                region=data.get("region", "global"),
-                user=request.user,
-                website=website,
+            # Saved prompts only. The audit runs exactly the list the user
+            # curated on the Prompts page — nothing generated. An empty list
+            # is a refusal that names the fix, never an invented substitute.
+            from apps.llm_ranking.services.audit_runner import (
+                NoSavedPromptsError,
+                gather_saved_prompts,
             )
+            try:
+                prompts = gather_saved_prompts(website, request.user)
+            except NoSavedPromptsError:
+                return Response(
+                    {
+                        "error": "This website has no saved prompts. Add "
+                                 "prompts on the Prompts page before running "
+                                 "an audit.",
+                        "code": "no_saved_prompts",
+                        "cta_to": f"/llm-ranking/{website_id}/prompts",
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
         # Selected providers must be implemented AND configured. Stub providers
         # in PROVIDER_CHOICES (meta_llama, mistral, etc.) are filtered out so
@@ -131,13 +140,10 @@ class LLMRankingAuditListView(TenantScopedListAPIView):
                 configured.append(key)
         selected_providers = configured or ["claude"]
 
-        prompt_source = data.get("prompt_source", "vault") or "vault"
-        if prompt_source not in ("vault", "library", "hybrid"):
-            return Response(
-                {"error": "prompt_source must be one of vault, library, hybrid."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        industry_id = data.get("industry_id")
+        # prompt_source is derived, not client-chosen: custom prompts are
+        # "vault", the saved Prompts-page list is "library". The request
+        # field is still accepted (and ignored) so older clients don't break.
+        prompt_source = "vault" if data["custom_prompts"] else "library"
 
         audit = LLMRankingAudit.objects.create(
             website=website,
@@ -153,25 +159,6 @@ class LLMRankingAuditListView(TenantScopedListAPIView):
             context_urls=data.get("context_urls", []),
             prompt_source=prompt_source,
         )
-
-        # Resolve final prompt list via the prompt_library dispatcher
-        # before any task is enqueued. apply_to_audit mutates audit.prompts
-        # in place; it currently only accepts prompt_source — industry_id
-        # is reserved for future routing into a non-default sample run.
-        try:
-            from apps.llm_ranking.services.audit_runner import apply_to_audit
-            apply_to_audit(audit, prompt_source=prompt_source)
-            audit.save(update_fields=["prompts"])
-        except Exception as exc:
-            audit.delete()
-            return Response(
-                {"error": f"Failed to resolve prompts: {exc}"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        # industry_id is accepted for forward-compat with library routing
-        # but the current apply_to_audit signature reads from the audit's
-        # already-attached prompt_sample_run. Reference it to silence linters.
-        _ = industry_id
 
         # Dispatch: in production use Celery, in dev the user triggers
         # the run manually via the "Run" button (retry endpoint) because
@@ -357,37 +344,29 @@ class ScanURLView(TenantScopedAPIView):
 
 class LLMRankingPreviewPromptsView(TenantScopedAPIView):
     """
-    GET — returns the prompts that `generate_prompts` would produce for this
-    website without creating an audit. Used by the first-run UI to show users
-    what will be asked before they commit to a paid run.
+    GET — returns the prompts an audit would actually run for this website:
+    the saved list from the Prompts page. Used by the first-run UI so the
+    preview never shows prompts a run would not ask.
     """
 
     def get(self, request, website_id):
-        from apps.llm_ranking.services.ranking_service import LLMRankingService
+        from apps.llm_ranking.services.audit_runner import (
+            NoSavedPromptsError,
+            gather_saved_prompts,
+        )
 
         website = self.get_website(website_id)
-        industry = request.query_params.get("industry") or (website.industry or "")
-        location = request.query_params.get("location") or ""
-        use_case = request.query_params.get("use_case") or ""
-        keywords = request.query_params.getlist("keywords") or (website.topics or [])
-
-        prompts = LLMRankingService.generate_prompts(
-            business_name=website.name,
-            industry=industry,
-            description=website.description or "",
-            keywords=keywords,
-            use_case=use_case,
-            location=location,
-        )
+        try:
+            prompts = gather_saved_prompts(website, request.user)
+        except NoSavedPromptsError:
+            return Response({
+                "prompts": [],
+                "code": "no_saved_prompts",
+                "cta_to": f"/llm-ranking/{website_id}/prompts",
+            })
         return Response({
             "prompts": prompts,
-            "source": {
-                "business_name": website.name,
-                "industry": industry,
-                "description": website.description or "",
-                "keywords": keywords,
-                "location": location,
-            },
+            "source": {"business_name": website.name},
         })
 
 
@@ -1283,6 +1262,23 @@ class LLMRankingScheduleRunNowView(TenantScopedAPIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
+        # Monthly AI allowance pre-check (the provider layer enforces the
+        # same wall per-call; this refuses early with a clear error).
+        from core.ai_tracking import effective_ai_cap, month_to_date_cost
+        cap = effective_ai_cap(request.user)
+        if cap > 0 and month_to_date_cost(request.user) >= cap:
+            return Response(
+                {
+                    "error": "monthly_ai_cost_cap_exceeded",
+                    "code": "ai_allowance_exceeded",
+                    "detail": (
+                        f"This account has used its ${cap:.2f} monthly AI "
+                        f"allowance. It resets on the 1st of next month."
+                    ),
+                },
+                status=402,
+            )
+
         prev = schedule.last_audit
         if prev and prev.status in (
             LLMRankingAudit.STATUS_PENDING, LLMRankingAudit.STATUS_RUNNING,
@@ -1296,17 +1292,25 @@ class LLMRankingScheduleRunNowView(TenantScopedAPIView):
         # Generate the prompts and create the audit row inline so the
         # caller gets the audit_id back to poll.
         from apps.llm_ranking.providers import PROVIDERS as PROV_REGISTRY
-        from apps.llm_ranking.services.ranking_service import LLMRankingService
-
-        prompts = LLMRankingService.generate_prompts(
-            business_name=schedule.business_name,
-            industry=schedule.industry,
-            description=schedule.business_description,
-            keywords=schedule.keywords,
-            location=schedule.location,
-            user=schedule.created_by,
-            website=website,
+        from apps.llm_ranking.services.audit_runner import (
+            NoSavedPromptsError,
+            gather_saved_prompts,
         )
+
+        # Saved prompts only — the run asks exactly what the user curated
+        # on the Prompts page. Empty list means refuse and name the fix.
+        try:
+            prompts = gather_saved_prompts(website, schedule.created_by)
+        except NoSavedPromptsError:
+            return Response(
+                {
+                    "error": "This website has no saved prompts. Add prompts "
+                             "on the Prompts page before running an audit.",
+                    "code": "no_saved_prompts",
+                    "cta_to": f"/llm-ranking/{website.id}/prompts",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         requested = schedule.providers or list(PROV_REGISTRY.keys())
         selected = [
             k for k in requested
@@ -1324,6 +1328,7 @@ class LLMRankingScheduleRunNowView(TenantScopedAPIView):
             keywords=schedule.keywords,
             prompts=prompts,
             providers_queried=selected,
+            prompt_source=LLMRankingAudit.PROMPT_SOURCE_LIBRARY,
         )
 
         # Reset failure counter on a manual run — the operator is

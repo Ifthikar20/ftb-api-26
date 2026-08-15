@@ -42,6 +42,10 @@ class ProviderResult:
     output_tokens: int = 0
     duration_ms: int = 0
     raw: dict = field(default_factory=dict)
+    # Source URLs the provider itself reported (web-grounded models like
+    # Perplexity return these out-of-band; the answer text only carries
+    # [1][2] markers, so text extraction alone can never recover them).
+    citations: list = field(default_factory=list)
 
     @property
     def total_tokens(self) -> int:
@@ -113,6 +117,30 @@ class LLMProvider:
                 succeeded=False,
                 error=f"service_unavailable: {self.name} provider not enabled",
             )
+
+        # Hard spend wall. Views pre-check the allowance for friendly
+        # errors, but this is the enforcement point: every provider call
+        # for an attributed user passes through here, so no feature —
+        # current or future — can spend past the plan-derived cap by more
+        # than the one call already in flight. Unattributed calls (health
+        # checks) are exempt.
+        if user is not None:
+            try:
+                from core.ai_tracking import effective_ai_cap, month_to_date_cost
+
+                cap = effective_ai_cap(user)
+                if cap > 0 and month_to_date_cost(user) >= cap:
+                    return ProviderResult(
+                        succeeded=False,
+                        error=(
+                            "monthly_ai_allowance_exceeded: the account has "
+                            f"used its ${cap:.2f} monthly AI allowance"
+                        ),
+                    )
+            except Exception:
+                # The wall must never take the pipeline down with it; a
+                # broken cap lookup falls back to allowing the call.
+                pass
 
         # Per-provider circuit breaker. When OPEN we short-circuit without
         # consuming a rate-limit token or hitting the upstream API. The

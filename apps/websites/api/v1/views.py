@@ -184,6 +184,7 @@ class DashboardView(APIView):
 
     def get(self, request):
         from apps.llm_ranking.services._window import (
+            parse_csv_filter,
             parse_prompt_filter,
             resolve_window,
         )
@@ -195,6 +196,7 @@ class DashboardView(APIView):
             build_kpis_for_user,
         )
         from apps.llm_ranking.services.overview_stats import (
+            build_filter_options,
             build_overview_for_user,
         )
         from apps.notifications.models import Notification
@@ -203,7 +205,8 @@ class DashboardView(APIView):
         website = websites.first()
 
         # Filters: ?range=overall|7d|30d|90d|1y|custom plus optional
-        # ?start=YYYY-MM-DD&end=YYYY-MM-DD&prompts=text1\ntext2.
+        # ?start / ?end, ?prompts (newline-joined), and the pill filters
+        # ?models / ?tags / ?topics (CSV or repeated params).
         range_key = request.query_params.get("range") or "30d"
         start_dt, end_dt = resolve_window(
             range_key,
@@ -213,21 +216,39 @@ class DashboardView(APIView):
         prompt_filter = parse_prompt_filter(
             request.query_params.getlist("prompts") or request.query_params.get("prompts"),
         )
+        models_filter = parse_csv_filter(
+            request.query_params.getlist("models") or request.query_params.get("models"),
+        )
+        tags_filter = parse_csv_filter(
+            request.query_params.getlist("tags") or request.query_params.get("tags"),
+        )
+        topics_filter = parse_csv_filter(
+            request.query_params.getlist("topics") or request.query_params.get("topics"),
+        )
         applied_filter = {
             "range": range_key,
             "start": start_dt.isoformat() if start_dt else None,
             "end": end_dt.isoformat() if end_dt else None,
             "prompts": prompt_filter or [],
+            "models": models_filter or [],
+            "tags": tags_filter or [],
+            "topics": topics_filter or [],
+        }
+        result_filters = {
+            "prompts": prompt_filter,
+            "providers": models_filter,
+            "tags": tags_filter,
+            "topics": topics_filter,
         }
 
         stats = build_kpis_for_user(
-            request.user, start=start_dt, end=end_dt, prompts=prompt_filter,
+            request.user, start=start_dt, end=end_dt, **result_filters,
         ) or []
         analytics_breakdowns = build_breakdowns_for_user(
-            request.user, start=start_dt, end=end_dt, prompts=prompt_filter,
+            request.user, start=start_dt, end=end_dt, **result_filters,
         )
         analytics_deep_dive = build_deep_dive(
-            request.user, start=start_dt, end=end_dt, prompts=prompt_filter,
+            request.user, start=start_dt, end=end_dt, **result_filters,
         )
 
         # Recent activity (from notifications)
@@ -280,7 +301,13 @@ class DashboardView(APIView):
         # measured yet so the frontend can render guidance rather than
         # placeholder numbers.
         overview = build_overview_for_user(
-            request.user, start=start_dt, end=end_dt, prompts=prompt_filter,
+            request.user, start=start_dt, end=end_dt, **result_filters,
+        )
+
+        # Menu contents for the filter pills, computed from the unfiltered
+        # window so a selected filter never hides its own options.
+        filter_options = build_filter_options(
+            request.user, start=start_dt, end=end_dt,
         )
 
         return Response({
@@ -293,6 +320,7 @@ class DashboardView(APIView):
             'analytics_deep_dive': analytics_deep_dive,
             'applied_filter': applied_filter,
             'overview': overview,
+            'filter_options': filter_options,
             # Drives the dashboard's first-run guidance: which step the user
             # should take next when there is nothing to show yet.
             'setup_state': _setup_state(request.user, website),

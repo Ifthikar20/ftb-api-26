@@ -130,7 +130,6 @@ def dispatch_scheduled_audits() -> None:
     from django.utils import timezone
 
     from apps.llm_ranking.models import LLMRankingAudit, LLMRankingSchedule
-    from apps.llm_ranking.services.ranking_service import LLMRankingService
 
     now = timezone.now()
     due = LLMRankingSchedule.objects.filter(
@@ -155,10 +154,10 @@ def dispatch_scheduled_audits() -> None:
                 _bump_next_run(schedule, now)
                 continue
 
-            # ── 2. Spend-cap check ────────────────────────────────────
-            cap = float(getattr(cap_user, "monthly_ai_cost_cap_usd", 0) or 0)
+            # ── 2. Spend-cap check (plan-derived allowance) ───────────
+            from core.ai_tracking import effective_ai_cap, month_to_date_cost
+            cap = effective_ai_cap(cap_user)
             if cap > 0:
-                from core.ai_tracking import month_to_date_cost
                 spent = month_to_date_cost(cap_user)
                 if spent >= cap:
                     logger.warning(
@@ -169,16 +168,25 @@ def dispatch_scheduled_audits() -> None:
                     _bump_next_run(schedule, now)
                     continue
 
-            # ── 3. Generate + filter providers ────────────────────────
-            prompts = LLMRankingService.generate_prompts(
-                business_name=schedule.business_name,
-                industry=schedule.industry,
-                description=schedule.business_description,
-                keywords=schedule.keywords,
-                location=schedule.location,
-                user=cap_user,
-                website=schedule.website,
+            # ── 3. Saved prompts + filter providers ───────────────────
+            # The scheduled run asks exactly what the user curated on the
+            # Prompts page. An empty list is user state, not an error:
+            # skip and re-schedule rather than record a failure, so the
+            # auto-pause gate doesn't punish an unconfigured website.
+            from apps.llm_ranking.services.audit_runner import (
+                NoSavedPromptsError,
+                gather_saved_prompts,
             )
+            try:
+                prompts = gather_saved_prompts(schedule.website, cap_user)
+            except NoSavedPromptsError:
+                logger.warning(
+                    "Skipping scheduled audit for %s: no saved prompts. "
+                    "The user must add prompts on the Prompts page.",
+                    schedule.website.name,
+                )
+                _bump_next_run(schedule, now)
+                continue
             from django.conf import settings as _settings
 
             from apps.llm_ranking.providers import PROVIDERS
@@ -199,6 +207,7 @@ def dispatch_scheduled_audits() -> None:
                 keywords=schedule.keywords,
                 prompts=prompts,
                 providers_queried=selected_providers,
+                prompt_source=LLMRankingAudit.PROMPT_SOURCE_LIBRARY,
             )
 
             # Queue execution + record the audit on the schedule so the

@@ -36,10 +36,21 @@ PRICING = {
     # Google
     "gemini-1.5-flash": {"input": 0.075, "output": 0.30},
     "gemini-1.5-pro": {"input": 1.25, "output": 5.00},
-    # Perplexity (Sonar online models)
+    "gemini-2.0-flash": {"input": 0.10, "output": 0.40},
+    # Perplexity. Sonar bills a per-request web-search fee on top of
+    # tokens; "per_call" models that as a flat USD adder per API call,
+    # set at the high-context tier so the estimate can only overshoot.
+    "sonar": {"input": 1.00, "output": 1.00, "per_call": 0.008},
+    "sonar-pro": {"input": 3.00, "output": 15.00, "per_call": 0.014},
+    # Legacy Sonar names kept so historical rows keep re-pricing correctly.
     "llama-3.1-sonar-small-128k-online": {"input": 0.20, "output": 0.20},
     "llama-3.1-sonar-large-128k-online": {"input": 1.00, "output": 1.00},
-    # Fallback for unknown models — conservative estimate
+    # xAI
+    "grok-4": {"input": 3.00, "output": 15.00},
+    "grok-3": {"input": 3.00, "output": 15.00},
+    # Fallback for unknown models — conservative estimate. Erring high is
+    # deliberate: a missing price must never understate spend against the
+    # margin cap.
     "default": {"input": 3.00, "output": 15.00},
 }
 
@@ -57,8 +68,13 @@ MODEL_PROVIDER = {
     "gpt-4-turbo": "openai",
     "gemini-1.5-flash": "google",
     "gemini-1.5-pro": "google",
+    "gemini-2.0-flash": "google",
+    "sonar": "perplexity",
+    "sonar-pro": "perplexity",
     "llama-3.1-sonar-small-128k-online": "perplexity",
     "llama-3.1-sonar-large-128k-online": "perplexity",
+    "grok-4": "xai",
+    "grok-3": "xai",
 }
 
 
@@ -67,7 +83,10 @@ def _estimate_cost(model_name: str, input_tokens: int, output_tokens: int) -> fl
     pricing = PRICING.get(model_name, PRICING["default"])
     input_cost = (input_tokens / 1_000_000) * pricing["input"]
     output_cost = (output_tokens / 1_000_000) * pricing["output"]
-    return round(input_cost + output_cost, 6)
+    # Some providers (Perplexity Sonar) bill a flat per-request fee for the
+    # web-search step in addition to tokens.
+    flat = pricing.get("per_call", 0.0)
+    return round(input_cost + output_cost + flat, 6)
 
 
 def record_usage(
@@ -127,8 +146,59 @@ def record_usage(
             "AI usage: %s | %s | %d in + %d out = %d tokens | $%.4f",
             module, model_name, input_tokens, output_tokens, total, cost,
         )
+
+        if user is not None:
+            _maybe_notify_cap(user, just_spent=cost)
     except Exception as e:
         logger.warning("Failed to record AI token usage: %s", e)
+
+
+def _maybe_notify_cap(user, *, just_spent: float) -> None:
+    """Notify once per month when spend crosses the warn or hard threshold.
+
+    Crossing is detected against the pre-call total so a single burst of
+    calls produces one notification, and the month-scoped existence check
+    keeps retries from duplicating it.
+    """
+    cap = effective_ai_cap(user)
+    if cap <= 0:
+        return
+    spent_after = month_to_date_cost(user)
+    spent_before = spent_after - just_spent
+    month_start, resets_at = _month_bounds()
+
+    for ntype, threshold, title, body in (
+        (
+            "ai_cap_exceeded", cap,
+            "Monthly AI allowance reached",
+            f"You have used your full AI allowance (${cap:.2f}) for this "
+            f"billing month. AI features pause until "
+            f"{resets_at.date().isoformat()}.",
+        ),
+        (
+            "ai_cap_warning", cap * AI_SPEND_WARN_RATIO,
+            "Approaching your monthly AI allowance",
+            f"You have used over {int(AI_SPEND_WARN_RATIO * 100)}% of your "
+            f"${cap:.2f} monthly AI allowance. It resets on "
+            f"{resets_at.date().isoformat()}.",
+        ),
+    ):
+        if spent_before < threshold <= spent_after:
+            try:
+                from apps.notifications.models import Notification
+
+                already = Notification.objects.filter(
+                    user=user, type=ntype, created_at__gte=month_start,
+                ).exists()
+                if not already:
+                    Notification.objects.create(
+                        user=user, type=ntype, title=title, message=body,
+                        data={"cap_usd": cap, "spent_usd": round(spent_after, 4)},
+                        action_url="/settings",
+                    )
+            except Exception as exc:
+                logger.debug("Cap notification failed: %s", exc)
+            break
 
 
 def get_usage_summary(user=None, days=30):
@@ -232,26 +302,112 @@ def get_usage_summary(user=None, days=30):
     }
 
 
+# Share of a plan's monthly price a user may consume as AI cost. Above
+# this the platform loses money on the account, so the cap is a hard
+# stop, not advisory.
+AI_SPEND_CAP_RATIO = 0.65
+# Fraction of the allowance at which the user gets a warning notification.
+AI_SPEND_WARN_RATIO = 0.80
+
+
+def effective_ai_cap(user) -> float:
+    """Monthly AI spend allowance in USD for ``user``. 0 = unlimited.
+
+    Derived automatically from the plan price: a $45/mo plan allows
+    $45 * 0.65 = $29.25 of model cost per calendar month. A manual
+    ``monthly_ai_cost_cap_usd`` can only make the cap STRICTER — margin
+    protection cannot be widened per-user from the profile form.
+
+    Enterprise (custom pricing, price_monthly == -1) derives no cap;
+    set a manual cap on those accounts when one is agreed.
+    """
+    if user is None:
+        return 0.0
+    from core.utils.constants import PLAN_LIMITS, Plan
+
+    try:
+        sub = getattr(user, "subscription", None)
+        plan = getattr(sub, "plan", None) if sub else None
+    except Exception:
+        plan = None
+    if not plan:
+        plan = getattr(user, "effective_plan", None) or getattr(user, "plan", None)
+    limits = PLAN_LIMITS.get(plan) or PLAN_LIMITS.get(Plan.INDIVIDUAL, {})
+
+    price = limits.get("price_monthly") or 0
+    derived = round(price * AI_SPEND_CAP_RATIO, 2) if price and price > 0 else 0.0
+    manual = float(getattr(user, "monthly_ai_cost_cap_usd", 0) or 0)
+
+    if manual > 0 and derived > 0:
+        return min(manual, derived)
+    return manual or derived
+
+
+def _month_bounds(now=None):
+    now = now or timezone.now()
+    start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    if start.month == 12:
+        nxt = start.replace(year=start.year + 1, month=1)
+    else:
+        nxt = start.replace(month=start.month + 1)
+    return start, nxt
+
+
+# Nominal blended tokens-per-USD used to express a dollar allowance as a
+# token capacity before an account has any usage of its own to derive a
+# real mix from. Roughly a haiku-heavy blend; display-only.
+NOMINAL_TOKENS_PER_USD = 700_000
+
+
 def _cap_status(user):
-    """Calendar-month-to-date spend vs the user's monthly cap (if any)."""
+    """Calendar-month-to-date spend vs the user's effective allowance.
+
+    The user-facing representation is TOKENS: internally the cap is USD
+    (that is what protects margin), but the UI shows a token allowance —
+    ``capacity_tokens`` is the projected monthly token capacity at the
+    account's current model mix (tokens_used * cap / spent), falling back
+    to a nominal blend when there is no usage yet. Because the mix varies,
+    the capacity is an estimate and moves with usage; the dollar numbers
+    stay in AITokenUsage rows for audit.
+    """
     from django.db.models import Sum
 
     from apps.accounts.models import AITokenUsage
 
-    now = timezone.now()
-    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    spent = (
+    spent = month_to_date_cost(user)
+    cap = effective_ai_cap(user)
+    month_start, resets_at = _month_bounds()
+
+    used_tokens = (
         AITokenUsage.objects
         .filter(user=user, created_at__gte=month_start)
-        .aggregate(total=Sum("estimated_cost_usd"))["total"] or 0
+        .aggregate(total=Sum("total_tokens"))["total"] or 0
     )
-    spent = float(spent)
-    cap = float(getattr(user, "monthly_ai_cost_cap_usd", 0) or 0)
+    if cap > 0:
+        if spent > 0 and used_tokens > 0:
+            capacity_tokens = int(used_tokens * cap / spent)
+        else:
+            capacity_tokens = int(cap * NOMINAL_TOKENS_PER_USD)
+    else:
+        capacity_tokens = 0
+    manual = float(getattr(user, "monthly_ai_cost_cap_usd", 0) or 0)
+    if cap <= 0:
+        source = "none"
+    elif manual > 0 and cap == manual:
+        source = "manual"
+    else:
+        source = "plan"
     return {
         "month_start": month_start.isoformat(),
+        "resets_at": resets_at.isoformat(),
         "spent_usd": round(spent, 4),
         "cap_usd": cap,
+        "cap_source": source,
+        "cap_ratio": AI_SPEND_CAP_RATIO,
+        "used_tokens": int(used_tokens),
+        "capacity_tokens": capacity_tokens,
         "pct": round(spent / cap * 100, 1) if cap > 0 else None,
+        "warning": cap > 0 and spent >= cap * AI_SPEND_WARN_RATIO,
         "exceeded": cap > 0 and spent >= cap,
     }
 

@@ -52,8 +52,10 @@ MODEL_VARIANTS: dict[str, list[tuple[str, str, bool]]] = {
         ("Gemini 2.0 Flash", "gemini-2.0-flash", False),
     ],
     "perplexity": [
-        ("Sonar Small (web)", "llama-3.1-sonar-small-128k-online", True),
-        ("Sonar Large (web)", "llama-3.1-sonar-large-128k-online", False),
+        # Perplexity retired the llama-3.1-sonar-* family in early 2025;
+        # the replacements are plain "sonar" / "sonar-pro".
+        ("Sonar (web)", "sonar", True),
+        ("Sonar Pro (web)", "sonar-pro", False),
     ],
     "grok": [
         ("Grok 4", "grok-4", True),

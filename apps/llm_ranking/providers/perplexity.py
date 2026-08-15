@@ -7,10 +7,12 @@ from .claude import DEFAULT_SYSTEM
 
 class PerplexityProvider(LLMProvider):
     name = "perplexity"
-    model = "llama-3.1-sonar-small-128k-online"
+    # The llama-3.1-sonar-* family was retired by Perplexity in early 2025
+    # (requests 400 with "invalid model"); "sonar" is its replacement.
+    model = "sonar"
     api_key_setting = "PERPLEXITY_API_KEY"
     timeout_seconds = 30
-    # Perplexity free tier = 50 RPM for Sonar small. Cap at 30 for headroom.
+    # Cap well under Perplexity's rate limit for headroom.
     rpm = 30
     burst = 10
 
@@ -47,10 +49,22 @@ class PerplexityProvider(LLMProvider):
         resp.raise_for_status()
         body = resp.json()
         usage = body.get("usage") or {}
+        # Perplexity reports its sources out-of-band: legacy responses in a
+        # top-level "citations" list of URLs, newer ones in "search_results"
+        # dicts. The answer text only has [1][2] markers, so these fields
+        # are the only route to real source URLs.
+        citations = [u for u in (body.get("citations") or []) if isinstance(u, str)]
+        if not citations:
+            citations = [
+                row.get("url")
+                for row in (body.get("search_results") or [])
+                if isinstance(row, dict) and row.get("url")
+            ]
         return ProviderResult(
             succeeded=True,
             text=body["choices"][0]["message"]["content"].strip(),
             input_tokens=int(usage.get("prompt_tokens", 0)),
             output_tokens=int(usage.get("completion_tokens", 0)),
             raw=body,
+            citations=citations,
         )
