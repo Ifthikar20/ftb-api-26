@@ -366,6 +366,103 @@ def test_detail_domain_brand_sentiment(auth):
 
 
 @pytest.mark.django_db
+def test_scan_sources_seeds_from_citations(auth):
+    """POST scan-sources creates a SourceScan seeded with one URL per
+    cited apex domain, most-cited domains first."""
+    from apps.citations.models import Citation, SourceScan
+
+    client, user, website = auth
+    prompt = PromptFactory()
+    _save(website, prompt)
+    audit = LLMRankingAuditFactory(website=website)
+    result = LLMRankingResultFactory(
+        audit=audit, source_prompt=prompt, prompt=prompt.text, query_succeeded=True,
+    )
+    # twice.com cited twice (two distinct URLs), once.com once.
+    for url, apex in (
+        ("https://twice.com/a", "twice.com"),
+        ("https://twice.com/b", "twice.com"),
+        ("https://once.com/x", "once.com"),
+    ):
+        Citation.objects.create(
+            result=result, audit=audit, url=url, normalized_url=url,
+            domain=apex, apex_domain=apex, source_class="editorial",
+        )
+
+    with patch("apps.citations.tasks.run_source_scan.delay") as mock_delay:
+        resp = client.post(
+            f"{PREFIX}/websites/{website.id}/prompts/{prompt.id}/scan-sources/",
+        )
+    assert resp.status_code == 201
+    body = _data(resp)
+    assert body["seeded_domains"] == 2
+    scan = SourceScan.objects.get(id=body["scan_id"])
+    assert scan.source_prompt_id == prompt.id
+    assert scan.created_by_id == user.id
+    # Most-cited domain's URL first; one URL per apex.
+    assert scan.seed_urls == ["https://twice.com/a", "https://once.com/x"]
+    mock_delay.assert_called_once_with(str(scan.id))
+
+
+@pytest.mark.django_db
+def test_scan_sources_requires_citations(auth):
+    client, _, website = auth
+    prompt = PromptFactory()
+    _save(website, prompt)
+    resp = client.post(
+        f"{PREFIX}/websites/{website.id}/prompts/{prompt.id}/scan-sources/",
+    )
+    assert resp.status_code == 400
+
+
+@pytest.mark.django_db
+def test_detail_page_sentiment_from_seeded_scan(auth):
+    """A completed seeded scan surfaces per-domain on-page sentiment in
+    the detail payload, mapped from -1..1 onto the 0..100 scale."""
+    from apps.citations.models import Citation, SourceScan, SourceScanResult
+
+    client, user, website = auth
+    prompt = PromptFactory()
+    _save(website, prompt)
+    audit = LLMRankingAuditFactory(website=website)
+    result = LLMRankingResultFactory(
+        audit=audit, source_prompt=prompt, prompt=prompt.text, query_succeeded=True,
+    )
+    for domain in ("praised.com", "silent.com"):
+        Citation.objects.create(
+            result=result, audit=audit,
+            url=f"https://{domain}/p", normalized_url=f"https://{domain}/p",
+            domain=domain, apex_domain=domain, source_class="editorial",
+        )
+
+    scan = SourceScan.objects.create(
+        website=website, query=prompt.text, source_prompt=prompt,
+        seed_urls=["https://praised.com/p", "https://silent.com/p"],
+        status="complete", created_by=user, analyzed_count=2, results_count=2,
+    )
+    SourceScanResult.objects.create(
+        scan=scan, rank=1, url="https://praised.com/p", domain="praised.com",
+        source_class="editorial", relevant=True, fetch_status="ok",
+        brands=[{"name": website.name, "sentiment": 0.7, "weight": 0.9}],
+    )
+    SourceScanResult.objects.create(
+        scan=scan, rank=2, url="https://silent.com/p", domain="silent.com",
+        source_class="editorial", relevant=True, fetch_status="ok",
+        brands=[{"name": "Someone Else", "sentiment": -0.5, "weight": 0.5}],
+    )
+
+    body = _data(client.get(_detail_url(website, prompt)))
+    assert body["page_scan"]["status"] == "complete"
+    by_domain = {d["apex_domain"]: d for d in body["top_domains"]}
+    # 0.7 on -1..1 maps to 85 on 0..100.
+    assert by_domain["praised.com"]["page_sentiment"] == 85.0
+    assert by_domain["praised.com"]["page_analyzed"] is True
+    # Page analyzed but the brand never appeared on it -> null, not neutral.
+    assert by_domain["silent.com"]["page_sentiment"] is None
+    assert by_domain["silent.com"]["page_analyzed"] is True
+
+
+@pytest.mark.django_db
 def test_detail_run_param_narrows(auth):
     client, _, website = auth
     prompt = PromptFactory()

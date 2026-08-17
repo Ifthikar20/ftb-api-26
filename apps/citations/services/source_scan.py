@@ -14,6 +14,7 @@ import logging
 import re
 from collections import defaultdict
 from datetime import date
+from urllib.parse import urlparse
 
 from django.utils import timezone
 
@@ -57,44 +58,61 @@ def run_scan(scan: SourceScan) -> SourceScan:
     website = scan.website
     target_brand = website.name or ""
 
-    try:
-        serp = web_search.search_web(
-            scan.query,
-            max_results=MAX_RESULTS_PER_SCAN,
-            user_id=website.user_id,
+    if scan.seed_urls:
+        # Seeded scan: the caller already knows exactly which URLs to
+        # analyze (e.g. the URLs an AI answer cited for a prompt), so
+        # the SERP search and its relevance gate are skipped entirely.
+        rows = []
+        for rank, url in enumerate(scan.seed_urls[:MAX_RESULTS_PER_SCAN], start=1):
+            host = urlparse(url).netloc or url
+            rows.append(SourceScanResult(
+                scan=scan,
+                rank=rank,
+                url=str(url)[:2000],
+                domain=host[:300],
+                source_class=_rule_classify(extract_apex_domain(host), host),
+                relevant=True,
+                relevance_note="seeded from prompt citations",
+            ))
+    else:
+        try:
+            serp = web_search.search_web(
+                scan.query,
+                max_results=MAX_RESULTS_PER_SCAN,
+                user_id=website.user_id,
+            )
+        except Exception as exc:  # defensive: search client normally returns []
+            return _fail(scan, f"search failed: {exc}")
+
+        if not serp:
+            return _fail(
+                scan,
+                "no search results (Perplexity key missing, quota exhausted, or empty SERP)",
+            )
+
+        # SERP relevance gate: one batched judgement on titles/urls so
+        # off-topic noise (designer "bags" on a "bagels" query) is dropped
+        # before we pay for content fetches and per-result analysis.
+        verdicts = source_sentiment.assess_serp_relevance(
+            scan.query, serp, website=website, user=scan.created_by,
         )
-    except Exception as exc:  # defensive: search client normally returns []
-        return _fail(scan, f"search failed: {exc}")
 
-    if not serp:
-        return _fail(
-            scan,
-            "no search results (Perplexity key missing, quota exhausted, or empty SERP)",
-        )
-
-    # SERP relevance gate: one batched judgement on titles/urls so
-    # off-topic noise (designer "bags" on a "bagels" query) is dropped
-    # before we pay for content fetches and per-result analysis.
-    verdicts = source_sentiment.assess_serp_relevance(
-        scan.query, serp, website=website, user=scan.created_by,
-    )
-
-    rows = []
-    for item in serp:
-        verdict = verdicts.get(item["rank"], {"relevant": True, "reason": ""})
-        rows.append(SourceScanResult(
-            scan=scan,
-            rank=item["rank"],
-            url=item["url"][:2000],
-            domain=item["domain"][:300],
-            source_class=_rule_classify(extract_apex_domain(item["domain"]), item["domain"]),
-            serp_title=item["title"][:500],
-            serp_snippet=item["snippet"],
-            published_at=_parse_date(item.get("date")),
-            last_updated_at=_parse_date(item.get("last_updated")),
-            relevant=verdict["relevant"],
-            relevance_note=verdict["reason"][:200],
-        ))
+        rows = []
+        for item in serp:
+            verdict = verdicts.get(item["rank"], {"relevant": True, "reason": ""})
+            rows.append(SourceScanResult(
+                scan=scan,
+                rank=item["rank"],
+                url=item["url"][:2000],
+                domain=item["domain"][:300],
+                source_class=_rule_classify(extract_apex_domain(item["domain"]), item["domain"]),
+                serp_title=item["title"][:500],
+                serp_snippet=item["snippet"],
+                published_at=_parse_date(item.get("date")),
+                last_updated_at=_parse_date(item.get("last_updated")),
+                relevant=verdict["relevant"],
+                relevance_note=verdict["reason"][:200],
+            ))
     SourceScanResult.objects.bulk_create(rows)
     scan.results_count = len(rows)
     scan.save(update_fields=["results_count", "updated_at"])

@@ -1310,6 +1310,57 @@ class BrandPromptDetailAggView(APIView):
         top_domains.sort(key=lambda e: (-e["count"], e["apex_domain"]))
         top_domains = top_domains[:25]
 
+        # ── Page-level sentiment from the latest seeded SourceScan ────
+        # "Scan cited sources" fetches the cited pages and scores how the
+        # brand is portrayed ON the page (vs. brand_sentiment above, which
+        # scores the AI answers that cite it). Sentiment arrives -1..1 from
+        # the intelligence service; map onto the UI's 0..100 scale.
+        from apps.citations.models import SourceScan, SourceScanStatus
+        from apps.citations.services.source_scan import _matches_target
+        from apps.citations.services.url_normalizer import extract_apex_domain
+
+        page_scan = None
+        latest_scan_row = (
+            SourceScan.objects
+            .filter(website=website, source_prompt=prompt)
+            .order_by("-created_at")
+            .first()
+        )
+        if latest_scan_row is not None:
+            page_scan = {
+                "id": str(latest_scan_row.id),
+                "status": latest_scan_row.status,
+                "analyzed_count": latest_scan_row.analyzed_count,
+                "results_count": latest_scan_row.results_count,
+                "error": (latest_scan_row.error or "")[:240],
+                "created_at": latest_scan_row.created_at.isoformat()
+                if latest_scan_row.created_at else None,
+                "completed_at": latest_scan_row.completed_at.isoformat()
+                if latest_scan_row.completed_at else None,
+            }
+            if latest_scan_row.status == SourceScanStatus.COMPLETE:
+                brand_name = website.name or ""
+                page_sent: dict[str, list] = defaultdict(list)
+                page_seen: set[str] = set()
+                for res in latest_scan_row.results.filter(relevant=True):
+                    apex = extract_apex_domain(res.domain) or res.domain
+                    if res.fetch_status == "ok":
+                        page_seen.add(apex)
+                    for b in res.brands or []:
+                        if _matches_target(b.get("name", ""), brand_name):
+                            raw = b.get("sentiment")
+                            if raw is not None:
+                                page_sent[apex].append(round((float(raw) + 1) * 50))
+                for entry in top_domains:
+                    apex = entry["apex_domain"]
+                    vals = page_sent.get(apex)
+                    entry["page_sentiment"] = (
+                        round(sum(vals) / len(vals), 1) if vals else None
+                    )
+                    # Distinguishes "page analyzed, brand absent" from
+                    # "page was never fetched/analyzed".
+                    entry["page_analyzed"] = apex in page_seen
+
         type_counter: Counter = Counter()
         type_sentiments: dict[str, list] = defaultdict(list)
         for apex, entry in per_domain.items():
@@ -1523,6 +1574,9 @@ class BrandPromptDetailAggView(APIView):
             "total_retrievals": sum(type_counter.values()),
             "recent_chats": recent_chats,
             "latest_scan": latest_scan,
+            # Latest "Scan cited sources" run for this prompt (page-level
+            # sentiment), or null when none has been started.
+            "page_scan": page_scan,
             "unextracted_count": unextracted_count,
             # Time-series: one entry per run (audit) that included this
             # prompt, ascending by time — drives the Overview trend chart
@@ -1986,6 +2040,88 @@ class PromptCrawlTriggerView(APIView):
             queued = False
         return Response({"queued": queued, "website_id": str(website.id),
                          "prompt_id": str(prompt.id)})
+
+
+class PromptSourceScanView(APIView):
+    """Page-level sentiment for the domains an AI answer cited.
+
+    POST — start a SourceScan seeded with this prompt's cited URLs (one
+    representative URL per apex domain, most-cited first). The existing
+    Source Intelligence pipeline fetches each page and scores how the
+    brand is portrayed on it; the detail endpoint then surfaces the
+    per-domain "on page" sentiment. Explicit-trigger only: this spends
+    AI credits, so it never runs automatically.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    MAX_SEEDS = 10  # matches the scan pipeline's per-scan result cap
+
+    def post(self, request, website_id, prompt_id):
+        from apps.citations.models import Citation, SourceScan, SourceScanStatus
+        from apps.citations.tasks import run_source_scan
+
+        website = WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        try:
+            prompt = Prompt.objects.get(id=prompt_id)
+        except Prompt.DoesNotExist:
+            return Response({"detail": "Prompt not found."},
+                            status=status.HTTP_404_NOT_FOUND)
+
+        # One representative URL per apex domain, ranked by how often the
+        # domain was cited, so the 10 seed slots cover 10 distinct domains.
+        from collections import Counter, defaultdict
+        cite_qs = (
+            Citation.objects
+            .filter(result__audit__website=website, result__source_prompt=prompt)
+            .only("url", "apex_domain", "domain")
+        )
+        domain_counts: Counter = Counter()
+        url_counts: dict[str, Counter] = defaultdict(Counter)
+        for c in cite_qs:
+            apex = c.apex_domain or c.domain
+            if not apex or not c.url:
+                continue
+            domain_counts[apex] += 1
+            url_counts[apex][c.url] += 1
+        if not domain_counts:
+            return Response(
+                {"error": "no_citations",
+                 "detail": "No cited sources for this prompt yet. Run a scan first."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        seed_urls = [
+            url_counts[apex].most_common(1)[0][0]
+            for apex, _ in domain_counts.most_common(self.MAX_SEEDS)
+        ]
+
+        active = SourceScan.objects.filter(
+            website=website,
+            status__in=[SourceScanStatus.PENDING, SourceScanStatus.RUNNING],
+        ).count()
+        if active >= 3:
+            return Response({"error": "too_many_active_scans"}, status=429)
+
+        scan = SourceScan.objects.create(
+            website=website,
+            query=prompt.text[:500],
+            seed_urls=seed_urls,
+            source_prompt=prompt,
+            created_by=request.user,
+        )
+        try:
+            run_source_scan.delay(str(scan.id))
+            queued = True
+        except Exception:
+            # No broker in dev -- run inline so the button still works.
+            from apps.citations.services.source_scan import run_scan
+            run_scan(scan)
+            queued = False
+        return Response(
+            {"scan_id": str(scan.id), "status": scan.status,
+             "seeded_domains": len(seed_urls), "queued": queued},
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class PromptScheduleView(APIView):

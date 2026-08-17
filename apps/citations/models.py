@@ -159,6 +159,16 @@ class SourceScan(TimestampMixin):
     )
     query = models.CharField(max_length=500)
     provider = models.CharField(max_length=32, default="perplexity")
+    # When non-empty the scan skips the SERP stage and analyzes exactly
+    # these URLs -- used by "Scan cited sources" on the prompt detail
+    # page, which seeds the scan with the URLs the AI answers cited.
+    seed_urls = models.JSONField(default=list, blank=True)
+    # Set when the scan was seeded from a prompt's citations, so the
+    # prompt detail page can find its latest page-level sentiment scan.
+    source_prompt = models.ForeignKey(
+        "prompt_library.Prompt", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="source_scans",
+    )
     status = models.CharField(
         max_length=16, choices=SourceScanStatus.choices,
         default=SourceScanStatus.PENDING, db_index=True,

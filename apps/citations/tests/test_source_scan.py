@@ -146,6 +146,49 @@ def test_run_scan_full_pipeline(settings):
 
 
 @pytest.mark.django_db
+def test_run_scan_seeded_urls_skip_serp(settings):
+    """A seeded scan analyzes exactly its seed URLs and never searches."""
+    website = WebsiteFactory(name="Brooklyn Bagel Co")
+    scan = SourceScan.objects.create(
+        website=website,
+        query="best bagels in dallas",
+        seed_urls=[
+            "https://www.reddit.com/r/Dallas/comments/abc/best_bagels/",
+            "https://dallasobserver.com/best-bagels",
+        ],
+    )
+
+    def _no_search(*args, **kwargs):  # pragma: no cover - failure path
+        raise AssertionError("seeded scan must not hit the SERP")
+
+    analysis = {
+        "relevant_to_query": True,
+        "brands": [{"name": "Brooklyn Bagel Co", "sentiment": 0.8,
+                    "weight": 0.9, "mentions": 2, "quotes": [], "issues": []}],
+    }
+    with patch.object(source_scan.web_search, "search_web", side_effect=_no_search), \
+         patch.object(source_scan.source_sentiment, "assess_serp_relevance",
+                      side_effect=_no_search), \
+         patch.object(source_scan.content_reader, "read_url",
+                      return_value={"status": "ok", "kind": "page",
+                                    "text": "Great bagels here.",
+                                    "word_count": 3, "detail": ""}), \
+         patch.object(source_scan.source_sentiment, "analyze_content",
+                      return_value=analysis):
+        source_scan.run_scan(scan)
+
+    scan.refresh_from_db()
+    assert scan.status == SourceScanStatus.COMPLETE
+    assert scan.results_count == 2
+    assert scan.analyzed_count == 2
+    # Rows derive rank/domain from seed order and URL host.
+    first = scan.results.get(rank=1)
+    assert first.domain == "www.reddit.com"
+    assert first.relevance_note == "seeded from prompt citations"
+    assert scan.own_brand_present is True
+
+
+@pytest.mark.django_db
 def test_run_scan_marks_blocked_results_and_continues(settings):
     settings.PERPLEXITY_API_KEY = "pplx-test"
     website = WebsiteFactory()
