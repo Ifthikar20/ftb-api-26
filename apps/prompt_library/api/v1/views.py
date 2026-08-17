@@ -55,6 +55,33 @@ from core.interceptors.pagination import StandardPagination
 logger = logging.getLogger("apps")
 
 
+def _public_model_error(raw: str) -> str:
+    """Collapse a raw provider error into a safe, generic message.
+
+    Raw errors leak configuration details -- key validity, console URLs,
+    account hints -- which look alarming to users and double as
+    reconnaissance for attackers probing the deployment. The full text
+    stays in the DB rows and server logs for operators; API clients only
+    ever learn the category.
+    """
+    e = (raw or "").lower()
+    if not e:
+        return ""
+    if "rate limit" in e or "429" in e or "quota" in e or "overloaded" in e:
+        return "The model was busy and will be retried on the next scan."
+    if "timeout" in e or "timed out" in e:
+        return "The model did not respond in time."
+    return "This model did not respond on this scan."
+
+
+def _public_scan_error(raw: str) -> str:
+    """Run-level variant of :func:`_public_model_error`."""
+    return (
+        "The scan could not complete. The issue has been logged."
+        if (raw or "").strip() else ""
+    )
+
+
 def _match_brand_domain(brand_name: str, domains: list[str]) -> str | None:
     """Best-effort match of a brand name to one of the cited domains.
 
@@ -1332,7 +1359,7 @@ class BrandPromptDetailAggView(APIView):
                 "status": latest_scan_row.status,
                 "analyzed_count": latest_scan_row.analyzed_count,
                 "results_count": latest_scan_row.results_count,
-                "error": (latest_scan_row.error or "")[:240],
+                "error": _public_scan_error(latest_scan_row.error),
                 "created_at": latest_scan_row.created_at.isoformat()
                 if latest_scan_row.created_at else None,
                 "completed_at": latest_scan_row.completed_at.isoformat()
@@ -1518,7 +1545,11 @@ class BrandPromptDetailAggView(APIView):
                 "sources": srcs[:6],
                 "country": country,
                 "status": chat_status,
-                "error": err[:200] if chat_status in ("failed", "unavailable") else "",
+                # Sanitized: the raw provider error stays in the DB/logs.
+                "error": (
+                    _public_model_error(err)
+                    if chat_status in ("failed", "unavailable") else ""
+                ),
                 "created_at": r.created_at.isoformat() if r.created_at else None,
             })
 
@@ -1564,7 +1595,9 @@ class BrandPromptDetailAggView(APIView):
                 "providers": latest_run.providers or [],
                 "started_at": latest_run.started_at.isoformat() if latest_run.started_at else None,
                 "completed_at": latest_run.completed_at.isoformat() if latest_run.completed_at else None,
-                "error": (latest_run.error or "")[:240],
+                # Sanitized: raw run errors (provider messages, key state)
+                # stay server-side.
+                "error": _public_scan_error(latest_run.error),
             }
 
         return Response({
@@ -2028,7 +2061,7 @@ class PromptFanoutsView(APIView):
                 "providers": last_run.providers,
                 "started_at": last_run.started_at.isoformat() if last_run.started_at else None,
                 "completed_at": last_run.completed_at.isoformat() if last_run.completed_at else None,
-                "error": last_run.error or "",
+                "error": _public_scan_error(last_run.error),
             } if last_run else None,
         })
 

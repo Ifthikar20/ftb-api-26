@@ -468,6 +468,43 @@ def test_detail_page_sentiment_from_seeded_scan(auth):
 
 
 @pytest.mark.django_db
+def test_detail_never_leaks_raw_provider_errors(auth):
+    """Raw provider errors (key validity, console URLs) stay server-side;
+    the API returns only a generic category for failed cells and runs."""
+    from apps.prompt_library.models import PromptCrawlRun
+
+    client, _, website = auth
+    prompt = PromptFactory()
+    _save(website, prompt)
+    audit = LLMRankingAuditFactory(website=website)
+    LLMRankingResultFactory(
+        audit=audit, source_prompt=prompt, prompt=prompt.text,
+        provider="grok", query_succeeded=False, is_mentioned=False,
+        response_text="", sentiment="not_mentioned", mention_rank=None,
+        error_message=(
+            "Error code: 400 - {'code': 'invalid-argument', 'error': "
+            "'Incorrect API key provided. You can obtain an API key from "
+            "https://console.x.ai.'}"
+        ),
+    )
+    PromptCrawlRun.objects.create(
+        website=website, prompt=prompt, status=PromptCrawlRun.STATUS_FAILED,
+        error="grok: Incorrect API key provided https://console.x.ai",
+    )
+
+    import json as _json
+    body = _data(client.get(_detail_url(website, prompt)))
+    blob = _json.dumps(body).lower()
+    for secret_hint in ("api key", "console.x.ai", "invalid-argument", "400"):
+        assert secret_hint not in blob, f"leaked {secret_hint!r} to the client"
+    failed = [c for c in body["recent_chats"] if c["status"] == "failed"]
+    assert failed and failed[0]["error"] == "This model did not respond on this scan."
+    assert body["latest_scan"]["error"] == (
+        "The scan could not complete. The issue has been logged."
+    )
+
+
+@pytest.mark.django_db
 def test_detail_run_param_narrows(auth):
     client, _, website = auth
     prompt = PromptFactory()
