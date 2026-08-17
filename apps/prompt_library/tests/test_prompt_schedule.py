@@ -329,6 +329,43 @@ def test_detail_runs_series(auth):
 
 
 @pytest.mark.django_db
+def test_detail_domain_brand_sentiment(auth):
+    """Per-domain sentiment is the brand's sentiment in the answers that
+    cite the domain -- derived from stored responses, no page fetching."""
+    from apps.citations.models import Citation
+
+    client, _, website = auth
+    prompt = PromptFactory()
+    _save(website, prompt)
+
+    audit = LLMRankingAuditFactory(website=website)
+    positive = LLMRankingResultFactory(
+        audit=audit, source_prompt=prompt, prompt=prompt.text, provider="claude",
+        is_mentioned=True, sentiment="positive", query_succeeded=True,
+    )
+    unmentioned = LLMRankingResultFactory(
+        audit=audit, source_prompt=prompt, prompt=prompt.text, provider="gpt4",
+        is_mentioned=False, sentiment="not_mentioned", query_succeeded=True,
+    )
+    for result, domain in ((positive, "goodnews.com"), (unmentioned, "lurker.com")):
+        Citation.objects.create(
+            result=result, audit=audit,
+            url=f"https://{domain}/page", normalized_url=f"https://{domain}/page",
+            domain=domain, apex_domain=domain, source_class="editorial",
+        )
+
+    body = _data(client.get(_detail_url(website, prompt)))
+    by_domain = {d["apex_domain"]: d for d in body["top_domains"]}
+    # Cited by an answer that mentioned the brand positively -> 85.
+    assert by_domain["goodnews.com"]["brand_sentiment"] == 85.0
+    # Cited only by an answer that never mentioned the brand -> null, not 55.
+    assert by_domain["lurker.com"]["brand_sentiment"] is None
+    # Type rollup carries the same answer-derived sentiment.
+    types = {t["key"]: t for t in body["domain_types"]}
+    assert types["editorial"]["brand_sentiment"] == 85.0
+
+
+@pytest.mark.django_db
 def test_detail_run_param_narrows(auth):
     client, _, website = auth
     prompt = PromptFactory()

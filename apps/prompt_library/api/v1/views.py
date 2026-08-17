@@ -1263,6 +1263,17 @@ class BrandPromptDetailAggView(APIView):
         # public_id is what the chat modal opens — map internal id -> public.
         public_id_by_result = {r.id: str(r.public_id) for r in results}
 
+        # Brand sentiment per citing answer, so each domain (and each domain
+        # type) can report "how positively do answers that lean on this
+        # source talk about the brand". Derived entirely from the stored
+        # responses -- the domain's own pages are never fetched for this.
+        _DOMAIN_SMAP = {"positive": 85, "neutral": 55, "negative": 25}
+        sentiment_by_result = {
+            r.id: _DOMAIN_SMAP.get(r.sentiment, 55)
+            for r in answered_results
+            if r.is_mentioned and r.sentiment and r.sentiment != "not_mentioned"
+        }
+
         top_domains = []
         for apex, entry in per_domain.items():
             unique_responses = len(responses_with_citation[apex])
@@ -1278,6 +1289,17 @@ class BrandPromptDetailAggView(APIView):
             entry["retrieved_pct"] = (
                 round(100 * unique_responses / num_answers, 1) if num_answers else 0.0
             )
+            _sents = [
+                sentiment_by_result[rid]
+                for rid in responses_with_citation[apex]
+                if rid in sentiment_by_result
+            ]
+            # None when the brand never appeared in an answer citing this
+            # domain -- the UI shows a dash, never an invented neutral.
+            entry["brand_sentiment"] = (
+                round(sum(_sents) / len(_sents), 1) if _sents else None
+            )
+            entry["brand_mentions_citing"] = len(_sents)
             sample_ids = [
                 public_id_by_result[rid]
                 for rid in list(responses_with_citation[apex])[:8]
@@ -1289,11 +1311,29 @@ class BrandPromptDetailAggView(APIView):
         top_domains = top_domains[:25]
 
         type_counter: Counter = Counter()
-        for entry in per_domain.values():
-            type_counter[entry["source_class"] or "other"] += entry["count"]
+        type_sentiments: dict[str, list] = defaultdict(list)
+        for apex, entry in per_domain.items():
+            tkey = entry["source_class"] or "other"
+            type_counter[tkey] += entry["count"]
+            # Same answer-derived sentiment, rolled up per source type: "do
+            # answers grounded in UGC talk about the brand differently from
+            # answers grounded in editorial sources".
+            type_sentiments[tkey].extend(
+                sentiment_by_result[rid]
+                for rid in responses_with_citation[apex]
+                if rid in sentiment_by_result
+            )
         total_citations = sum(type_counter.values()) or 1
         type_breakdown = [
-            {"key": key, "count": cnt, "pct": round(100 * cnt / total_citations, 1)}
+            {
+                "key": key,
+                "count": cnt,
+                "pct": round(100 * cnt / total_citations, 1),
+                "brand_sentiment": (
+                    round(sum(type_sentiments[key]) / len(type_sentiments[key]), 1)
+                    if type_sentiments[key] else None
+                ),
+            }
             for key, cnt in type_counter.most_common()
         ]
 
