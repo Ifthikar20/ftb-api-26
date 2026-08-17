@@ -9,6 +9,7 @@ reproduced or replayed.
 """
 import uuid
 
+from django.conf import settings
 from django.db import models
 
 from core.mixins.timestamp_mixin import TimestampMixin
@@ -300,6 +301,57 @@ class PromptCrawlRun(TimestampMixin):
             models.Index(fields=["website", "prompt", "-created_at"]),
         ]
         ordering = ["-created_at"]
+
+
+class PromptSchedule(TimestampMixin):
+    """One per saved prompt: run THIS prompt on a cadence.
+
+    The per-prompt analogue of ``llm_ranking.LLMRankingSchedule`` (which
+    schedules a whole-website audit). When enabled, the
+    ``dispatch_scheduled_prompt_scans`` Celery Beat task finds schedules
+    whose ``next_run_at`` has passed, runs a single-prompt crawl
+    (``crawl_prompt`` via ``crawl_prompt_for_website``) across the
+    configured providers, then advances ``next_run_at``. One schedule per
+    ``BrandPrompt``.
+    """
+
+    FREQUENCY_DAILY = "daily"
+    FREQUENCY_WEEKLY = "weekly"
+    FREQUENCY_MONTHLY = "monthly"
+    FREQUENCY_CHOICES = [
+        (FREQUENCY_DAILY, "Daily"),
+        (FREQUENCY_WEEKLY, "Weekly"),
+        (FREQUENCY_MONTHLY, "Monthly"),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    brand_prompt = models.OneToOneField(
+        BrandPrompt, on_delete=models.CASCADE, related_name="schedule",
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="+",
+    )
+    is_enabled = models.BooleanField(default=True, db_index=True)
+    frequency = models.CharField(
+        max_length=20, choices=FREQUENCY_CHOICES, default=FREQUENCY_WEEKLY,
+    )
+    # Scheduling fields
+    next_run_at = models.DateTimeField(db_index=True)
+    last_run_at = models.DateTimeField(null=True, blank=True)
+    # Resilience: auto-pause after N consecutive dispatch failures so a
+    # broken prompt doesn't keep burning credits. The in-flight guard is
+    # done by querying the latest PromptCrawlRun directly (the crawl often
+    # runs async, so a last_run FK would be set too late to be reliable).
+    consecutive_failures = models.IntegerField(default=0)
+    last_failure_at = models.DateTimeField(null=True, blank=True)
+    auto_pause_threshold = models.IntegerField(default=3)
+
+    class Meta:
+        db_table = "prompt_library_promptschedule"
+
+    def __str__(self):
+        state = "enabled" if self.is_enabled else "disabled"
+        return f"PromptSchedule(bp={self.brand_prompt_id}, {self.frequency}, {state})"
 
 
 class PromptSampleRun(TimestampMixin):

@@ -23,12 +23,14 @@ from apps.llm_ranking.models import LLMRankingAudit
 from apps.prompt_library.api.v1.serializers import (
     AutoTemplateRequestSerializer,
     BrandPromptSerializer,
+    CreatePromptScheduleSerializer,
     GenerateFromContextRequestSerializer,
     GenerateRelatedRequestSerializer,
     IndustrySerializer,
     PreviewSampleRequestSerializer,
     PromptCreateSerializer,
     PromptSampleRunSerializer,
+    PromptScheduleSerializer,
     PromptSerializer,
     PromptVariableSetSerializer,
     SmokeTestRequestSerializer,
@@ -40,6 +42,7 @@ from apps.prompt_library.models import (
     BrandPrompt,
     Industry,
     Prompt,
+    PromptSchedule,
     PromptSource,
     PromptVariableSet,
     RejectedBrandPrompt,
@@ -441,13 +444,33 @@ class PromptAutoTemplateView(APIView):
     """Convert raw text to a {{ variable }} template via the synthesis provider."""
 
     permission_classes = [IsAuthenticated]
+    _BUCKET_CAPACITY = 10
+    _BUCKET_REFILL = 10 / 60.0  # 10 calls per minute, refilled smoothly.
 
     def post(self, request):
         from apps.prompt_library.services.auto_template import auto_template
+        from core.resilience import TokenBucket
+
+        # Per-user rate guard. This endpoint makes a billable synthesis call,
+        # so it must be both attributed (user=request.user, so the provider
+        # spend cap applies) and throttled (so one user cannot spin the
+        # synthesis provider in a loop).
+        bucket = TokenBucket(
+            name=f"prompt_auto_template:{request.user.id}",
+            capacity=self._BUCKET_CAPACITY,
+            refill_per_second=self._BUCKET_REFILL,
+        )
+        if not bucket.try_acquire():
+            return Response(
+                {"error": "rate_limited", "detail": "Try again in a few seconds."},
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
 
         serializer = AutoTemplateRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        envelope = auto_template(serializer.validated_data["raw_text"])
+        envelope = auto_template(
+            serializer.validated_data["raw_text"], user=request.user,
+        )
         return Response(envelope)
 
 
@@ -574,7 +597,7 @@ class PromptSynthesizeView(APIView):
                 items = []
         created = []
         for raw in items[: data["count"]]:
-            envelope = auto_template(raw)
+            envelope = auto_template(raw, user=request.user)
             template_text = envelope["template_text"].strip()
             if not template_text:
                 continue
@@ -931,6 +954,12 @@ class BrandPromptDetailAggView(APIView):
         bp_location = bp.location if bp else ""
         bp_tags = bp.tags if bp else []
 
+        # Optional time-series controls for the Overview:
+        #   ?run=<audit_id>            → drill into a single run (else all)
+        #   ?period=7d|30d|90d|1y|all  → window the results (default all)
+        selected_run = (request.query_params.get("run") or "").strip() or None
+        period = (request.query_params.get("period") or "all").strip().lower()
+
         # Match every LLMRankingResult on this website whose prompt text
         # equals the prompt's text OR template_text. The audit serializer
         # stores the resolved text on the result, so we compare against
@@ -954,9 +983,22 @@ class BrandPromptDetailAggView(APIView):
                 "is_mentioned", "mention_rank", "sentiment",
                 "competitors_mentioned", "created_at",
                 "citation_countries", "query_succeeded", "error_message",
-                "extraction_model", "source_prompt_id",
+                "extraction_model", "source_prompt_id", "audit_id",
             )
         )
+
+        # Window by created_at when a period is requested. Applied to the
+        # queryset so both the trend series and the per-model aggregation
+        # below reflect the same window.
+        _PERIOD_DAYS = {"7d": 7, "30d": 30, "90d": 90, "1y": 365}
+        _period_days = _PERIOD_DAYS.get(period)
+        if _period_days:
+            from datetime import timedelta as _td
+
+            from django.utils import timezone as _tz
+            candidates = candidates.filter(
+                created_at__gte=_tz.now() - _td(days=_period_days)
+            )
 
         results = []
         for r in candidates:
@@ -968,8 +1010,6 @@ class BrandPromptDetailAggView(APIView):
             ):
                 results.append(r)
 
-        total_results = len(results)
-
         # Visibility is "in what share of real answers does this brand
         # appear", so the denominator must be the responses that actually
         # returned text - not failed/unavailable cells, which would dilute
@@ -979,6 +1019,60 @@ class BrandPromptDetailAggView(APIView):
             if r.query_succeeded and (r.response_text or "").strip()
         ]
         num_answers = len(answered_results)
+
+        # ── Per-run time-series (trend across runs) ───────────────────
+        # Group the period-scoped answered responses by audit_id: each
+        # crawl/audit that included this prompt is one "run" (a per-prompt
+        # crawl spawns its own synthetic audit). Built BEFORE the optional
+        # single-run drill-in below, so selecting a run never collapses the
+        # trend. Self-brand visibility mirrors the headline metric
+        # (is_mentioned / answered), sentiment on the same 0..100 map.
+        _SENTIMENT_SCORE = {"positive": 85, "neutral": 55, "negative": 25}
+        _run_buckets: dict[str, dict] = {}
+        for r in answered_results:
+            rkey = str(r.audit_id) if r.audit_id else "none"
+            b = _run_buckets.get(rkey)
+            if b is None:
+                b = {
+                    "run_id": rkey, "ran_at": r.created_at, "answers": 0,
+                    "self_mentions": 0, "sentiments": [], "positions": [],
+                }
+                _run_buckets[rkey] = b
+            b["answers"] += 1
+            if r.created_at and (b["ran_at"] is None or r.created_at < b["ran_at"]):
+                b["ran_at"] = r.created_at
+            if r.is_mentioned:
+                b["self_mentions"] += 1
+                if r.sentiment and r.sentiment != "not_mentioned":
+                    b["sentiments"].append(_SENTIMENT_SCORE.get(r.sentiment, 50))
+                if r.mention_rank is not None:
+                    b["positions"].append(r.mention_rank)
+        runs = []
+        for b in _run_buckets.values():
+            ans = b["answers"] or 1
+            runs.append({
+                "run_id": b["run_id"],
+                "ran_at": b["ran_at"].isoformat() if b["ran_at"] else None,
+                "answers": b["answers"],
+                "visibility_pct": round(100 * b["self_mentions"] / ans, 1),
+                "sentiment_score": (
+                    round(sum(b["sentiments"]) / len(b["sentiments"]), 1)
+                    if b["sentiments"] else None
+                ),
+                "avg_position": (
+                    round(sum(b["positions"]) / len(b["positions"]), 1)
+                    if b["positions"] else None
+                ),
+            })
+        runs.sort(key=lambda x: x["ran_at"] or "")
+
+        # ── Optional drill-in: scope everything below to one run ──────
+        if selected_run:
+            results = [r for r in results if str(r.audit_id) == selected_run]
+            answered_results = [
+                r for r in answered_results if str(r.audit_id) == selected_run
+            ]
+            num_answers = len(answered_results)
 
         # Responses that still need (re)extraction - never analysed, or
         # analysed by the weak heuristic / an older schema. The UI uses this
@@ -1172,11 +1266,17 @@ class BrandPromptDetailAggView(APIView):
         top_domains = []
         for apex, entry in per_domain.items():
             unique_responses = len(responses_with_citation[apex])
+            # Denominator is ANSWERED responses (same philosophy as
+            # visibility): a failed cell can't cite anything, so counting it
+            # would dilute every domain's share. answers_citing/answers_total
+            # let the UI say "cited in 1 of 3 answers" in plain words.
+            entry["answers_citing"] = unique_responses
+            entry["answers_total"] = num_answers
             entry["citation_rate"] = (
-                round(unique_responses / total_results, 2) if total_results else 0.0
+                round(unique_responses / num_answers, 2) if num_answers else 0.0
             )
             entry["retrieved_pct"] = (
-                round(100 * unique_responses / total_results, 1) if total_results else 0.0
+                round(100 * unique_responses / num_answers, 1) if num_answers else 0.0
             )
             sample_ids = [
                 public_id_by_result[rid]
@@ -1384,6 +1484,13 @@ class BrandPromptDetailAggView(APIView):
             "recent_chats": recent_chats,
             "latest_scan": latest_scan,
             "unextracted_count": unextracted_count,
+            # Time-series: one entry per run (audit) that included this
+            # prompt, ascending by time — drives the Overview trend chart
+            # and the run selector. ``selected_run``/``period`` echo the
+            # applied filters.
+            "runs": runs,
+            "selected_run": selected_run,
+            "period": period,
         })
 
 
@@ -1498,6 +1605,13 @@ class WebsiteSavedPromptsAggView(APIView):
                 "models_mentioned": [],
                 "total_mentions": 0,
                 "responses_seen": 0,
+                # Scheduling: last_run_at = newest result timestamp (any
+                # audit/crawl that ran this prompt); next_run_at/frequency
+                # come from an enabled PromptSchedule, else null → the UI
+                # shows "Not scheduled".
+                "last_run_at": None,
+                "next_run_at": None,
+                "schedule_frequency": None,
             })
 
         # Pull every LLMRankingResult for this website's audits once.
@@ -1508,7 +1622,7 @@ class WebsiteSavedPromptsAggView(APIView):
             .filter(audit__website=website)
             .only(
                 "provider", "prompt", "is_mentioned", "mention_rank",
-                "sentiment",
+                "sentiment", "created_at",
             ),
         )
 
@@ -1524,8 +1638,11 @@ class WebsiteSavedPromptsAggView(APIView):
                 "positions": [],
                 "sentiments": [],
                 "providers_mentioned": set(),
+                "last_run": None,
             })
             entry["responses"] += 1
+            if r.created_at and (entry["last_run"] is None or r.created_at > entry["last_run"]):
+                entry["last_run"] = r.created_at
             if r.is_mentioned:
                 entry["mentioned"] += 1
                 if r.mention_rank is not None:
@@ -1550,6 +1667,23 @@ class WebsiteSavedPromptsAggView(APIView):
                 scores = [smap.get(s, 50) for s in stats["sentiments"]]
                 row["sentiment_score"] = round(sum(scores) / len(scores), 0)
             row["models_mentioned"] = sorted(stats["providers_mentioned"])
+            if stats.get("last_run"):
+                row["last_run_at"] = stats["last_run"].isoformat()
+
+        # Overlay per-prompt schedule state (Next run column). One query;
+        # only enabled schedules count as "scheduled".
+        schedules = {
+            str(bp_id): (next_run, freq)
+            for bp_id, next_run, freq in PromptSchedule.objects.filter(
+                brand_prompt__website=website, is_enabled=True,
+            ).values_list("brand_prompt_id", "next_run_at", "frequency")
+        }
+        for row in rows:
+            sched = schedules.get(row["brand_prompt_id"])
+            if sched:
+                next_run, freq = sched
+                row["next_run_at"] = next_run.isoformat() if next_run else None
+                row["schedule_frequency"] = freq
 
         # Drop the helper key before responding.
         for row in rows:
@@ -1812,6 +1946,84 @@ class PromptCrawlTriggerView(APIView):
             queued = False
         return Response({"queued": queued, "website_id": str(website.id),
                          "prompt_id": str(prompt.id)})
+
+
+class PromptScheduleView(APIView):
+    """Per-prompt run schedule.
+
+    GET    — the schedule for this saved prompt (or ``{schedule: None}``).
+    POST   — create/update it (cadence: daily / weekly / monthly).
+    DELETE — remove it (the prompt reverts to "Not scheduled").
+
+    ``prompt_id`` is the shared ``Prompt.id`` — the same identifier the
+    crawl and detail endpoints use. The schedule is bound to the website's
+    ``BrandPrompt`` for that prompt, so a prompt can only be scheduled once
+    it has been saved to the website.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def _resolve_brand_prompt(self, request, website_id, prompt_id):
+        """Return the website's BrandPrompt for this prompt, or None."""
+        website = WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        try:
+            prompt = Prompt.objects.get(id=prompt_id)
+        except Prompt.DoesNotExist:
+            return None
+        return BrandPrompt.objects.filter(website=website, prompt=prompt).first()
+
+    def get(self, request, website_id, prompt_id):
+        bp = self._resolve_brand_prompt(request, website_id, prompt_id)
+        schedule = getattr(bp, "schedule", None) if bp is not None else None
+        if schedule is None:
+            return Response({"schedule": None})
+        return Response({"schedule": PromptScheduleSerializer(schedule).data})
+
+    def post(self, request, website_id, prompt_id):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from apps.prompt_library.tasks import PROMPT_FREQUENCY_DELTAS
+
+        bp = self._resolve_brand_prompt(request, website_id, prompt_id)
+        if bp is None:
+            return Response(
+                {"detail": "Prompt is not saved to this website."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        serializer = CreatePromptScheduleSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        delta = PROMPT_FREQUENCY_DELTAS.get(data["frequency"], timedelta(weeks=1))
+        now = timezone.now()
+        schedule, created = PromptSchedule.objects.update_or_create(
+            brand_prompt=bp,
+            defaults={
+                "created_by": request.user,
+                "is_enabled": data["is_enabled"],
+                "frequency": data["frequency"],
+                "next_run_at": now + delta,
+                # Saving (or re-enabling) clears any auto-pause failure state.
+                "consecutive_failures": 0,
+                "last_failure_at": None,
+            },
+        )
+        return Response(
+            {"schedule": PromptScheduleSerializer(schedule).data},
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )
+
+    def delete(self, request, website_id, prompt_id):
+        bp = self._resolve_brand_prompt(request, website_id, prompt_id)
+        if bp is None:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        deleted, _ = PromptSchedule.objects.filter(brand_prompt=bp).delete()
+        if not deleted:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 # ── Benchmark packs ──────────────────────────────────────────────────

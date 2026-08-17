@@ -110,6 +110,11 @@ urlpatterns = [
         name="prompt-library-website-prompt-crawl",
     ),
     path(
+        "websites/<uuid:website_id>/prompts/<uuid:prompt_id>/schedule/",
+        views.PromptScheduleView.as_view(),
+        name="prompt-library-website-prompt-schedule",
+    ),
+    path(
         "websites/<uuid:website_id>/prompts/<uuid:prompt_id>/reextract/",
         views.PromptReextractView.as_view(),
         name="prompt-library-website-prompt-reextract",

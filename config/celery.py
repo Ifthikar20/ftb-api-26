@@ -25,6 +25,7 @@ app.conf.task_routes = {
     "apps.search_console.tasks.*": {"queue": "integrations"},
     # AI / LLM
     "apps.llm_ranking.tasks.*": {"queue": "ai"},
+    "apps.prompt_library.tasks.dispatch_scheduled_prompt_scans": {"queue": "ai"},
     "apps.citations.tasks.*": {"queue": "ai"},
     "apps.brand_vault.tasks.*": {"queue": "ai"},
     "apps.content_studio.tasks.*": {"queue": "ai"},
@@ -90,6 +91,10 @@ app.conf.beat_schedule = {
     "refresh-prompt-effectiveness": {
         "task": "apps.prompt_library.tasks.refresh_effectiveness_scores",
         "schedule": crontab(minute=30, hour=2),
+    },
+    "prompt-schedule-dispatcher": {
+        "task": "apps.prompt_library.tasks.dispatch_scheduled_prompt_scans",
+        "schedule": crontab(minute="*/15"),  # Every 15 min — checks next_run_at
     },
     # ── Citations / Source Influence ──
     "compute-source-influence": {
