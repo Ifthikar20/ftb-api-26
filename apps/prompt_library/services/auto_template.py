@@ -64,8 +64,14 @@ def _fallback(raw_text: str) -> dict:
     }
 
 
-def auto_template(raw_text: str) -> dict:
-    """Turn raw text into a template envelope. Always returns a dict."""
+def auto_template(raw_text: str, *, user, website=None) -> dict:
+    """Turn raw text into a template envelope. Always returns a dict.
+
+    ``user`` is a required keyword so every call site attributes the LLM
+    spend to a real account. Passing ``user=None`` disables the provider
+    spend cap (core.ai_tracking) and is reserved for genuine system/test
+    contexts — never for authenticated request handling.
+    """
     raw_text = (raw_text or "").strip()
     if not raw_text:
         return _fallback("")
@@ -81,11 +87,14 @@ def auto_template(raw_text: str) -> dict:
         return _fallback(raw_text)
 
     try:
+        # NB: use .replace, not .format — the prompt embeds a literal JSON
+        # example with single { } braces that str.format would try to parse
+        # as fields (and raise KeyError, silently no-op'ing this feature).
         result = provider.query(
-            _PROMPT.format(raw=raw_text),
+            _PROMPT.replace("{raw}", raw_text),
             "You are a careful template extractor. Return JSON only.",
-            user=None,
-            website=None,
+            user=user,
+            website=website,
             audit_id="prompt_library_auto_template",
             role="synthesis",
         )

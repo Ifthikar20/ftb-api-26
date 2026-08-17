@@ -37,11 +37,20 @@ class TestEffectiveCap:
         user.monthly_ai_cost_cap_usd = Decimal("500")
         assert effective_ai_cap(user) == pytest.approx(45 * AI_SPEND_CAP_RATIO)
 
-    def test_enterprise_custom_price_has_no_derived_cap(self):
+    def test_enterprise_uses_finite_safety_ceiling(self, settings):
+        # Enterprise/custom pricing has no derived cap, but must NOT be
+        # unlimited by default (Organization.plan defaults to ENTERPRISE).
+        settings.AI_ENTERPRISE_MONTHLY_CAP_USD = 500.0
         user = UserFactory(plan="enterprise")
-        assert effective_ai_cap(user) == 0.0
-        user.monthly_ai_cost_cap_usd = Decimal("200")
-        assert effective_ai_cap(user) == 200.0
+        assert effective_ai_cap(user) == 500.0
+        # A negotiated per-account cap overrides the deployment ceiling.
+        user.monthly_ai_cost_cap_usd = Decimal("2000")
+        assert effective_ai_cap(user) == 2000.0
+
+    def test_enterprise_unlimited_only_when_explicitly_opted_in(self, settings):
+        settings.AI_ENTERPRISE_MONTHLY_CAP_USD = 0.0
+        user = UserFactory(plan="enterprise")
+        assert effective_ai_cap(user) == 0.0  # 0 = unlimited, opt-in only
 
     def test_none_user_unlimited(self):
         assert effective_ai_cap(None) == 0.0
@@ -118,6 +127,28 @@ class TestChokePoint:
 
         monkeypatch.setattr(provider, "_call", fake_call)
         assert provider.query("health check").succeeded is True
+
+    def test_attributed_call_denied_when_allowance_lookup_errors(self, monkeypatch):
+        # Fail-closed: a broken cap lookup must DENY an attributed call, not
+        # silently allow unbounded spend.
+        from apps.llm_ranking.providers.claude import ClaudeProvider
+
+        user = UserFactory(plan="individual")
+
+        def boom(*_a, **_kw):
+            raise RuntimeError("cap lookup exploded")
+
+        monkeypatch.setattr("core.ai_tracking.effective_ai_cap", boom)
+        provider = ClaudeProvider()
+        monkeypatch.setattr(provider, "api_key", "test-key")
+        # _call must never be reached; prove the gate denied it.
+        monkeypatch.setattr(
+            provider, "_call",
+            lambda **kw: (_ for _ in ()).throw(AssertionError("should not call SDK")),
+        )
+        result = provider.query("hello", user=user)
+        assert result.succeeded is False
+        assert "ai_allowance_check_failed" in result.error
 
 
 @pytest.mark.django_db

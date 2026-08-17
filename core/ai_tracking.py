@@ -313,16 +313,24 @@ AI_SPEND_WARN_RATIO = 0.80
 def effective_ai_cap(user) -> float:
     """Monthly AI spend allowance in USD for ``user``. 0 = unlimited.
 
-    Derived automatically from the plan price: a $45/mo plan allows
+    Priced plans derive the cap from price: a $45/mo plan allows
     $45 * 0.65 = $29.25 of model cost per calendar month. A manual
-    ``monthly_ai_cost_cap_usd`` can only make the cap STRICTER — margin
+    ``monthly_ai_cost_cap_usd`` can only make that cap STRICTER — margin
     protection cannot be widened per-user from the profile form.
 
-    Enterprise (custom pricing, price_monthly == -1) derives no cap;
-    set a manual cap on those accounts when one is agreed.
+    Enterprise / custom pricing (price_monthly == -1) has no price to
+    derive from. Rather than fall through to 0.0 (unlimited) — which, given
+    ``Organization.plan`` defaults to ENTERPRISE, would leave any org user
+    uncapped — it uses the per-account ``monthly_ai_cost_cap_usd`` when set
+    (the negotiated ceiling), otherwise a finite safety ceiling from
+    ``settings.AI_ENTERPRISE_MONTHLY_CAP_USD`` so a bug or abuse cannot run
+    unbounded spend. Set that setting to 0 to opt a whole deployment into
+    genuinely unlimited enterprise spend.
     """
     if user is None:
         return 0.0
+    from django.conf import settings
+
     from core.utils.constants import PLAN_LIMITS, Plan
 
     try:
@@ -335,12 +343,17 @@ def effective_ai_cap(user) -> float:
     limits = PLAN_LIMITS.get(plan) or PLAN_LIMITS.get(Plan.INDIVIDUAL, {})
 
     price = limits.get("price_monthly") or 0
-    derived = round(price * AI_SPEND_CAP_RATIO, 2) if price and price > 0 else 0.0
     manual = float(getattr(user, "monthly_ai_cost_cap_usd", 0) or 0)
 
-    if manual > 0 and derived > 0:
-        return min(manual, derived)
-    return manual or derived
+    if price and price > 0:
+        # Priced plan: cap derived from price; a manual cap only tightens it.
+        derived = round(price * AI_SPEND_CAP_RATIO, 2)
+        return min(manual, derived) if manual > 0 else derived
+
+    # Enterprise / custom pricing: no derived cap. Never unlimited by default.
+    if manual > 0:
+        return manual
+    return float(getattr(settings, "AI_ENTERPRISE_MONTHLY_CAP_USD", 0) or 0)
 
 
 def _month_bounds(now=None):

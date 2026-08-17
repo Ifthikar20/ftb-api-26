@@ -138,9 +138,18 @@ class LLMProvider:
                         ),
                     )
             except Exception:
-                # The wall must never take the pipeline down with it; a
-                # broken cap lookup falls back to allowing the call.
-                pass
+                # Margin protection is a hard control. If the allowance lookup
+                # fails for an ATTRIBUTED user we DENY rather than risk
+                # unbounded spend on a broken cap. (Unattributed health-check
+                # calls never reach here — they skip this whole block.)
+                logger.warning(
+                    "AI allowance check failed; denying call to stay fail-closed",
+                    exc_info=True,
+                )
+                return ProviderResult(
+                    succeeded=False,
+                    error="ai_allowance_check_failed: could not verify AI allowance",
+                )
 
         # Per-provider circuit breaker. When OPEN we short-circuit without
         # consuming a rate-limit token or hitting the upstream API. The

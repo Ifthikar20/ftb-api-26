@@ -119,15 +119,18 @@ class HiredAgentListView(APIView):
 class HiredAgentDetailView(APIView):
     permission_classes = [IsAuthenticated]
 
-    _EDITABLE = {"is_active", "frequency", "schedule_time", "slack_connection"}
-
     def get(self, request, hired_id):
         agent = _get_hired(request.user, hired_id)
         return Response(HiredAgentSerializer(agent).data)
 
     def patch(self, request, hired_id):
         agent = _get_hired(request.user, hired_id)
-        serializer = HiredAgentSerializer(agent, data=request.data, partial=True)
+        # Pass request context so the serializer can enforce per-tenant
+        # ownership on writable relations (slack_connection). website and
+        # agent_key are read-only on the serializer and cannot be changed here.
+        serializer = HiredAgentSerializer(
+            agent, data=request.data, partial=True, context={"request": request}
+        )
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)

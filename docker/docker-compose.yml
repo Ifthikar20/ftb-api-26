@@ -1,5 +1,13 @@
 version: "3.9"
 
+# LOCAL DEVELOPMENT CONVENIENCE FILE ONLY.
+# Real local dev uses docker-compose.dev.yml (+ .dev.override.yml); production
+# uses docker-compose.prod.yml. This file loads ../.env (config.settings.dev:
+# DEBUG=True, ALLOWED_HOSTS=*, CORS wildcard, BILLING_DEV_MODE=True), so its
+# published ports are bound to 127.0.0.1 ONLY and the settings module is pinned
+# to dev explicitly, so a stray `docker compose up` can never expose dev-mode
+# services to the network or be mistaken for a production bring-up.
+
 services:
   db:
     image: postgres:16-alpine
@@ -30,13 +38,20 @@ services:
       context: ..
       dockerfile: docker/Dockerfile
     env_file: ../.env
+    environment:
+      # Explicit dev pin: this file is dev-only. Overrides ../.env ordering
+      # so it can never silently inherit the wsgi.py prod default or masquerade
+      # as a production bring-up.
+      DJANGO_SETTINGS_MODULE: config.settings.dev
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
     ports:
-      - "8000:8000"
+      # Bound to localhost so dev-mode services (DEBUG, permissive CORS,
+      # BILLING_DEV_MODE) are never exposed to the network.
+      - "127.0.0.1:8000:8000"
     volumes:
       - static_files:/app/staticfiles
 
@@ -45,6 +60,8 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.celery
     env_file: ../.env
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.dev
     depends_on:
       db:
         condition: service_healthy
@@ -56,6 +73,8 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.celery
     env_file: ../.env
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.dev
     command: ["celery", "-A", "config.celery", "beat", "--loglevel=info", "--scheduler=django_celery_beat.schedulers:DatabaseScheduler"]
     depends_on:
       db:
@@ -66,7 +85,7 @@ services:
   nginx:
     image: nginx:alpine
     ports:
-      - "80:80"
+      - "127.0.0.1:80:80"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - static_files:/static:ro

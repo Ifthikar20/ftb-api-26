@@ -14,6 +14,7 @@ from core.validators.url_safety import (
     _redact_log_message,
     assert_url_safe,
     is_url_safe,
+    safe_display_url,
 )
 
 
@@ -185,3 +186,31 @@ class TestRedactLogMessage:
     def test_handles_empty(self):
         assert _redact_log_message("") == ""
         assert _redact_log_message(None) == ""
+
+
+class TestSafeDisplayURL:
+    """safe_display_url is the href output-allowlist (no DNS)."""
+
+    @pytest.mark.parametrize("url", [
+        "https://example.com/page",
+        "http://example.com",
+        "  https://example.com/x  ",  # trimmed
+        "HTTPS://EXAMPLE.COM",
+    ])
+    def test_allows_http_and_https(self, url):
+        assert safe_display_url(url) == url.strip()
+
+    @pytest.mark.parametrize("url", [
+        "javascript:alert(1)",
+        "JavaScript:alert(1)",
+        "java\tscript:alert(1)",       # control-char obfuscation
+        "  javascript:alert(1)",
+        "data:text/html,<script>alert(1)</script>",
+        "vbscript:msgbox(1)",
+        "//evil.example.com",          # scheme-relative
+        "example.com/no-scheme",       # schemeless
+        "",
+        None,
+    ])
+    def test_rejects_dangerous_and_ambiguous(self, url):
+        assert safe_display_url(url) is None

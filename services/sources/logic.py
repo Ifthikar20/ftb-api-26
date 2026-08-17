@@ -21,6 +21,7 @@ Reader return shape (always):
 
 from __future__ import annotations
 
+import json
 import logging
 from html.parser import HTMLParser
 from urllib.parse import parse_qs, unquote, urlparse
@@ -194,7 +195,11 @@ def fetch_error_status(detail: str) -> str:
 
 def is_reddit_thread(url: str) -> bool:
     host = (urlparse(url).hostname or "").lower()
-    return host.endswith("reddit.com") and "/comments/" in url
+    # Dot-anchor the host check: a bare ``endswith("reddit.com")`` also
+    # matches ``evilreddit.com``, letting an attacker route this fetch at an
+    # arbitrary host. Only reddit.com and its subdomains qualify.
+    is_reddit_host = host == "reddit.com" or host.endswith(".reddit.com")
+    return is_reddit_host and "/comments/" in url
 
 
 def _flatten_comments(children: list, out: list) -> None:
@@ -214,15 +219,26 @@ def read_reddit_thread(url: str) -> dict:
     """Fetch a Reddit thread via the public JSON API, preserving upvotes."""
     json_url = url.split("?")[0].rstrip("/") + ".json"
     try:
-        resp = requests.get(
+        # safe_get enforces the SSRF guard (scheme allowlist, private/metadata
+        # IP blocking, redirect re-validation) — the URL is user-influenceable
+        # (it arrives from SERP results), so a raw fetch here was an SSRF hole.
+        resp = safe_get(
             json_url,
             headers={"User-Agent": USER_AGENT},
             timeout=PAGE_TIMEOUT,
+            max_bytes=3_000_000,
+            allowed_content_types=("application/json", "text/plain"),
         )
-        resp.raise_for_status()
-        payload = resp.json()
-    except requests.RequestException as exc:
-        return result("blocked", "reddit", detail=str(exc))
+    except FetchError as exc:
+        return result(fetch_error_status(str(exc)), "reddit", detail=str(exc))
+
+    if resp.status_code >= 400:
+        return result(
+            fetch_error_status(str(resp.status_code)), "reddit",
+            detail=f"HTTP {resp.status_code}",
+        )
+    try:
+        payload = json.loads(resp.text)
     except ValueError as exc:
         return result("error", "reddit", detail=f"non-JSON: {exc}")
 
@@ -259,7 +275,8 @@ MAX_YELP_BUSINESSES = 10
 
 def is_yelp(url: str) -> bool:
     host = (urlparse(url).hostname or "").lower()
-    return host.endswith("yelp.com")
+    # Dot-anchored (see is_reddit_thread): avoid matching e.g. evilyelp.com.
+    return host == "yelp.com" or host.endswith(".yelp.com")
 
 
 def _yelp_get(path: str, *, api_key: str, params: dict | None = None) -> dict | None:

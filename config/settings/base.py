@@ -307,6 +307,11 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # ── FIELD ENCRYPTION ──
 FIELD_ENCRYPTION_KEY = env("FIELD_ENCRYPTION_KEY", default="")
+# When true, EncryptedTextField refuses to read or write plaintext if the key
+# is missing (fail closed) and a Django system check errors at startup. Left
+# false in base for local dev; prod.py forces it true so OAuth tokens / webhook
+# secrets can never silently land in Postgres as plaintext.
+FIELD_ENCRYPTION_REQUIRED = env.bool("FIELD_ENCRYPTION_REQUIRED", default=False)
 
 # ── EXTERNAL SERVICES ──
 OPENAI_API_KEY = env("OPENAI_API_KEY", default="")
@@ -431,6 +436,12 @@ CLAUDE_JUDGE_DAILY_LIMIT_PER_USER = env.int("CLAUDE_JUDGE_DAILY_LIMIT_PER_USER",
 # Per-user daily cap on GEO content rewrites (geo_rewrite.py). Lower
 # because rewrites pull a whole document through the model.
 CLAUDE_REWRITE_DAILY_LIMIT_PER_USER = env.int("CLAUDE_REWRITE_DAILY_LIMIT_PER_USER", default=30)
+# Finite monthly AI-spend safety ceiling (USD) for enterprise / custom-priced
+# accounts, which have no price to derive a cap from. Prevents the
+# ENTERPRISE-default Organization plan from leaving org users effectively
+# uncapped (core.ai_tracking.effective_ai_cap). A per-account
+# monthly_ai_cost_cap_usd overrides this; set to 0 for truly unlimited.
+AI_ENTERPRISE_MONTHLY_CAP_USD = env.float("AI_ENTERPRISE_MONTHLY_CAP_USD", default=500.0)
 
 # ── Google Search Console (apps.search_console) ──
 # OAuth reuses GOOGLE_OAUTH_CLIENT_ID/SECRET via the integrations

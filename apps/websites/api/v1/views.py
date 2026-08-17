@@ -334,7 +334,7 @@ class OnboardingAssistView(APIView):
     def post(self, request, pk):
         import re
 
-        import requests as http_requests
+        from core.validators.safe_http import safe_get
 
         website = WebsiteService.get_for_user(user=request.user, website_id=pk)
         action = request.data.get("action", "describe")
@@ -345,11 +345,16 @@ class OnboardingAssistView(APIView):
             description = request.data.get("current_description", "")
             if not description:
                 try:
-                    resp = http_requests.get(
+                    # website.url is user-controlled and this endpoint reflects
+                    # the fetched title/meta back to the caller — a read-SSRF
+                    # oracle if fetched raw. safe_get applies the SSRF guard and
+                    # re-validates redirects (the old allow_redirects=True let a
+                    # public host 302 to 169.254.169.254).
+                    resp = safe_get(
                         website.url,
                         timeout=8,
-                        headers={"User-Agent": "FetchBot/1.0"},
-                        allow_redirects=True,
+                        max_bytes=20_000,
+                        headers={"User-Agent": "FetchBot/1.0 (+https://fetchbot.ai/bot)"},
                     )
                     html = resp.text[:20000]
                     # Extract meta description
