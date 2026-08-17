@@ -1341,21 +1341,39 @@ class BrandPromptDetailAggView(APIView):
             if latest_scan_row.status == SourceScanStatus.COMPLETE:
                 brand_name = website.name or ""
                 page_sent: dict[str, list] = defaultdict(list)
+                # Overall tone of each page across EVERY brand/product it
+                # discusses (not just ours), weighted by how prominently
+                # each features. Drives the Source-tone card: "is the
+                # content AI cites for this prompt positive or negative".
+                page_tone: dict[str, list] = defaultdict(list)
                 page_seen: set[str] = set()
                 for res in latest_scan_row.results.filter(relevant=True):
                     apex = extract_apex_domain(res.domain) or res.domain
                     if res.fetch_status == "ok":
                         page_seen.add(apex)
+                    tone_num = tone_den = 0.0
                     for b in res.brands or []:
+                        raw = b.get("sentiment")
+                        if raw is None:
+                            continue
                         if _matches_target(b.get("name", ""), brand_name):
-                            raw = b.get("sentiment")
-                            if raw is not None:
-                                page_sent[apex].append(round((float(raw) + 1) * 50))
+                            page_sent[apex].append(round((float(raw) + 1) * 50))
+                        w = max(float(b.get("weight") or 0.0), 0.1)
+                        tone_num += float(raw) * w
+                        tone_den += w
+                    if tone_den:
+                        page_tone[apex].append(
+                            round((tone_num / tone_den + 1) * 50)
+                        )
                 for entry in top_domains:
                     apex = entry["apex_domain"]
                     vals = page_sent.get(apex)
                     entry["page_sentiment"] = (
                         round(sum(vals) / len(vals), 1) if vals else None
+                    )
+                    tones = page_tone.get(apex)
+                    entry["page_tone"] = (
+                        round(sum(tones) / len(tones), 1) if tones else None
                     )
                     # Distinguishes "page analyzed, brand absent" from
                     # "page was never fetched/analyzed".

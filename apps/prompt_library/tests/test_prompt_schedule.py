@@ -460,6 +460,11 @@ def test_detail_page_sentiment_from_seeded_scan(auth):
     # Page analyzed but the brand never appeared on it -> null, not neutral.
     assert by_domain["silent.com"]["page_sentiment"] is None
     assert by_domain["silent.com"]["page_analyzed"] is True
+    # Overall page tone covers ALL brands on the page, not just ours:
+    # praised.com discusses one brand at 0.7 -> 85; silent.com's only
+    # brand sits at -0.5 -> 25 (negative-toned content).
+    assert by_domain["praised.com"]["page_tone"] == 85.0
+    assert by_domain["silent.com"]["page_tone"] == 25.0
 
 
 @pytest.mark.django_db
