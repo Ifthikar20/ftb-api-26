@@ -268,14 +268,25 @@ def crawl_prompt(website: Website, prompt: Prompt) -> CrawlOutcome:
     skipped_have_answer = 0
     try:
         variants = list_model_variants()
-    except Exception:
+    except Exception as exc:
         variants = []
+        errors.append(f"model registry unavailable: {exc!s}"[:200])
+    if not variants and not errors:
+        errors.append("model registry returned no variants")
 
     seen_providers: set[str] = set()
     for v in variants:
-        if not getattr(v, "configured", False):
+        # list_model_variants() returns dicts. The previous attribute-style
+        # reads (getattr) were always falsy on dicts, which silently skipped
+        # EVERY provider — scans "ran" without querying a single model.
+        if isinstance(v, dict):
+            configured = v.get("configured", False)
+            provider_key = v.get("provider", "")
+        else:  # defensive: tolerate object-shaped variants too
+            configured = getattr(v, "configured", False)
+            provider_key = getattr(v, "provider", "")
+        if not configured:
             continue
-        provider_key = getattr(v, "provider", "")
         if not provider_key or provider_key in seen_providers:
             continue
         seen_providers.add(provider_key)
@@ -363,6 +374,15 @@ def crawl_prompt(website: Website, prompt: Prompt) -> CrawlOutcome:
         PromptCrawlRun.STATUS_COMPLETE if have_coverage or fanouts
         else PromptCrawlRun.STATUS_FAILED
     )
+    # A failed run must always say WHY: an empty error rendered as
+    # "unknown error" in the UI and left nothing to debug with. The only
+    # silent path here is the fan-out LLM call (it swallows its own
+    # exception and returns []) with no providers left to query.
+    if run.status == PromptCrawlRun.STATUS_FAILED and not errors:
+        errors.append(
+            "fan-out generated no sub-queries and no model was queried "
+            "(fan-out LLM call likely failed; check provider keys and logs)"
+        )
     run.error = "; ".join(errors)[:1000]
     run.completed_at = timezone.now()
     run.save(update_fields=[

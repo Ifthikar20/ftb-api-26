@@ -61,6 +61,74 @@ def test_crawl_prompt_sets_created_by_to_website_owner():
     assert PromptCrawlRun.objects.filter(website=website, prompt=prompt).exists()
 
 
+@pytest.mark.django_db
+def test_crawl_prompt_queries_dict_shaped_variants():
+    """Regression: list_model_variants() returns dicts, but the provider
+    loop read them with getattr — always falsy on a dict — so every
+    provider was skipped and scans silently queried no model at all."""
+    from apps.llm_ranking.services.extraction_service import HaikuExtractionService
+    from apps.prompt_library.tests.factories import PromptFactory
+
+    website = WebsiteFactory()
+    prompt = PromptFactory(text="best coffee in austin")
+
+    fake_result = SimpleNamespace(succeeded=True, text="1. BrandX is great", error="")
+    fake_provider = MagicMock()
+    fake_provider.query.return_value = fake_result
+    variants = [{
+        "id": "claude:claude-sonnet", "provider": "claude",
+        "model_id": "claude-sonnet", "label": "Claude",
+        "is_default": True, "configured": True,
+    }]
+
+    with patch(
+        "apps.prompt_library.services.prompt_crawler._llm_fanout",
+        return_value=[],
+    ), patch(
+        "apps.prompt_library.services.prompt_crawler.list_model_variants",
+        return_value=variants,
+    ), patch.dict(
+        "apps.prompt_library.services.prompt_crawler.PROVIDERS",
+        {"claude": lambda: fake_provider}, clear=True,
+    ), patch(
+        "apps.prompt_library.services.prompt_crawler._extract_brands",
+        return_value=HaikuExtractionService._empty_result(),
+    ):
+        outcome = crawl_prompt(website, prompt)
+
+    assert outcome.responses == 1
+    fake_provider.query.assert_called_once()
+    run = PromptCrawlRun.objects.get(website=website, prompt=prompt)
+    assert run.status == PromptCrawlRun.STATUS_COMPLETE
+    assert run.providers == ["claude"]
+    assert LLMRankingResult.objects.filter(
+        audit__website=website, provider="claude", query_succeeded=True,
+    ).count() == 1
+
+
+@pytest.mark.django_db
+def test_failed_crawl_always_records_a_reason():
+    """Regression: a run that produced nothing failed with error='' and
+    the UI showed 'unknown error' with nothing to debug."""
+    from apps.prompt_library.tests.factories import PromptFactory
+
+    website = WebsiteFactory()
+    prompt = PromptFactory(text="silent failure prompt")
+
+    with patch(
+        "apps.prompt_library.services.prompt_crawler._llm_fanout",
+        return_value=[],
+    ), patch(
+        "apps.prompt_library.services.prompt_crawler.list_model_variants",
+        return_value=[],
+    ):
+        crawl_prompt(website, prompt)
+
+    run = PromptCrawlRun.objects.filter(website=website, prompt=prompt).latest("created_at")
+    assert run.status == PromptCrawlRun.STATUS_FAILED
+    assert run.error, "a failed run must explain why"
+
+
 def test_llm_fanout_uses_system_prompt_kwarg(monkeypatch):
     """Regression: provider.query was being called with system= instead
     of system_prompt=, raising a TypeError that fell through to the
