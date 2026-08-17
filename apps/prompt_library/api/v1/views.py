@@ -2079,15 +2079,21 @@ class PromptCrawlTriggerView(APIView):
             return Response({"detail": "Prompt not found."},
                             status=status.HTTP_404_NOT_FOUND)
 
+        # mode=missing: the page's silent gap-fill (query only models that
+        # never answered). Default: full re-run of every configured model.
+        only_missing = (request.data or {}).get("mode") == "missing"
+
         try:
             from apps.prompt_library.tasks import crawl_prompt_for_website
-            crawl_prompt_for_website.delay(str(website.id), str(prompt.id))
+            crawl_prompt_for_website.delay(
+                str(website.id), str(prompt.id), only_missing,
+            )
             queued = True
         except Exception:
             # Celery worker not running — fall back to sync so the
             # button still does something useful in dev.
             from apps.prompt_library.services.prompt_crawler import crawl_prompt
-            crawl_prompt(website, prompt)
+            crawl_prompt(website, prompt, only_missing=only_missing)
             queued = False
         return Response({"queued": queued, "website_id": str(website.id),
                          "prompt_id": str(prompt.id)})

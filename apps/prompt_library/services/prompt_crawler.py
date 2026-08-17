@@ -197,10 +197,18 @@ def _dispatch_citations(result_id) -> None:
         logger.debug("citation dispatch failed for %s: %s", result_id, exc)
 
 
-def crawl_prompt(website: Website, prompt: Prompt) -> CrawlOutcome:
+def crawl_prompt(
+    website: Website, prompt: Prompt, *, only_missing: bool = False,
+) -> CrawlOutcome:
     """Run a prompt across every configured provider and persist the
     fanout + responses. Returns a small outcome summary used by the
     Celery task to update the PromptCrawlRun row.
+
+    ``only_missing=True`` queries just the providers that have never
+    answered this prompt (the page's silent gap-fill). The default is a
+    FULL re-run of every configured model: manual "Run scan" and
+    scheduled runs exist to capture a fresh answer set per run, so they
+    must never skip a model just because it answered previously.
     """
     run = PromptCrawlRun.objects.create(
         website=website,
@@ -252,17 +260,20 @@ def crawl_prompt(website: Website, prompt: Prompt) -> CrawlOutcome:
         started_at=timezone.now(),
     )
 
-    # Providers we already have a good answer for on this prompt. Once a
-    # model has returned a response we're done with it — re-scanning only
-    # fills in the models we're still missing, so we never re-query (or
-    # pile up duplicate rows for) a model that already answered.
-    already_answered = set(
-        LLMRankingResult.objects
-        .filter(audit__website=website, query_succeeded=True)
-        .filter(Q(source_prompt=prompt) | Q(prompt=prompt.text))
-        .exclude(response_text="")
-        .values_list("provider", flat=True)
-    )
+    # Gap-fill mode: skip providers that already have a good answer, so
+    # the page's automatic scan only queries what's missing. Full runs
+    # (manual re-scan, scheduled runs) re-query everything — each run is
+    # its own audit, so fresh rows extend the time series rather than
+    # duplicating within a run.
+    already_answered: set[str] = set()
+    if only_missing:
+        already_answered = set(
+            LLMRankingResult.objects
+            .filter(audit__website=website, query_succeeded=True)
+            .filter(Q(source_prompt=prompt) | Q(prompt=prompt.text))
+            .exclude(response_text="")
+            .values_list("provider", flat=True)
+        )
 
     queried_providers: list[str] = []
     skipped_have_answer = 0

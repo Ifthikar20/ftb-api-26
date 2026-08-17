@@ -106,6 +106,61 @@ def test_crawl_prompt_queries_dict_shaped_variants():
     ).count() == 1
 
 
+def _variant(provider="claude"):
+    return [{
+        "id": f"{provider}:m", "provider": provider, "model_id": "m",
+        "label": provider.title(), "is_default": True, "configured": True,
+    }]
+
+
+@pytest.mark.django_db
+def test_full_rerun_requeries_already_answered_models():
+    """Regression: re-scans skipped every model that had ever answered,
+    so a manual re-run (and every scheduled run) collected no fresh
+    responses. The default is now a full re-run of all configured models."""
+    from apps.llm_ranking.services.extraction_service import HaikuExtractionService
+    from apps.prompt_library.tests.factories import PromptFactory
+
+    website = WebsiteFactory()
+    prompt = PromptFactory(text="rerun everything")
+
+    fake_result = SimpleNamespace(succeeded=True, text="1. BrandX", error="")
+    fake_provider = MagicMock()
+    fake_provider.query.return_value = fake_result
+
+    common = dict(
+        _llm=patch("apps.prompt_library.services.prompt_crawler._llm_fanout", return_value=[]),
+        _variants=patch("apps.prompt_library.services.prompt_crawler.list_model_variants",
+                        return_value=_variant("claude")),
+        _providers=patch.dict("apps.prompt_library.services.prompt_crawler.PROVIDERS",
+                              {"claude": lambda: fake_provider}, clear=True),
+        _extract=patch("apps.prompt_library.services.prompt_crawler._extract_brands",
+                       return_value=HaikuExtractionService._empty_result()),
+    )
+
+    # First run answers with claude.
+    with common["_llm"], common["_variants"], common["_providers"], common["_extract"]:
+        crawl_prompt(website, prompt)
+    assert LLMRankingResult.objects.filter(
+        audit__website=website, provider="claude", query_succeeded=True,
+    ).count() == 1
+
+    # Full re-run queries claude AGAIN and adds a second run's row.
+    with common["_llm"], common["_variants"], common["_providers"], common["_extract"]:
+        outcome = crawl_prompt(website, prompt)
+    assert outcome.responses == 1
+    assert LLMRankingResult.objects.filter(
+        audit__website=website, provider="claude", query_succeeded=True,
+    ).count() == 2
+
+    # Gap-fill mode skips the already-answered model entirely.
+    fake_provider.query.reset_mock()
+    with common["_llm"], common["_variants"], common["_providers"], common["_extract"]:
+        outcome = crawl_prompt(website, prompt, only_missing=True)
+    fake_provider.query.assert_not_called()
+    assert outcome.responses == 0
+
+
 @pytest.mark.django_db
 def test_failed_crawl_always_records_a_reason():
     """Regression: a run that produced nothing failed with error='' and

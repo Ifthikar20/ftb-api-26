@@ -52,13 +52,18 @@ def refresh_effectiveness_scores() -> int:
 
 @shared_task(name="apps.prompt_library.tasks.crawl_prompt_for_website",
              bind=True, max_retries=0)
-def crawl_prompt_for_website(self, website_id: str, prompt_id: str) -> dict:
+def crawl_prompt_for_website(
+    self, website_id: str, prompt_id: str, only_missing: bool = False,
+) -> dict:
     """Fan out + query providers for a single saved prompt.
 
-    Invoked from the Prompt-detail page's 'Run crawler' button. We
-    don't retry on failure — the crawler service updates the
-    PromptCrawlRun row with whatever it managed to capture, so the
-    UI can show partial results plus per-provider error notes.
+    Invoked from the Prompt-detail page's 'Run crawler' button and the
+    per-prompt schedule dispatcher. We don't retry on failure — the
+    crawler service updates the PromptCrawlRun row with whatever it
+    managed to capture, so the UI can show partial results plus
+    per-provider error notes. ``only_missing`` limits the run to models
+    that never answered (the page's silent gap-fill); the default is a
+    full re-run of every configured model.
     """
     from apps.prompt_library.models import Prompt
     from apps.prompt_library.services.prompt_crawler import crawl_prompt
@@ -71,7 +76,7 @@ def crawl_prompt_for_website(self, website_id: str, prompt_id: str) -> dict:
         logger.warning("crawl_prompt_for_website: %s", exc)
         return {"ok": False, "error": str(exc)}
 
-    outcome = crawl_prompt(website, prompt)
+    outcome = crawl_prompt(website, prompt, only_missing=only_missing)
     return {
         "ok": True,
         "fanouts": len(outcome.fanouts),
