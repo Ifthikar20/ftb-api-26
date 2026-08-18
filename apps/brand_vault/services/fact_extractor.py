@@ -137,7 +137,10 @@ def _persist_items(items: list[dict], *, website, source_chunk=None, source_url=
             status=status,
         )
         try:
-            fact.embedding = embed_text(f"{subject} {predicate} {obj}")
+            fact.embedding = embed_text(
+                f"{subject} {predicate} {obj}",
+                user=getattr(website, "user", None), website=website,
+            )
             fact.save(update_fields=["embedding", "updated_at"])
         except Exception:
             pass

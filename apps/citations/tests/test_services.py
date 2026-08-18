@@ -5,7 +5,6 @@ and end-to-end orchestrator. The orchestrator test bypasses the Celery
 hop by calling the service function directly.
 """
 import pytest
-from django.test import override_settings
 
 from apps.citations.models import (
     Citation,
@@ -170,8 +169,13 @@ class TestExtractors:
 
 
 # ------------------------------------------------------- extraction service E2E
-@override_settings(CITATION_EXTRACTION_ENABLED=False)
 class TestExtractForResult:
+    @pytest.fixture(autouse=True)
+    def _no_auto_extraction(self, settings):
+        # pytest 8 rejects override_settings on plain classes; the
+        # pytest-django settings fixture is the supported equivalent.
+        settings.CITATION_EXTRACTION_ENABLED = False
+
     def test_creates_citations_and_classifies(self):
         result = LLMRankingResultFactory(
             provider=LLMRankingResult.PROVIDER_PERPLEXITY,
@@ -201,8 +205,11 @@ class TestExtractForResult:
 
 
 # ---------------------------------------------------------- snapshot rollups
-@override_settings(CITATION_EXTRACTION_ENABLED=False)
 class TestSnapshots:
+    @pytest.fixture(autouse=True)
+    def _no_auto_extraction(self, settings):
+        settings.CITATION_EXTRACTION_ENABLED = False
+
     def test_compute_audit_breakdown(self):
         audit = LLMRankingAuditFactory()
         r1 = LLMRankingResultFactory(

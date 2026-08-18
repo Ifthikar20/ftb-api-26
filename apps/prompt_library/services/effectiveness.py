@@ -54,22 +54,31 @@ def _avg_citations_per_run(results) -> float:
 
 
 def _avg_claims_per_run(prompt) -> float:
-    """Best-effort: count verified claims associated with this prompt's audits.
+    """Supported brand claims per analyzed response, from the brand
+    alignment detail.
 
-    The claim_verifier app stores claims keyed off ``LLMRankingResult``;
-    fall back to zero when the linkage isn't queryable so we never
-    raise during scoring.
+    A response "yields claims" when its brand-scoped statements are
+    backed by the brand's own facts/material — the alignment engine
+    counts those in ``alignment_detail.support.supported``. Responses
+    never analyzed are excluded; a prompt with no analyzed responses
+    scores 0.0 (identical to the pre-alignment behavior, so historical
+    effectiveness scores only ever improve).
     """
     try:
-        from apps.claim_verifier.models import Claim  # type: ignore
-    except Exception:
-        return 0.0
-    try:
-        qs = Claim.objects.filter(result__source_prompt=prompt)
-        runs = qs.values("result_id").distinct().count()
-        if runs == 0:
-            return 0.0
-        return qs.count() / runs
+        from apps.llm_ranking.models import LLMRankingResult
+
+        rows = (
+            LLMRankingResult.objects
+            .filter(source_prompt=prompt)
+            .exclude(alignment_version="")
+            .values_list("alignment_detail", flat=True)
+        )
+        counts = [
+            int((d or {}).get("support", {}).get("supported", 0))
+            for d in rows
+            if isinstance(d, dict)
+        ]
+        return (sum(counts) / len(counts)) if counts else 0.0
     except Exception as exc:  # pragma: no cover — defensive
         logger.debug("avg_claims_per_run: %s", exc)
         return 0.0

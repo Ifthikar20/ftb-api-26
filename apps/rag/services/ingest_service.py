@@ -41,6 +41,36 @@ class IngestResult:
     error: str | None = None
 
 
+def _dispatch_auto_fact_extraction(website, kind: str) -> None:
+    """Auto-extract brand facts after fresh chunks land.
+
+    Debounced so a 12-page crawl triggers one extraction pass, not
+    twelve: the first ingest in the window claims the cache flag
+    (cache.add is atomic) and schedules extraction 120s out so the rest
+    of the crawl's pages land first. audit_context is excluded — the
+    learning loop must never mint facts from LLM-generated context.
+    Extraction itself is idempotent (only chunks without facts are read),
+    so overlapping dispatches are harmless.
+    """
+    try:
+        from django.conf import settings
+
+        if not getattr(settings, "BRAND_VAULT_EXTRACTION_ENABLED", True):
+            return
+        if kind == KnowledgeSource.KIND_AUDIT_CONTEXT:
+            return
+        from django.core.cache import cache
+
+        if cache.add(f"bv:auto_extract:{website.id}", 1, timeout=180):
+            from apps.brand_vault.tasks import extract_facts_for_website
+
+            extract_facts_for_website.apply_async(
+                args=[str(website.id)], countdown=120,
+            )
+    except Exception as exc:  # pragma: no cover — never block an ingest
+        logger.debug("auto fact-extraction dispatch skipped: %s", exc)
+
+
 def ingest_url(
     *,
     user,
@@ -124,6 +154,8 @@ def ingest_url(
                 "title", "content_hash", "chunk_count", "status",
                 "last_ingested_at", "updated_at",
             ])
+
+        _dispatch_auto_fact_extraction(website, kind)
 
         return IngestResult(
             source_id=str(source.id), url=url,

@@ -916,6 +916,10 @@ class LLMRankingService:
             },
         )
         LLMRankingService._dispatch_citation_extraction(result_obj.id)
+        # Alignment only makes sense for answers that exist — failed cells
+        # write rows too (unlike citations, which no-op on empty text).
+        if result.succeeded:
+            LLMRankingService._dispatch_alignment(result_obj.id)
         LLMRankingService._bump_progress(audit_id)
         return {
             "audit_id": audit_id, "prompt_index": prompt_index,
@@ -979,6 +983,23 @@ class LLMRankingService:
             extract_citations_for_result.delay(str(result_id))
         except Exception as exc:  # pragma: no cover
             logger.debug("citation extraction dispatch failed for %s: %s", result_id, exc)
+
+    @staticmethod
+    def _dispatch_alignment(result_id) -> None:
+        """Fan out brand-alignment scoring for a saved successful result.
+
+        Gated on ``CLAIM_VERIFICATION_ENABLED`` (the Phase-3 flag, reused
+        for the alignment benchmark). Failures are swallowed: alignment is
+        a downstream analytic, never on the audit's critical path.
+        """
+        from django.conf import settings as _settings
+        if not getattr(_settings, "CLAIM_VERIFICATION_ENABLED", True):
+            return
+        try:
+            from apps.brand_vault.tasks import analyze_alignment_for_result
+            analyze_alignment_for_result.delay(str(result_id))
+        except Exception as exc:  # pragma: no cover
+            logger.debug("alignment dispatch failed for %s: %s", result_id, exc)
 
     @staticmethod
     def _bump_progress(audit_id: str) -> None:
@@ -1073,6 +1094,18 @@ class LLMRankingService:
             r.provider for r in all_results if r.query_succeeded
         })
 
+        # Mean brand alignment across scored results. Best-effort snapshot:
+        # alignment tasks run async and may land after this callback, so
+        # dashboards recompute from result rows; this field only feeds the
+        # audit detail display.
+        alignment_vals = [
+            r.alignment_score for r in all_results if r.alignment_score is not None
+        ]
+        audit.alignment_score = (
+            round(sum(alignment_vals) / len(alignment_vals), 1)
+            if alignment_vals else None
+        )
+
         audit.status = LLMRankingAudit.STATUS_COMPLETED
         audit.overall_score = scores["overall_score"]
         audit.mention_rate = scores["mention_rate"]
@@ -1100,7 +1133,7 @@ class LLMRankingService:
         audit.save(update_fields=[
             "status", "overall_score", "mention_rate", "mention_rate_smoothed",
             "avg_mention_rank", "brand_strengths", "citation_countries",
-            "mention_rate_ci_lower", "mention_rate_ci_upper",
+            "mention_rate_ci_lower", "mention_rate_ci_upper", "alignment_score",
             "providers_queried", "extraction_method", "completed_at",
             "duration_seconds", "total_tokens", "total_cost_usd",
             "audit_logs", "updated_at",
@@ -1448,6 +1481,8 @@ class LLMRankingService:
                     },
                 )
                 LLMRankingService._dispatch_citation_extraction(result.id)
+                if succeeded:
+                    LLMRankingService._dispatch_alignment(result.id)
                 all_results.append(result)
 
                 # Update progress after each query
@@ -1525,6 +1560,15 @@ class LLMRankingService:
         audit.avg_mention_rank = scores["avg_mention_rank"]
         audit.mention_rate_ci_lower = scores["mention_rate_ci_lower"]
         audit.mention_rate_ci_upper = scores["mention_rate_ci_upper"]
+        # Best-effort alignment mean (async tasks may land later; the
+        # dashboard recomputes from result rows).
+        _alignment_vals = [
+            r.alignment_score for r in all_results if r.alignment_score is not None
+        ]
+        audit.alignment_score = (
+            round(sum(_alignment_vals) / len(_alignment_vals), 1)
+            if _alignment_vals else None
+        )
         audit.providers_queried = providers_succeeded
         audit.extraction_method = LLMRankingAudit.EXTRACTION_LLM
         audit.completed_at = timezone.now()
@@ -1546,7 +1590,7 @@ class LLMRankingService:
         audit.save(update_fields=[
             "status", "overall_score", "mention_rate", "mention_rate_smoothed",
             "avg_mention_rank", "brand_strengths", "citation_countries",
-            "mention_rate_ci_lower", "mention_rate_ci_upper",
+            "mention_rate_ci_lower", "mention_rate_ci_upper", "alignment_score",
             "providers_queried", "extraction_method", "completed_at",
             "duration_seconds", "total_tokens", "total_cost_usd", "updated_at",
         ])

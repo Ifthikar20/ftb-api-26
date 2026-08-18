@@ -939,6 +939,84 @@ class TestEnvironmentPromptsView(_EnvViewMixin, APIView):
         return Response(TestEnvironmentSerializer(env).data)
 
 
+def _build_alignment_summary(website, answered_results) -> dict:
+    """Aggregate per-response brand-alignment into the prompt-page block.
+
+    ``state`` tells the UI which empty/cold-start copy to render:
+    scored | extraction_pending (scored against chunks only, no facts
+    yet) | no_brand_input | embeddings_unavailable | none (nothing
+    analyzed or nothing brand-scoped to score).
+    """
+    scores: list[float] = []
+    statuses: set[str] = set()
+    reflected_counts: dict[str, int] = {}
+    missing_counts: dict[str, int] = {}
+    unsupported_samples: list[dict] = []
+    bases: set[str] = set()
+    analyzed = 0
+
+    for r in answered_results:
+        detail = r.alignment_detail or {}
+        status_str = detail.get("status") or ""
+        if status_str:
+            analyzed += 1
+            statuses.add(status_str)
+        if r.alignment_score is not None:
+            scores.append(r.alignment_score)
+            bases.add(detail.get("basis") or "")
+            coverage = detail.get("coverage") or {}
+            for item in coverage.get("reflected") or []:
+                text = (item or {}).get("text") or ""
+                if text:
+                    reflected_counts[text] = reflected_counts.get(text, 0) + 1
+            for item in coverage.get("missing") or []:
+                text = (item or {}).get("text") or ""
+                if text:
+                    missing_counts[text] = missing_counts.get(text, 0) + 1
+            if len(unsupported_samples) < 3:
+                for sample in (detail.get("support") or {}).get("unsupported_samples") or []:
+                    text = (sample or {}).get("text") or ""
+                    if text:
+                        unsupported_samples.append({"text": text, "provider": r.provider})
+                        break
+
+    def _top(counts: dict[str, int]) -> list[dict]:
+        ranked = sorted(counts.items(), key=lambda kv: kv[1], reverse=True)[:5]
+        return [{"text": text, "count": count} for text, count in ranked]
+
+    if scores:
+        state = "scored"
+        if bases == {"chunks_only"}:
+            from apps.brand_vault.models import BrandFact, FactStatus
+            has_facts = BrandFact.objects.filter(
+                website=website,
+                status__in=(FactStatus.APPROVED, FactStatus.AUTO),
+                version_to__isnull=True,
+            ).exists()
+            if not has_facts:
+                state = "extraction_pending"
+    elif "embeddings_unavailable" in statuses:
+        state = "embeddings_unavailable"
+    elif "no_brand_input" in statuses:
+        state = "no_brand_input"
+    elif analyzed == 0 and answered_results:
+        state = "none"
+    else:
+        # Analyzed but nothing scoreable (answers never talked about the
+        # brand) or no responses at all.
+        state = "none"
+
+    return {
+        "avg_score": round(sum(scores) / len(scores), 1) if scores else None,
+        "scored": len(scores),
+        "total": len(answered_results),
+        "state": state,
+        "top_reflected": _top(reflected_counts),
+        "top_missing": _top(missing_counts),
+        "unsupported_samples": unsupported_samples,
+    }
+
+
 class BrandPromptDetailAggView(APIView):
     """
     Per-prompt analytics drilldown — what every model said about the
@@ -1011,6 +1089,7 @@ class BrandPromptDetailAggView(APIView):
                 "competitors_mentioned", "created_at",
                 "citation_countries", "query_succeeded", "error_message",
                 "extraction_model", "source_prompt_id", "audit_id",
+                "alignment_score", "alignment_detail",
             )
         )
 
@@ -1063,11 +1142,14 @@ class BrandPromptDetailAggView(APIView):
                 b = {
                     "run_id": rkey, "ran_at": r.created_at, "answers": 0,
                     "self_mentions": 0, "sentiments": [], "positions": [],
+                    "alignments": [],
                 }
                 _run_buckets[rkey] = b
             b["answers"] += 1
             if r.created_at and (b["ran_at"] is None or r.created_at < b["ran_at"]):
                 b["ran_at"] = r.created_at
+            if r.alignment_score is not None:
+                b["alignments"].append(r.alignment_score)
             if r.is_mentioned:
                 b["self_mentions"] += 1
                 if r.sentiment and r.sentiment != "not_mentioned":
@@ -1089,6 +1171,10 @@ class BrandPromptDetailAggView(APIView):
                 "avg_position": (
                     round(sum(b["positions"]) / len(b["positions"]), 1)
                     if b["positions"] else None
+                ),
+                "alignment_avg": (
+                    round(sum(b["alignments"]) / len(b["alignments"]), 1)
+                    if b["alignments"] else None
                 ),
             })
         runs.sort(key=lambda x: x["ran_at"] or "")
@@ -1540,6 +1626,10 @@ class BrandPromptDetailAggView(APIView):
                 "response_preview": (r.response_text or "")[:400],
                 "brand_mentioned": r.is_mentioned,
                 "position": r.mention_rank,
+                "alignment": (
+                    round(r.alignment_score)
+                    if r.alignment_score is not None else None
+                ),
                 "models": [model_key(r.provider)],
                 "provider": r.provider,
                 "sources": srcs[:6],
@@ -1623,6 +1713,9 @@ class BrandPromptDetailAggView(APIView):
             "top_domains": top_domains,
             "domain_types": type_breakdown,
             "total_retrievals": sum(type_counter.values()),
+            # How closely this prompt's answers reflect the brand's own
+            # material, aggregated across the window's responses.
+            "brand_alignment": _build_alignment_summary(website, answered_results),
             "recent_chats": recent_chats,
             "latest_scan": latest_scan,
             # Latest "Scan cited sources" run for this prompt (page-level

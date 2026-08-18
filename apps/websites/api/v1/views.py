@@ -254,7 +254,7 @@ class DashboardView(APIView):
         # Recent activity (from notifications)
         activity = []
         for n in Notification.objects.filter(user=request.user)[:6]:
-            color_map = {'hot_lead': 'var(--color-danger)', 'audit_complete': 'var(--color-success)', 'competitor_alert': 'var(--color-warning)', 'strategy': 'var(--color-info)', 'milestone': 'var(--color-success)'}
+            color_map = {'hot_lead': 'var(--color-danger)', 'audit_complete': 'var(--color-success)', 'competitor_alert': 'var(--color-warning)', 'strategy': 'var(--color-info)', 'milestone': 'var(--color-success)', 'brand_security_alert': 'var(--color-danger)'}
             activity.append({'text': n.message, 'time': n.created_at.strftime('%b %d, %H:%M'), 'color': color_map.get(n.type, 'var(--text-muted)'), 'type': n.type})
 
         # Quick actions (static but driven by context)

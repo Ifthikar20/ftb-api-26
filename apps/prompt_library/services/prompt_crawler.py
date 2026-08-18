@@ -197,6 +197,19 @@ def _dispatch_citations(result_id) -> None:
         logger.debug("citation dispatch failed for %s: %s", result_id, exc)
 
 
+def _dispatch_alignment(result_id) -> None:
+    """Kick off brand-alignment scoring for a successful response.
+    Mirrors the main audit flow; failures are non-fatal."""
+    from django.conf import settings as _settings
+    if not getattr(_settings, "CLAIM_VERIFICATION_ENABLED", True):
+        return
+    try:
+        from apps.brand_vault.tasks import analyze_alignment_for_result
+        analyze_alignment_for_result.delay(str(result_id))
+    except Exception as exc:  # pragma: no cover
+        logger.debug("alignment dispatch failed for %s: %s", result_id, exc)
+
+
 def crawl_prompt(
     website: Website, prompt: Prompt, *, only_missing: bool = False,
 ) -> CrawlOutcome:
@@ -361,6 +374,7 @@ def crawl_prompt(
         if succeeded:
             responses_logged += 1
             _dispatch_citations(result_obj.id)
+            _dispatch_alignment(result_obj.id)
         else:
             errors.append(f"{provider_key}: {err[:120]}")
         queried_providers.append(provider_key)
@@ -377,6 +391,21 @@ def crawl_prompt(
     )
     audit.completed_at = timezone.now()
     audit.save(update_fields=["providers_queried", "status", "completed_at"])
+
+    # Brand Security reads the responses this crawl just stored. Async
+    # because the auditor may escalate findings to the LLM judge, and that
+    # latency does not belong inside a crawl. Full-audit completions get
+    # the same treatment inline in ranking_service; this closes the gap
+    # for per-prompt crawls and their 15-minute scheduled scans.
+    if audit.status == LLMRankingAudit.STATUS_COMPLETED:
+        try:
+            from apps.brand_vault.tasks import audit_recent_results
+            audit_recent_results.delay(str(website.id), str(audit.id))
+        except Exception as exc:
+            logger.warning(
+                "could not queue brand security audit for crawl %s: %s",
+                run.id, exc,
+            )
 
     run.providers = queried_providers
     run.fanout_count = len(fanouts)

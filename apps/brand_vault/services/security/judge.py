@@ -17,6 +17,8 @@ import re
 
 from django.conf import settings
 
+from apps.brand_vault.models import SafetyAlert
+
 from .base import Verdict
 
 logger = logging.getLogger("apps")
@@ -28,11 +30,9 @@ _MAX_GROUND_TRUTH_CHARS = 4000
 
 _MODEL = "claude-haiku-4-5-20251001"
 
-_VALID_ISSUES = {
-    "hallucination", "unverified", "outdated", "harmful", "negative",
-    "emerging_narrative", "negative_outranking", "ranking_for_bad_query",
-    "sge_misrepresentation", "sentiment_drop", "impersonation", "none",
-}
+# Derived from the model choices so a new issue code is valid here the
+# moment it exists on SafetyAlert — the old hand-copied set drifted.
+_VALID_ISSUES = {code for code, _ in SafetyAlert.ISSUE_CHOICES} | {"none"}
 _VALID_SEVERITIES = {"high", "medium", "low", "none"}
 
 
@@ -44,6 +44,8 @@ def judge_finding(
     snippet: str,
     allowed_issues: tuple[str, ...],
     ground_truth: list[dict] | None = None,
+    user=None,
+    website=None,
 ) -> Verdict:
     """Ask Claude Haiku to adjudicate one finding. Returns a ``Verdict``.
 
@@ -57,6 +59,10 @@ def judge_finding(
     client's stated facts over its own priors, which converts vague
     "does this sound off" adjudication into concrete contradiction
     checking against the client's uploaded brand material.
+
+    ``user``/``website`` attribute the call's token spend to the tenant
+    via ``core.ai_tracking``; pass them from any call site that runs at
+    volume.
     """
     api_key = getattr(settings, "ANTHROPIC_API_KEY", "") or ""
     if not api_key:
@@ -108,6 +114,20 @@ def judge_finding(
     except Exception as exc:
         logger.warning("Brand security judge call failed: %s", exc)
         return Verdict()
+
+    try:
+        from core.ai_tracking import record_usage
+        record_usage(
+            module="brand_security",
+            model_name=_MODEL,
+            input_tokens=resp.usage.input_tokens,
+            output_tokens=resp.usage.output_tokens,
+            user=user,
+            website=website,
+            metadata={"role": "judge"},
+        )
+    except Exception as exc:  # pragma: no cover — tracking never blocks a verdict
+        logger.warning("Brand security judge usage tracking failed: %s", exc)
 
     return _parse_verdict(raw, allowed_issues)
 

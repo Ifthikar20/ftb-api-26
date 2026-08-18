@@ -14,18 +14,24 @@ import re
 FALLBACK_DIM = 32
 
 
-def embed_text(text: str) -> list[float]:
+def embed_text(text: str, *, user=None, website=None) -> list[float]:
     """Return an embedding vector for ``text``.
 
     Always returns a list[float]; falls back to a deterministic hash
     embedding if the OpenAI-backed rag embedder is unavailable.
+
+    Pass ``user``/``website`` wherever they are in scope so the embedding
+    spend is attributed to the tenant in ai_tracking rather than lost.
     """
     text = (text or "").strip()
     if not text:
         return []
     try:
         from apps.rag.services.embedder import embed_one
-        vec, _model, _dim = embed_one(text)
+        vec, _model, _dim = embed_one(
+            text, user=user, website=website,
+            metadata={"role": "fact_embedding"},
+        )
         if vec:
             return list(vec)
     except Exception:

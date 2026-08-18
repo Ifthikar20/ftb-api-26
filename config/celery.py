@@ -110,6 +110,13 @@ app.conf.beat_schedule = {
         "task": "apps.brand_vault.tasks.refresh_fact_embeddings",
         "schedule": crontab(minute=30, hour=3),
     },
+    # Catch-up sweep for Brand Security: audits any stored responses the
+    # completion hooks missed. Offset to :25 to stay clear of the :00/:15
+    # dispatcher cluster.
+    "brand-security-response-scan": {
+        "task": "apps.brand_vault.tasks.scan_unaudited_responses",
+        "schedule": crontab(minute=25),
+    },
     # ── Content Studio ──
     "generate-briefs-daily": {
         "task": "apps.content_studio.tasks.generate_briefs_daily",

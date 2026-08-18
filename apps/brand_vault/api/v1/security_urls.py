@@ -5,6 +5,11 @@ from . import security_views as v
 
 urlpatterns = [
     path(
+        "taxonomy/",
+        v.BrandSecurityTaxonomyView.as_view(),
+        name="brand-security-taxonomy",
+    ),
+    path(
         "websites/<uuid:website_id>/overview/",
         v.BrandSecurityOverviewView.as_view(),
         name="brand-security-overview",

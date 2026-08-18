@@ -8,6 +8,7 @@ an immutable history that the verifier and dashboard can replay.
 """
 from __future__ import annotations
 
+import secrets
 import uuid
 
 from django.conf import settings
@@ -15,6 +16,21 @@ from django.db import models
 from django.utils import timezone
 
 from core.mixins.timestamp_mixin import TimestampMixin
+
+# Crockford base32: no I, L, O, U — every character survives being read
+# aloud or retyped from a screenshot, which is the whole point of a
+# human-facing reference.
+_REFERENCE_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+
+
+def generate_alert_reference() -> str:
+    """Random human-readable alert reference, e.g. ``BSA-7Q4KX2ZC``.
+
+    Random rather than sequential so references are non-enumerable and
+    need no counter table; 32^8 combinations make collisions negligible,
+    with the column's unique constraint as the backstop.
+    """
+    return "BSA-" + "".join(secrets.choice(_REFERENCE_ALPHABET) for _ in range(8))
 
 
 class FactStatus(models.TextChoices):
@@ -216,6 +232,10 @@ class SafetyAlert(TimestampMixin):
     ISSUE_SGE_MISREPRESENTATION = "sge_misrepresentation"
     ISSUE_SENTIMENT_DROP = "sentiment_drop"
     ISSUE_IMPERSONATION = "impersonation"
+    ISSUE_DEROGATORY = "derogatory"
+    ISSUE_UNFAVORABLE_COMPARISON = "unfavorable_comparison"
+    ISSUE_WEAK_ENDORSEMENT = "weak_endorsement"
+    ISSUE_DISTRUST = "distrust"
     ISSUE_CHOICES = [
         (ISSUE_HALLUCINATION, "Hallucination"),
         (ISSUE_UNVERIFIED, "Unverified claim"),
@@ -228,6 +248,10 @@ class SafetyAlert(TimestampMixin):
         (ISSUE_SGE_MISREPRESENTATION, "AI Overview misrepresentation"),
         (ISSUE_SENTIMENT_DROP, "Sentiment drop"),
         (ISSUE_IMPERSONATION, "Impersonation"),
+        (ISSUE_DEROGATORY, "Derogatory language"),
+        (ISSUE_UNFAVORABLE_COMPARISON, "Unfavorable comparison"),
+        (ISSUE_WEAK_ENDORSEMENT, "Weak endorsement"),
+        (ISSUE_DISTRUST, "Distrust signals"),
     ]
 
     SOURCE_LLM = "llm"
@@ -278,6 +302,30 @@ class SafetyAlert(TimestampMixin):
         related_name="safety_alerts",
     )
 
+    # Human-readable reference shown in the UI and safe to read aloud,
+    # e.g. "BSA-7Q4KX2ZC". Random so alerts cannot be enumerated.
+    reference = models.CharField(
+        max_length=16, unique=True, editable=False,
+        default=generate_alert_reference,
+    )
+    # Stable detector code from the registry, e.g. "BS-SENT-001". Blank on
+    # legacy rows and on rows raised by the (dormant) external-source agents.
+    detector_code = models.CharField(max_length=20, blank=True, db_index=True)
+    # Exactly which parts of `snippet` triggered the finding:
+    # [{"start": int, "end": int, "text": str, "label": str}, ...].
+    # Offsets are Unicode-codepoint indices into `snippet` as serialized;
+    # `text` echoes the slice so a renderer can verify and re-anchor.
+    evidence_spans = models.JSONField(default=list, blank=True)
+    # Lifecycle: a finding that keeps recurring on new responses of the same
+    # prompt/provider stream is one alert that gets its occurrence bumped,
+    # not a fresh row per scan.
+    first_seen_at = models.DateTimeField(default=timezone.now)
+    last_seen_at = models.DateTimeField(default=timezone.now)
+    occurrence_count = models.IntegerField(default=1)
+    # sha256(f"{detector_code}|{prompt_key}|{provider}")[:40] — the
+    # recurrence grouping key. Blank when no detector code applies.
+    dedupe_key = models.CharField(max_length=40, blank=True, db_index=True)
+
     # Which agent raised this alert. Blank for legacy rows created before agents.
     agent_id = models.CharField(max_length=40, blank=True, db_index=True)
     # Where the underlying signal came from. Blank on legacy rows.
@@ -316,6 +364,16 @@ class SafetyAlert(TimestampMixin):
             models.Index(fields=["website", "status", "-detected_at"], name="bv_sa_w_s_dt_idx"),
             models.Index(fields=["website", "severity"], name="bv_sa_w_sev_idx"),
             models.Index(fields=["website", "agent_id", "status"], name="bv_sa_w_a_s_idx"),
+            models.Index(fields=["website", "detector_code"], name="bv_sa_w_det_idx"),
+        ]
+        constraints = [
+            # One alert per (response, detector). Only enforced where a
+            # result is linked — dormant-agent rows have result=NULL.
+            models.UniqueConstraint(
+                fields=["website", "result", "detector_code"],
+                condition=models.Q(result__isnull=False) & ~models.Q(detector_code=""),
+                name="bv_sa_res_det_uniq",
+            ),
         ]
         ordering = ["-detected_at"]
 
@@ -403,6 +461,12 @@ class BrandSecurityConfig(TimestampMixin):
     )
     brand_terms = models.JSONField(default=list, blank=True)
     negative_keywords = models.JSONField(default=list, blank=True)
+    # Per-website switch for the LLM confirmation step on nuanced detectors.
+    # The deployment-wide kill switch is settings.BRAND_SECURITY_JUDGE_ENABLED.
+    llm_judge_enabled = models.BooleanField(default=True)
+    # Watermark for the catch-up scan: responses created after this moment
+    # have not yet been swept by the response auditor.
+    last_response_scan_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = "brand_vault_securityconfig"

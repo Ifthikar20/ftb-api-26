@@ -5,13 +5,20 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from apps.llm_ranking.models import LLMRankingAudit, LLMRankingResult
-from apps.prompt_library.models import Prompt, PromptCrawlRun, PromptFanout
+from apps.prompt_library.models import PromptCrawlRun, PromptFanout
 from apps.prompt_library.services.prompt_crawler import (
     _dedupe_fanouts,
     _llm_fanout,
     crawl_prompt,
 )
+from apps.prompt_library.tests.factories import PromptFactory
 from apps.websites.tests.factories import WebsiteFactory
+
+
+def _prompt(*, text: str):
+    """Prompt with a valid required industry (Prompt.industry is NOT NULL —
+    bare Prompt.objects.create(text=...) violates the constraint)."""
+    return PromptFactory(text=text)
 
 
 def test_dedupe_fanouts_dedupes_caps_and_trims():
@@ -45,7 +52,7 @@ def test_crawl_prompt_sets_created_by_to_website_owner():
     created_by, violating the not-null constraint on
     llm_ranking_audit.created_by_id."""
     website = WebsiteFactory()
-    prompt = Prompt.objects.create(text="best pizza app in dfw")
+    prompt = _prompt(text="best pizza app in dfw")
 
     with patch(
         "apps.prompt_library.services.prompt_crawler._llm_fanout",
@@ -210,7 +217,7 @@ def test_crawl_replaces_fanouts_instead_of_appending(settings):
     accumulate across runs."""
     settings.CITATION_EXTRACTION_ENABLED = False
     website = WebsiteFactory()
-    prompt = Prompt.objects.create(text="best hijab store dallas")
+    prompt = _prompt(text="best hijab store dallas")
 
     # Stale fan-outs from a previous run.
     PromptFanout.objects.create(website=website, prompt=prompt, text="old query 1")
@@ -240,7 +247,7 @@ def test_crawl_prompt_runs_extraction_and_captures_competitors(settings):
     user's own brand."""
     settings.CITATION_EXTRACTION_ENABLED = False
     website = WebsiteFactory(name="AcmePizza")
-    prompt = Prompt.objects.create(text="pizza ordering app in dfw")
+    prompt = _prompt(text="pizza ordering app in dfw")
 
     fake_result = SimpleNamespace(
         succeeded=True,
@@ -292,11 +299,12 @@ def test_crawl_prompt_runs_extraction_and_captures_competitors(settings):
 
 @pytest.mark.django_db
 def test_crawl_skips_models_already_answered(settings):
-    """A model that already returned a response on a prior run is not
-    re-queried, and the crawl still completes successfully."""
+    """In gap-fill mode (only_missing=True) a model that already returned
+    a response on a prior run is not re-queried, and the crawl still
+    completes successfully. (Default crawls are full re-runs by design.)"""
     settings.CITATION_EXTRACTION_ENABLED = False
     website = WebsiteFactory()
-    prompt = Prompt.objects.create(text="pizza ordering app in dfw")
+    prompt = _prompt(text="pizza ordering app in dfw")
 
     # Existing good response for claude from a previous run.
     LLMRankingResult.objects.create(
@@ -324,7 +332,7 @@ def test_crawl_skips_models_already_answered(settings):
         "apps.prompt_library.services.prompt_crawler.PROVIDERS",
         {"claude": lambda: fake_provider},
     ):
-        outcome = crawl_prompt(website, prompt)
+        outcome = crawl_prompt(website, prompt, only_missing=True)
 
     # claude was skipped — not queried again, no duplicate row created.
     fake_provider.query.assert_not_called()
@@ -342,7 +350,7 @@ def test_crawl_retries_transient_failure_once_then_records(settings):
     failure is recorded and we move on."""
     settings.CITATION_EXTRACTION_ENABLED = False
     website = WebsiteFactory()
-    prompt = Prompt.objects.create(text="pizza ordering app in dfw")
+    prompt = _prompt(text="pizza ordering app in dfw")
 
     fake_provider = MagicMock()
     fake_provider.query.side_effect = [
@@ -372,7 +380,7 @@ def test_crawl_does_not_retry_missing_key(settings):
     """A service_unavailable result (missing key) is not retried."""
     settings.CITATION_EXTRACTION_ENABLED = False
     website = WebsiteFactory()
-    prompt = Prompt.objects.create(text="pizza ordering app in dfw")
+    prompt = _prompt(text="pizza ordering app in dfw")
 
     fake_provider = MagicMock()
     fake_provider.query.return_value = SimpleNamespace(
@@ -401,7 +409,7 @@ def test_crawl_prompt_records_failed_provider_row(settings):
     the error, and does not count as a logged response."""
     settings.CITATION_EXTRACTION_ENABLED = False
     website = WebsiteFactory()
-    prompt = Prompt.objects.create(text="pizza ordering app in dfw")
+    prompt = _prompt(text="pizza ordering app in dfw")
 
     fake_result = SimpleNamespace(
         succeeded=False, text="",

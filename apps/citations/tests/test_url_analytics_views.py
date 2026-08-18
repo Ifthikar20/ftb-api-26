@@ -64,10 +64,12 @@ class TestWebsiteUrls:
     def test_aggregates_urls(self, auth_client):
         client, user = auth_client
         website, audit, _ = _seed(user)
+        # Claude has no native citations field — its extractor strategy is
+        # regex-over-prose, so the URL must appear in the response text.
         r2 = LLMRankingResultFactory(
             audit=audit, provider=LLMRankingResult.PROVIDER_CLAUDE, prompt_index=1,
-            prompt="top treasury tools", citations=[{"url": "https://reddit.com/r/saas"}],
-            response_text="",
+            prompt="top treasury tools",
+            response_text="Community favorite: https://reddit.com/r/saas",
         )
         extract_for_result(str(r2.id))
 
@@ -131,7 +133,10 @@ class TestAccurateMetrics:
         assert row["citations"] == 0
         assert row["citation_rate"] == 0.0
 
-    def test_citation_rate_from_regex_prose(self, auth_client):
+    def test_citation_rate_is_bounded_cited_share(self, auth_client):
+        """Multiple prose references still count as ONE cited retrieval:
+        citation_rate is the share of retrievals that were cited, never
+        a mean that can exceed 1.0."""
         client, user = auth_client
         website = WebsiteFactory(user=user)
         audit = LLMRankingAuditFactory(website=website, created_by=user)
@@ -145,7 +150,7 @@ class TestAccurateMetrics:
         row = self._row(body, "b.com")
         assert row["retrievals"] == 1
         assert row["citations"] == 2
-        assert row["citation_rate"] == 2.0
+        assert row["citation_rate"] == 1.0
 
     def test_gap_score_competitors_times_usage(self, auth_client):
         client, user = auth_client
@@ -237,11 +242,12 @@ class TestTopicScoping:
             prompt=prompt.text, source_prompt=prompt,
             citations=[{"url": "https://youtube.com/watch?v=1"}], response_text="",
         )
-        # Result with no linked prompt -> no topic.
+        # Result with no linked prompt -> no topic. Claude extracts via
+        # regex, so the URL must appear in the prose.
         r2 = LLMRankingResultFactory(
             audit=audit, provider=LLMRankingResult.PROVIDER_CLAUDE, prompt_index=1,
             prompt="unlinked prompt", source_prompt=None,
-            citations=[{"url": "https://reddit.com/r/x"}], response_text="",
+            response_text="Discussed at https://reddit.com/r/x today.",
         )
         extract_for_result(str(r1.id))
         extract_for_result(str(r2.id))
@@ -312,12 +318,13 @@ class TestResponseBrandExtraction:
         names = [b["name"] for b in extract_response_brands(text)]
         assert names == ["Domino's Pizza", "Pizza Hut"]
 
-    def test_extracts_dashed_list_with_separators(self):
+    def test_dashed_lists_are_ignored_by_design(self):
+        # The extractor only reads numbered lists (see _LIST_ITEM and the
+        # extract_response_brands docstring): dash bullets carry no rank
+        # signal, so they are deliberately not treated as brand rankings.
         from apps.citations.services.url_analytics import extract_response_brands
         text = "- Qapital — automates savings.\n- Digit — analyzes spending."
-        out = extract_response_brands(text)
-        assert [b["name"] for b in out] == ["Qapital", "Digit"]
-        assert out[0]["position"] == 1 and out[1]["position"] == 2
+        assert extract_response_brands(text) == []
 
     def test_empty_text(self):
         from apps.citations.services.url_analytics import extract_response_brands

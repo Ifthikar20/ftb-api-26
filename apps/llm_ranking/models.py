@@ -78,6 +78,10 @@ class LLMRankingAudit(TimestampMixin):
     # 95% Wilson CI on the overall mention_rate (percent 0-100)
     mention_rate_ci_lower = models.FloatField(default=0.0)
     mention_rate_ci_upper = models.FloatField(default=0.0)
+    # Mean brand-alignment score (0-100) across scored results, set in
+    # finalise. Best-effort snapshot: per-result alignment runs async, so
+    # dashboards recompute from result rows rather than trusting this.
+    alignment_score = models.FloatField(null=True, blank=True)
     # How per-response extraction was performed
     EXTRACTION_HEURISTIC = "heuristic"
     EXTRACTION_LLM = "llm"
@@ -233,6 +237,16 @@ class LLMRankingResult(TimestampMixin):
     # Which model + prompt version was used to extract structured data
     extraction_model = models.CharField(max_length=100, blank=True)
     extraction_version = models.CharField(max_length=20, blank=True)
+    # Brand alignment benchmark (embedding-only). Score is 0-100 to match
+    # the sentiment/confidence/overall conventions; NULL means not scored
+    # (failed cell, brand absent from the answer, no Brand Input yet, or
+    # semantic embeddings unavailable). alignment_detail always carries at
+    # least {"version", "status"} once analyzed; alignment_version "" means
+    # never analyzed (the backfill's staleness cursor).
+    alignment_score = models.FloatField(null=True, blank=True)
+    alignment_detail = models.JSONField(default=dict, blank=True)
+    alignment_model = models.CharField(max_length=100, blank=True)
+    alignment_version = models.CharField(max_length=20, blank=True)
     # Provenance label for the prompt that produced this row. Free-form
     # short string so the frontend can render a badge such as
     # ``Library / Reddit`` or ``Vault``. Empty for legacy rows.

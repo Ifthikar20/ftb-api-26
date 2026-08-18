@@ -256,7 +256,9 @@ class WebsiteUrlsView(TenantScopedAPIView):
     """
 
     def get(self, request, website_id):
+        from apps.citations.services.traffic_enrichment import enrich_urls_payload
         from apps.citations.services.url_analytics import build_urls_overview
+        from apps.citations.services.url_opportunities import build_opportunities
 
         website = self.get_website(website_id)
         period_days = int(request.query_params.get("period_days", 30) or 30)
@@ -265,11 +267,15 @@ class WebsiteUrlsView(TenantScopedAPIView):
 
         end = timezone.now().date()
         start = end - timedelta(days=period_days)
-        return Response(
-            build_urls_overview(
-                website, start=start, end=end, provider=provider, topic=topic
-            )
+        payload = build_urls_overview(
+            website, start=start, end=end, provider=provider, topic=topic
         )
+        # Real-traffic join (GSC clicks + AI-referred visits for the
+        # user's own cited pages) and the derived action buckets. Both
+        # read the enriched rows, so order matters.
+        enrich_urls_payload(website, payload, start=start, end=end)
+        payload["opportunities"] = build_opportunities(payload)
+        return Response(payload)
 
 
 class WebsiteUrlDetailView(TenantScopedAPIView):
@@ -300,6 +306,17 @@ class WebsiteUrlDetailView(TenantScopedAPIView):
         )
         if payload is None:
             return Response({"detail": "URL not found for this website."}, status=404)
+
+        from apps.citations.services.traffic_enrichment import enrich_url_detail
+        from apps.citations.services.url_analytics import _prev_window
+
+        prev_start, prev_end = _prev_window(start, end)
+        metrics = payload.get("metrics") or {}
+        payload["real_traffic"] = enrich_url_detail(
+            website, normalized,
+            start=start, end=end, prev_start=prev_start, prev_end=prev_end,
+            is_target=bool(metrics.get("is_target")),
+        )
         return Response(payload)
 
 

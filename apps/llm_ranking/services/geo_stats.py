@@ -95,6 +95,17 @@ def build_kpis_for_user(
             current=_sentiment(user, *current, flt=flt),
             previous=_sentiment(user, *previous, flt=flt),
         ),
+        _build_tile(
+            label="Alignment",
+            subtext=(
+                "See how closely AI answers reflect your own brand facts "
+                "and key messages, and which messages are missing."
+            ),
+            higher_better=True,
+            value_fmt=_score,
+            current=_alignment(user, *current, flt=flt),
+            previous=_alignment(user, *previous, flt=flt),
+        ),
     ]
 
 
@@ -128,6 +139,7 @@ def build_breakdowns_for_user(
         "visibility": _visibility_breakdown(audit_ids, flt),
         "position": _position_breakdown(audit_ids, flt),
         "sentiment": _sentiment_breakdown(audit_ids, flt),
+        "alignment": _alignment_breakdown(audit_ids, flt),
     }
 
 
@@ -219,6 +231,53 @@ def _sentiment_breakdown(audit_ids: list, flt: dict | None) -> dict:
     return {"split": split, "samples": samples, "total_mentions": total}
 
 
+def _alignment_breakdown(audit_ids: list, flt: dict | None) -> dict:
+    """Aligned/partial/unaligned bands plus the brand messages AI most
+    often reflects and misses — the actionable "what to publish next"
+    signal, aggregated from per-result alignment detail."""
+    qs = _filtered_results(audit_ids, flt).filter(alignment_score__isnull=False)
+    bands = {"aligned": 0, "partial": 0, "unaligned": 0}
+    reflected_counts: dict[str, int] = {}
+    missing_counts: dict[str, int] = {}
+    total = 0
+    for score, detail in qs.values_list("alignment_score", "alignment_detail"):
+        total += 1
+        if score >= 70:
+            bands["aligned"] += 1
+        elif score >= 40:
+            bands["partial"] += 1
+        else:
+            bands["unaligned"] += 1
+        coverage = (detail or {}).get("coverage") or {}
+        for item in coverage.get("reflected") or []:
+            text = (item or {}).get("text") or ""
+            if text:
+                reflected_counts[text] = reflected_counts.get(text, 0) + 1
+        for item in coverage.get("missing") or []:
+            text = (item or {}).get("text") or ""
+            if text:
+                missing_counts[text] = missing_counts.get(text, 0) + 1
+
+    def _top(counts: dict[str, int]) -> list[dict]:
+        ranked = sorted(counts.items(), key=lambda kv: kv[1], reverse=True)[:5]
+        return [{"text": text, "count": count} for text, count in ranked]
+
+    split = [
+        {
+            "band": band,
+            "count": count,
+            "pct": round(100.0 * count / total, 1) if total else 0.0,
+        }
+        for band, count in bands.items()
+    ]
+    return {
+        "split": split,
+        "top_reflected": _top(reflected_counts),
+        "top_missing": _top(missing_counts),
+        "total_scored": total,
+    }
+
+
 # ── metric calculators ─────────────────────────────────────────────────────
 
 def _audits_in(user, start, end):
@@ -307,6 +366,25 @@ def _sentiment(user, start, end, *, flt=None) -> float | None:
     # 100 = all mentions positive, 50 = balanced/neutral, 0 = all negative.
     net = 50 + 50 * (pos - neg) / total
     return round(max(0.0, min(100.0, net)), 1)
+
+
+def _alignment(user, start, end, *, flt=None) -> float | None:
+    """Mean brand-alignment score over scored results in the window.
+
+    Always recomputed from result rows (the audit-level pre-aggregate is
+    a best-effort snapshot — alignment tasks run async).
+    """
+    if start is None and end is None:
+        return None
+    audit_ids = list(_audits_in(user, start, end).values_list("id", flat=True))
+    if not audit_ids:
+        return None
+    scores = list(
+        _filtered_results(audit_ids, flt)
+        .filter(alignment_score__isnull=False)
+        .values_list("alignment_score", flat=True)
+    )
+    return round(sum(scores) / len(scores), 1) if scores else None
 
 
 # ── tile shaping ───────────────────────────────────────────────────────────

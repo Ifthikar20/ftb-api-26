@@ -72,13 +72,19 @@ LOCAL_APPS = [
 # Toggle off to disable the post-save hook (e.g. in narrow unit tests).
 CITATION_EXTRACTION_ENABLED = True
 
-# Phase 3: claim verification + brand-vault extraction. Both gated so
-# the test suite never burns Anthropic tokens by default.
+# Phase 3 flags. CLAIM_VERIFICATION_ENABLED now gates the brand-alignment
+# benchmark (embedding-based scoring of every response against Brand
+# Input); BRAND_VAULT_EXTRACTION_ENABLED gates fact extraction, including
+# the auto-extraction dispatched after Brand Input ingests.
 CLAIM_VERIFICATION_ENABLED = True
 BRAND_VAULT_EXTRACTION_ENABLED = True
 
 # Phase 4: Content Studio. Brief generation runs after each audit by default.
 CONTENT_STUDIO_BRIEF_GENERATION_ENABLED = True
+
+# Brand Security: deployment-wide kill switch for the LLM judge step on
+# nuanced detectors. Per-website opt-out lives on BrandSecurityConfig.
+BRAND_SECURITY_JUDGE_ENABLED = env.bool("BRAND_SECURITY_JUDGE_ENABLED", default=True)
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 

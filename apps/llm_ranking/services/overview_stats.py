@@ -57,6 +57,8 @@ DOMAIN_TYPE_COLORS = {
     "UGC": "var(--chart-2)",
     "Editorial": "var(--chart-3)",
     "Reference": "var(--chart-4)",
+    "Your site": "var(--chart-2)",
+    "Competitor": "var(--chart-3)",
 }
 
 _SENTIMENT_SCORE = {
@@ -548,7 +550,7 @@ def _build_domains(
 
     total = len(citations)
     retrieved: dict[str, int] = defaultdict(int)
-    referenced: dict[str, int] = defaultdict(int)
+    cited: dict[str, int] = defaultdict(int)
     types: dict[str, str] = {}
     type_counts: dict[str, int] = defaultdict(int)
 
@@ -557,7 +559,8 @@ def _build_domains(
         if not key:
             continue
         retrieved[key] += 1
-        referenced[key] += ref_count or 0
+        if (ref_count or 0) > 0:
+            cited[key] += 1
         bucket = domain_type_for(source_class)
         types[key] = bucket
         type_counts[bucket] += 1
@@ -569,9 +572,10 @@ def _build_domains(
         {
             "domain": key,
             "retrieved": _pct(count, total),
-            # Mean explicit references per retrieval, matching the
-            # citation_rate definition used by the Sources dashboard.
-            "citation": round(referenced[key] / count, 1) if count else 0.0,
+            # Cited share, matching the citation_rate definition used by
+            # the Sources dashboard: retrievals with an explicit reference
+            # / all retrievals, bounded 0-1.
+            "citation": round(cited[key] / count, 2) if count else 0.0,
             "type": types.get(key, "Reference"),
         }
         for key, count in sorted(retrieved.items(), key=lambda kv: -kv[1])[:MAX_DOMAINS]
