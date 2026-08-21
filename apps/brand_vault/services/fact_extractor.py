@@ -25,6 +25,7 @@ from django.conf import settings
 from apps.brand_vault.models import BrandFact, FactStatus
 from apps.brand_vault.services.embeddings import embed_text
 from apps.brand_vault.services.fact_versioning import record_creation
+from core.llm import ClaudeUtility
 
 logger = logging.getLogger("apps")
 
@@ -38,24 +39,24 @@ EXTRACTION_PROMPT = (
 )
 
 
-def _call_llm(text: str) -> list[dict]:
-    """Call Claude and parse the JSON array. Empty list on any failure."""
-    api_key = getattr(settings, "ANTHROPIC_API_KEY", "") or ""
-    if not api_key:
+def _call_llm(text: str, *, website=None) -> list[dict]:
+    """Call Claude via the core gateway and parse the JSON array.
+
+    Empty list on any failure — the gateway returns an error envelope
+    instead of raising. ``website`` attributes the token spend to the
+    tenant in core.ai_tracking.
+    """
+    result = ClaudeUtility(model="claude-sonnet-4-20250514", max_tokens=1024).query(
+        EXTRACTION_PROMPT.format(text=text),
+        user=getattr(website, "user", None),
+        website=website,
+        module="brand_vault",
+        role="fact_extraction",
+    )
+    if not result.succeeded:
+        logger.warning("Brand vault extraction LLM call failed: %s", result.error)
         return []
-    try:
-        import anthropic
-        client = anthropic.Anthropic(api_key=api_key)
-        resp = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=1024,
-            messages=[{"role": "user", "content": EXTRACTION_PROMPT.format(text=text)}],
-        )
-        raw = resp.content[0].text.strip()
-    except Exception as exc:
-        logger.warning("Brand vault extraction LLM call failed: %s", exc)
-        return []
-    return _parse_json_array(raw)
+    return _parse_json_array(result.text)
 
 
 def _parse_json_array(raw: str) -> list[dict]:
@@ -100,7 +101,7 @@ def extract_facts_for_chunk(chunk_id: str) -> list[BrandFact]:
     except KnowledgeChunk.DoesNotExist:
         return []
 
-    raw_items = _call_llm(chunk.text or "")
+    raw_items = _call_llm(chunk.text or "", website=chunk.website)
     return _persist_items(
         raw_items,
         website=chunk.website,

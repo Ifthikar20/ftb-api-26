@@ -48,3 +48,15 @@ CLAIM_VERIFICATION_ENABLED = False
 # shell variables can never flip the suite into HTTP mode.
 INTELLIGENCE_SERVICE_URL = ""
 SOURCES_SERVICE_URL = ""
+
+# Polar metering must never leave the process in tests: no outbox rows
+# unless a test opts in via override_settings, never a real token, and
+# reads always come from the local ledger. Mirrors the facade pattern
+# above so an exported shell POLAR_ACCESS_TOKEN can't flip the suite.
+POLAR_ACCESS_TOKEN = ""
+POLAR_INGEST_MODE = "off"
+POLAR_READS_ENABLED = False
+
+# Deterministic free-plan allowance regardless of the developer's .env
+# (local dev raises it so the $1 default doesn't stall testing).
+AI_FREE_MONTHLY_CAP_USD = 1.0

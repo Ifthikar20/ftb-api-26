@@ -45,14 +45,25 @@ def embed_texts(
     """Embed a batch of strings.
 
     Returns ``(vectors, model_name, dim)``. Falls back to the
-    deterministic hash embedder when no OpenAI key is configured or the
-    upstream call fails — callers don't need to special-case absence.
+    deterministic hash embedder when no OpenAI key is configured, the
+    account's monthly AI allowance is spent, or the upstream call fails —
+    callers don't need to special-case absence.
     """
     if not texts:
         return [], "", 0
 
     cleaned = [(_truncate(t) or " ") for t in texts]
     api_key = getattr(settings, "OPENAI_API_KEY", "") or ""
+
+    # Same spend wall as every chat-model call. Embeddings are cheap but
+    # they are still metered spend; an exhausted allowance degrades to
+    # the free hash embedder instead of quietly billing past the cap.
+    if api_key and user is not None:
+        from core.llm import allowance_denial
+        denial = allowance_denial(user)
+        if denial:
+            logger.info("Embedding request denied by spend wall: %s", denial)
+            api_key = ""
 
     if api_key:
         try:

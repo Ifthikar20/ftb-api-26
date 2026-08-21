@@ -70,7 +70,18 @@ apps/messaging/
 apps/social_leads/
 apps/voice_agent/
 
+# The frontend moved to the ftb-ui repo (consumed via GHCR image).
+# What's left locally is a dead build husk — never track it again.
+frontend/
+
 # Google service account keys - never commit
 fb-project-*.json
 *-serviceaccount.json
 service-account*.json
+*env*
+*env
+# Secrets — never commit keys or credentials
+*.key
+*service*account*.json
+fb-project-*.json
+gcp-*.json

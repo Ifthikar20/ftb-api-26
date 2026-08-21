@@ -24,6 +24,7 @@ class IntegrationConnectionSerializer(serializers.ModelSerializer):
         model = IntegrationConnection
         fields = [
             "id", "platform", "webhook_url", "channel_name", "is_active",
+            "external_team_id", "external_channel_id",
             "schedule_time", "frequency", "message_format",
             "notify_daily_report", "notify_hot_leads",
             "notify_trend_digest", "notify_milestones",

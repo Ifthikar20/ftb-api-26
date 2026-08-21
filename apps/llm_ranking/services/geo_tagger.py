@@ -23,6 +23,8 @@ import re
 from django.conf import settings
 from django.core.cache import cache
 
+from core.llm import OpenAIUtility
+
 logger = logging.getLogger("apps")
 
 
@@ -216,31 +218,18 @@ def _llm_tag(prompts: list[str]) -> list[str] | None:
     api_key = getattr(settings, "OPENAI_API_KEY", "")
     if not api_key or not prompts:
         return None
-    try:
-        import openai
-        client = openai.OpenAI(api_key=api_key)
-        resp = client.chat.completions.create(
-            model="gpt-4o-mini",
-            max_tokens=512,
-            messages=[{"role": "user", "content": _build_batch_prompt(prompts)}],
-        )
-        try:
-            from core.ai_tracking import record_usage
-            usage = getattr(resp, "usage", None)
-            if usage:
-                record_usage(
-                    module="llm_ranking",
-                    model_name="gpt-4o-mini",
-                    input_tokens=getattr(usage, "prompt_tokens", 0),
-                    output_tokens=getattr(usage, "completion_tokens", 0),
-                    metadata={"role": "geo_tagger"},
-                )
-        except Exception:
-            pass
-        return _parse_batch_response(resp.choices[0].message.content, len(prompts))
-    except Exception as e:
-        logger.warning("GEO tagger LLM call failed: %s", e)
+    # Central LLM gateway handles rate-limit/breaker and usage recording
+    # (role=geo_tagger). No user attribution here — same as before: the
+    # tagger runs cache-side without a request user in scope.
+    result = OpenAIUtility(model="gpt-4o-mini", max_tokens=512).query(
+        _build_batch_prompt(prompts),
+        role="geo_tagger",
+        module="llm_ranking",
+    )
+    if not result.succeeded:
+        logger.warning("GEO tagger LLM call failed: %s", result.error)
         return None
+    return _parse_batch_response(result.text, len(prompts))
 
 
 def tag_prompts(prompt_texts: list[str]) -> dict[str, dict]:

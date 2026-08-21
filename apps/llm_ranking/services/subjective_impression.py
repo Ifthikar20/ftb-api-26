@@ -31,6 +31,7 @@ from collections.abc import Callable
 
 from django.conf import settings
 
+from core.llm import ClaudeUtility
 from core.quota import DailyQuota
 
 logger = logging.getLogger("apps")
@@ -137,31 +138,23 @@ def _consume_quota(user_id, n: int = 1) -> bool:
 # ── Judge call ────────────────────────────────────────────────────────────
 
 def _call_judge_default(prompt: str, *, user=None, audit_id=None) -> str:
-    """Real Claude Haiku call. Used unless callers inject their own."""
-    import anthropic
-    client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
-    resp = client.messages.create(
-        model=JUDGE_MODEL,
-        max_tokens=900,
-        system=JUDGE_SYSTEM,
-        messages=[{"role": "user", "content": prompt}],
+    """Real Claude Haiku call. Used unless callers inject their own.
+
+    Goes through the central LLM gateway (spend-wall, rate-limit/breaker,
+    usage recording with role=g_eval_judge). Raises on failure so
+    ``score_citation`` can degrade gracefully per sample.
+    """
+    result = ClaudeUtility(model=JUDGE_MODEL, max_tokens=900).query(
+        prompt,
+        system_prompt=JUDGE_SYSTEM,
+        user=user,
+        audit_id=audit_id,
+        role="g_eval_judge",
+        module="llm_ranking",
     )
-    try:
-        from core.ai_tracking import record_usage
-        metadata = {"role": "g_eval_judge"}
-        if audit_id:
-            metadata["audit_id"] = str(audit_id)
-        record_usage(
-            module="llm_ranking",
-            model_name=JUDGE_MODEL,
-            input_tokens=resp.usage.input_tokens,
-            output_tokens=resp.usage.output_tokens,
-            user=user,
-            metadata=metadata,
-        )
-    except Exception:
-        pass
-    return resp.content[0].text.strip()
+    if not result.succeeded:
+        raise RuntimeError(f"G-Eval judge call failed: {result.error}")
+    return result.text
 
 
 def _parse_judge_json(text: str) -> dict:

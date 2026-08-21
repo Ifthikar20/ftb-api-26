@@ -18,6 +18,7 @@ from __future__ import annotations
 import hashlib
 import logging
 from dataclasses import dataclass
+from datetime import datetime
 
 from django.db import transaction
 from django.utils import timezone
@@ -79,22 +80,46 @@ def ingest_url(
     kind: str = KnowledgeSource.KIND_OTHER,
     title: str = "",
     text: str | None = None,
+    source_app: str | None = None,
+    source_ref: str | None = None,
+    metadata: dict | None = None,
+    recorded_at: datetime | None = None,
 ) -> IngestResult:
     """
     Ingest a single URL. If ``text`` is supplied (e.g. from an audit's
     enrichment step), we use it directly rather than re-fetching the page.
+
+    Provenance passthrough (all optional; defaults preserve the original
+    brand-input behavior): ``source_app``/``source_ref`` land on the
+    KnowledgeSource, ``metadata``/``recorded_at`` land on every chunk
+    written this pass. Source adapters use these so retrieval can filter
+    by producing app and weight by content time.
     """
+    defaults = {
+        "kind": kind, "title": title or "",
+        "status": KnowledgeSource.STATUS_PENDING,
+    }
+    if source_app:
+        defaults["source_app"] = source_app
+    if source_ref:
+        defaults["source_ref"] = source_ref
     source, created = KnowledgeSource.objects.get_or_create(
-        user=user, website=website, url=url,
-        defaults={"kind": kind, "title": title or "", "status": KnowledgeSource.STATUS_PENDING},
+        user=user, website=website, url=url, defaults=defaults,
     )
     if not created and kind and source.kind != kind:
         # Allow upgrading kind when a more specific tag is supplied.
         source.kind = kind
+    if not created and source_app and source.source_app != source_app:
+        source.source_app = source_app
+    if not created and source_ref and source.source_ref != source_ref:
+        source.source_ref = source_ref
 
     source.status = KnowledgeSource.STATUS_INGESTING
     source.error_message = ""
-    source.save(update_fields=["status", "kind", "error_message", "updated_at"])
+    source.save(update_fields=[
+        "status", "kind", "source_app", "source_ref",
+        "error_message", "updated_at",
+    ])
 
     try:
         if text is None:
@@ -142,6 +167,8 @@ def ingest_url(
                     embedding=vectors[i], embedding_model=model,
                     embedding_dim=dim, section_label=c.section_label,
                     token_count=c.token_count,
+                    metadata=dict(metadata) if metadata else {},
+                    recorded_at=recorded_at,
                 )
                 for i, c in enumerate(chunks)
             ])

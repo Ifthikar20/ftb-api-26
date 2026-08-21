@@ -138,6 +138,34 @@ SLACK = IntegrationConfig(
                     "competitor.change_detected", "audit.completed"],
 )
 
+DISCORD = IntegrationConfig(
+    name="discord",
+    display_name="Discord",
+    auth_type="webhook_url",
+    starter=TierEntitlement(
+        enabled=True,
+        feature_key="discord_webhook",
+        limits={"webhook_only": True},
+    ),
+    growth=TierEntitlement(
+        enabled=True,
+        feature_key="discord_app",
+        limits={"bot_commands": True},
+    ),
+    scale=TierEntitlement(
+        enabled=True,
+        feature_key="discord_advanced",
+        limits={"slash_commands": True, "custom_routing": True},
+    ),
+    rate_limit=RateLimitConfig(
+        requests_per_second=2.5,
+        celery_rate_limit="60/m",
+    ),
+    celery_queue="integrations",
+    webhook_events=["lead.scored", "lead.status_changed",
+                    "competitor.change_detected", "audit.completed"],
+)
+
 WEBHOOKS = IntegrationConfig(
     name="webhooks",
     display_name="Outbound Webhooks",
@@ -335,11 +363,15 @@ class IntegrationRegistry:
 
         With the paywall disabled everyone is treated as the top tier
         ("scale"), so integrations and limits are never plan-blocked.
+        Live plan names (pro/business) map onto the historical
+        starter/growth/scale keys the tier tables use.
         """
         from django.conf import settings
+
+        from core.utils.constants import legacy_tier_key
         if not settings.PAYWALL_ENABLED:
             return "scale"
-        return getattr(user, "plan", "starter")
+        return legacy_tier_key(getattr(user, "plan", "pro"))
 
     def check_entitlement(self, user, integration_name: str) -> bool:
         """Check if a user's plan allows an integration."""
@@ -367,7 +399,7 @@ def get_registry() -> IntegrationRegistry:
     if _registry is None:
         _registry = IntegrationRegistry()
         for config in [
-            HUBSPOT, GOOGLE_ADS, SEMRUSH, SLACK, WEBHOOKS,
+            HUBSPOT, GOOGLE_ADS, SEMRUSH, SLACK, DISCORD, WEBHOOKS,
             GOOGLE_ANALYTICS, GOOGLE_SEARCH_CONSOLE,
             MAILCHIMP, GOOGLE_DRIVE, CANVA,
         ]:

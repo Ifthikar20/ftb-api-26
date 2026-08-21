@@ -193,12 +193,17 @@ def compute_alignment(result) -> AlignmentResult:
     """Benchmark one stored response against the brand knowledge base."""
     audit = result.audit
     website = audit.website
-    # Brand Input chunks are scoped to the website owner, which is who
-    # ingested them — audit.created_by can differ (e.g. seeded audits).
-    user = getattr(website, "user", None) or audit.created_by
+    # Two distinct users here. Brand Input chunks are scoped to the
+    # website owner, which is who ingested them — audit.created_by can
+    # differ (e.g. seeded audits). SPEND, however, belongs to whoever
+    # caused the work: the audit's creator, falling back to the owner
+    # for system-generated audits.
+    kb_user = getattr(website, "user", None) or audit.created_by
+    spend_user = audit.created_by or getattr(website, "user", None)
+    actor = "user" if audit.created_by else "system"
 
     facts = _load_facts(website)
-    chunks = _load_chunks(user, website)
+    chunks = _load_chunks(kb_user, website)
     if not facts and not chunks:
         return _skip(STATUS_NO_BRAND_INPUT)
 
@@ -216,10 +221,11 @@ def compute_alignment(result) -> AlignmentResult:
     prompt_text = (result.prompt or "")[:2000]
     vectors, model, _dim = embed_texts(
         [prompt_text] + all_unit_texts,
-        user=user,
+        user=spend_user,
         website=website,
         metadata={
             "role": "alignment",
+            "actor": actor,
             "audit_id": str(result.audit_id),
             "result_id": str(result.id),
         },

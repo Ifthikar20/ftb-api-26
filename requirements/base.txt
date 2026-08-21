@@ -46,16 +46,19 @@ django-structlog==8.*
 structlog==24.*
 
 # HTTP Requests
+# httpx floor set by polar-sdk (>=0.28.1); nothing in-repo imports httpx
+# directly, it only backs the anthropic/openai SDKs, which accept 0.28.
 requests==2.32.*
-httpx==0.27.*
+httpx==0.28.*
 
 # AI / LLM
 anthropic==0.34.*
 openai==1.51.*
 google-generativeai==0.8.*
 
-# Payments
-stripe==10.*
+
+# Usage metering (Polar.sh event ingestion + meters)
+polar-sdk==0.32.*
 
 # Task utilities
 celery[redis]==5.4.*

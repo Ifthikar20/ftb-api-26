@@ -67,7 +67,9 @@ class CrawlOutcome:
     errors: list[str]
 
 
-def _llm_fanout(prompt_text: str, brand_name: str) -> list[str]:
+def _llm_fanout(
+    prompt_text: str, brand_name: str, *, user=None, website=None, actor: str = "system",
+) -> list[str]:
     """Ask Claude to decompose the prompt into buyer-intent sub-queries.
 
     Returns only genuine LLM-generated sub-queries. On any failure it
@@ -88,9 +90,17 @@ def _llm_fanout(prompt_text: str, brand_name: str) -> list[str]:
         "AI search engine would run in parallel to gather context. "
         "Return only a JSON array of strings, no commentary."
     )
-    user = f"Brand: {brand_name}\nPrompt: {prompt_text}"
+    user_prompt = f"Brand: {brand_name}\nPrompt: {prompt_text}"
     try:
-        resp = prov.query(user, system_prompt=system)
+        resp = prov.query(
+            user_prompt,
+            system_prompt=system,
+            user=user,
+            website=website,
+            module="prompt_library",
+            role="fanout",
+            extra_metadata={"actor": actor},
+        )
     except Exception as exc:
         logger.warning("Fanout LLM call failed: %s", exc)
         return []
@@ -133,11 +143,12 @@ def _website_keywords(website: Website) -> list[str]:
     return deduped
 
 
-def _extract_brands(*, response_text, website, brand_name, keywords, audit_id) -> dict:
+def _extract_brands(*, response_text, website, brand_name, keywords, audit_id, user=None) -> dict:
     """Run the same structured extraction the full audit uses so the
     crawl captures the brand, its rank/sentiment, and every competitor
     named in the response. Falls back to an empty analysis when there's
-    no text or the extractor errors."""
+    no text or the extractor errors. ``user`` is the spend owner (the
+    acting user for manual scans, the website owner for scheduled ones)."""
     if not (response_text or "").strip():
         from apps.llm_ranking.services.extraction_service import HaikuExtractionService
         return HaikuExtractionService._empty_result()
@@ -147,7 +158,7 @@ def _extract_brands(*, response_text, website, brand_name, keywords, audit_id) -
             response_text=response_text,
             brand_name=brand_name,
             keywords=keywords,
-            user=getattr(website, "user", None),
+            user=user if user is not None else getattr(website, "user", None),
             website=website,
             audit_id=audit_id,
         )
@@ -157,7 +168,8 @@ def _extract_brands(*, response_text, website, brand_name, keywords, audit_id) -
         return HaikuExtractionService._empty_result()
 
 
-def _query_with_retry(instance, prompt_text):
+def _query_with_retry(instance, prompt_text, *, user=None, website=None,
+                      audit_id=None, actor: str = "system"):
     """Query a provider, retrying once when it raises or returns a
     non-key transient failure. Returns the ProviderResult (which may
     still be succeeded=False) or None if both attempts raised.
@@ -165,11 +177,21 @@ def _query_with_retry(instance, prompt_text):
     A succeeded=False result whose error is the not-configured /
     service_unavailable sentinel is returned immediately without a
     retry — a missing key won't fix itself on a second call.
+
+    The attribution kwargs make crawl spend visible and capped: an
+    unattributed query() records nothing and bypasses the spend wall.
     """
     last = None
     for attempt in (1, 2):
         try:
-            result = instance.query(prompt_text)
+            result = instance.query(
+                prompt_text,
+                user=user,
+                website=website,
+                audit_id=audit_id,
+                module="prompt_library",
+                extra_metadata={"actor": actor},
+            )
         except Exception as exc:  # noqa: BLE001
             logger.warning("Provider query raised (attempt %d): %s", attempt, exc)
             last = None
@@ -212,6 +234,7 @@ def _dispatch_alignment(result_id) -> None:
 
 def crawl_prompt(
     website: Website, prompt: Prompt, *, only_missing: bool = False,
+    acting_user=None,
 ) -> CrawlOutcome:
     """Run a prompt across every configured provider and persist the
     fanout + responses. Returns a small outcome summary used by the
@@ -222,7 +245,15 @@ def crawl_prompt(
     FULL re-run of every configured model: manual "Run scan" and
     scheduled runs exist to capture a fresh answer set per run, so they
     must never skip a model just because it answered previously.
+
+    ``acting_user`` is whoever clicked "Run scan"; spend is attributed
+    to them (actor="user"). Scheduled/system runs leave it None and the
+    spend goes to the website owner, tagged actor="system" so the usage
+    breakdown can tell the two apart.
     """
+    spend_user = acting_user or getattr(website, "user", None)
+    actor = "user" if acting_user is not None else "system"
+
     run = PromptCrawlRun.objects.create(
         website=website,
         prompt=prompt,
@@ -237,7 +268,10 @@ def crawl_prompt(
     brand_name = getattr(website, "business_name", None) or website.name or "your brand"
     keywords = _website_keywords(website)
     fanouts = _dedupe_fanouts(
-        _llm_fanout(prompt.text or prompt.template_text or "", brand_name)
+        _llm_fanout(
+            prompt.text or prompt.template_text or "", brand_name,
+            user=spend_user, website=website, actor=actor,
+        )
     )
 
     # Replace this prompt's fan-out set rather than appending, so re-scans
@@ -330,7 +364,10 @@ def crawl_prompt(
         # error, rate limit) gets a single second attempt, then we record
         # the failure and move on instead of looping. A hard failure with
         # no key returns succeeded=False immediately and isn't retried.
-        result = _query_with_retry(instance, prompt.text)
+        result = _query_with_retry(
+            instance, prompt.text,
+            user=spend_user, website=website, audit_id=str(audit.id), actor=actor,
+        )
         if result is None:
             errors.append(f"{provider_key}: query raised on both attempts")
             continue
@@ -348,6 +385,7 @@ def crawl_prompt(
             brand_name=brand_name,
             keywords=keywords,
             audit_id=str(audit.id),
+            user=spend_user,
         )
 
         result_obj = LLMRankingResult.objects.create(

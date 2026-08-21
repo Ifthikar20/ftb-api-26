@@ -8,6 +8,7 @@ The AITokenUsage model lives in apps.accounts.models but is accessed through
 this module for convenience.
 """
 import logging
+import uuid
 from datetime import timedelta
 
 from django.utils import timezone
@@ -24,7 +25,10 @@ logger = logging.getLogger(__name__)
 PRICING = {
     # Anthropic
     "claude-sonnet-4-20250514": {"input": 3.00, "output": 15.00},
+    "claude-sonnet-4-5-20250929": {"input": 3.00, "output": 15.00},
+    "claude-opus-4-1-20250805": {"input": 15.00, "output": 75.00},
     "claude-3-5-sonnet-20241022": {"input": 3.00, "output": 15.00},
+    "claude-3-5-sonnet-latest": {"input": 3.00, "output": 15.00},
     "claude-sonnet-4-6": {"input": 3.00, "output": 15.00},
     "claude-haiku-4-5-20251001": {"input": 0.80, "output": 4.00},
     "claude-haiku-4-5": {"input": 0.80, "output": 4.00},
@@ -33,6 +37,7 @@ PRICING = {
     "gpt-4o-mini": {"input": 0.15, "output": 0.60},
     "gpt-4o": {"input": 2.50, "output": 10.00},
     "gpt-4-turbo": {"input": 10.00, "output": 30.00},
+    "text-embedding-3-small": {"input": 0.02, "output": 0.00},
     # Google
     "gemini-1.5-flash": {"input": 0.075, "output": 0.30},
     "gemini-1.5-pro": {"input": 1.25, "output": 5.00},
@@ -58,7 +63,10 @@ PRICING = {
 # Map known model names to canonical provider keys used in AITokenUsage.provider.
 MODEL_PROVIDER = {
     "claude-sonnet-4-20250514": "anthropic",
+    "claude-sonnet-4-5-20250929": "anthropic",
+    "claude-opus-4-1-20250805": "anthropic",
     "claude-3-5-sonnet-20241022": "anthropic",
+    "claude-3-5-sonnet-latest": "anthropic",
     "claude-sonnet-4-6": "anthropic",
     "claude-haiku-4-5-20251001": "anthropic",
     "claude-haiku-4-5": "anthropic",
@@ -66,6 +74,7 @@ MODEL_PROVIDER = {
     "gpt-4o-mini": "openai",
     "gpt-4o": "openai",
     "gpt-4-turbo": "openai",
+    "text-embedding-3-small": "openai",
     "gemini-1.5-flash": "google",
     "gemini-1.5-pro": "google",
     "gemini-2.0-flash": "google",
@@ -100,11 +109,19 @@ def record_usage(
     provider: str = "anthropic",
     duration_ms: int = 0,
     metadata: dict | None = None,
+    idempotency_key: str | None = None,
 ):
     """
     Record an AI API call's token usage.
 
     Call this after every `client.messages.create()` using `response.usage`.
+
+    Writes the AITokenUsage ledger row and, in the same transaction, a
+    Polar outbox event (apps.metering) so external metering can never
+    drift from the ledger. Pass ``idempotency_key`` from retryable call
+    sites (Celery acks_late tasks): a replay under the same key collapses
+    to the original row instead of double-counting. Without a key each
+    call gets a unique one (no dedupe semantics).
 
     Example:
         from core.ai_tracking import record_usage
@@ -119,6 +136,8 @@ def record_usage(
         )
     """
     try:
+        from django.db import transaction
+
         from apps.accounts.models import AITokenUsage
 
         total = input_tokens + output_tokens
@@ -128,19 +147,51 @@ def record_usage(
         if provider == "anthropic" and model_name in MODEL_PROVIDER:
             provider = MODEL_PROVIDER[model_name]
 
-        AITokenUsage.objects.create(
-            user=user,
-            website=website,
-            module=module,
-            provider=provider,
-            model_name=model_name,
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-            total_tokens=total,
-            estimated_cost_usd=cost,
-            duration_ms=duration_ms,
-            metadata=metadata or {},
-        )
+        key = idempotency_key or uuid.uuid4().hex
+        defaults = {
+            "user": user,
+            "website": website,
+            "module": module,
+            "provider": provider,
+            "model_name": model_name,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "total_tokens": total,
+            "estimated_cost_usd": cost,
+            "duration_ms": duration_ms,
+            "metadata": metadata or {},
+        }
+
+        def _write_ledger():
+            return AITokenUsage.objects.get_or_create(
+                idempotency_key=key, defaults=defaults
+            )
+
+        try:
+            with transaction.atomic():
+                row, created = _write_ledger()
+                if created:
+                    from apps.metering.services.events import enqueue_usage_event
+
+                    enqueue_usage_event(row)
+        except Exception:
+            # The ledger is enforcement-critical; metering is reconcilable
+            # (polar_backfill). Keep the row even when the outbox insert
+            # fails.
+            logger.warning(
+                "Polar outbox enqueue failed; retrying ledger write alone",
+                exc_info=True,
+            )
+            row, created = _write_ledger()
+
+        if not created:
+            logger.info("Duplicate AI usage suppressed (idempotency_key=%s)", key)
+            return
+
+        from apps.metering.services.events import ingest_mode, schedule_flush
+
+        if ingest_mode() != "off":
+            transaction.on_commit(schedule_flush)
 
         logger.debug(
             "AI usage: %s | %s | %d in + %d out = %d tokens | $%.4f",
@@ -148,57 +199,17 @@ def record_usage(
         )
 
         if user is not None:
-            _maybe_notify_cap(user, just_spent=cost)
+            from apps.metering.services import spend_counter
+
+            spend_counter.bump(user, cost)
+        elif module != "onboarding":
+            # Pre-signup onboarding scans are the only sanctioned
+            # unattributed spend; anything else is an attribution bug.
+            logger.warning(
+                "Unattributed AI usage recorded: module=%s model=%s", module, model_name
+            )
     except Exception as e:
-        logger.warning("Failed to record AI token usage: %s", e)
-
-
-def _maybe_notify_cap(user, *, just_spent: float) -> None:
-    """Notify once per month when spend crosses the warn or hard threshold.
-
-    Crossing is detected against the pre-call total so a single burst of
-    calls produces one notification, and the month-scoped existence check
-    keeps retries from duplicating it.
-    """
-    cap = effective_ai_cap(user)
-    if cap <= 0:
-        return
-    spent_after = month_to_date_cost(user)
-    spent_before = spent_after - just_spent
-    month_start, resets_at = _month_bounds()
-
-    for ntype, threshold, title, body in (
-        (
-            "ai_cap_exceeded", cap,
-            "Monthly AI allowance reached",
-            f"You have used your full AI allowance (${cap:.2f}) for this "
-            f"billing month. AI features pause until "
-            f"{resets_at.date().isoformat()}.",
-        ),
-        (
-            "ai_cap_warning", cap * AI_SPEND_WARN_RATIO,
-            "Approaching your monthly AI allowance",
-            f"You have used over {int(AI_SPEND_WARN_RATIO * 100)}% of your "
-            f"${cap:.2f} monthly AI allowance. It resets on "
-            f"{resets_at.date().isoformat()}.",
-        ),
-    ):
-        if spent_before < threshold <= spent_after:
-            try:
-                from apps.notifications.models import Notification
-
-                already = Notification.objects.filter(
-                    user=user, type=ntype, created_at__gte=month_start,
-                ).exists()
-                if not already:
-                    Notification.objects.create(
-                        user=user, type=ntype, title=title, message=body,
-                        data={"cap_usd": cap, "spent_usd": round(spent_after, 4)},
-                        action_url="/settings",
-                    )
-            except Exception as exc:
-                logger.debug("Cap notification failed: %s", exc)
-            break
+        logger.warning("Failed to record AI token usage: %s", e, exc_info=True)
 
 
 def get_usage_summary(user=None, days=30):
@@ -280,9 +291,15 @@ def get_usage_summary(user=None, days=30):
         .order_by("day")
     )
 
-    # Cap status — uses User.monthly_ai_cost_cap_usd if set. Compares against
-    # the calendar-month-to-date spend, NOT the rolling window above.
-    cap_status = _cap_status(user) if user else None
+    # Allowance status — the honest denominator (plan USD cap + real
+    # period spend/tokens). Computed over the user's billing period, NOT
+    # the rolling window above.
+    if user:
+        from apps.metering.services.usage_reader import allowance_status
+
+        cap_status = allowance_status(user)
+    else:
+        cap_status = None
 
     return {
         "period_days": days,
@@ -313,129 +330,59 @@ AI_SPEND_WARN_RATIO = 0.80
 def effective_ai_cap(user) -> float:
     """Monthly AI spend allowance in USD for ``user``. 0 = unlimited.
 
-    Priced plans derive the cap from price: a $45/mo plan allows
-    $45 * 0.65 = $29.25 of model cost per calendar month. A manual
-    ``monthly_ai_cost_cap_usd`` can only make that cap STRICTER — margin
-    protection cannot be widened per-user from the profile form.
+    The plan is resolved from ACTUAL subscription status
+    (apps.billing.services.plan_limits.current_plan_for): an account
+    without an active/trialing subscription is on the FREE plan and gets
+    ``settings.AI_FREE_MONTHLY_CAP_USD`` (a small acquisition budget) —
+    never a paid tier's allowance. The denormalized user.plan value is
+    not consulted; it defaults to a paid tier and used to leak paid
+    allowances (and, via the org ENTERPRISE default, the $500 ceiling
+    that produced the fabricated 305M-token display).
 
-    Enterprise / custom pricing (price_monthly == -1) has no price to
-    derive from. Rather than fall through to 0.0 (unlimited) — which, given
-    ``Organization.plan`` defaults to ENTERPRISE, would leave any org user
-    uncapped — it uses the per-account ``monthly_ai_cost_cap_usd`` when set
-    (the negotiated ceiling), otherwise a finite safety ceiling from
-    ``settings.AI_ENTERPRISE_MONTHLY_CAP_USD`` so a bug or abuse cannot run
-    unbounded spend. Set that setting to 0 to opt a whole deployment into
-    genuinely unlimited enterprise spend.
+    Paid plans derive the cap from price: Pro $45/mo allows
+    $45 * 0.65 = $29.25 of model cost per billing period. A manual
+    ``monthly_ai_cost_cap_usd`` only TIGHTENS a priced plan's cap, but
+    RAISES a free account's (comped testers) and SETS the ceiling for
+    Business/custom (negotiated), which otherwise uses the finite
+    ``settings.AI_ENTERPRISE_MONTHLY_CAP_USD`` safety ceiling.
     """
     if user is None:
         return 0.0
     from django.conf import settings
 
+    from apps.billing.services.plan_limits import current_plan_for
     from core.utils.constants import PLAN_LIMITS, Plan
 
-    try:
-        sub = getattr(user, "subscription", None)
-        plan = getattr(sub, "plan", None) if sub else None
-    except Exception:
-        plan = None
-    if not plan:
-        plan = getattr(user, "effective_plan", None) or getattr(user, "plan", None)
-    limits = PLAN_LIMITS.get(plan) or PLAN_LIMITS.get(Plan.INDIVIDUAL, {})
-
-    price = limits.get("price_monthly") or 0
+    plan = current_plan_for(user)
+    limits = PLAN_LIMITS.get(plan) or PLAN_LIMITS[Plan.FREE]
     manual = float(getattr(user, "monthly_ai_cost_cap_usd", 0) or 0)
 
+    if plan == Plan.FREE:
+        free_cap = float(getattr(settings, "AI_FREE_MONTHLY_CAP_USD", 0) or 0)
+        return manual if manual > 0 else free_cap
+
+    price = limits.get("price_monthly") or 0
     if price and price > 0:
         # Priced plan: cap derived from price; a manual cap only tightens it.
         derived = round(price * AI_SPEND_CAP_RATIO, 2)
         return min(manual, derived) if manual > 0 else derived
 
-    # Enterprise / custom pricing: no derived cap. Never unlimited by default.
+    # Business / custom pricing: no derived cap. Never unlimited by default.
     if manual > 0:
         return manual
     return float(getattr(settings, "AI_ENTERPRISE_MONTHLY_CAP_USD", 0) or 0)
 
 
-def _month_bounds(now=None):
-    now = now or timezone.now()
-    start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    if start.month == 12:
-        nxt = start.replace(year=start.year + 1, month=1)
-    else:
-        nxt = start.replace(month=start.month + 1)
-    return start, nxt
-
-
-# Nominal blended tokens-per-USD used to express a dollar allowance as a
-# token capacity before an account has any usage of its own to derive a
-# real mix from. Roughly a haiku-heavy blend; display-only.
-NOMINAL_TOKENS_PER_USD = 700_000
-
-
-def _cap_status(user):
-    """Calendar-month-to-date spend vs the user's effective allowance.
-
-    The user-facing representation is TOKENS: internally the cap is USD
-    (that is what protects margin), but the UI shows a token allowance —
-    ``capacity_tokens`` is the projected monthly token capacity at the
-    account's current model mix (tokens_used * cap / spent), falling back
-    to a nominal blend when there is no usage yet. Because the mix varies,
-    the capacity is an estimate and moves with usage; the dollar numbers
-    stay in AITokenUsage rows for audit.
-    """
-    from django.db.models import Sum
-
-    from apps.accounts.models import AITokenUsage
-
-    spent = month_to_date_cost(user)
-    cap = effective_ai_cap(user)
-    month_start, resets_at = _month_bounds()
-
-    used_tokens = (
-        AITokenUsage.objects
-        .filter(user=user, created_at__gte=month_start)
-        .aggregate(total=Sum("total_tokens"))["total"] or 0
-    )
-    if cap > 0:
-        if spent > 0 and used_tokens > 0:
-            capacity_tokens = int(used_tokens * cap / spent)
-        else:
-            capacity_tokens = int(cap * NOMINAL_TOKENS_PER_USD)
-    else:
-        capacity_tokens = 0
-    manual = float(getattr(user, "monthly_ai_cost_cap_usd", 0) or 0)
-    if cap <= 0:
-        source = "none"
-    elif manual > 0 and cap == manual:
-        source = "manual"
-    else:
-        source = "plan"
-    return {
-        "month_start": month_start.isoformat(),
-        "resets_at": resets_at.isoformat(),
-        "spent_usd": round(spent, 4),
-        "cap_usd": cap,
-        "cap_source": source,
-        "cap_ratio": AI_SPEND_CAP_RATIO,
-        "used_tokens": int(used_tokens),
-        "capacity_tokens": capacity_tokens,
-        "pct": round(spent / cap * 100, 1) if cap > 0 else None,
-        "warning": cap > 0 and spent >= cap * AI_SPEND_WARN_RATIO,
-        "exceeded": cap > 0 and spent >= cap,
-    }
-
-
 def month_to_date_cost(user) -> float:
-    """Calendar-month-to-date AI cost for a user. Used by per-module cost guards."""
-    from django.db.models import Sum
+    """Billing-period-to-date AI cost for a user. Used by per-module cost
+    guards and the hard spend wall.
 
-    from apps.accounts.models import AITokenUsage
+    Kept under its historical name (many call sites import it). The
+    window is apps.metering.services.periods.billing_period_for — today
+    that is the calendar month for everyone (no populated subscription
+    periods exist), identical to the old behavior; once Phase 2 populates
+    real billing cycles, the wall and every usage surface move together.
+    """
+    from apps.metering.services.usage_reader import period_spent_usd
 
-    now = timezone.now()
-    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    total = (
-        AITokenUsage.objects
-        .filter(user=user, created_at__gte=month_start)
-        .aggregate(total=Sum("estimated_cost_usd"))["total"] or 0
-    )
-    return float(total)
+    return period_spent_usd(user)

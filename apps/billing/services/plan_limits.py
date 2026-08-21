@@ -2,16 +2,43 @@
 
 from django.conf import settings
 
-from core.utils.constants import PLAN_LIMITS, Plan
+from core.utils.constants import PLAN_LIMITS, Plan, SubscriptionStatus
 
-# Legacy plan → 2-tier mapping
+
+def current_plan_for(user) -> str:
+    """The plan the account is ACTUALLY on, resolved from subscription
+    status — the single source of truth for billing-facing surfaces.
+
+    An active or trialing subscription grants its plan; everything else
+    (no subscription, canceled, past_due beyond grace) is the FREE plan.
+    The denormalized ``user.plan`` value is deliberately not consulted:
+    it defaults to a paid tier and historically leaked paid allowances
+    to unsubscribed accounts.
+    """
+    if user is None:
+        return Plan.FREE
+    try:
+        sub = getattr(user, "subscription", None)
+    except Exception:
+        sub = None
+    if sub is not None and sub.status in (
+        SubscriptionStatus.ACTIVE,
+        SubscriptionStatus.TRIALING,
+    ):
+        plan = _LEGACY_MAP.get(sub.plan, sub.plan)
+        if plan in (Plan.PRO, Plan.BUSINESS):
+            return plan
+        return Plan.PRO  # active sub on an unrecognized value: honor payment
+    return Plan.FREE
+
+# Legacy plan → live-tier mapping (Free / Pro $45 self-serve / Business custom)
 _LEGACY_MAP = {
-    "starter": Plan.INDIVIDUAL,
-    "growth": Plan.INDIVIDUAL,
-    "free": Plan.INDIVIDUAL,
-    "scale": Plan.ENTERPRISE,
-    "team": Plan.ENTERPRISE,
-    "business": Plan.ENTERPRISE,
+    "individual": Plan.PRO,
+    "starter": Plan.PRO,
+    "growth": Plan.PRO,
+    "scale": Plan.BUSINESS,
+    "team": Plan.BUSINESS,
+    "enterprise": Plan.BUSINESS,
 }
 
 
@@ -20,8 +47,8 @@ def _resolve_plan_key(user):
     # Paywall off: everyone gets the top tier so no feature or numeric
     # limit blocks them.
     if not settings.PAYWALL_ENABLED:
-        return Plan.ENTERPRISE
-    plan_key = getattr(user, "effective_plan", None) or getattr(user, "plan", "individual")
+        return Plan.BUSINESS
+    plan_key = getattr(user, "effective_plan", None) or getattr(user, "plan", "pro")
     # Map legacy names
     plan_key = _LEGACY_MAP.get(plan_key, plan_key)
     return plan_key
@@ -30,7 +57,7 @@ def _resolve_plan_key(user):
 def get_limits(user):
     """Return the PLAN_LIMITS dict for a user's effective plan."""
     plan_key = _resolve_plan_key(user)
-    return PLAN_LIMITS.get(plan_key, PLAN_LIMITS[Plan.INDIVIDUAL])
+    return PLAN_LIMITS.get(plan_key, PLAN_LIMITS[Plan.PRO])
 
 
 def check_feature(user, feature_key):

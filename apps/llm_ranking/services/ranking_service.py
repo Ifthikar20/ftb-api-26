@@ -10,8 +10,9 @@ import re
 import secrets
 from decimal import Decimal
 
-from django.conf import settings
 from django.utils import timezone
+
+from core.llm import ClaudeUtility
 
 logger = logging.getLogger("apps")
 
@@ -234,8 +235,6 @@ class LLMRankingService:
 
         # Use Claude to generate additional natural variants
         try:
-            import anthropic
-            client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
             loc_hint = f"\nLocation: {location}" if location else ""
             rag_hint = f"\n\n{rag_block}" if rag_block else ""
             existing = "\n".join(f"  - {item['text']}" for item in result_items[:6])
@@ -247,10 +246,32 @@ class LLMRankingService:
             # don't truncate the JSON tail. The output stays ~4 short
             # strings — extra budget is "free" since we don't pay until
             # the model emits.
-            resp = client.messages.create(
-                model="claude-sonnet-4-20250514",
-                max_tokens=900,
-                system=(
+            #
+            # Goes through the central LLM gateway (spend-wall, rate
+            # limit/breaker, usage recording with role=prompt_generation).
+            result = ClaudeUtility(
+                model="claude-sonnet-4-20250514", max_tokens=900,
+            ).query(
+                (
+                    f"Business: {business_name}\n"
+                    f"Industry: {industry}\n"
+                    f"Description: {description}\n"
+                    f"Keywords: {', '.join(keywords)}{loc_hint}{rag_hint}\n\n"
+                    f"Existing prompts already covered (do NOT repeat the "
+                    f"phrasing of these):\n{existing or '  (none)'}\n\n"
+                    "Generate exactly 4 NEW prompts that probe different "
+                    "buyer intents:\n"
+                    "  1. Decision (\"which X should I pick for Y?\")\n"
+                    "  2. Comparison (\"X vs Y for {use case}\")\n"
+                    "  3. Specific feature / pain (\"best X that does Z\")\n"
+                    "  4. Persona / context (\"X for a [persona]\")\n\n"
+                    "Each prompt: 8 to 25 words, ends with '?', "
+                    "mentions the industry or a concrete use-case (not "
+                    "the brand name itself), avoids superlatives like "
+                    "'best ever'. Return ONLY a JSON array of 4 "
+                    "question strings, no other text."
+                ),
+                system_prompt=(
                     "You generate buyer-intent prompts that real users would "
                     "type into ChatGPT, Claude, Gemini, or Perplexity when "
                     "they're shopping for a product in this category. Each "
@@ -258,48 +279,16 @@ class LLMRankingService:
                     "out loud — natural, specific, and useful for measuring "
                     "where the brand surfaces in AI answers."
                 ),
-                messages=[{
-                    "role": "user",
-                    "content": (
-                        f"Business: {business_name}\n"
-                        f"Industry: {industry}\n"
-                        f"Description: {description}\n"
-                        f"Keywords: {', '.join(keywords)}{loc_hint}{rag_hint}\n\n"
-                        f"Existing prompts already covered (do NOT repeat the "
-                        f"phrasing of these):\n{existing or '  (none)'}\n\n"
-                        "Generate exactly 4 NEW prompts that probe different "
-                        "buyer intents:\n"
-                        "  1. Decision (\"which X should I pick for Y?\")\n"
-                        "  2. Comparison (\"X vs Y for {use case}\")\n"
-                        "  3. Specific feature / pain (\"best X that does Z\")\n"
-                        "  4. Persona / context (\"X for a [persona]\")\n\n"
-                        "Each prompt: 8 to 25 words, ends with '?', "
-                        "mentions the industry or a concrete use-case (not "
-                        "the brand name itself), avoids superlatives like "
-                        "'best ever'. Return ONLY a JSON array of 4 "
-                        "question strings, no other text."
-                    ),
-                }],
+                user=user,
+                website=website,
+                role="prompt_generation",
+                module="llm_ranking",
             )
+            if not result.succeeded:
+                raise RuntimeError(result.error)
+            text = result.text
             import json
             import re as _re
-            # Anthropic responses can contain ToolUseBlock or TextBlock
-            # entries; only TextBlock has `.text`. Pull the first text
-            # block defensively so type-checkers stop complaining.
-            block = resp.content[0]
-            text = (getattr(block, "text", "") or "").strip()
-            # Track token usage — tagged as prompt-generation so it's
-            # distinguishable from upstream and extraction calls.
-            try:
-                from core.ai_tracking import record_usage
-                record_usage(
-                    module="llm_ranking", model_name="claude-sonnet-4-20250514",
-                    input_tokens=resp.usage.input_tokens, output_tokens=resp.usage.output_tokens,
-                    user=user, website=website,
-                    metadata={"role": "prompt_generation"},
-                )
-            except Exception:
-                pass
             match = _re.search(r"\[.*\]", text, _re.DOTALL)
             if match:
                 ai_prompts = json.loads(match.group())
@@ -854,11 +843,16 @@ class LLMRankingService:
             return {"audit_id": audit_id, "prompt_index": prompt_index,
                     "provider": provider, "succeeded": False}
 
+        # The cell task runs with acks_late + retries: a worker crash after
+        # the provider answered replays the whole cell. The idempotency key
+        # makes the replayed usage recording collapse onto the original
+        # ledger row instead of double-billing the cell.
         result = provider_inst.query(
             prompt_text, sys_prompt,
             user=audit.created_by, website=audit.website,
             audit_id=str(audit.id),
             region=getattr(audit, "region", "") or "",
+            idempotency_key=f"audit:{audit.id}:cell:{prompt_index}:{provider}:upstream",
         )
 
         analysis = LLMRankingService._empty_analysis()
@@ -871,6 +865,9 @@ class LLMRankingService:
                     user=audit.created_by,
                     website=audit.website,
                     audit_id=str(audit.id),
+                    idempotency_key=(
+                        f"audit:{audit.id}:cell:{prompt_index}:{provider}:extraction"
+                    ),
                 )
             except Exception as exc:
                 logger.warning(

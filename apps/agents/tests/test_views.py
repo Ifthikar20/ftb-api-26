@@ -38,7 +38,7 @@ def test_catalog_lists_agents(auth):
     body = resp.json()["data"]  # unwrap the global success/data envelope
     keys = {a["key"] for a in body["data"]}
     assert {"visibility_analyst", "citation_hunter", "brand_watchdog"} <= keys
-    assert body["capacity"]["max_agents"] == 1  # individual plan
+    assert body["capacity"]["max_agents"] == 5  # Pro tier ($45)
 
 
 @pytest.mark.django_db
@@ -58,20 +58,22 @@ def test_hire_creates_agent(auth):
 @pytest.mark.django_db
 def test_hire_respects_plan_limit(auth):
     client, user, website = auth
+    # Pro allows 5 agents; pre-fill 5 hires so the next one is blocked.
+    keys = [
+        "visibility_analyst", "citation_hunter", "brand_watchdog",
+        "competitor_spy", "content_strategist",
+    ]
+    for key in keys:
+        HiredAgent.objects.create(
+            user=user, website=website, created_by=user, agent_key=key,
+        )
     w2 = WebsiteFactory(user=user)
-    r1 = client.post(
-        "/api/v1/agents/hire/",
-        {"agent_key": "visibility_analyst", "website_id": str(website.id)},
-        format="json",
-    )
-    assert r1.status_code == 201
-    # Individual plan max_agents == 1 -> second hire blocked.
-    r2 = client.post(
+    resp = client.post(
         "/api/v1/agents/hire/",
         {"agent_key": "lead_scout", "website_id": str(w2.id)},
         format="json",
     )
-    assert r2.status_code == 402
+    assert resp.status_code == 402
 
 
 @pytest.mark.django_db

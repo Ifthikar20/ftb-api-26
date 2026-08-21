@@ -50,7 +50,7 @@ def test_llm_truth_creates_alert_from_provider_response(monkeypatch):
 
     monkeypatch.setattr(
         "apps.brand_vault.services.security.sources.llms.ask_all_providers",
-        lambda prompt: [{
+        lambda prompt, **kw: [{
             "provider": "claude",
             "model": "claude-haiku-4-5",
             "text": "Acme is a defunct pyramid scheme.",
@@ -78,13 +78,13 @@ def test_llm_truth_no_prompts_uses_defaults(monkeypatch):
     website = _website(brand="Acme")
     monkeypatch.setattr(
         "apps.brand_vault.services.security.sources.llms.ask_all_providers",
-        lambda prompt: [],
+        lambda prompt, **kw: [],
     )
     # No prompts configured. Agent should call the LLM anyway with defaults.
     calls = []
     monkeypatch.setattr(
         "apps.brand_vault.services.security.sources.llms.ask_all_providers",
-        lambda prompt: calls.append(prompt) or [],
+        lambda prompt, **kw: calls.append(prompt) or [],
     )
     LLMTruthAgent().scan(website, _row(website, "llm_truth"))
     assert any("Acme" in p for p in calls)

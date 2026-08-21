@@ -10,6 +10,11 @@ CORS_ALLOW_ALL_ORIGINS = True
 # with LLM_SCAN_MODE=celery if you run a worker locally.
 LLM_SCAN_MODE = env("LLM_SCAN_MODE", default="inline")  # noqa: F405
 
+# Chat-bot answers (Discord/Slack) must be dispatched AFTER the webhook
+# view returns its 3-second ack. Eager Celery would run them inline
+# before the ack, so dev uses a background thread instead.
+CHAT_EAGER_THREAD_DISPATCH = True
+
 # Disable rate limiting in dev
 REST_FRAMEWORK["DEFAULT_THROTTLE_CLASSES"] = []  # noqa: F405
 
@@ -48,4 +53,3 @@ CELERY_TASK_ALWAYS_EAGER = True
 CELERY_TASK_EAGER_PROPAGATES = True
 
 # Mock checkout so the paywall flow is walkable without Stripe keys.
-BILLING_DEV_MODE = True

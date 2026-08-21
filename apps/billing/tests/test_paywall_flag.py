@@ -65,7 +65,6 @@ class TestSessionRouting:
         WebsiteFactory(user=user)
         Subscription.objects.create(
             user=user, status=SubscriptionStatus.ACTIVE, plan="starter",
-            stripe_customer_id="cus_x", stripe_subscription_id="sub_x",
         )
         data = _session(user)
         assert data["next_route"] == "app"
@@ -82,9 +81,9 @@ class TestEntitlementBypass:
 
     def test_plan_limits_gate_when_enabled(self, user, settings):
         settings.PAYWALL_ENABLED = True
-        # starter maps to the individual tier, which lacks trend intelligence
-        assert plan_limits.check_feature(user, "trend_intelligence") is False
-        assert plan_limits.get_numeric_limit(user, "projects") == 1
+        # starter maps to the Pro tier ($45): 5 projects, no SSO.
+        assert plan_limits.check_feature(user, "sso") is False
+        assert plan_limits.get_numeric_limit(user, "projects") == 5
 
     def test_plan_features_bypass(self, user, settings):
         settings.PAYWALL_ENABLED = False
@@ -92,7 +91,8 @@ class TestEntitlementBypass:
         assert get_team_member_limit(user) == 9999
         settings.PAYWALL_ENABLED = True
         assert user_has_feature(user, "white_label") is False
-        assert get_team_member_limit(user) == 1
+        # starter resolves to the Pro tier: 5 team members.
+        assert get_team_member_limit(user) == 5
 
     def test_integration_registry_bypass(self, user, settings):
         # hubspot is disabled on starter, enabled on growth/scale
@@ -128,4 +128,4 @@ class TestEntitlementBypass:
         settings.PAYWALL_ENABLED = False
         assert max_prompts_for_user(user) == 50
         settings.PAYWALL_ENABLED = True
-        assert max_prompts_for_user(user) == 5  # no subscription -> individual cap
+        assert max_prompts_for_user(user) == 15  # no subscription -> Pro cap

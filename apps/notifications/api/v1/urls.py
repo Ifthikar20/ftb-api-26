@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import views
+from . import chat_webhooks, views
 
 urlpatterns = [
     path("", views.NotificationListView.as_view(), name="notification-list"),
@@ -10,7 +10,12 @@ urlpatterns = [
     path("<uuid:pk>/read/", views.NotificationReadView.as_view(), name="notification-read"),
     path("<uuid:pk>/", views.NotificationDetailView.as_view(), name="notification-detail"),
 
-    # Integration connections (Slack / Discord / Telegram)
+    # Integration connections (Slack / Discord)
     path("integrations/", views.IntegrationConnectionListView.as_view(), name="integration-list"),
     path("integrations/<uuid:pk>/", views.IntegrationConnectionDetailView.as_view(), name="integration-detail"),
+
+    # Inbound chat-platform webhooks (signature-verified, unauthenticated)
+    path("discord/interactions/", chat_webhooks.discord_interactions, name="discord-interactions"),
+    path("slack/events/", chat_webhooks.slack_events, name="slack-events"),
+    path("slack/commands/", chat_webhooks.slack_commands, name="slack-commands"),
 ]

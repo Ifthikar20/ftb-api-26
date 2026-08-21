@@ -32,6 +32,18 @@ app.conf.task_routes = {
     # agents: runs are AI-heavy; action execution hits integrations
     "apps.agents.tasks.run_hired_agent": {"queue": "ai"},
     "apps.agents.tasks.execute_agent_action": {"queue": "integrations"},
+    # notifications: chat commands may call an LLM; report digests hit
+    # third-party webhooks
+    "apps.notifications.tasks.answer_chat_command": {"queue": "ai"},
+    "apps.notifications.tasks.send_daily_growth_reports": {"queue": "integrations"},
+    "apps.notifications.tasks.send_weekly_reports": {"queue": "integrations"},
+    # metering: Polar delivery is a third-party HTTP call, and the ai queue
+    # can be saturated for tens of minutes by audit fan-out — events must
+    # keep flowing then (Polar attributes usage by ingestion time).
+    "apps.metering.tasks.flush_polar_events": {"queue": "integrations"},
+    "apps.metering.tasks.prune_ai_usage_ledger": {"queue": "integrations"},
+    "apps.metering.tasks.prune_polar_outbox": {"queue": "integrations"},
+    "apps.metering.tasks.notify_cap_threshold": {"queue": "default"},
 }
 
 app.conf.beat_schedule = {
@@ -128,5 +140,20 @@ app.conf.beat_schedule = {
     "gsc-nightly-sync": {
         "task": "apps.search_console.tasks.sync_all_gsc",
         "schedule": crontab(minute=0, hour=3),
+    },
+    # ── Polar usage metering ──
+    # Sweeper for outbox rows whose on_commit fast-path dispatch was lost
+    # (broker blip, worker restart). Cheap no-op when the outbox is empty.
+    "polar-outbox-sweep": {
+        "task": "apps.metering.tasks.flush_polar_events",
+        "schedule": crontab(minute="*/2"),
+    },
+    "prune-ai-usage-ledger": {
+        "task": "apps.metering.tasks.prune_ai_usage_ledger",
+        "schedule": crontab(minute=40, hour=2),
+    },
+    "prune-polar-outbox": {
+        "task": "apps.metering.tasks.prune_polar_outbox",
+        "schedule": crontab(minute=50, hour=2, day_of_week=0),
     },
 }

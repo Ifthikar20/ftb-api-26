@@ -5,22 +5,52 @@ All views handle Stripe unavailability gracefully by returning cached data.
 """
 
 import logging
-from datetime import timedelta
 
-from django.db.models import Sum
-from django.utils import timezone
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.accounts.models import AITokenUsage
 from apps.billing.models import Invoice, Subscription
 from apps.billing.services.plan_service import PlanService
-from apps.billing.services.stripe_service import StripeService
-from apps.billing.services.usage_service import UsageService
 
 logger = logging.getLogger("billing")
+
+
+def _safe_origin(request) -> str:
+    """Origin used to build checkout/portal return URLs.
+
+    The Origin/Referer headers are attacker-controllable, and Polar's
+    success redirect is NOT signed — trusting them blindly would let a
+    crafted request bounce a paying customer to a foreign site after
+    checkout. Only origins on the CORS allowlist (plus FRONTEND_URL)
+    are honored; anything else falls back to FRONTEND_URL.
+    """
+    from urllib.parse import urlsplit
+
+    from django.conf import settings as dj_settings
+
+    allowed = set(getattr(dj_settings, "CORS_ALLOWED_ORIGINS", []) or [])
+    canonical = getattr(dj_settings, "FRONTEND_URL", "").rstrip("/")
+    if canonical:
+        allowed.add(canonical)
+
+    raw = request.META.get("HTTP_ORIGIN") or request.META.get("HTTP_REFERER") or ""
+    parts = urlsplit(raw)
+    candidate = f"{parts.scheme}://{parts.netloc}" if parts.scheme and parts.netloc else ""
+    if candidate and candidate in allowed:
+        return candidate
+    return canonical or "https://app.fetchbot.io"
+
+
+def _client_ip(request) -> str:
+    """Best-effort customer IP for Polar's location-based tax/currency
+    detection. Behind the nginx proxy the first X-Forwarded-For hop is
+    the client; direct connections use REMOTE_ADDR."""
+    forwarded = request.META.get("HTTP_X_FORWARDED_FOR", "")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.META.get("REMOTE_ADDR", "")
 
 
 class BillingOverviewView(APIView):
@@ -28,43 +58,43 @@ class BillingOverviewView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        from apps.billing.services import polar_billing
+        from apps.billing.services.plan_limits import current_plan_for
+
         try:
             subscription = request.user.subscription
-            plan_data = PlanService.get_plan(subscription.plan)
         except Subscription.DoesNotExist:
             subscription = None
-            plan_data = PlanService.get_plan("starter")
+
+        # The plan the account is ACTUALLY on: an active/trialing
+        # subscription grants its tier; everything else is Free. Never
+        # derived from the denormalized user.plan, which defaults to a
+        # paid tier and used to leak paid allowances to unsubscribed
+        # accounts.
+        active_plan = str(current_plan_for(request.user))
+        plan_data = PlanService.get_plan(active_plan)
 
         # Determine segment
         segment = getattr(request.user, "segment", None) or "individual"
-
-        # Usage — never fails, returns {} if no subscription
-        usage = UsageService.get_current_usage(user=request.user)
-
-        # Plan should mirror the actual subscription where one exists
-        # (user.plan can drift from subscription.plan when the user
-        # upgrades or downgrades). Falls back to the user's profile
-        # plan only when there's no subscription row.
-        active_plan = subscription.plan if subscription else getattr(request.user, "plan", "starter")
 
         return Response({
             "plan": active_plan,
             "segment": segment,
             "plan_details": plan_data,
+            # False until the Polar token + product ids are configured —
+            # the frontend disables checkout and says so instead of
+            # letting the button fail silently.
+            "billing_ready": polar_billing.is_configured(),
             "subscription_status": subscription.status if subscription else "none",
             "current_period_end": (
                 subscription.current_period_end.isoformat()
                 if subscription and subscription.current_period_end else None
             ),
             "cancel_at_period_end": subscription.cancel_at_period_end if subscription else False,
-            "stripe_customer_id": bool(subscription.stripe_customer_id) if subscription else False,
-            # Surface the Subscription ID so the frontend can tell a
-            # dev_sub_* (mock) row from a real Stripe one and decide
-            # whether to show the "Manage subscription" portal button.
-            "stripe_subscription_id": (
-                subscription.stripe_subscription_id if subscription else None
-            ),
-            "usage": usage,
+            # True when this subscription is managed by the billing
+            # provider (Polar) — gates the "Manage billing" portal button.
+            "managed": bool(subscription.polar_subscription_id) if subscription else False,
+            "provider": "polar" if subscription and subscription.polar_subscription_id else None,
         })
 
 
@@ -76,90 +106,29 @@ class PlansView(APIView):
         return Response(PlanService.get_all_plans())
 
 
-class DevSubscribeView(APIView):
-    """
-    Mock checkout for dev / demo environments. Accepts any "card"
-    payload and immediately flips the user's Subscription to ACTIVE
-    so the funnel (onboarding -> paywall -> dashboard) is walkable
-    without standing up Stripe.
+class CheckoutView(APIView):
+    """Create a Polar checkout session for the Pro plan.
 
-    Gated behind ``settings.BILLING_DEV_MODE`` so it can never be
-    accidentally enabled in prod. Returns 404 when disabled to avoid
-    advertising the endpoint.
+    The old Stripe checkout and the BILLING_DEV_MODE mock path are gone:
+    subscribing always goes through Polar's hosted checkout (sandbox
+    accepts Stripe test cards, so dev/demo flows use real checkout too).
     """
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        from datetime import timedelta
-
-        from django.conf import settings as dj_settings
-        from django.utils import timezone
-
-        if not getattr(dj_settings, "BILLING_DEV_MODE", False):
-            return Response(
-                {"success": False, "error": {"code": "not_found", "message": "Not available."}},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
-        plan = request.data.get("plan", "individual")
+        plan = request.data.get("plan", "pro")
         annual = bool(request.data.get("annual", False))
 
-        from core.utils.constants import Plan, SubscriptionStatus
-
-        # Map our pricing-tier codes to the canonical Plan enum.
-        plan_map = {
-            "individual": Plan.INDIVIDUAL,
-            "starter": Plan.INDIVIDUAL,
-            "pro": Plan.PRO,
-            "enterprise": Plan.ENTERPRISE,
-        }
-        canonical_plan = plan_map.get(plan, Plan.INDIVIDUAL)
-
-        now = timezone.now()
-        period_end = now + timedelta(days=365 if annual else 30)
-
-        sub, _ = Subscription.objects.update_or_create(
-            user=request.user,
-            defaults={
-                "plan": canonical_plan,
-                "status": SubscriptionStatus.ACTIVE,
-                "stripe_subscription_id": f"dev_sub_{request.user.id}",
-                "stripe_customer_id": f"dev_cus_{request.user.id}",
-                "current_period_start": now,
-                "current_period_end": period_end,
-                "cancel_at_period_end": False,
-            },
-        )
-
-        return Response({
-            "success": True,
-            "data": {
-                "plan": sub.plan,
-                "status": sub.status,
-                "current_period_end": sub.current_period_end.isoformat(),
-                "dev_mode": True,
-            },
-        })
-
-
-class CheckoutView(APIView):
-    """Create a Stripe checkout session for subscribing."""
-    permission_classes = [IsAuthenticated]
-
-    def post(self, request):
-        plan = request.data.get("plan", "starter")
-        annual = request.data.get("annual", False)
-
-        # Validate plan — starter and pro are self-serve; enterprise requires sales contact
-        valid_plans = ["starter", "pro"]
-        if plan not in valid_plans:
+        # Pro is the only self-serve tier; Business requires sales contact.
+        legacy_pro_names = {"pro", "individual", "starter", "growth"}
+        if plan not in legacy_pro_names:
             return Response(
                 {
                     "success": False,
                     "error": {
                         "code": "invalid_plan",
                         "message": (
-                            "Enterprise plans require a custom quote. "
+                            "Business plans require a custom quote. "
                             "Please contact sales@fetchbot.ai."
                         ),
                     },
@@ -167,22 +136,14 @@ class CheckoutView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Build URLs from request origin (secure — never hardcode domains)
-        origin = request.META.get("HTTP_ORIGIN", request.META.get("HTTP_REFERER", ""))
-        if not origin:
-            origin = "https://app.fetchbot.io"
-        origin = origin.rstrip("/")
+        origin = _safe_origin(request)
 
-        success_url = f"{origin}/dashboard?checkout=success"
-        cancel_url = f"{origin}/paywall?checkout=canceled"
+        from apps.billing.services import polar_billing
 
         try:
-            url = StripeService.create_checkout_session(
-                user=request.user,
-                plan=plan,
-                annual=bool(annual),
-                success_url=success_url,
-                cancel_url=cancel_url,
+            url = polar_billing.create_checkout(
+                request.user, annual=annual, origin=origin,
+                customer_ip=_client_ip(request),
             )
             return Response({"success": True, "data": {"checkout_url": url}})
         except Exception as e:
@@ -196,18 +157,50 @@ class CheckoutView(APIView):
             )
 
 
-class PortalView(APIView):
-    """Create a Stripe customer portal session for managing subscription."""
+class CheckoutConfirmView(APIView):
+    """Confirm a completed Polar checkout after the success redirect.
+
+    The frontend lands on /dashboard?checkout=success&checkout_id=... and
+    posts the id here; we verify it against Polar and sync the
+    subscription. This makes activation work in local dev where Polar
+    cannot deliver webhooks; in production the webhook does the same
+    thing first and this call becomes a no-op re-sync.
+    """
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        origin = request.META.get("HTTP_ORIGIN", request.META.get("HTTP_REFERER", ""))
-        if not origin:
-            origin = "https://app.fetchbot.io"
-        return_url = f"{origin.rstrip('/')}/billing"
+        checkout_id = str(request.data.get("checkout_id", "")).strip()
+        if not checkout_id:
+            return Response(
+                {"success": False, "error": {"code": "missing_checkout_id",
+                 "message": "checkout_id is required."}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        from apps.billing.services import polar_billing
 
         try:
-            url = StripeService.create_portal_session(user=request.user, return_url=return_url)
+            result = polar_billing.confirm_checkout(request.user, checkout_id)
+            return Response({"success": True, "data": result})
+        except Exception as e:
+            logger.error("Checkout confirmation failed: %s", e)
+            return Response(
+                {"success": False, "error": {"code": "confirm_failed",
+                 "message": "We couldn't verify the checkout. Refresh in a moment."}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+
+class PortalView(APIView):
+    """Create a pre-authenticated Polar customer portal session."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        return_url = f"{_safe_origin(request)}/billing"
+
+        from apps.billing.services import polar_billing
+
+        try:
+            url = polar_billing.portal_url(request.user, return_url=return_url)
             return Response({"success": True, "data": {"portal_url": url}})
         except Exception as e:
             logger.error(f"Portal creation failed: {e}")
@@ -227,12 +220,8 @@ class SubscriptionCancelView(APIView):
     """
     Cancel the current user's subscription at the end of the period.
 
-    Honours the same dev/prod split as DevSubscribeView:
-      - In dev (BILLING_DEV_MODE), or for mock subs whose
-        stripe_subscription_id starts with 'dev_sub_', just flips
-        the local cancel_at_period_end flag.
-      - For a real Stripe subscription, asks Stripe to cancel at
-        period end via StripeService.
+    Polar-managed subscriptions are updated via the Polar API and then
+    re-synced; legacy local-only rows just flip the flag.
 
     POST /api/v1/billing/cancel/   -> sets cancel_at_period_end = True
     POST /api/v1/billing/resume/   -> sets cancel_at_period_end = False
@@ -250,22 +239,24 @@ class SubscriptionCancelView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        is_mock = (sub.stripe_subscription_id or "").startswith("dev_sub_")
-        if not is_mock and sub.stripe_subscription_id:
+        if sub.polar_subscription_id:
+            from apps.billing.services import polar_billing
+
             try:
-                StripeService.set_cancel_at_period_end(
-                    subscription=sub, cancel=self.cancel,
+                sub = polar_billing.set_cancel_at_period_end(
+                    request.user, cancel=self.cancel,
                 )
             except Exception as e:
-                logger.error("Stripe cancel/resume failed: %s", e)
+                logger.error("Polar cancel/resume failed: %s", e)
                 return Response(
-                    {"success": False, "error": {"code": "stripe_failed",
-                     "message": "We couldn't reach Stripe. Please try again."}},
+                    {"success": False, "error": {"code": "billing_failed",
+                     "message": "We couldn't update the subscription. Please try again."}},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
+        else:
+            sub.cancel_at_period_end = self.cancel
+            sub.save(update_fields=["cancel_at_period_end", "updated_at"])
 
-        sub.cancel_at_period_end = self.cancel
-        sub.save(update_fields=["cancel_at_period_end", "updated_at"])
         return Response({
             "success": True,
             "data": {
@@ -308,93 +299,51 @@ class InvoiceListView(APIView):
         return Response({"success": True, "data": data})
 
 
-class UsageView(APIView):
-    """Current billing period usage metrics."""
-    permission_classes = [IsAuthenticated]
-
-    def get(self, request):
-        usage = UsageService.get_current_usage(user=request.user)
-        limits = StripeService.get_plan_limits(getattr(request.user, "plan", "starter"))
-
-        # Combine usage with limits for the frontend
-        metrics = []
-        for metric, limit in limits.items():
-            metrics.append({
-                "metric": metric,
-                "count": usage.get(metric, 0),
-                "limit": limit,
-            })
-
-        return Response({"success": True, "data": metrics})
 
 
 class AITokenUsageView(APIView):
-    """Aggregate AI token spend for the current user.
+    """Aggregate AI token spend for the current user's billing period.
 
-    Reads the AITokenUsage ledger (every LLM call adds a row) and
-    rolls it up per provider + per module for the last N days
-    (default 30). Powers the "AI usage" card on the billing page so
-    users can see how their token budget is being spent across
-    Claude / GPT / Gemini / etc.
+    Same service (apps.metering.services.usage_reader) as the Settings
+    page's AIUsageView, so the two surfaces agree by construction —
+    previously each ran its own aggregation over a different window.
+    Keeps this endpoint's historical envelope keys (cost_usd, call_count)
+    for the Billing page card.
     """
 
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        try:
-            days = max(1, min(int(request.query_params.get("days", 30)), 365))
-        except (TypeError, ValueError):
-            days = 30
-        since = timezone.now() - timedelta(days=days)
+        from apps.metering.services.usage_reader import get_period_usage
 
-        rows = AITokenUsage.objects.filter(user=request.user, created_at__gte=since)
+        usage = get_period_usage(request.user)
 
-        totals = rows.aggregate(
-            input_tokens=Sum("input_tokens"),
-            output_tokens=Sum("output_tokens"),
-            total_tokens=Sum("total_tokens"),
-            cost_usd=Sum("estimated_cost_usd"),
-        )
-
-        by_provider = list(
-            rows.values("provider")
-            .annotate(
-                tokens=Sum("total_tokens"),
-                cost_usd=Sum("estimated_cost_usd"),
-            )
-            .order_by("-tokens")
-        )
-        by_module = list(
-            rows.values("module")
-            .annotate(
-                tokens=Sum("total_tokens"),
-                cost_usd=Sum("estimated_cost_usd"),
-            )
-            .order_by("-tokens")
-        )
-
-        # Normalise numerics to plain types the frontend can total /
-        # format without touching Decimal. call_count uses the raw row
-        # count so users can see how much activity backs the token
-        # spend (200 tokens over 50 calls vs. one 200-token call is a
-        # very different signal).
-        def _shape(x, key):
-            return {
-                key: x[key] or "",
-                "tokens": int(x["tokens"] or 0),
-                "cost_usd": float(x["cost_usd"] or 0),
-            }
+        def _shape(rows, key):
+            return [
+                {
+                    key: r.get(key) or "",
+                    "tokens": int(r.get("tokens") or 0),
+                    "cost_usd": float(r.get("cost") or 0),
+                }
+                for r in rows
+            ]
 
         payload = {
-            "window_days": days,
-            "call_count": rows.count(),
+            "period": usage["period"],
+            "source": usage["source"],
+            "call_count": usage["totals"]["calls"],
             "totals": {
-                "input_tokens": int(totals["input_tokens"] or 0),
-                "output_tokens": int(totals["output_tokens"] or 0),
-                "total_tokens": int(totals["total_tokens"] or 0),
-                "cost_usd": float(totals["cost_usd"] or 0),
+                "input_tokens": usage["totals"]["input_tokens"],
+                "output_tokens": usage["totals"]["output_tokens"],
+                "total_tokens": usage["totals"]["total_tokens"],
+                "cost_usd": usage["totals"]["estimated_cost_usd"],
             },
-            "by_provider": [_shape(r, "provider") for r in by_provider],
-            "by_module": [_shape(r, "module") for r in by_module],
+            "by_provider": _shape(usage["by_provider"], "provider"),
+            "by_module": _shape(usage["by_module"], "module"),
+            "allowance": usage["allowance"],
         }
-        return Response({"success": True, "data": payload})
+        # Bare payload: the global EnvelopeRenderer wraps it once as
+        # {success, data}. The old explicit {"success", "data"} return was
+        # double-wrapped by that renderer, which is why the Billing card
+        # read one envelope level too shallow.
+        return Response(payload)

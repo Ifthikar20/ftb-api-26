@@ -54,6 +54,7 @@ LOCAL_APPS = [
     "apps.analytics",
     "apps.notifications",
     "apps.billing",
+    "apps.metering",
     "apps.llm_ranking",
     "apps.rag",
     "apps.onboarding",
@@ -339,33 +340,48 @@ PROMPT_SYNTHESIS_PROVIDER = env(
 )
 GOOGLE_SEARCH_API_KEY = env("GOOGLE_SEARCH_API_KEY", default="")
 GOOGLE_SEARCH_ENGINE_ID = env("GOOGLE_SEARCH_ENGINE_ID", default="")
-STRIPE_SECRET_KEY = env("STRIPE_SECRET_KEY", default="")
-STRIPE_WEBHOOK_SECRET = env("STRIPE_WEBHOOK_SECRET", default="")
-STRIPE_INDIVIDUAL_PRICE_ID = env("STRIPE_INDIVIDUAL_PRICE_ID", default="")
-STRIPE_PRO_PRICE_ID = env("STRIPE_PRO_PRICE_ID", default="")
-STRIPE_INDIVIDUAL_ANNUAL_PRICE_ID = env("STRIPE_INDIVIDUAL_ANNUAL_PRICE_ID", default="")
-STRIPE_PRO_ANNUAL_PRICE_ID = env("STRIPE_PRO_ANNUAL_PRICE_ID", default="")
-# Legacy aliases — kept so older deploy configs (env vars set in
-# infra/secrets) don't break before they're rotated.
-STRIPE_STARTER_PRICE_ID = env("STRIPE_STARTER_PRICE_ID", default="")
-STRIPE_GROWTH_PRICE_ID = env("STRIPE_GROWTH_PRICE_ID", default="")
-STRIPE_SCALE_PRICE_ID = env("STRIPE_SCALE_PRICE_ID", default="")
-STRIPE_STARTER_ANNUAL_PRICE_ID = env("STRIPE_STARTER_ANNUAL_PRICE_ID", default="")
-STRIPE_GROWTH_ANNUAL_PRICE_ID = env("STRIPE_GROWTH_ANNUAL_PRICE_ID", default="")
-STRIPE_SCALE_ANNUAL_PRICE_ID = env("STRIPE_SCALE_ANNUAL_PRICE_ID", default="")
-
-# Dev/demo mock checkout. When True, /api/v1/billing/dev-subscribe/
-# accepts any payload and flips the user's Subscription to ACTIVE
-# without calling Stripe. Useful for local dev and demos. Hard-wired
-# off in prod settings; default off here for safety.
-BILLING_DEV_MODE = env.bool("BILLING_DEV_MODE", default=False)
-
 # Master paywall switch. When False, authenticated users are never
 # routed to /paywall and every plan-entitlement check resolves to the
 # top tier, so the full app is open regardless of subscription state.
 # Set PAYWALL_ENABLED=True in the env file to turn billing gates back
 # on; no code change needed.
 PAYWALL_ENABLED = env.bool("PAYWALL_ENABLED", default=False)
+
+# ── Polar.sh usage metering (apps.metering) ──
+# Metering-first integration: every recorded AI call is mirrored to Polar
+# as an immutable `llm_usage` event via a transactional outbox. Billing
+# (checkout/subscriptions) stays on the existing Stripe code until the
+# Phase 2 cutover.
+POLAR_ACCESS_TOKEN = env("POLAR_ACCESS_TOKEN", default="")
+POLAR_ENVIRONMENT = env("POLAR_ENVIRONMENT", default="sandbox")  # sandbox | production
+POLAR_ORGANIZATION_ID = env("POLAR_ORGANIZATION_ID", default="")
+# Meter ids from the Polar dashboard (or `manage.py polar_bootstrap`).
+POLAR_METER_TOKENS_ID = env("POLAR_METER_TOKENS_ID", default="")
+POLAR_METER_SPEND_ID = env("POLAR_METER_SPEND_ID", default="")
+# celery: outbox rows flushed by the beat sweeper + on_commit fast path.
+# inline: flush synchronously after commit (dev without celery workers).
+# off:    no outbox rows are written at all.
+POLAR_INGEST_MODE = env(
+    "POLAR_INGEST_MODE",
+    default=("celery" if env("POLAR_ACCESS_TOKEN", default="") else "off"),
+)
+# Usage reads (Settings/Billing pages) come from Polar meter quantities
+# only after ingestion parity is verified (`manage.py polar_parity_check`);
+# until then, and whenever Polar is unreachable, reads fall back to the
+# local AITokenUsage ledger.
+POLAR_READS_ENABLED = env.bool("POLAR_READS_ENABLED", default=False)
+# Billing (Phase 2): product ids from `manage.py polar_billing_bootstrap`
+# and the webhook endpoint's signing secret (from the Polar dashboard's
+# webhook settings; empty disables signature verification failures into
+# hard 503s — the endpoint refuses to process unsigned payloads).
+POLAR_PRODUCT_PRO_MONTHLY_ID = env("POLAR_PRODUCT_PRO_MONTHLY_ID", default="")
+POLAR_PRODUCT_PRO_ANNUAL_ID = env("POLAR_PRODUCT_PRO_ANNUAL_ID", default="")
+POLAR_WEBHOOK_SECRET = env("POLAR_WEBHOOK_SECRET", default="")
+# Canonical event name meters filter on. Never change once events flow.
+POLAR_EVENT_NAME = "llm_usage"
+# Local ledger retention. Pruning only runs once POLAR_READS_ENABLED is on;
+# the floor protects the audit-cost preflight's historical averages.
+AI_USAGE_RETENTION_DAYS = env.int("AI_USAGE_RETENTION_DAYS", default=400)
 
 # Build identity of the running backend, surfaced by /api/v1/version/.
 # Baked into the Docker image at deploy time via build args (see
@@ -407,6 +423,13 @@ HUBSPOT_CLIENT_SECRET = env("HUBSPOT_CLIENT_SECRET", default="")
 SEMRUSH_API_KEY = env("SEMRUSH_API_KEY", default="")
 SLACK_CLIENT_ID = env("SLACK_CLIENT_ID", default="")
 SLACK_CLIENT_SECRET = env("SLACK_CLIENT_SECRET", default="")
+# Slack app (events + slash commands + chat.postMessage replies)
+SLACK_SIGNING_SECRET = env("SLACK_SIGNING_SECRET", default="")
+SLACK_BOT_TOKEN = env("SLACK_BOT_TOKEN", default="")
+# Discord app (interactions endpoint + follow-ups + command registration)
+DISCORD_PUBLIC_KEY = env("DISCORD_PUBLIC_KEY", default="")
+DISCORD_APPLICATION_ID = env("DISCORD_APPLICATION_ID", default="")
+DISCORD_BOT_TOKEN = env("DISCORD_BOT_TOKEN", default="")
 MAILCHIMP_API_KEY = env("MAILCHIMP_API_KEY", default="")
 CANVA_CLIENT_ID = env("CANVA_CLIENT_ID", default="")
 CANVA_CLIENT_SECRET = env("CANVA_CLIENT_SECRET", default="")
@@ -448,6 +471,10 @@ CLAUDE_REWRITE_DAILY_LIMIT_PER_USER = env.int("CLAUDE_REWRITE_DAILY_LIMIT_PER_US
 # uncapped (core.ai_tracking.effective_ai_cap). A per-account
 # monthly_ai_cost_cap_usd overrides this; set to 0 for truly unlimited.
 AI_ENTERPRISE_MONTHLY_CAP_USD = env.float("AI_ENTERPRISE_MONTHLY_CAP_USD", default=500.0)
+# Monthly AI allowance for accounts WITHOUT an active/trialing
+# subscription (the Free plan). A small customer-acquisition budget —
+# enough to run onboarding and a few scans, not enough to burn margin.
+AI_FREE_MONTHLY_CAP_USD = env.float("AI_FREE_MONTHLY_CAP_USD", default=1.0)
 
 # ── Google Search Console (apps.search_console) ──
 # OAuth reuses GOOGLE_OAUTH_CLIENT_ID/SECRET via the integrations
@@ -505,11 +532,22 @@ LOGGING = {
             "formatter": "json",
         },
     },
+    # Root catch-all so a logger name outside the named set below (new
+    # module, third-party lib) is never silently dropped to
+    # logging.lastResort. Named loggers set propagate=False so their
+    # records don't also reach the root handler and print twice.
+    "root": {"handlers": ["console"], "level": "WARNING"},
     "loggers": {
-        "django": {"handlers": ["console"], "level": "WARNING"},
-        "apps": {"handlers": ["console"], "level": "INFO"},
-        "audit": {"handlers": ["console"], "level": "INFO"},
-        "security": {"handlers": ["console"], "level": "INFO"},
+        "django": {"handlers": ["console"], "level": "WARNING", "propagate": False},
+        "apps": {"handlers": ["console"], "level": "INFO", "propagate": False},
+        "audit": {"handlers": ["console"], "level": "INFO", "propagate": False},
+        "security": {"handlers": ["console"], "level": "INFO", "propagate": False},
+        # Covers getLogger("billing") across apps/billing (Stripe events
+        # log at INFO; without this entry they were dropped).
+        "billing": {"handlers": ["console"], "level": "INFO", "propagate": False},
+        # Covers core.resilience (circuit-breaker state changes),
+        # core.ai_tracking, and any other core.* module logger.
+        "core": {"handlers": ["console"], "level": "INFO", "propagate": False},
     },
 }
 

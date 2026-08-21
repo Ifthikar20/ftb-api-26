@@ -1,9 +1,17 @@
-"""Deliver an agent insight to its channels (in-app + Slack outbound)."""
+"""Deliver an agent insight to its channels (in-app + Slack/Discord outbound)."""
 from __future__ import annotations
 
 import logging
 
 logger = logging.getLogger("apps")
+
+
+def _discord_fields(insight) -> list:
+    points = (insight.data or {}).get("key_points") or []
+    if not points:
+        return []
+    bullets = "\n".join(f"- {str(p)[:200]}" for p in points[:4])
+    return [{"name": "Key points", "value": bullets[:1024], "inline": False}]
 
 
 def _slack_blocks(insight) -> list:
@@ -48,21 +56,38 @@ def deliver(insight) -> list[str]:
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("agent in-app delivery failed: %s", exc)
 
-    # Slack outbound (reuses the existing IntegrationConnection webhook).
+    # Platform outbound (reuses the existing IntegrationConnection webhook).
+    # The FK is named slack_connection for historical reasons but may point
+    # at any platform's connection - branch on conn.platform.
     conn = hired.slack_connection
     if conn and conn.is_active and conn.webhook_url:
-        try:
-            from apps.notifications.services.slack_service import SlackService
+        if conn.platform == "discord":
+            try:
+                from apps.notifications.services.discord_service import DiscordService
 
-            ok = SlackService.send_message(
-                webhook_url=conn.webhook_url,
-                text=insight.title[:200],
-                blocks=_slack_blocks(insight),
-            )
-            if ok:
-                channels.append("slack")
-        except Exception as exc:  # pragma: no cover - defensive
-            logger.warning("agent slack delivery failed: %s", exc)
+                ok = DiscordService.send_message(
+                    webhook_url=conn.webhook_url,
+                    title=insight.title[:150],
+                    description=(insight.summary_markdown or "")[:2000] or "No summary.",
+                    fields=_discord_fields(insight),
+                )
+                if ok:
+                    channels.append("discord")
+            except Exception as exc:  # pragma: no cover - defensive
+                logger.warning("agent discord delivery failed: %s", exc)
+        else:
+            try:
+                from apps.notifications.services.slack_service import SlackService
+
+                ok = SlackService.send_message(
+                    webhook_url=conn.webhook_url,
+                    text=insight.title[:200],
+                    blocks=_slack_blocks(insight),
+                )
+                if ok:
+                    channels.append("slack")
+            except Exception as exc:  # pragma: no cover - defensive
+                logger.warning("agent slack delivery failed: %s", exc)
 
     insight.delivered_channels = channels
     insight.save(update_fields=["delivered_channels", "updated_at"])

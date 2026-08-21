@@ -59,12 +59,20 @@ def _status_payload(website, integration) -> dict:
 
 
 def _parse_range(request) -> tuple[date, date]:
-    """Read start/end query params with lag-aware defaults. Raises ValueError."""
+    """Read start/end query params with lag-aware defaults. Raises ValueError.
+
+    Every message raised here reaches the client verbatim, so raise only
+    fixed strings — never Python's own parse errors, which reflect the
+    raw query input back in the response.
+    """
     end_default = timezone.now().date() - timedelta(days=DATA_LAG_DAYS)
     start_raw = request.query_params.get("start")
     end_raw = request.query_params.get("end")
-    end = date.fromisoformat(end_raw) if end_raw else end_default
-    start = date.fromisoformat(start_raw) if start_raw else end - timedelta(days=DEFAULT_RANGE_DAYS - 1)
+    try:
+        end = date.fromisoformat(end_raw) if end_raw else end_default
+        start = date.fromisoformat(start_raw) if start_raw else end - timedelta(days=DEFAULT_RANGE_DAYS - 1)
+    except ValueError:
+        raise ValueError("start and end must be YYYY-MM-DD dates") from None
     if start > end:
         raise ValueError("start must be on or before end")
     if (end - start).days + 1 > MAX_RANGE_DAYS:

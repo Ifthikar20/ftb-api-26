@@ -11,6 +11,8 @@ import re
 
 from django.conf import settings
 
+from core.llm import ClaudeUtility, OpenAIUtility
+
 logger = logging.getLogger("apps")
 
 
@@ -109,62 +111,37 @@ def _parse_llm_response(text: str) -> dict | None:
 
 
 def _try_claude(prompt: str) -> dict | None:
-    """Try generating context via Claude."""
+    """Try generating context via Claude.
+
+    Goes through the central LLM gateway (rate-limit/breaker, usage
+    recording with role=context_inference). No user attribution — same
+    as before: this runs during website scanning without a request user.
+    """
     api_key = getattr(settings, "ANTHROPIC_API_KEY", "")
     if not api_key:
         return None
-    try:
-        import anthropic
-        client = anthropic.Anthropic(api_key=api_key)
-        resp = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=1024,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        try:
-            from core.ai_tracking import record_usage
-            record_usage(
-                module="llm_ranking",
-                model_name="claude-sonnet-4-20250514",
-                input_tokens=resp.usage.input_tokens,
-                output_tokens=resp.usage.output_tokens,
-                metadata={"role": "context_inference"},
-            )
-        except Exception:
-            pass
-        return _parse_llm_response(resp.content[0].text)
-    except Exception as e:
-        logger.warning("Claude audit context failed: %s", e)
+    result = ClaudeUtility(model="claude-sonnet-4-20250514", max_tokens=1024).query(
+        prompt,
+        role="context_inference",
+        module="llm_ranking",
+    )
+    if not result.succeeded:
+        logger.warning("Claude audit context failed: %s", result.error)
         return None
+    return _parse_llm_response(result.text)
 
 
 def _try_openai(prompt: str) -> dict | None:
-    """Try generating context via OpenAI."""
+    """Try generating context via OpenAI. Same gateway contract as Claude."""
     api_key = getattr(settings, "OPENAI_API_KEY", "")
     if not api_key:
         return None
-    try:
-        import openai
-        client = openai.OpenAI(api_key=api_key)
-        resp = client.chat.completions.create(
-            model="gpt-4o-mini",
-            max_tokens=1024,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        try:
-            from core.ai_tracking import record_usage
-            usage = getattr(resp, "usage", None)
-            if usage:
-                record_usage(
-                    module="llm_ranking",
-                    model_name="gpt-4o-mini",
-                    input_tokens=getattr(usage, "prompt_tokens", 0),
-                    output_tokens=getattr(usage, "completion_tokens", 0),
-                    metadata={"role": "context_inference"},
-                )
-        except Exception:
-            pass
-        return _parse_llm_response(resp.choices[0].message.content)
-    except Exception as e:
-        logger.warning("OpenAI audit context failed: %s", e)
+    result = OpenAIUtility(model="gpt-4o-mini", max_tokens=1024).query(
+        prompt,
+        role="context_inference",
+        module="llm_ranking",
+    )
+    if not result.succeeded:
+        logger.warning("OpenAI audit context failed: %s", result.error)
         return None
+    return _parse_llm_response(result.text)

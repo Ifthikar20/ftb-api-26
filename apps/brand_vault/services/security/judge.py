@@ -15,9 +15,8 @@ import json
 import logging
 import re
 
-from django.conf import settings
-
 from apps.brand_vault.models import SafetyAlert
+from core.llm import ClaudeUtility
 
 from .base import Verdict
 
@@ -64,8 +63,10 @@ def judge_finding(
     via ``core.ai_tracking``; pass them from any call site that runs at
     volume.
     """
-    api_key = getattr(settings, "ANTHROPIC_API_KEY", "") or ""
-    if not api_key:
+    # Instantiate the gateway provider up front: the is_configured() guard
+    # keeps the no-API-key dev path from paying for prompt construction.
+    provider = ClaudeUtility(model=_MODEL, max_tokens=400)
+    if not provider.is_configured():
         return Verdict()
 
     issue_list = ", ".join(allowed_issues + ("none",))
@@ -102,34 +103,20 @@ def judge_finding(
         'Use issue="none" and severity="none" if there is no brand-safety issue.'
     )
 
-    try:
-        import anthropic
-        client = anthropic.Anthropic(api_key=api_key)
-        resp = client.messages.create(
-            model=_MODEL,
-            max_tokens=400,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        raw = resp.content[0].text.strip()
-    except Exception as exc:
-        logger.warning("Brand security judge call failed: %s", exc)
+    # The gateway records token usage centrally (module="brand_security",
+    # role="judge" — same keys the old inline record_usage block wrote).
+    result = provider.query(
+        prompt,
+        user=user,
+        website=website,
+        module="brand_security",
+        role="judge",
+    )
+    if not result.succeeded:
+        logger.warning("Brand security judge call failed: %s", result.error)
         return Verdict()
 
-    try:
-        from core.ai_tracking import record_usage
-        record_usage(
-            module="brand_security",
-            model_name=_MODEL,
-            input_tokens=resp.usage.input_tokens,
-            output_tokens=resp.usage.output_tokens,
-            user=user,
-            website=website,
-            metadata={"role": "judge"},
-        )
-    except Exception as exc:  # pragma: no cover — tracking never blocks a verdict
-        logger.warning("Brand security judge usage tracking failed: %s", exc)
-
-    return _parse_verdict(raw, allowed_issues)
+    return _parse_verdict(result.text, allowed_issues)
 
 
 def _format_ground_truth(hits: list[dict]) -> str:

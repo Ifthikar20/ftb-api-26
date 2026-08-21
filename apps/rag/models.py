@@ -57,6 +57,29 @@ class KnowledgeSource(TimestampMixin):
         (STATUS_FAILED, "Failed"),
     ]
 
+    # Which app produced this source. "brand_input" is the original
+    # user-curated corpus (URLs + pasted text); it doubles as the value
+    # every legacy row adopts via the column default. The rest are
+    # automated feeds written by the unified knowledge layer. The human
+    # display labels are also what the retriever prints in context-block
+    # headers for sources without a real URL — keep them presentable.
+    SOURCE_APP_BRAND_INPUT = "brand_input"
+    SOURCE_APP_LLM_RESPONSE = "llm_response"
+    SOURCE_APP_SECURITY_ALERT = "security_alert"
+    SOURCE_APP_AGENT_INSIGHT = "agent_insight"
+    SOURCE_APP_SEARCH_QUERIES = "search_queries"
+    SOURCE_APP_CITATIONS = "citations"
+    SOURCE_APP_PROMPT_NOTES = "prompt_notes"
+    SOURCE_APP_CHOICES = [
+        (SOURCE_APP_BRAND_INPUT, "Brand input"),
+        (SOURCE_APP_LLM_RESPONSE, "AI answers"),
+        (SOURCE_APP_SECURITY_ALERT, "Security findings"),
+        (SOURCE_APP_AGENT_INSIGHT, "Agent insights"),
+        (SOURCE_APP_SEARCH_QUERIES, "Search queries"),
+        (SOURCE_APP_CITATIONS, "Citations"),
+        (SOURCE_APP_PROMPT_NOTES, "Prompt notes"),
+    ]
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -76,6 +99,14 @@ class KnowledgeSource(TimestampMixin):
     status = models.CharField(
         max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING, db_index=True,
     )
+    # Provenance: which app produced this source, plus an origin
+    # reference (origin-row PK / dedupe key) so incremental syncs can
+    # update a recurrence instead of duplicating it.
+    source_app = models.CharField(
+        max_length=24, choices=SOURCE_APP_CHOICES,
+        default=SOURCE_APP_BRAND_INPUT, db_index=True,
+    )
+    source_ref = models.CharField(max_length=64, blank=True)
     # Content fingerprint so we don't re-embed unchanged pages.
     content_hash = models.CharField(max_length=64, blank=True, db_index=True)
     chunk_count = models.IntegerField(default=0)
@@ -134,6 +165,14 @@ class KnowledgeChunk(TimestampMixin):
     # retriever can show a human-readable snippet header.
     section_label = models.CharField(max_length=200, blank=True)
     token_count = models.IntegerField(default=0)
+    # Provenance payload copied from the producing app (provider,
+    # severity, detector_code, audit_id, date...). Filter/display only —
+    # never embedded, never scored.
+    metadata = models.JSONField(default=dict, blank=True)
+    # When the underlying content happened (answer generated, alert
+    # raised, week observed) as opposed to when it was ingested. Null on
+    # legacy rows; the retriever falls back to created_at.
+    recorded_at = models.DateTimeField(null=True, blank=True, db_index=True)
 
     class Meta:
         db_table = "rag_knowledge_chunk"

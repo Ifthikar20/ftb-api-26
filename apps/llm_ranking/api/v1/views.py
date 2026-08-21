@@ -15,6 +15,7 @@ from apps.llm_ranking.api.v1.serializers import (
     RunAuditSerializer,
 )
 from apps.llm_ranking.models import LLMRankingAudit, LLMRankingResult, LLMRankingSchedule
+from apps.llm_ranking.services.audit_factory import create_audit
 from core.views import TenantScopedAPIView, TenantScopedListAPIView
 
 logger = logging.getLogger("apps")
@@ -43,7 +44,6 @@ class LLMRankingAuditListView(TenantScopedListAPIView):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
-        from apps.llm_ranking.providers import PROVIDERS
 
         # Enforce the monthly AI allowance before queuing more work. The
         # cap derives from the plan price (65% of it) via effective_ai_cap;
@@ -127,45 +127,36 @@ class LLMRankingAuditListView(TenantScopedListAPIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-        # Selected providers must be implemented AND configured. Stub providers
-        # in PROVIDER_CHOICES (meta_llama, mistral, etc.) are filtered out so
-        # the UI can never queue a run that would silently produce no results.
-        requested = data.get("providers") or list(PROVIDERS.keys())
-        configured = []
-        for key in requested:
-            if key not in PROVIDERS:
-                continue
-            cls = PROVIDERS[key]
-            if getattr(settings, cls.api_key_setting, ""):
-                configured.append(key)
-        selected_providers = configured or ["claude"]
-
         # prompt_source is derived, not client-chosen: custom prompts are
         # "vault", the saved Prompts-page list is "library". The request
         # field is still accepted (and ignored) so older clients don't break.
         prompt_source = "vault" if data["custom_prompts"] else "library"
 
-        audit = LLMRankingAudit.objects.create(
+        # Provider filtering (implemented AND configured; stub providers in
+        # PROVIDER_CHOICES dropped) happens inside create_audit so every
+        # entry point applies the same rules.
+        audit = create_audit(
             website=website,
-            created_by=request.user,
+            user=request.user,
+            prompts=prompts,
+            providers=data.get("providers"),
             business_name=business_name,
             business_description=business_description,
             industry=industry,
             location=data.get("location", ""),
             region=data.get("region", "global"),
             keywords=keywords,
-            prompts=prompts,
-            providers_queried=selected_providers,
             context_urls=data.get("context_urls", []),
             prompt_source=prompt_source,
         )
 
-        # Dispatch: in production use Celery, in dev the user triggers
-        # the run manually via the "Run" button (retry endpoint) because
-        # background threads can't reliably open new DB connections.
+        # Dispatch through the canonical scan dispatcher (Celery chord in
+        # production). Under eager Celery (dev/tests) nothing is queued:
+        # dev users trigger the run via the "Run" button, and tests create
+        # audits without side effects.
         if not getattr(settings, "CELERY_TASK_ALWAYS_EAGER", False):
-            from apps.llm_ranking.tasks import run_llm_ranking_audit
-            run_llm_ranking_audit.delay(audit_id=str(audit.id))
+            from apps.llm_ranking.services.scan_dispatch import dispatch_scan
+            dispatch_scan(str(audit.id))
 
         return Response(
             LLMRankingAuditListSerializer(audit).data,
@@ -396,8 +387,9 @@ class LLMRankingAuditDetailView(TenantScopedAPIView):
 
 class LLMRankingAuditRunView(TenantScopedAPIView):
     """
-    POST — Run (or re-run) a pending/failed audit synchronously.
-    Returns the updated audit when complete.
+    POST — Run (or re-run) a pending/failed audit. Dispatches the run and
+    returns the audit immediately with status=running; the client polls
+    the detail endpoint for progress.
     """
 
     def post(self, request, website_id, audit_id):
@@ -427,31 +419,14 @@ class LLMRankingAuditRunView(TenantScopedAPIView):
             audit.error_message = ""
             audit.save()
 
-        # Run the audit in a background daemon thread so the request
-        # returns immediately. The frontend already polls
-        # /audits/<id>/ every 5s while the audit is in pending/running
-        # state, so partial results stream in like a campaign rather
-        # than the user staring at an 8-second blocking spinner.
-        #
-        # In dev (CELERY_TASK_ALWAYS_EAGER=True) Celery would also
-        # block the request thread, which is why we spawn a thread
-        # directly. In prod with a real Celery worker we'd queue
-        # run_llm_ranking_audit.delay(audit_id=...) and Celery would
-        # do the same thing across workers; the thread approach is
-        # simpler and works either way without a broker dependency.
-        import threading
-
-        from apps.llm_ranking.services.ranking_service import LLMRankingService
-
-        def _run_in_background(audit_id: str) -> None:
-            try:
-                LLMRankingService.run_audit(audit_id=audit_id)
-            except Exception as exc:
-                logger.error("LLM ranking audit %s failed: %s", audit_id, exc)
-                LLMRankingAudit.objects.filter(id=audit_id).update(
-                    status=LLMRankingAudit.STATUS_FAILED,
-                    error_message=str(exc)[:500],
-                )
+        # Dispatch through the canonical scan dispatcher: Celery chord in
+        # production (LLM_SCAN_MODE=celery), a background thread that
+        # closes its DB connections in dev (LLM_SCAN_MODE=inline). Either
+        # way the request returns immediately; the frontend polls
+        # /audits/<id>/ every 5s while the audit is pending/running, so
+        # partial results stream in rather than the user staring at an
+        # 8-second blocking spinner.
+        from apps.llm_ranking.services.scan_dispatch import dispatch_scan
 
         # Flip to RUNNING up front so the polling UI shows a running
         # state on the next tick — without this, there's a 1-2 second
@@ -460,12 +435,7 @@ class LLMRankingAuditRunView(TenantScopedAPIView):
         LLMRankingAudit.objects.filter(id=audit.id).update(
             status=LLMRankingAudit.STATUS_RUNNING,
         )
-        threading.Thread(
-            target=_run_in_background,
-            args=(str(audit.id),),
-            daemon=True,
-            name=f"audit-{audit.id}",
-        ).start()
+        dispatch_scan(str(audit.id))
 
         # Return the audit immediately. status=running tells the
         # frontend to start polling /audits/<id>/ for progress.

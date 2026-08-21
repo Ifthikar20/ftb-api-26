@@ -6,13 +6,15 @@ from core.utils.constants import Plan, SubscriptionStatus
 
 
 class Subscription(TimestampMixin):
-    """Stripe subscription record."""
+    """Subscription record, managed by Polar (our billing provider).
+    The Polar customer id lives on metering.PolarCustomer."""
 
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="subscription"
     )
-    stripe_customer_id = models.CharField(max_length=100, unique=True, blank=True)
-    stripe_subscription_id = models.CharField(max_length=100, unique=True, blank=True, null=True)
+    polar_subscription_id = models.CharField(
+        max_length=64, unique=True, blank=True, null=True, default=None
+    )
     plan = models.CharField(max_length=20, choices=Plan.choices, default=Plan.INDIVIDUAL)
     status = models.CharField(
         max_length=20, choices=SubscriptionStatus.choices, default=SubscriptionStatus.TRIALING
@@ -29,10 +31,10 @@ class Subscription(TimestampMixin):
 
 
 class Invoice(TimestampMixin):
-    """Stripe invoice record."""
+    """Invoice cache (populated from the billing provider's orders)."""
 
     subscription = models.ForeignKey(Subscription, on_delete=models.CASCADE, related_name="invoices")
-    stripe_invoice_id = models.CharField(max_length=100, unique=True)
+    external_invoice_id = models.CharField(max_length=100, unique=True)
     amount_paid = models.IntegerField(default=0)  # Cents
     currency = models.CharField(max_length=3, default="usd")
     status = models.CharField(max_length=20)
@@ -45,43 +47,19 @@ class Invoice(TimestampMixin):
         ordering = ["-created_at"]
 
     def __str__(self):
-        return f"Invoice({self.stripe_invoice_id}, ${self.amount_paid / 100:.2f})"
-
-
-class UsageRecord(TimestampMixin):
-    """Track usage against plan limits."""
-
-    METRICS = [
-        ("pageviews", "Page Views"),
-        ("audits", "Audits"),
-        ("ai_calls", "AI Calls"),
-        ("leads", "Leads"),
-    ]
-
-    subscription = models.ForeignKey(Subscription, on_delete=models.CASCADE, related_name="usage_records")
-    metric = models.CharField(max_length=30, choices=METRICS)
-    count = models.IntegerField(default=0)
-    period_start = models.DateField()
-    period_end = models.DateField()
-
-    class Meta:
-        db_table = "billing_usagerecord"
-        unique_together = [("subscription", "metric", "period_start")]
-
-    def __str__(self):
-        return f"Usage({self.metric}: {self.count})"
+        return f"Invoice({self.external_invoice_id}, ${self.amount_paid / 100:.2f})"
 
 
 class BillingEvent(TimestampMixin):
     """
-    Idempotency guard + event sourcing audit trail for Stripe webhooks.
+    Idempotency guard + event sourcing audit trail for billing webhooks.
 
     Every incoming webhook writes an event record BEFORE processing.
-    If the stripe_event_id already exists, the handler short-circuits.
-    This prevents double-processing from Stripe retries or replay attacks.
+    If the event_id already exists, the handler short-circuits. This
+    prevents double-processing from provider retries or replay attacks.
     """
 
-    stripe_event_id = models.CharField(max_length=100, unique=True, db_index=True)
+    event_id = models.CharField(max_length=100, unique=True, db_index=True)
     event_type = models.CharField(max_length=80)
     payload = models.JSONField(default=dict)
     processed = models.BooleanField(default=False)
@@ -97,5 +75,5 @@ class BillingEvent(TimestampMixin):
         ]
 
     def __str__(self):
-        status = "✓" if self.processed else "✗"
-        return f"BillingEvent({status} {self.event_type} {self.stripe_event_id})"
+        status = "OK" if self.processed else "PENDING"
+        return f"BillingEvent({status} {self.event_type} {self.event_id})"

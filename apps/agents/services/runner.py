@@ -95,6 +95,9 @@ def run_agent(hired_agent, *, deliver: bool = True) -> AgentInsight:
             website=website,
             audit_id=f"agent:{hired_agent.id}",
             role="agent",
+            module="agents",
+            # Runs are dispatched by the beat scheduler, not a click.
+            extra_metadata={"actor": "system"},
         )
         parsed = _json.extract_object(getattr(result, "text", "") or "")
         if not parsed.get("title"):

@@ -1,4 +1,5 @@
 import json
+import logging
 
 from rest_framework import status
 from rest_framework.parsers import FormParser, JSONParser
@@ -12,6 +13,8 @@ from apps.analytics.services.origin_check import is_origin_allowed
 from apps.websites.models import Website
 from core.interceptors.throttling import PixelIngestThrottle
 from core.views import TenantScopedAPIView
+
+logger = logging.getLogger("apps")
 
 # A single pixel event is a few hundred bytes; a batch of 50 a few KB.
 # Anything past this on the public endpoint is abuse, so we reject before
@@ -91,8 +94,15 @@ class EventIngestView(APIView):
             EventIngestionService.ingest_event(
                 pixel_key=pixel_key, event_data=request.data, request=request,
             )
-        except ValueError as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except ValueError:
+            # Public endpoint: the raw message can echo caller-supplied
+            # input (e.g. the pixel key), so log it and return a fixed
+            # string.
+            logger.warning("pixel event rejected", exc_info=True)
+            return Response(
+                {"error": "Event rejected: invalid pixel key or payload."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         return Response({"ok": True}, status=status.HTTP_202_ACCEPTED)
 

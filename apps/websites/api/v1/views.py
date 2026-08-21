@@ -13,6 +13,7 @@ from apps.websites.models import Website
 from apps.websites.services.pixel_service import PixelService
 from apps.websites.services.verification_service import VerificationService
 from apps.websites.services.website_service import WebsiteService
+from core.views import TenantScopedAPIView
 
 
 class WebsiteListCreateView(APIView):
@@ -50,11 +51,11 @@ class WebsiteListCreateView(APIView):
         return Response(WebsiteSerializer(website).data, status=status.HTTP_201_CREATED)
 
 
-class WebsiteDetailView(APIView):
-    permission_classes = [IsAuthenticated]
+class WebsiteDetailView(TenantScopedAPIView):
+    website_url_kwarg = "pk"
 
     def _get_website(self, request, pk):
-        return WebsiteService.get_for_user(user=request.user, website_id=pk)
+        return self.get_website(pk)
 
     def get(self, request, pk):
         website = self._get_website(request, pk)
@@ -75,43 +76,43 @@ class WebsiteDetailView(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-class PixelView(APIView):
-    permission_classes = [IsAuthenticated]
+class PixelView(TenantScopedAPIView):
+    website_url_kwarg = "pk"
 
     def get(self, request, pk):
-        website = WebsiteService.get_for_user(user=request.user, website_id=pk)
+        website = self.get_website(pk)
         snippet = PixelService.get_snippet(website=website)
         return Response({"pixel_key": str(website.pixel_key), "snippet": snippet})
 
 
-class PixelVerifyView(APIView):
-    permission_classes = [IsAuthenticated]
+class PixelVerifyView(TenantScopedAPIView):
+    website_url_kwarg = "pk"
 
     def post(self, request, pk):
-        website = WebsiteService.get_for_user(user=request.user, website_id=pk)
+        website = self.get_website(pk)
         result = VerificationService.verify_pixel(website=website)
         return Response(result)
 
 
-class PixelRegenerateView(APIView):
-    permission_classes = [IsAuthenticated]
+class PixelRegenerateView(TenantScopedAPIView):
+    website_url_kwarg = "pk"
 
     def post(self, request, pk):
-        website = WebsiteService.get_for_user(user=request.user, website_id=pk)
+        website = self.get_website(pk)
         website = WebsiteService.regenerate_pixel_key(website=website, user=request.user)
         return Response({"pixel_key": str(website.pixel_key)})
 
 
-class WebsiteSettingsView(APIView):
-    permission_classes = [IsAuthenticated]
+class WebsiteSettingsView(TenantScopedAPIView):
+    website_url_kwarg = "pk"
 
     def get(self, request, pk):
-        website = WebsiteService.get_for_user(user=request.user, website_id=pk)
+        website = self.get_website(pk)
         serializer = WebsiteSettingsSerializer(website.settings)
         return Response(serializer.data)
 
     def put(self, request, pk):
-        website = WebsiteService.get_for_user(user=request.user, website_id=pk)
+        website = self.get_website(pk)
         serializer = WebsiteSettingsSerializer(website.settings, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
@@ -327,16 +328,16 @@ class DashboardView(APIView):
         })
 
 
-class OnboardingAssistView(APIView):
+class OnboardingAssistView(TenantScopedAPIView):
     """AI-assisted onboarding: generate description and topic suggestions from URL."""
-    permission_classes = [IsAuthenticated]
+    website_url_kwarg = "pk"
 
     def post(self, request, pk):
         import re
 
         from core.validators.safe_http import safe_get
 
-        website = WebsiteService.get_for_user(user=request.user, website_id=pk)
+        website = self.get_website(pk)
         action = request.data.get("action", "describe")
         result = {}
 

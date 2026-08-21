@@ -54,6 +54,7 @@ def refresh_effectiveness_scores() -> int:
              bind=True, max_retries=0)
 def crawl_prompt_for_website(
     self, website_id: str, prompt_id: str, only_missing: bool = False,
+    acting_user_id: str | None = None,
 ) -> dict:
     """Fan out + query providers for a single saved prompt.
 
@@ -64,6 +65,10 @@ def crawl_prompt_for_website(
     per-provider error notes. ``only_missing`` limits the run to models
     that never answered (the page's silent gap-fill); the default is a
     full re-run of every configured model.
+
+    ``acting_user_id`` is set when a person clicked the button — AI
+    spend is attributed to them. The scheduler leaves it None and spend
+    goes to the website owner as actor="system".
     """
     from apps.prompt_library.models import Prompt
     from apps.prompt_library.services.prompt_crawler import crawl_prompt
@@ -76,7 +81,15 @@ def crawl_prompt_for_website(
         logger.warning("crawl_prompt_for_website: %s", exc)
         return {"ok": False, "error": str(exc)}
 
-    outcome = crawl_prompt(website, prompt, only_missing=only_missing)
+    acting_user = None
+    if acting_user_id:
+        from django.contrib.auth import get_user_model
+
+        acting_user = get_user_model().objects.filter(id=acting_user_id).first()
+
+    outcome = crawl_prompt(
+        website, prompt, only_missing=only_missing, acting_user=acting_user,
+    )
     return {
         "ok": True,
         "fanouts": len(outcome.fanouts),

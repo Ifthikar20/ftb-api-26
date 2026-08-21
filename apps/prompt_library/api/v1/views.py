@@ -51,6 +51,7 @@ from apps.prompt_library.models import (
 from apps.prompt_library.services.sampler_service import sample_prompts_for_audit
 from apps.websites.services.website_service import WebsiteService
 from core.interceptors.pagination import StandardPagination
+from core.views import TenantScopedAPIView
 
 logger = logging.getLogger("apps")
 
@@ -233,13 +234,11 @@ class IndustryTrendView(APIView):
         return Response(get_trend_payload(industry))
 
 
-class WebsiteBrandPromptsView(APIView):
+class WebsiteBrandPromptsView(TenantScopedAPIView):
     """List or add brand prompts for a website."""
 
-    permission_classes = [IsAuthenticated]
-
     def get(self, request, website_id):
-        website = WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        website = self.get_website(website_id)
         qs = (
             BrandPrompt.objects.filter(website=website)
             .select_related("prompt", "prompt__industry")
@@ -248,7 +247,7 @@ class WebsiteBrandPromptsView(APIView):
         return Response(BrandPromptSerializer(qs, many=True).data)
 
     def post(self, request, website_id):
-        website = WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        website = self.get_website(website_id)
         serializer = BrandPromptSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         prompt = get_object_or_404(
@@ -289,16 +288,14 @@ class RegionsListView(APIView):
         return Response({"countries": supported_countries()})
 
 
-class WebsitePromptCreateView(APIView):
+class WebsitePromptCreateView(TenantScopedAPIView):
     """Create a manual templated prompt for a website."""
-
-    permission_classes = [IsAuthenticated]
 
     def post(self, request, website_id):
         from apps.prompt_library.services._hash import text_hash
         from apps.prompt_library.services.template_parser import extract_variables
 
-        website = WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        website = self.get_website(website_id)
         serializer = PromptCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
@@ -397,27 +394,14 @@ class WebsitePromptCreateView(APIView):
     def _trigger_scan(website, user, prompts, location):
         """Kick off an LLM ranking audit for freshly added prompts."""
         try:
-            from django.conf import settings as dj_settings
-
-            from apps.llm_ranking.models import LLMRankingAudit
-            from apps.llm_ranking.providers import PROVIDERS as PROV_REGISTRY
-            from apps.llm_ranking.services.regions import region_for_country
+            from apps.llm_ranking.services.audit_factory import create_audit
             from apps.llm_ranking.services.scan_dispatch import dispatch_scan
 
-            selected = [
-                k for k, prov in PROV_REGISTRY.items()
-                if getattr(dj_settings, prov.api_key_setting, "")
-            ] or ["claude"]
-            audit = LLMRankingAudit.objects.create(
+            audit = create_audit(
                 website=website,
-                created_by=user,
-                business_name=getattr(website, "business_name", None) or website.name or "",
-                business_description=getattr(website, "description", "") or "",
-                industry=getattr(website, "industry", "") or "",
-                location=location or "",
-                region=region_for_country(location),
+                user=user,
                 prompts=list(prompts),
-                providers_queried=selected,
+                location=location or "",
             )
             dispatch_scan(str(audit.id))
             return str(audit.id)
@@ -599,6 +583,7 @@ class PromptSynthesizeView(APIView):
                 body, "Return JSON array of strings only.",
                 user=request.user, website=None,
                 audit_id="prompt_library_synthesize", role="synthesis",
+                module="prompt_library",
             )
         except Exception as exc:
             return Response(
@@ -763,17 +748,15 @@ class PromptGenerateRelatedView(APIView):
         return Response({"generated": items, "provider": provider_name})
 
 
-class WebsiteVariablesView(APIView):
+class WebsiteVariablesView(TenantScopedAPIView):
     """Get or replace the per-website prompt variable dictionary."""
-
-    permission_classes = [IsAuthenticated]
 
     def get(self, request, website_id):
         from apps.prompt_library.services.variable_resolver import (
             variables_with_provenance,
         )
 
-        website = WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        website = self.get_website(website_id)
         var_set, _ = PromptVariableSet.objects.get_or_create(website=website)
         return Response({
             "variables": var_set.variables or {},
@@ -781,7 +764,7 @@ class WebsiteVariablesView(APIView):
         })
 
     def put(self, request, website_id):
-        website = WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        website = self.get_website(website_id)
         payload = request.data.get("variables")
         if not isinstance(payload, dict):
             return Response(
@@ -824,26 +807,18 @@ class PromptToggleView(APIView):
 class _EnvViewMixin:
     """Shared helpers — load env scoped to a website the user owns."""
 
-    permission_classes = [IsAuthenticated]
-
     def _get_env(self, request, website_id, env_id) -> TestEnvironment:
-        website = WebsiteService.get_for_user(
-            user=request.user, website_id=website_id,
-        )
-        return get_object_or_404(
-            TestEnvironment, id=env_id, website=website,
+        website = self.get_website(website_id)
+        return self.get_tenant_object(
+            TestEnvironment.objects.filter(website=website), id=env_id,
         )
 
 
-class TestEnvironmentListView(APIView):
+class TestEnvironmentListView(TenantScopedAPIView):
     """GET (list) and POST (create) for envs on a single website."""
 
-    permission_classes = [IsAuthenticated]
-
     def get(self, request, website_id):
-        website = WebsiteService.get_for_user(
-            user=request.user, website_id=website_id,
-        )
+        website = self.get_website(website_id)
         qs = (
             TestEnvironment.objects.filter(website=website)
             .prefetch_related("prompts")
@@ -852,9 +827,7 @@ class TestEnvironmentListView(APIView):
         return Response(TestEnvironmentSerializer(qs, many=True).data)
 
     def post(self, request, website_id):
-        website = WebsiteService.get_for_user(
-            user=request.user, website_id=website_id,
-        )
+        website = self.get_website(website_id)
         serializer = TestEnvironmentSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         name = serializer.validated_data["name"]
@@ -879,7 +852,7 @@ class TestEnvironmentListView(APIView):
         )
 
 
-class TestEnvironmentDetailView(_EnvViewMixin, APIView):
+class TestEnvironmentDetailView(_EnvViewMixin, TenantScopedAPIView):
     """GET (detail), PATCH (rename), DELETE for a single env."""
 
     def get(self, request, website_id, env_id):
@@ -909,7 +882,7 @@ class TestEnvironmentDetailView(_EnvViewMixin, APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-class TestEnvironmentPromptsView(_EnvViewMixin, APIView):
+class TestEnvironmentPromptsView(_EnvViewMixin, TenantScopedAPIView):
     """Add/remove BrandPrompt rows from an env's prompt set.
 
     POST   /<env_id>/prompts/  { brand_prompt_ids: [..] }
@@ -1017,7 +990,7 @@ def _build_alignment_summary(website, answered_results) -> dict:
     }
 
 
-class BrandPromptDetailAggView(APIView):
+class BrandPromptDetailAggView(TenantScopedAPIView):
     """
     Per-prompt analytics drilldown — what every model said about the
     brand when asked this exact prompt, aggregated across every audit
@@ -1032,8 +1005,6 @@ class BrandPromptDetailAggView(APIView):
       - domain type breakdown
     """
 
-    permission_classes = [IsAuthenticated]
-
     @staticmethod
     def _normalise(text: str) -> str:
         return " ".join((text or "").split()).lower()
@@ -1046,7 +1017,7 @@ class BrandPromptDetailAggView(APIView):
         from apps.citations.models import Citation
         from apps.llm_ranking.models import LLMRankingResult
 
-        website = WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        website = self.get_website(website_id)
 
         try:
             prompt = Prompt.objects.select_related("industry").get(id=prompt_id)
@@ -1732,7 +1703,7 @@ class BrandPromptDetailAggView(APIView):
         })
 
 
-class PromptReextractView(APIView):
+class PromptReextractView(TenantScopedAPIView):
     """Backfill brand extraction onto a prompt's existing responses.
 
     Re-runs the structured extractor on rows that have text but were
@@ -1741,10 +1712,8 @@ class PromptReextractView(APIView):
     already extracted are skipped, so repeated calls are cheap no-ops.
     """
 
-    permission_classes = [IsAuthenticated]
-
     def post(self, request, website_id, prompt_id):
-        website = WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        website = self.get_website(website_id)
         try:
             prompt = Prompt.objects.get(id=prompt_id)
         except Prompt.DoesNotExist:
@@ -1780,7 +1749,7 @@ class BrandLogoView(APIView):
         return Response({"domain": domain, "logo": fetch_site_logo(domain)})
 
 
-class WebsiteSavedPromptsAggView(APIView):
+class WebsiteSavedPromptsAggView(TenantScopedAPIView):
     """
     Saved-prompts dashboard payload — every saved prompt for the
     website plus aggregated metrics ready for the Saved tab table
@@ -1792,8 +1761,6 @@ class WebsiteSavedPromptsAggView(APIView):
     derived from each prompt's industry name; intent + style are
     surfaced as tag chips.
     """
-
-    permission_classes = [IsAuthenticated]
 
     # The saved list is never auto-populated. Audits run exactly what the
     # user saved, so a seeded list would silently decide what gets measured
@@ -1807,7 +1774,7 @@ class WebsiteSavedPromptsAggView(APIView):
 
         from apps.llm_ranking.models import LLMRankingResult
 
-        website = WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        website = self.get_website(website_id)
 
         bps = (
             BrandPrompt.objects
@@ -1974,7 +1941,7 @@ class WebsiteSavedPromptsAggView(APIView):
         })
 
 
-class WebsiteSuggestedPromptsView(APIView):
+class WebsiteSuggestedPromptsView(TenantScopedAPIView):
     """
     Suggested-prompts view for the Prompt-library dashboard's
     'Suggested' subtab.
@@ -1991,7 +1958,6 @@ class WebsiteSuggestedPromptsView(APIView):
     been audited yet.
     """
 
-    permission_classes = [IsAuthenticated]
     LIMIT = 25
 
     def _resolve_industry(self, website):
@@ -2004,7 +1970,7 @@ class WebsiteSuggestedPromptsView(APIView):
         )
 
     def get(self, request, website_id):
-        website = WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        website = self.get_website(website_id)
 
         saved_ids = BrandPrompt.objects.filter(website=website).values_list("prompt_id", flat=True)
         rejected_ids = RejectedBrandPrompt.objects.filter(website=website).values_list("prompt_id", flat=True)
@@ -2049,7 +2015,7 @@ class WebsiteSuggestedPromptsView(APIView):
         })
 
 
-class WebsiteSuggestionActionView(APIView):
+class WebsiteSuggestionActionView(TenantScopedAPIView):
     """
     Accept or reject a single suggested prompt.
 
@@ -2057,10 +2023,8 @@ class WebsiteSuggestionActionView(APIView):
     POST .../reject/{prompt_id}/  → creates a RejectedBrandPrompt row
     """
 
-    permission_classes = [IsAuthenticated]
-
     def post(self, request, website_id, prompt_id, action):
-        website = WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        website = self.get_website(website_id)
         try:
             prompt = Prompt.objects.get(id=prompt_id, is_active=True)
         except Prompt.DoesNotExist:
@@ -2079,13 +2043,11 @@ class WebsiteSuggestionActionView(APIView):
                         status=status.HTTP_400_BAD_REQUEST)
 
 
-class WebsiteSuggestionBulkView(APIView):
+class WebsiteSuggestionBulkView(TenantScopedAPIView):
     """Accept or reject every prompt id passed in the body in one shot."""
 
-    permission_classes = [IsAuthenticated]
-
     def post(self, request, website_id, action):
-        website = WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        website = self.get_website(website_id)
         ids = request.data.get("prompt_ids") or []
         if not isinstance(ids, list) or not ids:
             return Response({"detail": "prompt_ids must be a non-empty array."},
@@ -2110,15 +2072,13 @@ class WebsiteSuggestionBulkView(APIView):
         return Response({"rejected": len(prompts)})
 
 
-class PromptFanoutsView(APIView):
+class PromptFanoutsView(TenantScopedAPIView):
     """List fan-out sub-queries the crawler captured for a saved prompt."""
-
-    permission_classes = [IsAuthenticated]
 
     def get(self, request, website_id, prompt_id):
         from apps.prompt_library.models import PromptCrawlRun, PromptFanout
 
-        website = WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        website = self.get_website(website_id)
         try:
             prompt = Prompt.objects.get(id=prompt_id)
         except Prompt.DoesNotExist:
@@ -2159,13 +2119,11 @@ class PromptFanoutsView(APIView):
         })
 
 
-class PromptCrawlTriggerView(APIView):
+class PromptCrawlTriggerView(TenantScopedAPIView):
     """Kick off a Celery task to crawl this prompt across providers."""
 
-    permission_classes = [IsAuthenticated]
-
     def post(self, request, website_id, prompt_id):
-        website = WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        website = self.get_website(website_id)
         try:
             prompt = Prompt.objects.get(id=prompt_id)
         except Prompt.DoesNotExist:
@@ -2180,19 +2138,23 @@ class PromptCrawlTriggerView(APIView):
             from apps.prompt_library.tasks import crawl_prompt_for_website
             crawl_prompt_for_website.delay(
                 str(website.id), str(prompt.id), only_missing,
+                acting_user_id=str(request.user.id),
             )
             queued = True
         except Exception:
             # Celery worker not running — fall back to sync so the
             # button still does something useful in dev.
             from apps.prompt_library.services.prompt_crawler import crawl_prompt
-            crawl_prompt(website, prompt, only_missing=only_missing)
+            crawl_prompt(
+                website, prompt, only_missing=only_missing,
+                acting_user=request.user,
+            )
             queued = False
         return Response({"queued": queued, "website_id": str(website.id),
                          "prompt_id": str(prompt.id)})
 
 
-class PromptSourceScanView(APIView):
+class PromptSourceScanView(TenantScopedAPIView):
     """Page-level sentiment for the domains an AI answer cited.
 
     POST — start a SourceScan seeded with this prompt's cited URLs (one
@@ -2203,15 +2165,13 @@ class PromptSourceScanView(APIView):
     AI credits, so it never runs automatically.
     """
 
-    permission_classes = [IsAuthenticated]
-
     MAX_SEEDS = 10  # matches the scan pipeline's per-scan result cap
 
     def post(self, request, website_id, prompt_id):
         from apps.citations.models import Citation, SourceScan, SourceScanStatus
         from apps.citations.tasks import run_source_scan
 
-        website = WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        website = self.get_website(website_id)
         try:
             prompt = Prompt.objects.get(id=prompt_id)
         except Prompt.DoesNotExist:
@@ -2274,7 +2234,7 @@ class PromptSourceScanView(APIView):
         )
 
 
-class PromptScheduleView(APIView):
+class PromptScheduleView(TenantScopedAPIView):
     """Per-prompt run schedule.
 
     GET    — the schedule for this saved prompt (or ``{schedule: None}``).
@@ -2287,11 +2247,9 @@ class PromptScheduleView(APIView):
     it has been saved to the website.
     """
 
-    permission_classes = [IsAuthenticated]
-
     def _resolve_brand_prompt(self, request, website_id, prompt_id):
         """Return the website's BrandPrompt for this prompt, or None."""
-        website = WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        website = self.get_website(website_id)
         try:
             prompt = Prompt.objects.get(id=prompt_id)
         except Prompt.DoesNotExist:
@@ -2380,7 +2338,7 @@ def _serialize_pack(pack, *, include_claims: bool = False) -> dict:
     return payload
 
 
-class BenchmarkPackListCreateView(APIView):
+class BenchmarkPackListCreateView(TenantScopedAPIView):
     """List a website's benchmark packs, or create a new one.
 
     POST body:
@@ -2392,22 +2350,18 @@ class BenchmarkPackListCreateView(APIView):
     can push it into a Celery task if latency becomes a concern.
     """
 
-    permission_classes = [IsAuthenticated]
-
     def get(self, request, website_id):
         from apps.prompt_library.models import BenchmarkPack
-        from apps.websites.services.website_service import WebsiteService
 
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        self.get_website(website_id)
         packs = BenchmarkPack.objects.filter(website_id=website_id).prefetch_related("claims")
         return Response({"packs": [_serialize_pack(p, include_claims=True) for p in packs]})
 
     def post(self, request, website_id):
         from apps.prompt_library.models import BenchmarkPack
         from apps.prompt_library.services.benchmark_extractor import extract_pack
-        from apps.websites.services.website_service import WebsiteService
 
-        website = WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        website = self.get_website(website_id)
 
         source_kind = (request.data.get("source_kind") or "").strip().lower()
         if source_kind not in {BenchmarkPack.SOURCE_URL, BenchmarkPack.SOURCE_MARKDOWN}:
@@ -2441,17 +2395,14 @@ class BenchmarkPackListCreateView(APIView):
         return Response(_serialize_pack(pack, include_claims=True), status=201)
 
 
-class BenchmarkPackDetailView(APIView):
+class BenchmarkPackDetailView(TenantScopedAPIView):
     """Retrieve or delete a single benchmark pack."""
-
-    permission_classes = [IsAuthenticated]
 
     def get(self, request, website_id, pack_id):
         from apps.prompt_library.models import BenchmarkPack
-        from apps.websites.services.website_service import WebsiteService
 
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
-        pack = get_object_or_404(
+        self.get_website(website_id)
+        pack = self.get_tenant_object(
             BenchmarkPack.objects.prefetch_related("claims"),
             pk=pack_id, website_id=website_id,
         )
@@ -2459,9 +2410,10 @@ class BenchmarkPackDetailView(APIView):
 
     def delete(self, request, website_id, pack_id):
         from apps.prompt_library.models import BenchmarkPack
-        from apps.websites.services.website_service import WebsiteService
 
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
-        pack = get_object_or_404(BenchmarkPack, pk=pack_id, website_id=website_id)
+        self.get_website(website_id)
+        pack = self.get_tenant_object(
+            BenchmarkPack.objects.all(), pk=pack_id, website_id=website_id,
+        )
         pack.delete()
         return Response(status=204)

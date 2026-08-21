@@ -206,7 +206,10 @@ def refresh_fact_embeddings() -> int:
             fact.embedding = embed_text(
                 f"{fact.subject} {fact.predicate} {fact.object}",
                 website=fact.website,
+                # Cron work: spend goes to the website owner, explicitly
+                # tagged system so the usage breakdown can tell it apart.
                 user=getattr(fact.website, "user", None),
+                metadata={"actor": "system"},
             )
             fact.save(update_fields=["embedding", "updated_at"])
             count += 1

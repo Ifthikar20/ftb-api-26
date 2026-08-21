@@ -283,7 +283,9 @@ class SessionView(APIView):
             is_paying = False
         elif sub.status == SubscriptionStatus.ACTIVE:
             is_paying = True
-        elif sub.status == SubscriptionStatus.TRIALING and sub.stripe_subscription_id:
+        elif sub.status == SubscriptionStatus.TRIALING and sub.polar_subscription_id:
+            # Trialing counts as paying only when a real provider-managed
+            # subscription backs it (card on file, auto-converts).
             is_paying = True
         else:
             is_paying = False
@@ -323,29 +325,20 @@ class AIUsageView(APIView):
     Centralised AI usage rollup for the authenticated user.
 
     One source of truth for the Settings "Overall Usage" panel — every AI
-    call site (Lead Finder, Messaging, Analytics, LLM Ranking upstream +
-    extraction, Competitor Discovery) writes through core.ai_tracking and
-    rolls up here, broken down by module, model, provider, and role.
+    call site writes through core.ai_tracking and rolls up here, broken
+    down by module, model, provider, and role.
+
+    The window is always the CURRENT BILLING PERIOD (subscription cycle
+    when one exists, calendar month otherwise) — the same window the
+    spend wall and cap notifications use, so the page can never disagree
+    with enforcement. Totals come from Polar meters once
+    POLAR_READS_ENABLED is on, with automatic fallback to the local
+    ledger. A legacy ``days`` query param is accepted and ignored.
     """
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        from core.ai_tracking import get_usage_summary
+        from apps.metering.services.usage_reader import get_period_usage
 
-        days = int(request.query_params.get("days", 30))
-        days = min(days, 365)  # cap at 1 year
-        summary = get_usage_summary(user=request.user, days=days)
-
-        # Serialise dates and Decimals for JSON
-        for d in summary.get("daily", []):
-            d["day"] = d["day"].isoformat() if d.get("day") else None
-            d["cost"] = float(d.get("cost") or 0)
-        for m in summary.get("by_module", []):
-            m["cost"] = float(m.get("cost") or 0)
-        for m in summary.get("by_model", []):
-            m["cost"] = float(m.get("cost") or 0)
-        for p in summary.get("by_provider", []):
-            p["cost"] = float(p.get("cost") or 0)
-
-        return Response(summary)
+        return Response(get_period_usage(request.user))
 

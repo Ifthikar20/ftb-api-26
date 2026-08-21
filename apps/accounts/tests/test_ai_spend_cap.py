@@ -1,10 +1,12 @@
 """Tests for the plan-derived monthly AI spend allowance.
 
-The cap is margin protection: a user may consume at most
-AI_SPEND_CAP_RATIO (65%) of their plan's monthly price as model cost,
-resetting each calendar month. Enforced at the provider choke point so
-no call site can leak spend.
+The cap is margin protection, resolved from ACTUAL subscription status:
+an active/trialing subscription grants 65% of its plan price as model
+cost per billing period; everything else is the Free plan and gets the
+small AI_FREE_MONTHLY_CAP_USD budget. Enforced at the provider choke
+point so no call site can leak spend.
 """
+from datetime import timedelta
 from decimal import Decimal
 
 import pytest
@@ -12,44 +14,84 @@ from django.utils import timezone
 
 from apps.accounts.models import AITokenUsage
 from apps.accounts.tests.factories import UserFactory
+from apps.billing.models import Subscription
 from core.ai_tracking import (
     AI_SPEND_CAP_RATIO,
     _estimate_cost,
     effective_ai_cap,
     month_to_date_cost,
 )
+from core.utils.constants import SubscriptionStatus
+
+
+def _subscribe(user, plan="pro", status=SubscriptionStatus.ACTIVE):
+    now = timezone.now()
+    return Subscription.objects.create(
+        user=user,
+        plan=plan,
+        status=status,
+        current_period_start=now - timedelta(days=1),
+        current_period_end=now + timedelta(days=29),
+    )
 
 
 @pytest.mark.django_db
 class TestEffectiveCap:
-    def test_individual_plan_derives_65_pct(self):
+    def test_unsubscribed_user_gets_free_cap(self, settings):
+        # user.plan defaults to a paid tier, but with no subscription the
+        # account is on the Free plan — paid allowances must never leak.
+        settings.AI_FREE_MONTHLY_CAP_USD = 1.0
         user = UserFactory(plan="individual")
+        assert effective_ai_cap(user) == 1.0
+
+    def test_active_pro_subscription_derives_65_pct(self):
+        user = UserFactory(plan="pro")
+        _subscribe(user, plan="pro")
         assert effective_ai_cap(user) == pytest.approx(45 * AI_SPEND_CAP_RATIO)
 
-    def test_pro_plan_derives_65_pct(self):
+    def test_trialing_subscription_gets_plan_cap(self):
         user = UserFactory(plan="pro")
-        assert effective_ai_cap(user) == pytest.approx(100 * AI_SPEND_CAP_RATIO)
+        _subscribe(user, plan="pro", status=SubscriptionStatus.TRIALING)
+        assert effective_ai_cap(user) == pytest.approx(45 * AI_SPEND_CAP_RATIO)
 
-    def test_manual_cap_only_tightens(self):
-        user = UserFactory(plan="individual", monthly_ai_cost_cap_usd=Decimal("10"))
+    def test_canceled_subscription_falls_back_to_free(self, settings):
+        settings.AI_FREE_MONTHLY_CAP_USD = 1.0
+        user = UserFactory(plan="pro")
+        _subscribe(user, plan="pro", status=SubscriptionStatus.CANCELED)
+        assert effective_ai_cap(user) == 1.0
+
+    def test_legacy_individual_subscription_resolves_to_pro_cap(self):
+        user = UserFactory(plan="individual")
+        _subscribe(user, plan="individual")
+        assert effective_ai_cap(user) == pytest.approx(45 * AI_SPEND_CAP_RATIO)
+
+    def test_manual_cap_only_tightens_paid_plans(self):
+        user = UserFactory(plan="pro", monthly_ai_cost_cap_usd=Decimal("10"))
+        _subscribe(user, plan="pro")
         assert effective_ai_cap(user) == 10.0
         # A manual cap looser than the plan allowance is clamped to the plan.
         user.monthly_ai_cost_cap_usd = Decimal("500")
         assert effective_ai_cap(user) == pytest.approx(45 * AI_SPEND_CAP_RATIO)
 
-    def test_enterprise_uses_finite_safety_ceiling(self, settings):
-        # Enterprise/custom pricing has no derived cap, but must NOT be
-        # unlimited by default (Organization.plan defaults to ENTERPRISE).
+    def test_manual_cap_raises_free_accounts(self, settings):
+        # Comped testers: an admin-granted budget overrides the free cap.
+        settings.AI_FREE_MONTHLY_CAP_USD = 1.0
+        user = UserFactory(plan="individual", monthly_ai_cost_cap_usd=Decimal("10"))
+        assert effective_ai_cap(user) == 10.0
+
+    def test_business_subscription_uses_finite_safety_ceiling(self, settings):
         settings.AI_ENTERPRISE_MONTHLY_CAP_USD = 500.0
-        user = UserFactory(plan="enterprise")
+        user = UserFactory(plan="business")
+        _subscribe(user, plan="business")
         assert effective_ai_cap(user) == 500.0
         # A negotiated per-account cap overrides the deployment ceiling.
         user.monthly_ai_cost_cap_usd = Decimal("2000")
         assert effective_ai_cap(user) == 2000.0
 
-    def test_enterprise_unlimited_only_when_explicitly_opted_in(self, settings):
+    def test_business_unlimited_only_when_explicitly_opted_in(self, settings):
         settings.AI_ENTERPRISE_MONTHLY_CAP_USD = 0.0
-        user = UserFactory(plan="enterprise")
+        user = UserFactory(plan="business")
+        _subscribe(user, plan="business")
         assert effective_ai_cap(user) == 0.0  # 0 = unlimited, opt-in only
 
     def test_none_user_unlimited(self):
@@ -85,6 +127,7 @@ class TestChokePoint:
         from apps.llm_ranking.providers.claude import ClaudeProvider
 
         user = UserFactory(plan="individual")
+        _subscribe(user, plan="pro")
         self._spend(user, 45 * AI_SPEND_CAP_RATIO)  # exactly at the wall
 
         provider = ClaudeProvider()
@@ -97,6 +140,7 @@ class TestChokePoint:
         from apps.llm_ranking.providers.claude import ClaudeProvider
 
         user = UserFactory(plan="individual")
+        _subscribe(user, plan="pro")
         self._spend(user, 1.0)
 
         provider = ClaudeProvider()
