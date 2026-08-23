@@ -13,8 +13,8 @@
 # Usage:
 #   scripts/create_user.sh                                    # full prompts
 #   scripts/create_user.sh local                              # skip env prompt
-#   scripts/create_user.sh prod ali44@gmail.com Password@44   # skip almost everything
-#   scripts/create_user.sh prod ali44@gmail.com Password@44 "Ali Test"
+#   scripts/create_user.sh prod jane@example.com 'S3cure-Example!' # skip almost everything
+#   scripts/create_user.sh prod jane@example.com 'S3cure-Example!' "Jane Doe"
 
 set -euo pipefail
 
@@ -29,7 +29,7 @@ C=$'\033[0;36m'; D=$'\033[2m'; N=$'\033[0m'
 # ── Prod SSH config (mirrors deploy.sh defaults) ─────────────────────
 EC2_HOST="${EC2_HOST:-100.31.135.211}"
 EC2_USER="${EC2_USER:-ubuntu}"
-PEM_KEY="${PEM_KEY:-$REPO_DIR/fynda-deploy.pem}"
+PEM_KEY="${PEM_KEY:-$HOME/.ssh/fynda-deploy.pem}"
 REMOTE_DIR="${REMOTE_DIR:-/opt/fetchbot/ftb-api-26}"
 COMPOSE_FILE="docker/docker-compose.prod.yml"
 

@@ -25,6 +25,7 @@ from apps.content_studio.models import (
     DraftStatus,
 )
 from apps.content_studio.services import accuracy_guard, voice_guard
+from core.llm import ClaudeUtility
 
 logger = logging.getLogger("apps")
 
@@ -95,31 +96,29 @@ def _build_prompt(brief: ContentBrief) -> tuple[str, str]:
     return system, user
 
 
-def _call_anthropic(system: str, user: str) -> str:
-    api_key = getattr(settings, "ANTHROPIC_API_KEY", "") or ""
-    if not api_key:
+def _call_anthropic(system: str, user_prompt: str, *, website=None) -> str:
+    """Call Claude via the core gateway. Empty string on any failure so
+    the caller falls back to the deterministic stub. ``website``
+    attributes the token spend to the tenant in core.ai_tracking."""
+    provider = ClaudeUtility(
+        model=getattr(settings, "ANTHROPIC_MODEL", "claude-3-5-sonnet-latest"),
+        max_tokens=2048,
+    )
+    if not provider.is_configured():
+        # No API key is the normal stub path in dev/tests — stay silent.
         return ""
-    try:
-        import anthropic  # type: ignore
-    except Exception:
+    result = provider.query(
+        user_prompt,
+        system_prompt=system,
+        user=getattr(website, "user", None),
+        website=website,
+        module="content_studio",
+        role="drafting",
+    )
+    if not result.succeeded:
+        logger.warning("Anthropic drafting call failed: %s", result.error)
         return ""
-    try:
-        client = anthropic.Anthropic(api_key=api_key)
-        resp = client.messages.create(
-            model=getattr(settings, "ANTHROPIC_MODEL", "claude-3-5-sonnet-latest"),
-            max_tokens=2048,
-            system=system,
-            messages=[{"role": "user", "content": user}],
-        )
-        parts = []
-        for block in getattr(resp, "content", []) or []:
-            text = getattr(block, "text", None)
-            if text:
-                parts.append(text)
-        return "".join(parts).strip()
-    except Exception as exc:  # pragma: no cover
-        logger.warning("Anthropic drafting call failed: %s", exc)
-        return ""
+    return result.text
 
 
 def _stub_body(brief: ContentBrief) -> str:
@@ -155,7 +154,7 @@ def draft_content(brief_id: str, regenerate: bool = False) -> ContentDraft:
     brief = ContentBrief.objects.select_related("website").get(id=brief_id)
     system, user = _build_prompt(brief)
 
-    body = _call_anthropic(system, user) or _stub_body(brief)
+    body = _call_anthropic(system, user, website=brief.website) or _stub_body(brief)
 
     if brief.target_format == ContentFormat.JSON_LD.value:
         try:

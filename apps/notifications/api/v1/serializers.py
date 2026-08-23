@@ -2,6 +2,11 @@ from rest_framework import serializers
 
 from apps.notifications.models import IntegrationConnection, Notification, NotificationPreference
 
+# Incoming-webhook host allowlist. A webhook URL is a bearer credential
+# AND an outbound-request target, so it must point only at the provider's
+# own host — never an internal/metadata address (SSRF).
+_SLACK_WEBHOOK_PREFIX = "https://hooks.slack.com/"
+
 
 class NotificationSerializer(serializers.ModelSerializer):
     class Meta:
@@ -11,19 +16,52 @@ class NotificationSerializer(serializers.ModelSerializer):
 
 
 class NotificationPreferenceSerializer(serializers.ModelSerializer):
+    # write_only: the Slack webhook is a secret; never echo it back in a
+    # read (browser memory / logs / a settings-page XSS would harvest it).
+    # The UI shows configured-state via the boolean instead.
+    slack_webhook_url = serializers.CharField(
+        write_only=True, required=False, allow_blank=True,
+    )
+    slack_webhook_configured = serializers.SerializerMethodField()
+
     class Meta:
         model = NotificationPreference
         fields = [
             "hot_lead_email", "hot_lead_slack", "weekly_report",
             "competitor_changes", "audit_complete", "slack_webhook_url",
+            "slack_webhook_configured",
         ]
+
+    def get_slack_webhook_configured(self, obj) -> bool:
+        return bool(obj.slack_webhook_url)
+
+    def validate_slack_webhook_url(self, value):
+        v = (value or "").strip()
+        if v and not v.startswith(_SLACK_WEBHOOK_PREFIX):
+            # Blocks blind SSRF: without this a user could point the
+            # webhook at http://169.254.169.254/... and have a hot-lead
+            # alert POST to internal/metadata hosts.
+            raise serializers.ValidationError(
+                "Enter a valid Slack incoming-webhook URL "
+                "(https://hooks.slack.com/...)."
+            )
+        return v
 
 
 class IntegrationConnectionSerializer(serializers.ModelSerializer):
+    # write_only for the same reason as above; the view host-validates it
+    # on write, and blank-on-update preserves the stored value.
+    webhook_url = serializers.CharField(
+        write_only=True, required=False, allow_blank=True,
+    )
+    webhook_configured = serializers.SerializerMethodField()
+
     class Meta:
         model = IntegrationConnection
         fields = [
-            "id", "platform", "webhook_url", "channel_name", "is_active",
+            "id", "platform", "webhook_url", "webhook_configured",
+            "channel_name", "is_active",
+            "external_team_id", "external_channel_id",
             "schedule_time", "frequency", "message_format",
             "notify_daily_report", "notify_hot_leads",
             "notify_trend_digest", "notify_milestones",
@@ -31,3 +69,5 @@ class IntegrationConnectionSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["id", "created_at", "updated_at"]
 
+    def get_webhook_configured(self, obj) -> bool:
+        return bool(obj.webhook_url)

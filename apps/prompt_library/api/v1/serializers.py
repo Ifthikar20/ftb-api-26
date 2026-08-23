@@ -9,6 +9,7 @@ from apps.prompt_library.models import (
     Prompt,
     PromptSampleEntry,
     PromptSampleRun,
+    PromptSchedule,
     PromptVariableSet,
     TestEnvironment,
 )
@@ -137,7 +138,7 @@ class BrandPromptSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = BrandPrompt
-        fields = ("id", "website", "prompt", "prompt_id", "notes", "created_at")
+        fields = ("id", "website", "prompt", "prompt_id", "notes", "is_archived", "created_at")
         read_only_fields = ("id", "website", "created_at")
 
 
@@ -246,3 +247,42 @@ class TestEnvironmentSerializer(serializers.ModelSerializer):
         if len(value) > 120:
             raise serializers.ValidationError("Name must be 120 characters or fewer.")
         return value
+
+
+class PromptScheduleSerializer(serializers.ModelSerializer):
+    """Read serializer for a per-prompt run schedule."""
+
+    frequency_display = serializers.CharField(
+        source="get_frequency_display", read_only=True,
+    )
+    is_paused = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PromptSchedule
+        fields = [
+            "id", "is_enabled", "frequency", "frequency_display",
+            "next_run_at", "last_run_at",
+            "consecutive_failures", "last_failure_at", "auto_pause_threshold",
+            "is_paused", "created_at",
+        ]
+        read_only_fields = [
+            "id", "next_run_at", "last_run_at",
+            "consecutive_failures", "last_failure_at", "auto_pause_threshold",
+            "created_at",
+        ]
+
+    def get_is_paused(self, obj) -> bool:
+        # Distinguishes an auto-paused schedule (too many failures) from
+        # one the user simply turned off.
+        return (not obj.is_enabled) and (obj.consecutive_failures or 0) >= (
+            obj.auto_pause_threshold or 3
+        )
+
+
+class CreatePromptScheduleSerializer(serializers.Serializer):
+    """Input serializer for creating/updating a per-prompt schedule."""
+
+    is_enabled = serializers.BooleanField(default=True)
+    frequency = serializers.ChoiceField(
+        choices=["daily", "weekly", "monthly"], default="weekly",
+    )

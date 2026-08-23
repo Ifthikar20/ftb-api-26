@@ -16,6 +16,7 @@ from django.conf import settings
 
 from apps.citations.services.content_reader import read_url
 from apps.prompt_library.models import BenchmarkClaim, BenchmarkPack
+from core.llm import ClaudeUtility
 
 logger = logging.getLogger("apps")
 
@@ -46,12 +47,16 @@ def extract_pack(pack: BenchmarkPack) -> BenchmarkPack:
     if not source_text.strip():
         return _fail(pack, "no readable content in source")
 
+    # Kept as a settings check (not gateway-relayed) so the pack surfaces
+    # the same distinct "ANTHROPIC_API_KEY not configured" reason as before.
     api_key = getattr(settings, "ANTHROPIC_API_KEY", "") or ""
     if not api_key:
         return _fail(pack, "ANTHROPIC_API_KEY not configured")
 
     try:
-        claims = _ask_claude_for_claims(source_text[:MAX_SOURCE_CHARS], api_key)
+        claims = _ask_claude_for_claims(
+            source_text[:MAX_SOURCE_CHARS], website=pack.website,
+        )
     except Exception as exc:
         logger.warning("benchmark_extractor: claude failed for %s: %s", pack.pk, exc)
         return _fail(pack, f"extraction failed: {exc}")
@@ -91,10 +96,14 @@ def _load_source_text(pack: BenchmarkPack) -> str:
     return pack.markdown_content or ""
 
 
-def _ask_claude_for_claims(source_text: str, api_key: str) -> list[dict]:
-    """One Claude call, JSON-mode-ish output. Returns a list of claim dicts."""
-    import anthropic
+def _ask_claude_for_claims(source_text: str, *, website=None) -> list[dict]:
+    """One Claude call via the core gateway. Returns a list of claim dicts.
 
+    Raises on gateway failure so ``extract_pack`` captures the reason in
+    ``pack.extraction_error`` (same contract as the old raising SDK call).
+    ``website`` attributes the token spend to the tenant in
+    core.ai_tracking.
+    """
     system = (
         "You extract atomic factual claims from a business's own "
         "reference material. Each claim should be a single self-"
@@ -116,17 +125,19 @@ def _ask_claude_for_claims(source_text: str, api_key: str) -> list[dict]:
         "Reply with the JSON object only, no prose."
     )
 
-    client = anthropic.Anthropic(api_key=api_key)
-    resp = client.messages.create(
-        model="claude-haiku-4-5-20251001",
-        max_tokens=1500,
-        temperature=0.1,
-        system=system,
-        messages=[{"role": "user", "content": user_msg}],
+    result = ClaudeUtility(
+        model="claude-haiku-4-5-20251001", max_tokens=1500, temperature=0.1,
+    ).query(
+        user_msg,
+        system_prompt=system,
+        user=getattr(website, "user", None),
+        website=website,
+        module="prompt_library",
+        role="benchmark_extraction",
     )
-    raw = "".join(
-        block.text for block in resp.content if getattr(block, "text", "")
-    ).strip()
+    if not result.succeeded:
+        raise RuntimeError(result.error)
+    raw = result.text
     # Salvage: Claude sometimes prefixes with ```json ... ```.
     if raw.startswith("```"):
         raw = raw.strip("`")

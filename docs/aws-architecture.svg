@@ -1,0 +1,200 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 880" width="1180" height="880" role="img" aria-label="FetchBot AWS target architecture: Cloudflare fronts an Application Load Balancer in public subnets, which forwards to an EC2 instance running six containers; RDS PostgreSQL and ElastiCache Redis sit in private subnets with no internet route; S3, CloudFront, Secrets Manager, CloudWatch and ECR sit alongside in the region.">
+  <title>FetchBot — AWS target architecture</title>
+  <desc>Managed data layer with EC2 compute retained. RDS and ElastiCache are in private subnets with no route to the internet. No NAT gateway.</desc>
+
+  <defs>
+    <marker id="arw" viewBox="0 0 10 8" refX="9" refY="4" markerWidth="8" markerHeight="6.5" orient="auto">
+      <polygon points="0,0 10,4 0,8" fill="#535D6D"/>
+    </marker>
+    <marker id="arwB" viewBox="0 0 10 8" refX="9" refY="4" markerWidth="8" markerHeight="6.5" orient="auto">
+      <polygon points="0,0 10,4 0,8" fill="#2E5AA8"/>
+    </marker>
+    <marker id="arwG" viewBox="0 0 10 8" refX="9" refY="4" markerWidth="8" markerHeight="6.5" orient="auto">
+      <polygon points="0,0 10,4 0,8" fill="#7C8698"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="1180" height="880" fill="#F7F9FB"/>
+
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" fill="#141920">
+
+    <!-- ── Title ─────────────────────────────────────────────── -->
+    <text x="30" y="34" font-size="22" font-weight="700"
+          font-family="Archivo, 'Helvetica Neue', Arial, sans-serif">FetchBot — AWS target architecture</text>
+    <text x="30" y="56" font-size="12.5" fill="#535D6D">Managed data layer, EC2 compute retained. ~$73/mo. No NAT gateway.</text>
+
+    <!-- ── Third-party APIs (outside AWS) ────────────────────── -->
+    <rect x="30" y="100" width="270" height="106" rx="6" fill="#FFFFFF" stroke="#C9D2DE" stroke-dasharray="5 4"/>
+    <text x="46" y="126" font-size="13" font-weight="700" fill="#535D6D">THIRD-PARTY APIs</text>
+    <text x="46" y="148" font-size="11.5" fill="#535D6D">OpenAI · Anthropic · Gemini</text>
+    <text x="46" y="166" font-size="11.5" fill="#535D6D">Perplexity · xAI · DeepSeek</text>
+    <text x="46" y="184" font-size="11.5" fill="#535D6D">Polar · Slack · Discord · GSC</text>
+    <text x="46" y="200" font-size="11" fill="#7C8698">outbound only, via the IGW</text>
+
+    <!-- ── Users + Cloudflare ────────────────────────────────── -->
+    <rect x="30" y="250" width="110" height="50" rx="6" fill="#FFFFFF" stroke="#C9D2DE"/>
+    <text x="46" y="280" font-size="13">browsers</text>
+
+    <rect x="166" y="250" width="134" height="50" rx="6" fill="#E9EDF2" stroke="#B4BECC"/>
+    <text x="182" y="272" font-size="13">Cloudflare</text>
+    <text x="182" y="290" font-size="11" fill="#535D6D">Full (Strict), WAF</text>
+
+    <line x1="144" y1="275" x2="160" y2="275" stroke="#535D6D" stroke-width="1.4" marker-end="url(#arw)"/>
+
+    <!-- ── AWS Region ────────────────────────────────────────── -->
+    <rect x="336" y="76" width="814" height="716" rx="9" fill="none" stroke="#B4BECC" stroke-width="1.4"/>
+    <text x="354" y="100" font-size="13" font-weight="700" fill="#535D6D">AWS REGION  us-east-1</text>
+
+    <!-- Internet gateway -->
+    <rect x="546" y="118" width="160" height="38" rx="5" fill="#E9EDF2" stroke="#B4BECC"/>
+    <text x="562" y="142" font-size="12.5">Internet Gateway</text>
+
+    <!-- egress to third parties -->
+    <line x1="542" y1="137" x2="306" y2="137" stroke="#7C8698" stroke-width="1.4"
+          stroke-dasharray="5 4" marker-end="url(#arwG)"/>
+
+    <!-- ── VPC ───────────────────────────────────────────────── -->
+    <rect x="356" y="170" width="558" height="606" rx="7" fill="none" stroke="#B4BECC" stroke-width="1.4"/>
+    <text x="374" y="194" font-size="13.5" font-weight="700">VPC  10.0.0.0/16</text>
+
+    <!-- inbound from Cloudflare -->
+    <line x1="304" y1="267" x2="382" y2="267" stroke="#535D6D" stroke-width="1.4" marker-end="url(#arw)"/>
+    <text x="310" y="259" font-size="11.5">:443</text>
+
+    <!-- IGW route into the public band -->
+    <line x1="626" y1="158" x2="626" y2="206" stroke="#535D6D" stroke-width="1.4" marker-end="url(#arw)"/>
+    <text x="636" y="184" font-size="11" fill="#535D6D">0.0.0.0/0</text>
+
+    <!-- ── Public subnets ────────────────────────────────────── -->
+    <rect x="372" y="210" width="526" height="300" rx="6" fill="#EDF1F7" stroke="#B4BECC" stroke-dasharray="4 3"/>
+    <text x="388" y="231" font-size="13" font-weight="700">PUBLIC SUBNETS</text>
+    <text x="530" y="231" font-size="11" fill="#535D6D">10.0.1.0/24 · 10.0.2.0/24 · route 0.0.0.0/0 to IGW</text>
+
+    <rect x="386" y="242" width="498" height="50" rx="5" fill="#E9EDF2" stroke="#B4BECC"/>
+    <text x="402" y="263" font-size="13">Application Load Balancer</text>
+    <text x="402" y="281" font-size="11" fill="#535D6D">HTTPS :443, ACM certificate, nodes in both AZs</text>
+
+    <line x1="626" y1="294" x2="626" y2="308" stroke="#535D6D" stroke-width="1.4" marker-end="url(#arw)"/>
+    <text x="640" y="306" font-size="11" fill="#535D6D">:80, from sg-alb only</text>
+
+    <!-- EC2 -->
+    <rect x="386" y="312" width="498" height="182" rx="5" fill="#DEEFEA" stroke="#0E7C6B" stroke-width="1.3"/>
+    <text x="400" y="334" font-size="13.5" font-weight="700" fill="#0E7C6B">EC2  t3.small — Docker Compose</text>
+
+    <rect x="398" y="344" width="152" height="44" rx="4" fill="#FFFFFF" stroke="#0E7C6B"/>
+    <text x="410" y="362" font-size="12" fill="#0E7C6B">nginx</text>
+    <text x="410" y="378" font-size="10.5" fill="#535D6D">static · SPA · pixel</text>
+
+    <rect x="561" y="344" width="152" height="44" rx="4" fill="#FFFFFF" stroke="#0E7C6B"/>
+    <text x="573" y="362" font-size="12" fill="#0E7C6B">web</text>
+    <text x="573" y="378" font-size="10.5" fill="#535D6D">gunicorn, 2 workers</text>
+
+    <rect x="724" y="344" width="152" height="44" rx="4" fill="#FFFFFF" stroke="#0E7C6B"/>
+    <text x="736" y="362" font-size="12" fill="#0E7C6B">celery-worker</text>
+    <text x="736" y="378" font-size="10.5" fill="#535D6D">default·ai·integrations</text>
+
+    <rect x="398" y="398" width="152" height="44" rx="4" fill="#FFFFFF" stroke="#0E7C6B"/>
+    <text x="410" y="416" font-size="12" fill="#0E7C6B">celery-beat</text>
+    <text x="410" y="432" font-size="10.5" fill="#A8431F">split out · exactly 1</text>
+
+    <rect x="561" y="398" width="152" height="44" rx="4" fill="#FFFFFF" stroke="#0E7C6B"/>
+    <text x="573" y="416" font-size="12" fill="#0E7C6B">intelligence</text>
+    <text x="573" y="432" font-size="10.5" fill="#535D6D">FastAPI sidecar</text>
+
+    <rect x="724" y="398" width="152" height="44" rx="4" fill="#FFFFFF" stroke="#0E7C6B"/>
+    <text x="736" y="416" font-size="12" fill="#0E7C6B">sources</text>
+    <text x="736" y="432" font-size="10.5" fill="#535D6D">FastAPI sidecar</text>
+
+    <text x="400" y="470" font-size="11" fill="#535D6D">sg-app: inbound :80 from sg-alb only. Outbound open for the APIs above.</text>
+    <text x="400" y="486" font-size="11" fill="#535D6D">Shell via SSM Session Manager: no port 22, no .pem on the instance.</text>
+
+    <!-- to data layer -->
+    <line x1="505" y1="496" x2="505" y2="562" stroke="#2E5AA8" stroke-width="1.8" marker-end="url(#arwB)"/>
+    <text x="514" y="532" font-size="11.5" fill="#2E5AA8">:5432 TLS</text>
+
+    <line x1="764" y1="496" x2="764" y2="562" stroke="#2E5AA8" stroke-width="1.8" marker-end="url(#arwB)"/>
+    <text x="773" y="532" font-size="11.5" fill="#2E5AA8">:6379</text>
+
+    <!-- ── Private subnets ───────────────────────────────────── -->
+    <rect x="372" y="534" width="526" height="222" rx="6" fill="#DFE5EF" stroke="#B4BECC" stroke-dasharray="4 3"/>
+    <text x="388" y="555" font-size="13" font-weight="700">PRIVATE SUBNETS</text>
+    <text x="530" y="555" font-size="11" fill="#A8431F">10.0.11.0/24 · 10.0.12.0/24 · NO 0.0.0.0/0 route</text>
+
+    <rect x="386" y="568" width="238" height="112" rx="5" fill="#E2EAF7" stroke="#2E5AA8" stroke-width="1.5"/>
+    <text x="400" y="590" font-size="13.5" font-weight="700" fill="#2E5AA8">RDS PostgreSQL 16</text>
+    <text x="400" y="610" font-size="11" fill="#2E5AA8">db.t4g.micro · Single-AZ</text>
+    <text x="400" y="628" font-size="11" fill="#2E5AA8">encrypted · 7-day PITR</text>
+    <text x="400" y="646" font-size="11" fill="#2E5AA8">automated snapshots</text>
+    <text x="400" y="666" font-size="11" fill="#2E5AA8">pgvector extension</text>
+
+    <rect x="644" y="568" width="240" height="112" rx="5" fill="#E2EAF7" stroke="#2E5AA8" stroke-width="1.5"/>
+    <text x="658" y="590" font-size="13.5" font-weight="700" fill="#2E5AA8">ElastiCache Redis 7</text>
+    <text x="658" y="610" font-size="11" fill="#2E5AA8">cache.t4g.micro · 1 node</text>
+    <text x="658" y="628" font-size="11" fill="#2E5AA8">non-cluster mode</text>
+    <text x="658" y="646" font-size="11" fill="#535D6D">db 0  cache + channels</text>
+    <text x="658" y="664" font-size="11" fill="#535D6D">db 1  celery broker</text>
+
+    <text x="388" y="706" font-size="11" fill="#535D6D">sg-rds and sg-redis admit sg-app only, by group reference, never by IP.</text>
+    <text x="388" y="724" font-size="11" fill="#535D6D">Nothing here reaches the internet, and nothing on the internet reaches it.</text>
+    <text x="388" y="742" font-size="11" fill="#7C8698">Two AZs because RDS subnet groups and ALBs require them. Failover is off.</text>
+
+    <!-- ── Regional services rail ────────────────────────────── -->
+    <line x1="886" y1="370" x2="926" y2="370" stroke="#2E5AA8" stroke-width="1.6"/>
+    <line x1="926" y1="217" x2="926" y2="557" stroke="#2E5AA8" stroke-width="1.6"/>
+
+    <rect x="944" y="190" width="192" height="54" rx="5" fill="#E2EAF7" stroke="#2E5AA8" stroke-width="1.5"/>
+    <text x="958" y="211" font-size="12.5" fill="#2E5AA8">CloudFront</text>
+    <text x="958" y="229" font-size="10.5" fill="#535D6D">SPA + static, cached</text>
+    <line x1="926" y1="217" x2="940" y2="217" stroke="#2E5AA8" stroke-width="1.6" marker-end="url(#arwB)"/>
+
+    <rect x="944" y="258" width="192" height="54" rx="5" fill="#E2EAF7" stroke="#2E5AA8" stroke-width="1.5"/>
+    <text x="958" y="279" font-size="12.5" fill="#2E5AA8">S3  assets</text>
+    <text x="958" y="297" font-size="10.5" fill="#535D6D">static + media, private</text>
+    <line x1="926" y1="285" x2="940" y2="285" stroke="#2E5AA8" stroke-width="1.6" marker-end="url(#arwB)"/>
+
+    <rect x="944" y="326" width="192" height="54" rx="5" fill="#E2EAF7" stroke="#2E5AA8" stroke-width="1.5"/>
+    <text x="958" y="347" font-size="12.5" fill="#2E5AA8">S3  backups</text>
+    <text x="958" y="365" font-size="10.5" fill="#535D6D">pg_dump, versioned</text>
+    <line x1="926" y1="353" x2="940" y2="353" stroke="#2E5AA8" stroke-width="1.6" marker-end="url(#arwB)"/>
+
+    <rect x="944" y="394" width="192" height="54" rx="5" fill="#E2EAF7" stroke="#2E5AA8" stroke-width="1.5"/>
+    <text x="958" y="415" font-size="12.5" fill="#2E5AA8">Secrets Manager</text>
+    <text x="958" y="433" font-size="10.5" fill="#535D6D">DB password, API keys</text>
+    <line x1="926" y1="421" x2="940" y2="421" stroke="#2E5AA8" stroke-width="1.6" marker-end="url(#arwB)"/>
+
+    <rect x="944" y="462" width="192" height="54" rx="5" fill="#E2EAF7" stroke="#2E5AA8" stroke-width="1.5"/>
+    <text x="958" y="483" font-size="12.5" fill="#2E5AA8">CloudWatch Logs</text>
+    <text x="958" y="501" font-size="10.5" fill="#535D6D">stdout, not /app/logs</text>
+    <line x1="926" y1="489" x2="940" y2="489" stroke="#2E5AA8" stroke-width="1.6" marker-end="url(#arwB)"/>
+
+    <rect x="944" y="530" width="192" height="54" rx="5" fill="#E2EAF7" stroke="#2E5AA8" stroke-width="1.5"/>
+    <text x="958" y="551" font-size="12.5" fill="#2E5AA8">ECR</text>
+    <text x="958" y="569" font-size="10.5" fill="#535D6D">images built in CI</text>
+    <line x1="926" y1="557" x2="940" y2="557" stroke="#2E5AA8" stroke-width="1.6" marker-end="url(#arwB)"/>
+
+    <text x="944" y="608" font-size="11" fill="#535D6D">Reached over the free S3</text>
+    <text x="944" y="624" font-size="11" fill="#535D6D">gateway endpoint and the</text>
+    <text x="944" y="640" font-size="11" fill="#535D6D">EC2 instance profile —</text>
+    <text x="944" y="656" font-size="11" fill="#535D6D">no static access keys.</text>
+
+    <!-- ── Legend ────────────────────────────────────────────── -->
+    <rect x="30" y="620" width="270" height="150" rx="6" fill="#FFFFFF" stroke="#C9D2DE"/>
+    <text x="46" y="646" font-size="12.5" font-weight="700" fill="#535D6D">LEGEND</text>
+
+    <rect x="46" y="660" width="14" height="14" rx="3" fill="#E2EAF7" stroke="#2E5AA8" stroke-width="1.5"/>
+    <text x="70" y="672" font-size="11.5">AWS managed service</text>
+
+    <rect x="46" y="686" width="14" height="14" rx="3" fill="#DEEFEA" stroke="#0E7C6B" stroke-width="1.3"/>
+    <text x="70" y="698" font-size="11.5">you run and patch it</text>
+
+    <rect x="46" y="712" width="14" height="14" rx="3" fill="#EDF1F7" stroke="#B4BECC" stroke-dasharray="3 2"/>
+    <text x="70" y="724" font-size="11.5">subnet, by route table</text>
+
+    <line x1="46" y1="744" x2="62" y2="744" stroke="#7C8698" stroke-width="1.4" stroke-dasharray="5 4"/>
+    <text x="70" y="748" font-size="11.5">leaves the VPC</text>
+
+    <text x="30" y="806" font-size="11" fill="#7C8698">No NAT gateway: the only resource needing outbound internet is the EC2, and it sits in a public subnet. Saves ~$32/mo.</text>
+    <text x="30" y="824" font-size="11" fill="#7C8698">Defined in infra/ as Terraform. Companion to docs/architecture.drawio, which covers application flow rather than infrastructure.</text>
+
+  </g>
+</svg>

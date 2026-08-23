@@ -45,6 +45,33 @@ class UnsafeURLError(ValidationError):
     """Raised when a URL fails SSRF safety checks."""
 
 
+def safe_display_url(url: str) -> str | None:
+    """Return ``url`` if it is safe to render as a clickable link, else ``None``.
+
+    This is an OUTPUT allowlist for hrefs, NOT a fetch guard — it performs no
+    DNS resolution (use ``assert_url_safe`` for fetches). Its job is to stop
+    ``javascript:``, ``data:``, ``vbscript:`` and other active-content schemes
+    from ever reaching a template's ``href``, where a value carried in from an
+    LLM/search-provider citation would otherwise become stored XSS. Only
+    absolute http(s) URLs pass; anything else (including scheme-relative or
+    schemeless values) is rejected.
+    """
+    if not url or not isinstance(url, str):
+        return None
+    trimmed = url.strip()
+    # Browsers ignore embedded control / whitespace characters when parsing a
+    # scheme (e.g. "java\tscript:alert(1)" executes), so strip them before the
+    # check to avoid an obfuscated-scheme bypass.
+    probe = "".join(ch for ch in trimmed if ord(ch) > 0x20)
+    if not probe:
+        return None
+    try:
+        scheme = (urlparse(probe).scheme or "").lower()
+    except ValueError:
+        return None
+    return trimmed if scheme in ALLOWED_SCHEMES else None
+
+
 def assert_url_safe(url: str) -> str:
     """
     Raise ``UnsafeURLError`` if ``url`` would be unsafe to fetch.

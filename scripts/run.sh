@@ -15,7 +15,7 @@ cd "$REPO_DIR"
 # ── Prod SSH config (mirrors deploy.sh defaults) ─────────────────────
 EC2_HOST="${EC2_HOST:-100.31.135.211}"
 EC2_USER="${EC2_USER:-ubuntu}"
-PEM_KEY="${PEM_KEY:-$REPO_DIR/fynda-deploy.pem}"
+PEM_KEY="${PEM_KEY:-$HOME/.ssh/fynda-deploy.pem}"
 REMOTE_DIR="${REMOTE_DIR:-/opt/fetchbot/ftb-api-26}"
 COMPOSE_FILE="docker/docker-compose.prod.yml"
 

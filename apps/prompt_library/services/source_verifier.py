@@ -52,9 +52,10 @@ _WS_RE = re.compile(r"\s+")
 _MAX_BODY_BYTES = 750_000        # ~750 KB of HTML is enough for verification
 _REQUEST_TIMEOUT = 8             # seconds
 _CACHE_TTL = 60 * 60 * 24 * 30   # 30 days
+# NB: do NOT claim "respects robots.txt" here until it is actually enforced
+# (planned separately) — an untrue claim in the UA is itself a problem.
 _USER_AGENT = (
-    "FoundThroughBrandBot/1.0 (+https://foundthroughbrand.com/bot; "
-    "verifies prompt sources, respects robots.txt)"
+    "FetchBot/1.0 (+https://fetchbot.ai/bot; verifies prompt sources)"
 )
 
 # Skip these — they're known to be JS-rendered or block bots, and a
@@ -97,10 +98,7 @@ def _strip_html(html: str) -> str:
 def _fetch(url: str) -> str | None:
     """GET the page, capped. Returns lowercased visible text, or None on
     any failure (timeout, non-HTML, oversized, host skiplisted)."""
-    try:
-        import requests
-    except ImportError:
-        return None
+    from core.validators.safe_http import FetchError, safe_get
 
     try:
         parsed = urlparse(url)
@@ -118,30 +116,20 @@ def _fetch(url: str) -> str | None:
     }
 
     try:
-        # Stream the response so we can early-cut at _MAX_BODY_BYTES.
-        with requests.get(url, headers=headers, timeout=_REQUEST_TIMEOUT,
-                          stream=True, allow_redirects=True) as resp:
-            if resp.status_code != 200:
-                return None
-            ctype = (resp.headers.get("Content-Type") or "").lower()
-            if "html" not in ctype and "xml" not in ctype and ctype:
-                return None
-            buf = bytearray()
-            for chunk in resp.iter_content(chunk_size=32_768):
-                if not chunk:
-                    continue
-                buf.extend(chunk)
-                if len(buf) >= _MAX_BODY_BYTES:
-                    break
-            try:
-                html = buf.decode(resp.encoding or "utf-8", errors="replace")
-            except Exception:
-                html = buf.decode("utf-8", errors="replace")
-    except Exception as exc:
+        # safe_get applies the SSRF guard and re-validates every redirect
+        # (the old allow_redirects=True let a SERP-supplied URL 302 to an
+        # internal address), plus caps the body and checks content-type.
+        resp = safe_get(
+            url, headers=headers, timeout=_REQUEST_TIMEOUT,
+            max_bytes=_MAX_BODY_BYTES,
+        )
+    except FetchError as exc:
         logger.info("source_verifier fetch failed %s: %s", host, exc)
         return None
 
-    return _strip_html(html)
+    if resp.status_code != 200:
+        return None
+    return _strip_html(resp.text)
 
 
 def verify_source(prompt: str, url: str) -> dict[str, Any]:

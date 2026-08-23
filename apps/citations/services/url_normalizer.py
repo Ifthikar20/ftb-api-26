@@ -95,6 +95,11 @@ def normalize_url(url: str) -> tuple[str, str, str]:
     url = url.strip()
     parts = urlsplit(url)
     scheme = (parts.scheme or "https").lower()
+    # Reject non-http(s) schemes outright. Normalized citation URLs are later
+    # rendered as clickable links, so a javascript:/data: scheme reaching here
+    # (this is the documented single normalization point) must not survive.
+    if scheme not in ("http", "https"):
+        return "", "", ""
     netloc = parts.netloc.lower()
     netloc = _strip_default_port(netloc, scheme)
     host = netloc.split("@")[-1].split(":")[0]

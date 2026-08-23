@@ -60,7 +60,9 @@ class LLMTruthAgent(BaseSecurityAgent):
 
         findings: list[Finding] = []
         for prompt in prompts:
-            answers = llms.ask_all_providers(prompt)
+            answers = llms.ask_all_providers(
+                prompt, user=getattr(website, "user", None), website=website,
+            )
             for row in answers:
                 findings.append(Finding(
                     source=SafetyAlert.SOURCE_LLM,

@@ -57,6 +57,16 @@ class UserProfileSerializer(serializers.ModelSerializer):
     phone = serializers.CharField(source="profile.phone", required=False, allow_blank=True)
     bio = serializers.CharField(source="profile.bio", required=False, allow_blank=True)
 
+    # The plan the account is ACTUALLY on (free/pro/business), resolved
+    # from subscription status — never the raw legacy DB column, which
+    # still holds retired names like "individual" on old rows.
+    plan = serializers.SerializerMethodField()
+
+    def get_plan(self, obj) -> str:
+        from apps.billing.services.plan_limits import current_plan_for
+
+        return str(current_plan_for(obj))
+
     monthly_ai_cost_cap_usd = serializers.DecimalField(
         max_digits=10, decimal_places=2, required=False,
         # DRF expects Decimal, not int, here — wrong type silently emits
@@ -75,7 +85,15 @@ class UserProfileSerializer(serializers.ModelSerializer):
             "monthly_ai_cost_cap_usd",
             "created_at", "updated_at",
         ]
-        read_only_fields = ["id", "email", "plan", "is_email_verified", "created_at", "updated_at"]
+        # monthly_ai_cost_cap_usd is an OPS control for comped accounts, not
+        # a user setting: for a Free account, effective_ai_cap honors a
+        # manual cap above the $1 wall, so a self-service PATCH here would
+        # let any user lift their own AI spend cap to $100k. Read-only in
+        # the profile API; raise it only through a staff/admin path.
+        read_only_fields = [
+            "id", "email", "is_email_verified", "created_at", "updated_at",
+            "monthly_ai_cost_cap_usd",
+        ]
 
     def update(self, instance, validated_data):
         profile_data = validated_data.pop("profile", {})

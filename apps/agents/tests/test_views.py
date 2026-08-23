@@ -6,7 +6,9 @@ from rest_framework.test import APIClient
 
 from apps.accounts.tests.factories import UserFactory
 from apps.agents.models import HiredAgent
+from apps.billing.models import Subscription
 from apps.websites.tests.factories import WebsiteFactory
+from core.utils.constants import Plan, SubscriptionStatus
 
 
 @pytest.fixture(autouse=True)
@@ -20,6 +22,12 @@ def _paywall_on(settings):
 def auth():
     user = UserFactory()
     website = WebsiteFactory(user=user)
+    # Plan gating resolves from the subscription (current_plan_for), not
+    # user.plan — give the fixture an active Pro subscription so the
+    # tests below keep exercising the paid-tier limits.
+    Subscription.objects.create(
+        user=user, status=SubscriptionStatus.ACTIVE, plan=Plan.PRO,
+    )
     client = APIClient()
     client.force_authenticate(user=user)
     return client, user, website
@@ -38,7 +46,19 @@ def test_catalog_lists_agents(auth):
     body = resp.json()["data"]  # unwrap the global success/data envelope
     keys = {a["key"] for a in body["data"]}
     assert {"visibility_analyst", "citation_hunter", "brand_watchdog"} <= keys
-    assert body["capacity"]["max_agents"] == 1  # individual plan
+    assert body["capacity"]["max_agents"] == 5  # Pro tier ($45)
+
+
+@pytest.mark.django_db
+def test_catalog_free_user_capacity():
+    # An account without a subscription resolves to the Free plan.
+    user = UserFactory()
+    client = APIClient()
+    client.force_authenticate(user=user)
+    resp = client.get("/api/v1/agents/catalog/")
+    assert resp.status_code == 200
+    body = resp.json()["data"]
+    assert body["capacity"]["max_agents"] == 1
 
 
 @pytest.mark.django_db
@@ -58,20 +78,22 @@ def test_hire_creates_agent(auth):
 @pytest.mark.django_db
 def test_hire_respects_plan_limit(auth):
     client, user, website = auth
+    # Pro allows 5 agents; pre-fill 5 hires so the next one is blocked.
+    keys = [
+        "visibility_analyst", "citation_hunter", "brand_watchdog",
+        "competitor_spy", "content_strategist",
+    ]
+    for key in keys:
+        HiredAgent.objects.create(
+            user=user, website=website, created_by=user, agent_key=key,
+        )
     w2 = WebsiteFactory(user=user)
-    r1 = client.post(
-        "/api/v1/agents/hire/",
-        {"agent_key": "visibility_analyst", "website_id": str(website.id)},
-        format="json",
-    )
-    assert r1.status_code == 201
-    # Individual plan max_agents == 1 -> second hire blocked.
-    r2 = client.post(
+    resp = client.post(
         "/api/v1/agents/hire/",
         {"agent_key": "lead_scout", "website_id": str(w2.id)},
         format="json",
     )
-    assert r2.status_code == 402
+    assert resp.status_code == 402
 
 
 @pytest.mark.django_db

@@ -7,7 +7,10 @@ from apps.accounts.models import LoginAttempt, User, UserProfile
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
     list_display = ("email", "full_name", "plan", "is_email_verified", "is_active", "created_at")
-    list_filter = ("plan", "is_email_verified", "is_active", "is_staff")
+    list_filter = (
+        "plan", "is_email_verified", "is_active", "is_staff",
+        ("paywall_dismissed_at", admin.EmptyFieldListFilter),
+    )
     search_fields = ("email", "full_name", "company_name")
     ordering = ("-created_at",)
     readonly_fields = ("id", "created_at", "updated_at", "last_login")
@@ -15,7 +18,7 @@ class UserAdmin(BaseUserAdmin):
     fieldsets = (
         (None, {"fields": ("id", "email", "password")}),
         ("Personal", {"fields": ("full_name", "company_name")}),
-        ("Plan", {"fields": ("plan",)}),
+        ("Plan", {"fields": ("plan", "paywall_dismissed_at")}),
         ("Status", {"fields": ("is_active", "is_staff", "is_superuser", "is_email_verified", "onboarding_complete")}),
         ("Dates", {"fields": ("last_login", "last_daily_brief", "created_at", "updated_at")}),
     )

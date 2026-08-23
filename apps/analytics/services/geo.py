@@ -88,12 +88,18 @@ def _from_ipapi(ip: str) -> str:
     country = ""
     try:
         import json as _json
-        import urllib.request
-        resp = urllib.request.urlopen(
+
+        from core.validators.safe_http import safe_get
+        # Route through safe_get instead of urllib.urlopen: the SSRF guard
+        # validates the host and, unlike urlopen, cannot be steered to a
+        # file:// or other non-HTTP scheme. (ip is already a validated public
+        # address per _is_private above.)
+        resp = safe_get(
             f"http://ip-api.com/json/{ip}?fields=countryCode",
             timeout=_GEO_TIMEOUT_SECONDS,
+            allowed_content_types=("application/json",),
         )
-        country = _norm(_json.loads(resp.read()).get("countryCode", ""))
+        country = _norm(_json.loads(resp.text).get("countryCode", ""))
     except Exception:
         country = ""
     # Cache even empty results so a string of failures for one IP does not

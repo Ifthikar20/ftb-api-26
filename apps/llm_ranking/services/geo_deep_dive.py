@@ -47,8 +47,14 @@ def build_for_user(
     start=None,
     end=None,
     prompts: list[str] | None = None,
+    providers: list[str] | None = None,
+    tags: list[str] | None = None,
+    topics: list[str] | None = None,
 ) -> dict | None:
     """Return the deep-dive payload for a user, or None if no data."""
+    from apps.llm_ranking.services.geo_stats import _make_flt
+
+    flt = _make_flt(prompts=prompts, providers=providers, tags=tags, topics=topics)
     end = end or timezone.now()
     base_qs = LLMRankingAudit.objects.filter(
         created_by=user, status=LLMRankingAudit.STATUS_COMPLETED,
@@ -62,21 +68,21 @@ def build_for_user(
     if not audit_ids:
         return None
     return {
-        "visibility_matrix": _visibility_matrix(audit_ids, prompts),
-        "position_by_provider": _position_by_provider(audit_ids, prompts),
-        "sentiment_by_provider": _sentiment_by_provider(audit_ids, prompts),
-        "sentiment_themes": _sentiment_themes(audit_ids, prompts),
+        "visibility_matrix": _visibility_matrix(audit_ids, flt),
+        "position_by_provider": _position_by_provider(audit_ids, flt),
+        "sentiment_by_provider": _sentiment_by_provider(audit_ids, flt),
+        "sentiment_themes": _sentiment_themes(audit_ids, flt),
         "available_prompts": _available_prompts(user),
     }
 
 
-def _filter_results(audit_ids: list, prompts: list[str] | None):
+def _filter_results(audit_ids: list, flt: dict | None):
+    from apps.llm_ranking.services._window import apply_result_filters
+
     qs = LLMRankingResult.objects.filter(
         audit_id__in=audit_ids, query_succeeded=True,
     )
-    if prompts:
-        qs = qs.filter(prompt__in=prompts)
-    return qs
+    return apply_result_filters(qs, **(flt or {}))
 
 
 def _available_prompts(user) -> list[dict]:
@@ -98,14 +104,14 @@ def _available_prompts(user) -> list[dict]:
 
 # ── visibility ─────────────────────────────────────────────────────────────
 
-def _visibility_matrix(audit_ids: list, prompts: list[str] | None = None) -> dict:
+def _visibility_matrix(audit_ids: list, flt: dict | None = None) -> dict:
     """One row per distinct prompt, one column per provider seen.
 
     When the same (prompt, provider) appears in multiple audits the most
     recent audit wins, since audit_ids is ordered by completed_at desc.
     """
     audit_rank = {aid: i for i, aid in enumerate(audit_ids)}
-    rows = _filter_results(audit_ids, prompts).values(
+    rows = _filter_results(audit_ids, flt).values(
         "audit_id", "prompt", "provider", "is_mentioned", "mention_rank",
     )
     rows = sorted(rows, key=lambda r: audit_rank[r["audit_id"]])
@@ -133,9 +139,9 @@ def _visibility_matrix(audit_ids: list, prompts: list[str] | None = None) -> dic
 
 # ── position ───────────────────────────────────────────────────────────────
 
-def _position_by_provider(audit_ids: list, prompts: list[str] | None = None) -> list[dict]:
+def _position_by_provider(audit_ids: list, flt: dict | None = None) -> list[dict]:
     rows = (
-        _filter_results(audit_ids, prompts)
+        _filter_results(audit_ids, flt)
         .filter(is_mentioned=True, mention_rank__isnull=False)
         .values("provider", "mention_rank")
     )
@@ -175,9 +181,9 @@ def _position_by_provider(audit_ids: list, prompts: list[str] | None = None) -> 
 
 # ── sentiment ──────────────────────────────────────────────────────────────
 
-def _sentiment_by_provider(audit_ids: list, prompts: list[str] | None = None) -> list[dict]:
+def _sentiment_by_provider(audit_ids: list, flt: dict | None = None) -> list[dict]:
     rows = (
-        _filter_results(audit_ids, prompts)
+        _filter_results(audit_ids, flt)
         .filter(is_mentioned=True)
         .values("provider", "sentiment")
     )
@@ -211,7 +217,7 @@ def _sentiment_by_provider(audit_ids: list, prompts: list[str] | None = None) ->
 
 # ── sentiment themes (LLM-clustered, cached) ───────────────────────────────
 
-def _sentiment_themes(audit_ids: list, prompts: list[str] | None = None) -> dict:
+def _sentiment_themes(audit_ids: list, flt: dict | None = None) -> dict:
     """Cluster positive and negative quote contexts into named themes.
 
     Returns {"positive": [...], "negative": [...]}. Each list is at most
@@ -223,22 +229,22 @@ def _sentiment_themes(audit_ids: list, prompts: list[str] | None = None) -> dict
     if not enabled:
         return {"positive": [], "negative": []}
 
-    cache_key = _themes_cache_key(audit_ids, prompts)
+    cache_key = _themes_cache_key(audit_ids, flt)
     cached = cache.get(cache_key)
     if cached is not None:
         return cached
 
     out = {
-        "positive": _cluster_one(audit_ids, prompts, LLMRankingResult.SENTIMENT_POSITIVE),
-        "negative": _cluster_one(audit_ids, prompts, LLMRankingResult.SENTIMENT_NEGATIVE),
+        "positive": _cluster_one(audit_ids, flt, LLMRankingResult.SENTIMENT_POSITIVE),
+        "negative": _cluster_one(audit_ids, flt, LLMRankingResult.SENTIMENT_NEGATIVE),
     }
     cache.set(cache_key, out, THEMES_CACHE_TTL)
     return out
 
 
-def _cluster_one(audit_ids: list, prompts: list[str] | None, sentiment_label: str) -> list[dict]:
+def _cluster_one(audit_ids: list, flt: dict | None, sentiment_label: str) -> list[dict]:
     qs = (
-        _filter_results(audit_ids, prompts)
+        _filter_results(audit_ids, flt)
         .filter(is_mentioned=True, sentiment=sentiment_label)
         .exclude(mention_context="")
     )
@@ -302,8 +308,15 @@ def _parse_themes(text: str) -> list[dict]:
     return cleaned
 
 
-def _themes_cache_key(audit_ids: list, prompts: list[str] | None = None) -> str:
+def _themes_cache_key(audit_ids: list, flt: dict | None = None) -> str:
     audit_part = ",".join(str(a) for a in sorted(audit_ids))
-    prompt_part = "|".join(sorted(prompts)) if prompts else ""
+    # Every active filter participates in the key so a filtered view never
+    # serves another filter combination's cached clusters.
+    parts = []
+    for name in ("prompts", "providers", "tags", "topics"):
+        values = (flt or {}).get(name)
+        if values:
+            parts.append(name + "=" + "|".join(sorted(values)))
+    prompt_part = "&".join(parts)
     digest = hashlib.sha1(f"{audit_part}::{prompt_part}".encode()).hexdigest()[:16]
     return f"geo:deep_dive:themes:{digest}"

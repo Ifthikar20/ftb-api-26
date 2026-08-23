@@ -24,6 +24,8 @@ import logging
 from dataclasses import asdict, dataclass, field
 from urllib.parse import urlparse
 
+from core.llm import ClaudeUtility
+
 logger = logging.getLogger("apps")
 
 
@@ -107,12 +109,19 @@ def run_onboarding_scan(url: str) -> OnboardingPayload:
         payload.topics = [row["topic"] for row in llm_topic_rows]
         payload.topic_brands = [row.get("brands", []) for row in llm_topic_rows]
 
-    payload.competitors = _safe_discover_competitors(
-        business_name=payload.business_name,
-        industry=payload.industry,
-        domain=payload.domain,
-        description=payload.description_short or payload.description_raw,
-    )
+    # Best-effort, like everything else here: a crash in discovery must
+    # degrade to an empty list, never abort the scan the user is
+    # waiting on.
+    try:
+        payload.competitors = _safe_discover_competitors(
+            business_name=payload.business_name,
+            industry=payload.industry,
+            domain=payload.domain,
+            description=payload.description_short or payload.description_raw,
+        )
+    except Exception as exc:
+        logger.warning("Competitor discovery failed: %s", exc)
+        payload.competitors = []
 
     return payload
 
@@ -142,51 +151,34 @@ def _polish_description(
     if len(fallback) > 280:
         fallback = fallback[:277].rsplit(" ", 1)[0] + "…"
 
-    try:
-        from django.conf import settings as dj_settings
-        api_key = getattr(dj_settings, "ANTHROPIC_API_KEY", "") or ""
-        if not api_key:
-            return fallback
-
-        import anthropic
-        client = anthropic.Anthropic(api_key=api_key)
-
-        bullets = ""
-        if selling_points:
-            bullets += "\nSelling points:\n- " + "\n- ".join(selling_points[:5])
-        if products:
-            bullets += "\nProducts:\n- " + "\n- ".join(products[:5])
-
-        prompt = (
-            f"Write a clean 1-2 sentence description (max 200 chars) of "
-            f"what this business does. Use plain language, no marketing fluff.\n\n"
-            f"Business: {business_name}\n"
-            f"Industry: {industry}\n"
-            f"Existing description: {raw_description}{bullets}\n\n"
-            f"Return only the description, no preamble."
-        )
-        resp = client.messages.create(
-            model="claude-haiku-4-5",
-            max_tokens=128,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        text = (resp.content[0].text or "").strip().strip('"')
-        # Track usage so the same dashboard-level cost roll-up captures it.
-        try:
-            from core.ai_tracking import record_usage
-            record_usage(
-                module="onboarding",
-                model_name="claude-haiku-4-5",
-                input_tokens=resp.usage.input_tokens,
-                output_tokens=resp.usage.output_tokens,
-                metadata={"role": "description_polish"},
-            )
-        except Exception:
-            pass
-        return text or fallback
-    except Exception as exc:
-        logger.debug("Description polish skipped: %s", exc)
+    provider = ClaudeUtility(model="claude-haiku-4-5", max_tokens=128)
+    if not provider.is_configured():
+        # No API key is the normal fallback path in dev/tests — stay silent.
         return fallback
+
+    bullets = ""
+    if selling_points:
+        bullets += "\nSelling points:\n- " + "\n- ".join(selling_points[:5])
+    if products:
+        bullets += "\nProducts:\n- " + "\n- ".join(products[:5])
+
+    prompt = (
+        f"Write a clean 1-2 sentence description (max 200 chars) of "
+        f"what this business does. Use plain language, no marketing fluff.\n\n"
+        f"Business: {business_name}\n"
+        f"Industry: {industry}\n"
+        f"Existing description: {raw_description}{bullets}\n\n"
+        f"Return only the description, no preamble."
+    )
+    # The gateway records token usage centrally (module="onboarding",
+    # role="description_polish" — same keys the old inline block wrote).
+    # No user/website yet: the scan runs before the Website row exists.
+    result = provider.query(prompt, module="onboarding", role="description_polish")
+    if not result.succeeded:
+        logger.debug("Description polish skipped: %s", result.error)
+        return fallback
+    text = result.text.strip().strip('"')
+    return text or fallback
 
 
 def _llm_topics(
@@ -210,18 +202,13 @@ def _llm_topics(
     """
     if not (business_name or description):
         return []
+    provider = ClaudeUtility(model="claude-haiku-4-5", max_tokens=1024)
+    if not provider.is_configured():
+        # No API key is the normal fallback path in dev/tests — stay silent.
+        return []
     try:
-        from django.conf import settings as dj_settings
-        api_key = getattr(dj_settings, "ANTHROPIC_API_KEY", "") or ""
-        if not api_key:
-            return []
-
         import json
         import re
-
-        import anthropic
-
-        client = anthropic.Anthropic(api_key=api_key)
 
         bullets = ""
         if selling_points:
@@ -250,7 +237,8 @@ def _llm_topics(
             "3. Each query is highly correlated with the description.\n"
             "4. Mix query styles: 'best X for Y', 'how to find Z', "
             "'top alternatives to ...', 'who handles ...', 'compare ...'.\n"
-            "5. Each query is 4-12 words. No trailing punctuation.\n\n"
+            "5. Each query is 4-12 words. No trailing punctuation. No "
+            "year references (they age badly).\n\n"
             "6. For 'brands', list 3-5 real, currently-operating "
             "competitor companies most likely to appear in a top-tier "
             "LLM's answer to that query. Use the public-facing brand "
@@ -264,24 +252,14 @@ def _llm_topics(
             ' "brands": ["CredSimple", "Medallion", "Andros"]}]'
         )
 
-        resp = client.messages.create(
-            model="claude-haiku-4-5",
-            max_tokens=1024,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        text = (resp.content[0].text or "").strip()
-
-        try:
-            from core.ai_tracking import record_usage
-            record_usage(
-                module="onboarding",
-                model_name="claude-haiku-4-5",
-                input_tokens=resp.usage.input_tokens,
-                output_tokens=resp.usage.output_tokens,
-                metadata={"role": "topic_generation"},
-            )
-        except Exception:
-            pass
+        # The gateway records token usage centrally (module="onboarding",
+        # role="topic_generation" — same keys the old inline block wrote).
+        # No user/website yet: the scan runs before the Website row exists.
+        result = provider.query(prompt, module="onboarding", role="topic_generation")
+        if not result.succeeded:
+            logger.debug("LLM topic generation skipped: %s", result.error)
+            return []
+        text = result.text
 
         match = re.search(r"\[.*\]", text, re.DOTALL)
         if not match:
@@ -346,18 +324,13 @@ def _llm_competitors(
     """
     if not (business_name or description):
         return []
+    provider = ClaudeUtility(model="claude-haiku-4-5", max_tokens=600)
+    if not provider.is_configured():
+        # No API key is the normal fallback path in dev/tests — stay silent.
+        return []
     try:
-        from django.conf import settings as dj_settings
-        api_key = getattr(dj_settings, "ANTHROPIC_API_KEY", "") or ""
-        if not api_key:
-            return []
-
         import json
         import re
-
-        import anthropic
-
-        client = anthropic.Anthropic(api_key=api_key)
 
         prompt = (
             "Name real, currently-operating companies that directly "
@@ -377,24 +350,14 @@ def _llm_competitors(
             '{"name": "Adyen", "domain": "adyen.com"}]'
         )
 
-        resp = client.messages.create(
-            model="claude-haiku-4-5",
-            max_tokens=600,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        text = (resp.content[0].text or "").strip()
-
-        try:
-            from core.ai_tracking import record_usage
-            record_usage(
-                module="onboarding",
-                model_name="claude-haiku-4-5",
-                input_tokens=resp.usage.input_tokens,
-                output_tokens=resp.usage.output_tokens,
-                metadata={"role": "competitor_discovery"},
-            )
-        except Exception:
-            pass
+        # The gateway records token usage centrally (module="onboarding",
+        # role="competitor_discovery" — same keys the old inline block wrote).
+        # No user/website yet: the scan runs before the Website row exists.
+        result = provider.query(prompt, module="onboarding", role="competitor_discovery")
+        if not result.succeeded:
+            logger.debug("LLM competitor discovery skipped: %s", result.error)
+            return []
+        text = result.text
 
         match = re.search(r"\[.*\]", text, re.DOTALL)
         if not match:

@@ -13,6 +13,7 @@ from apps.websites.models import Website
 from apps.websites.services.pixel_service import PixelService
 from apps.websites.services.verification_service import VerificationService
 from apps.websites.services.website_service import WebsiteService
+from core.views import TenantScopedAPIView
 
 
 class WebsiteListCreateView(APIView):
@@ -50,11 +51,11 @@ class WebsiteListCreateView(APIView):
         return Response(WebsiteSerializer(website).data, status=status.HTTP_201_CREATED)
 
 
-class WebsiteDetailView(APIView):
-    permission_classes = [IsAuthenticated]
+class WebsiteDetailView(TenantScopedAPIView):
+    website_url_kwarg = "pk"
 
     def _get_website(self, request, pk):
-        return WebsiteService.get_for_user(user=request.user, website_id=pk)
+        return self.get_website(pk)
 
     def get(self, request, pk):
         website = self._get_website(request, pk)
@@ -75,43 +76,43 @@ class WebsiteDetailView(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-class PixelView(APIView):
-    permission_classes = [IsAuthenticated]
+class PixelView(TenantScopedAPIView):
+    website_url_kwarg = "pk"
 
     def get(self, request, pk):
-        website = WebsiteService.get_for_user(user=request.user, website_id=pk)
+        website = self.get_website(pk)
         snippet = PixelService.get_snippet(website=website)
         return Response({"pixel_key": str(website.pixel_key), "snippet": snippet})
 
 
-class PixelVerifyView(APIView):
-    permission_classes = [IsAuthenticated]
+class PixelVerifyView(TenantScopedAPIView):
+    website_url_kwarg = "pk"
 
     def post(self, request, pk):
-        website = WebsiteService.get_for_user(user=request.user, website_id=pk)
+        website = self.get_website(pk)
         result = VerificationService.verify_pixel(website=website)
         return Response(result)
 
 
-class PixelRegenerateView(APIView):
-    permission_classes = [IsAuthenticated]
+class PixelRegenerateView(TenantScopedAPIView):
+    website_url_kwarg = "pk"
 
     def post(self, request, pk):
-        website = WebsiteService.get_for_user(user=request.user, website_id=pk)
+        website = self.get_website(pk)
         website = WebsiteService.regenerate_pixel_key(website=website, user=request.user)
         return Response({"pixel_key": str(website.pixel_key)})
 
 
-class WebsiteSettingsView(APIView):
-    permission_classes = [IsAuthenticated]
+class WebsiteSettingsView(TenantScopedAPIView):
+    website_url_kwarg = "pk"
 
     def get(self, request, pk):
-        website = WebsiteService.get_for_user(user=request.user, website_id=pk)
+        website = self.get_website(pk)
         serializer = WebsiteSettingsSerializer(website.settings)
         return Response(serializer.data)
 
     def put(self, request, pk):
-        website = WebsiteService.get_for_user(user=request.user, website_id=pk)
+        website = self.get_website(pk)
         serializer = WebsiteSettingsSerializer(website.settings, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
@@ -184,6 +185,7 @@ class DashboardView(APIView):
 
     def get(self, request):
         from apps.llm_ranking.services._window import (
+            parse_csv_filter,
             parse_prompt_filter,
             resolve_window,
         )
@@ -195,6 +197,7 @@ class DashboardView(APIView):
             build_kpis_for_user,
         )
         from apps.llm_ranking.services.overview_stats import (
+            build_filter_options,
             build_overview_for_user,
         )
         from apps.notifications.models import Notification
@@ -203,7 +206,8 @@ class DashboardView(APIView):
         website = websites.first()
 
         # Filters: ?range=overall|7d|30d|90d|1y|custom plus optional
-        # ?start=YYYY-MM-DD&end=YYYY-MM-DD&prompts=text1\ntext2.
+        # ?start / ?end, ?prompts (newline-joined), and the pill filters
+        # ?models / ?tags / ?topics (CSV or repeated params).
         range_key = request.query_params.get("range") or "30d"
         start_dt, end_dt = resolve_window(
             range_key,
@@ -213,27 +217,45 @@ class DashboardView(APIView):
         prompt_filter = parse_prompt_filter(
             request.query_params.getlist("prompts") or request.query_params.get("prompts"),
         )
+        models_filter = parse_csv_filter(
+            request.query_params.getlist("models") or request.query_params.get("models"),
+        )
+        tags_filter = parse_csv_filter(
+            request.query_params.getlist("tags") or request.query_params.get("tags"),
+        )
+        topics_filter = parse_csv_filter(
+            request.query_params.getlist("topics") or request.query_params.get("topics"),
+        )
         applied_filter = {
             "range": range_key,
             "start": start_dt.isoformat() if start_dt else None,
             "end": end_dt.isoformat() if end_dt else None,
             "prompts": prompt_filter or [],
+            "models": models_filter or [],
+            "tags": tags_filter or [],
+            "topics": topics_filter or [],
+        }
+        result_filters = {
+            "prompts": prompt_filter,
+            "providers": models_filter,
+            "tags": tags_filter,
+            "topics": topics_filter,
         }
 
         stats = build_kpis_for_user(
-            request.user, start=start_dt, end=end_dt, prompts=prompt_filter,
+            request.user, start=start_dt, end=end_dt, **result_filters,
         ) or []
         analytics_breakdowns = build_breakdowns_for_user(
-            request.user, start=start_dt, end=end_dt, prompts=prompt_filter,
+            request.user, start=start_dt, end=end_dt, **result_filters,
         )
         analytics_deep_dive = build_deep_dive(
-            request.user, start=start_dt, end=end_dt, prompts=prompt_filter,
+            request.user, start=start_dt, end=end_dt, **result_filters,
         )
 
         # Recent activity (from notifications)
         activity = []
         for n in Notification.objects.filter(user=request.user)[:6]:
-            color_map = {'hot_lead': 'var(--color-danger)', 'audit_complete': 'var(--color-success)', 'competitor_alert': 'var(--color-warning)', 'strategy': 'var(--color-info)', 'milestone': 'var(--color-success)'}
+            color_map = {'hot_lead': 'var(--color-danger)', 'audit_complete': 'var(--color-success)', 'competitor_alert': 'var(--color-warning)', 'strategy': 'var(--color-info)', 'milestone': 'var(--color-success)', 'brand_security_alert': 'var(--color-danger)'}
             activity.append({'text': n.message, 'time': n.created_at.strftime('%b %d, %H:%M'), 'color': color_map.get(n.type, 'var(--text-muted)'), 'type': n.type})
 
         # Quick actions (static but driven by context)
@@ -280,7 +302,13 @@ class DashboardView(APIView):
         # measured yet so the frontend can render guidance rather than
         # placeholder numbers.
         overview = build_overview_for_user(
-            request.user, start=start_dt, end=end_dt, prompts=prompt_filter,
+            request.user, start=start_dt, end=end_dt, **result_filters,
+        )
+
+        # Menu contents for the filter pills, computed from the unfiltered
+        # window so a selected filter never hides its own options.
+        filter_options = build_filter_options(
+            request.user, start=start_dt, end=end_dt,
         )
 
         return Response({
@@ -293,22 +321,23 @@ class DashboardView(APIView):
             'analytics_deep_dive': analytics_deep_dive,
             'applied_filter': applied_filter,
             'overview': overview,
+            'filter_options': filter_options,
             # Drives the dashboard's first-run guidance: which step the user
             # should take next when there is nothing to show yet.
             'setup_state': _setup_state(request.user, website),
         })
 
 
-class OnboardingAssistView(APIView):
+class OnboardingAssistView(TenantScopedAPIView):
     """AI-assisted onboarding: generate description and topic suggestions from URL."""
-    permission_classes = [IsAuthenticated]
+    website_url_kwarg = "pk"
 
     def post(self, request, pk):
         import re
 
-        import requests as http_requests
+        from core.validators.safe_http import safe_get
 
-        website = WebsiteService.get_for_user(user=request.user, website_id=pk)
+        website = self.get_website(pk)
         action = request.data.get("action", "describe")
         result = {}
 
@@ -317,11 +346,16 @@ class OnboardingAssistView(APIView):
             description = request.data.get("current_description", "")
             if not description:
                 try:
-                    resp = http_requests.get(
+                    # website.url is user-controlled and this endpoint reflects
+                    # the fetched title/meta back to the caller — a read-SSRF
+                    # oracle if fetched raw. safe_get applies the SSRF guard and
+                    # re-validates redirects (the old allow_redirects=True let a
+                    # public host 302 to 169.254.169.254).
+                    resp = safe_get(
                         website.url,
                         timeout=8,
-                        headers={"User-Agent": "FetchBot/1.0"},
-                        allow_redirects=True,
+                        max_bytes=20_000,
+                        headers={"User-Agent": "FetchBot/1.0 (+https://fetchbot.ai/bot)"},
                     )
                     html = resp.text[:20000]
                     # Extract meta description

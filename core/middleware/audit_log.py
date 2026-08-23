@@ -43,7 +43,7 @@ class AuditLogMiddleware:
             "user_id": user_id or "anonymous",
             "method": request.method,
             "path": request.path,
-            "query_params": request.GET.dict() if request.GET else None,
+            "query_params": self._redact_sensitive(request.GET.dict()) if request.GET else None,
             "status_code": response.status_code,
             "duration_ms": round(duration_ms, 2),
             "ip_address": ip_address,
@@ -72,10 +72,18 @@ class AuditLogMiddleware:
         x_forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR")
         return x_forwarded_for.split(",")[0].strip() if x_forwarded_for else request.META.get("REMOTE_ADDR")
 
-    @staticmethod
-    def _redact_sensitive(data: dict) -> dict:
-        SENSITIVE_KEYS = {"password", "token", "secret", "credit_card", "ssn", "api_key", "refresh", "access"}
+    # Substrings that mark a query-param key as sensitive. Matched as
+    # substrings (not exact keys) so variants like ``reset_token``,
+    # ``access_token`` and ``api_key`` are caught, not just ``token``.
+    SENSITIVE_KEY_MARKERS = (
+        "password", "passwd", "token", "secret", "credit_card", "card",
+        "ssn", "api_key", "apikey", "refresh", "access", "otp", "code",
+        "auth", "signature", "sig",
+    )
+
+    @classmethod
+    def _redact_sensitive(cls, data: dict) -> dict:
         return {
-            k: "***REDACTED***" if k.lower() in SENSITIVE_KEYS else v
+            k: "***REDACTED***" if any(m in k.lower() for m in cls.SENSITIVE_KEY_MARKERS) else v
             for k, v in data.items()
         }

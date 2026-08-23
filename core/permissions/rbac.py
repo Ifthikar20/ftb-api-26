@@ -7,7 +7,9 @@ ROLE_HIERARCHY = {
     "viewer": 20,
 }
 
-# Base platform features per tier (non-integration features)
+# Base platform features per tier (non-integration features).
+# "pro" and "business" are the live plan names; the historical
+# starter/growth/scale entries stay for legacy rows.
 _BASE_PLAN_FEATURES = {
     "starter": [
         "basic_analytics", "basic_leads", "competitors_3",
@@ -21,16 +23,29 @@ _BASE_PLAN_FEATURES = {
         "advanced_leads", "competitors_50", "team_unlimited", "api_access",
         "white_label", "dedicated_support",
     ],
+    "pro": [
+        "full_analytics",
+        "advanced_leads", "competitors_25", "team_5", "api_access",
+    ],
+    "business": [
+        "full_analytics",
+        "advanced_leads", "competitors_50", "team_unlimited", "api_access",
+        "white_label", "dedicated_support",
+    ],
 }
 
 
 def _build_plan_features() -> dict[str, list[str]]:
     """Build PLAN_FEATURES by merging base features with integration entitlements."""
     from core.integrations import get_registry
+    from core.utils.constants import legacy_tier_key
     registry = get_registry()
     result = {}
     for plan, base_features in _BASE_PLAN_FEATURES.items():
-        result[plan] = list(base_features) + registry.feature_keys_for(plan)
+        # Integration tier tables only know starter/growth/scale.
+        result[plan] = list(base_features) + registry.feature_keys_for(
+            legacy_tier_key(plan)
+        )
     return result
 
 
@@ -124,5 +139,10 @@ class PlanFeatureRequired(BasePermission):
         from django.conf import settings
         if not settings.PAYWALL_ENABLED:
             return True
-        user_plan = getattr(request.user, "plan", "starter")
-        return self.required_feature in PLAN_FEATURES.get(user_plan, [])
+        from core.utils.constants import legacy_tier_key
+        user_plan = getattr(request.user, "plan", "pro")
+        features = (
+            PLAN_FEATURES.get(user_plan)
+            or PLAN_FEATURES.get(legacy_tier_key(user_plan), [])
+        )
+        return self.required_feature in features

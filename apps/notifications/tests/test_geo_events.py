@@ -120,8 +120,10 @@ class TestRecordAuditEvents:
             mention_rate=10.0,
             completed_at=timezone.now(),
         )
-        for _ in range(50):
-            LLMRankingResultFactory(audit=audit)
+        # Distinct prompt_index per row: (audit, prompt_index, provider,
+        # run_id) is unique, so 50 factory rows on default index 0 collide.
+        for i in range(50):
+            LLMRankingResultFactory(audit=audit, prompt_index=i)
         with patch("apps.notifications.services.notification_service.channel_layer"):
             record_audit_events(audit)
         milestones = Notification.objects.filter(user=audit.created_by, type="milestone")

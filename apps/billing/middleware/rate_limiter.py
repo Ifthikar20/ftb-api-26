@@ -1,99 +1,66 @@
 """
-Rate limiting middleware for the Stripe webhook endpoint.
+Rate limiting middleware for inbound webhook endpoints (Polar, Slack,
+Discord).
 
-Uses a token bucket algorithm per IP address.
-Limits: 100 requests per minute per IP.
-Returns 429 Too Many Requests when exceeded — Stripe will retry with backoff.
+Token bucket per endpoint per IP address via the shared Redis-backed
+limiter, so the limit holds across every gunicorn worker instead of
+multiplying by process count. Limits: 100 requests per minute per IP.
+Returns 429 Too Many Requests when exceeded — the senders retry with
+backoff.
 """
 
 import logging
-import threading
-import time
 
 from django.http import JsonResponse
 
+from core.resilience import TokenBucket
+from core.utils.ua_parser import get_client_ip
+
 logger = logging.getLogger("billing")
 
-
-class TokenBucket:
-    """Thread-safe token bucket for rate limiting."""
-
-    def __init__(self, rate: float, capacity: int):
-        self.rate = rate          # tokens per second
-        self.capacity = capacity  # max burst
-        self.tokens = capacity
-        self.last_refill = time.time()
-        self.lock = threading.Lock()
-
-    def consume(self) -> bool:
-        with self.lock:
-            now = time.time()
-            elapsed = now - self.last_refill
-            self.tokens = min(self.capacity, self.tokens + elapsed * self.rate)
-            self.last_refill = now
-
-            if self.tokens >= 1:
-                self.tokens -= 1
-                return True
-            return False
+# Every unauthenticated inbound-webhook endpoint gets its own bucket.
+WEBHOOK_PATHS = {
+    "/api/v1/billing/polar/webhook/",
+    "/api/v1/notifications/discord/interactions/",
+    "/api/v1/notifications/slack/events/",
+    "/api/v1/notifications/slack/commands/",
+}
 
 
 class WebhookRateLimitMiddleware:
     """
-    Django middleware that rate-limits only the webhook endpoint.
+    Django middleware that rate-limits only the webhook endpoints.
 
-    Config:
-        WEBHOOK_RATE_LIMIT_PER_MINUTE: int (default 100)
-        WEBHOOK_PATH: str (default '/api/v1/billing/webhook/')
+    The client IP comes from core's proxy-aware get_client_ip (reads
+    X-Forwarded-For from the right per TRUSTED_PROXY_COUNT), so a caller
+    cannot dodge the limit by prepending forged entries. Bucket state
+    lives in Redis with a 300s TTL, so idle IPs clean themselves up.
     """
 
     def __init__(self, get_response):
         self.get_response = get_response
-        self.buckets: dict[str, TokenBucket] = {}
-        self.lock = threading.Lock()
-        self.webhook_path = "/api/v1/billing/webhook/"
+        self.webhook_paths = set(WEBHOOK_PATHS)
         self.rate_per_minute = 100
-        self.rate_per_second = self.rate_per_minute / 60
-        self._last_cleanup = time.time()
 
-    def _get_client_ip(self, request) -> str:
-        """Extract client IP, respecting X-Forwarded-For from reverse proxies."""
-        xff = request.META.get("HTTP_X_FORWARDED_FOR", "")
-        if xff:
-            return xff.split(",")[0].strip()
-        return request.META.get("REMOTE_ADDR", "unknown")
-
-    def _cleanup_stale_buckets(self):
-        """Prune buckets not seen in the last 5 minutes to prevent memory leak."""
-        now = time.time()
-        if now - self._last_cleanup < 300:
-            return
-        with self.lock:
-            stale_keys = [
-                ip for ip, bucket in self.buckets.items()
-                if now - bucket.last_refill > 300
-            ]
-            for key in stale_keys:
-                del self.buckets[key]
-            self._last_cleanup = now
+    def _bucket_name(self, path: str, client_ip: str) -> str:
+        """Per-endpoint bucket name, derived from the path segments
+        after /api/v1/."""
+        segments = [s for s in path.split("/") if s][2:]
+        return "webhook:" + "-".join(segments) + f":{client_ip}"
 
     def __call__(self, request):
-        # Only rate-limit the webhook endpoint
-        if request.path != self.webhook_path:
+        # Only rate-limit the webhook endpoints
+        if request.path not in self.webhook_paths:
             return self.get_response(request)
 
-        client_ip = self._get_client_ip(request)
+        client_ip = get_client_ip(request) or "unknown"
+        bucket = TokenBucket(
+            name=self._bucket_name(request.path, client_ip),
+            capacity=self.rate_per_minute,
+            refill_per_second=self.rate_per_minute / 60,
+        )
 
-        with self.lock:
-            if client_ip not in self.buckets:
-                self.buckets[client_ip] = TokenBucket(
-                    rate=self.rate_per_second,
-                    capacity=self.rate_per_minute,
-                )
-
-        bucket = self.buckets[client_ip]
-
-        if not bucket.consume():
+        if not bucket.try_acquire():
             logger.warning(f"Webhook rate limit exceeded for IP: {client_ip}")
             return JsonResponse(
                 {"error": "Rate limit exceeded. Please retry later."},
@@ -101,5 +68,4 @@ class WebhookRateLimitMiddleware:
                 headers={"Retry-After": "60"},
             )
 
-        self._cleanup_stale_buckets()
         return self.get_response(request)

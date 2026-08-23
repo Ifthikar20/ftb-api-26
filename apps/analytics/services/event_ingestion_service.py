@@ -36,6 +36,65 @@ MAX_PROP_KEY_LEN = 64
 MAX_PROP_VALUE_LEN = 500     # string values truncated to this
 MAX_PROPS_SERIALIZED = 4000  # total JSON length cap for the whole dict
 
+# ── AI assistant attribution ────────────────────────────────────────────────
+# AI assistants tag their outbound links two different ways: some set the
+# referrer (perplexity.ai), others append utm_source (ChatGPT links carry
+# ?utm_source=chatgpt.com). Both must classify as medium="ai" with a
+# canonical source name, or AI-referred traffic silently lands in the
+# generic-UTM bucket and every AI-traffic report undercounts.
+_AI_UTM_SOURCES = {
+    "chatgpt.com": "chatgpt",
+    "chat.openai.com": "chatgpt",
+    "openai": "chatgpt",
+    "openai.com": "chatgpt",
+    "claude.ai": "claude",
+    "claude": "claude",
+    "anthropic.com": "claude",
+    "gemini.google.com": "gemini",
+    "gemini": "gemini",
+    "bard.google.com": "gemini",
+    "perplexity.ai": "perplexity",
+    "perplexity": "perplexity",
+    "copilot.microsoft.com": "copilot",
+    "copilot": "copilot",
+    "bing-copilot": "copilot",
+    "meta.ai": "meta-ai",
+    "poe.com": "poe",
+    "poe": "poe",
+    "you.com": "you",
+}
+
+# Referrer-host fragments -> canonical AI source. Ordered dict semantics not
+# required: fragments are disjoint.
+_AI_REFERRER_HOSTS = (
+    ("chat.openai.com", "chatgpt"),
+    ("chatgpt.com", "chatgpt"),
+    ("claude.ai", "claude"),
+    ("gemini.google.com", "gemini"),
+    ("perplexity.ai", "perplexity"),
+    ("copilot.microsoft.com", "copilot"),
+    ("meta.ai", "meta-ai"),
+    ("poe.com", "poe"),
+    ("you.com", "you"),
+)
+
+
+def _match_ai_utm_source(utm_source: str) -> str:
+    """Canonical AI source for a utm_source value, or empty string."""
+    key = (utm_source or "").strip().lower()
+    if key.startswith("www."):
+        key = key[4:]
+    return _AI_UTM_SOURCES.get(key, "")
+
+
+def _match_ai_referrer(ref_host: str) -> str:
+    """Canonical AI source for a referrer hostname, or empty string."""
+    host = (ref_host or "").lower()
+    for fragment, source in _AI_REFERRER_HOSTS:
+        if fragment in host:
+            return source
+    return ""
+
 
 def _sanitize_event_type(raw) -> str:
     """Coerce event_type to a known value; unknown strings become 'custom'."""
@@ -113,12 +172,26 @@ def _clamp_timestamp(raw, now=None):
 
 class EventIngestionService:
     @staticmethod
-    def ingest_event(*, pixel_key: str, event_data: dict, request=None) -> PageEvent:
-        """Process an incoming pixel event and store it."""
-        try:
-            website = Website.objects.get(pixel_key=pixel_key, is_active=True)
-        except Website.DoesNotExist:
-            raise ValueError(f"Invalid pixel key: {pixel_key}") from None
+    def ingest_event(
+        *, pixel_key: str, event_data: dict, request=None, website=None,
+    ) -> PageEvent:
+        """Process an incoming pixel event and store it.
+
+        ``website`` lets a caller that has already resolved the row hand it
+        over instead of paying for a second lookup. The pixel views do
+        exactly that: they resolve the Website to authorise the request, so
+        without this the hottest endpoint in the product fetched the same
+        row twice per event - and the second fetch was the unrestricted
+        one, discarding the ``.only(...)`` the view had applied.
+
+        ingest_batch passes it once for a whole batch, which turns N
+        lookups into one.
+        """
+        if website is None:
+            try:
+                website = Website.objects.get(pixel_key=pixel_key, is_active=True)
+            except Website.DoesNotExist:
+                raise ValueError(f"Invalid pixel key: {pixel_key}") from None
 
         # Parse user-agent server-side for accuracy
         ua_string = ""
@@ -293,8 +366,16 @@ class EventIngestionService:
 
     @staticmethod
     def _parse_utm(url, referrer):
-        """Extract source/medium/campaign from URL params or referrer."""
-        source = ""
+        """Extract source/medium/campaign from URL params or referrer.
+
+        Precedence: AI utm_source values first (ChatGPT tags outbound links
+        with ?utm_source=chatgpt.com — this must win or AI traffic lands in
+        the generic-UTM bucket with a blank medium), then AI referrer hosts
+        (an AI referrer beats utm_source=share-style noise), then generic
+        UTM values as given, then search/social/referral inference from the
+        referrer, then direct.
+        """
+        utm_source = ""
         medium = ""
         campaign = ""
 
@@ -302,81 +383,86 @@ class EventIngestionService:
             parsed = urlparse(url)
             params = parse_qs(parsed.query)
 
-            source = params.get("utm_source", [""])[0]
+            utm_source = params.get("utm_source", [""])[0]
             medium = params.get("utm_medium", [""])[0]
             campaign = params.get("utm_campaign", [""])[0]
         except Exception:
             pass
+        campaign = campaign[:200]
 
-        # If no UTM, infer from referrer
-        if not source and referrer:
+        # 1) utm_source naming an AI assistant.
+        ai_source = _match_ai_utm_source(utm_source)
+        if ai_source:
+            return ai_source[:100], "ai", campaign
+
+        # 2) Referrer host is an AI assistant — even when a generic
+        #    utm_source exists.
+        ref_host = ""
+        if referrer:
             try:
                 ref_host = urlparse(referrer).hostname or ""
-
-                # ── AI assistant referrers ──
-                if "chat.openai.com" in ref_host or "chatgpt.com" in ref_host:
-                    source = "chatgpt"
-                    medium = "ai"
-                elif "claude.ai" in ref_host:
-                    source = "claude"
-                    medium = "ai"
-                elif "gemini.google.com" in ref_host:
-                    source = "gemini"
-                    medium = "ai"
-                elif "perplexity.ai" in ref_host:
-                    source = "perplexity"
-                    medium = "ai"
-                elif "copilot.microsoft.com" in ref_host:
-                    source = "copilot"
-                    medium = "ai"
-                elif "meta.ai" in ref_host:
-                    source = "meta-ai"
-                    medium = "ai"
-                elif "poe.com" in ref_host:
-                    source = "poe"
-                    medium = "ai"
-                elif "you.com" in ref_host:
-                    source = "you"
-                    medium = "ai"
-
-                # ── Search engines ──
-                elif "google" in ref_host:
-                    source = "google"
-                    medium = "organic"
-
-                # ── Social platforms ──
-                elif "facebook" in ref_host or "fb.com" in ref_host:
-                    source = "facebook"
-                    medium = "social"
-                elif "twitter" in ref_host or "t.co" in ref_host:
-                    source = "twitter"
-                    medium = "social"
-                elif "linkedin" in ref_host:
-                    source = "linkedin"
-                    medium = "social"
-                elif "youtube" in ref_host:
-                    source = "youtube"
-                    medium = "social"
-
-                elif ref_host:
-                    source = ref_host
-                    medium = "referral"
             except Exception:
-                pass
+                ref_host = ""
+        ai_source = _match_ai_referrer(ref_host)
+        if ai_source:
+            return ai_source[:100], "ai", campaign
+
+        # 3) Generic UTM acceptance, exactly as tagged.
+        if utm_source:
+            return utm_source[:100], medium[:100], campaign
+
+        # 4) Inference from the referrer.
+        source = ""
+        medium = ""
+        if ref_host:
+            # ── Search engines ──
+            if "google" in ref_host:
+                source = "google"
+                medium = "organic"
+
+            # ── Social platforms ──
+            elif "facebook" in ref_host or "fb.com" in ref_host:
+                source = "facebook"
+                medium = "social"
+            elif "twitter" in ref_host or "t.co" in ref_host:
+                source = "twitter"
+                medium = "social"
+            elif "linkedin" in ref_host:
+                source = "linkedin"
+                medium = "social"
+            elif "youtube" in ref_host:
+                source = "youtube"
+                medium = "social"
+
+            else:
+                source = ref_host
+                medium = "referral"
 
         if not source:
             source = "direct"
 
-        return source[:100], medium[:100], campaign[:200]
+        return source[:100], medium[:100], campaign
 
     @staticmethod
-    def ingest_batch(*, pixel_key: str, events: list, request=None) -> list:
-        """Ingest up to 50 events in one request."""
+    def ingest_batch(*, pixel_key: str, events: list, request=None, website=None) -> list:
+        """Ingest up to 50 events in one request.
+
+        The Website is resolved once and reused for every event in the
+        batch. Previously each event re-fetched it, so a full batch spent 50
+        queries establishing the same fact 50 times.
+        """
+        if website is None:
+            try:
+                website = Website.objects.get(pixel_key=pixel_key, is_active=True)
+            except Website.DoesNotExist:
+                raise ValueError(f"Invalid pixel key: {pixel_key}") from None
+
         results = []
         for event_data in events[:50]:
             try:
                 event = EventIngestionService.ingest_event(
-                    pixel_key=pixel_key, event_data=event_data, request=request
+                    pixel_key=pixel_key, event_data=event_data,
+                    request=request, website=website,
                 )
                 results.append(event)
             except Exception as e:

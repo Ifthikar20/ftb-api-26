@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import pytest
-from django.test import override_settings
 
 from apps.brand_vault.models import BrandFact, FactStatus, ToneSample
 from apps.content_studio.models import (
@@ -25,15 +24,18 @@ from apps.llm_ranking.tests.factories import (
 )
 from apps.websites.tests.factories import WebsiteFactory
 
-pytestmark = [
-    pytest.mark.django_db,
-    override_settings(
-        BRAND_VAULT_EXTRACTION_ENABLED=False,
-        CLAIM_VERIFICATION_ENABLED=False,
-        CITATION_EXTRACTION_ENABLED=False,
-        CONTENT_STUDIO_BRIEF_GENERATION_ENABLED=False,
-    ),
-]
+pytestmark = pytest.mark.django_db
+
+
+@pytest.fixture(autouse=True)
+def _quiet_pipelines(settings):
+    # pytest 8 rejects non-Mark objects in pytestmark, so the old
+    # module-level override_settings entry broke collection; the
+    # pytest-django settings fixture is the supported equivalent.
+    settings.BRAND_VAULT_EXTRACTION_ENABLED = False
+    settings.CLAIM_VERIFICATION_ENABLED = False
+    settings.CITATION_EXTRACTION_ENABLED = False
+    settings.CONTENT_STUDIO_BRIEF_GENERATION_ENABLED = False
 
 
 def _approved_fact(website, subject="Acme", obj="ships globally"):
@@ -72,7 +74,7 @@ def test_briefs_ordered_by_impact_desc():
 
 
 def test_drafter_persists_draft_and_runs_guards(monkeypatch):
-    monkeypatch.setattr(drafter, "_call_anthropic", lambda s, u: "")
+    monkeypatch.setattr(drafter, "_call_anthropic", lambda s, u, **kw: "")
     website = WebsiteFactory()
     _approved_fact(website)
     brief = ContentBrief.objects.create(
@@ -91,7 +93,7 @@ def test_drafter_persists_draft_and_runs_guards(monkeypatch):
 
 
 def test_drafter_regenerate_bumps_revision(monkeypatch):
-    monkeypatch.setattr(drafter, "_call_anthropic", lambda s, u: "")
+    monkeypatch.setattr(drafter, "_call_anthropic", lambda s, u, **kw: "")
     website = WebsiteFactory()
     brief = ContentBrief.objects.create(
         website=website, gap_type=GapType.VISIBILITY.value, impact_score=0.5,

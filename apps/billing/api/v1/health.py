@@ -2,35 +2,37 @@
 Billing health check endpoint.
 
 Returns the current state of the billing service:
-    - Stripe API connectivity
-    - Circuit breaker state
-    - Last webhook event timestamp
-    - Unprocessed event count
+    - Polar configuration (products + token present)
+    - Polar circuit breaker state
+    - Webhook event backlog
 
-No authentication required — designed for monitoring systems (e.g., Datadog, PagerDuty).
+Staff-only: breaker state and webhook backlog are operational detail an
+attacker could use to time abuse (e.g. probe while the breaker is
+stressed). Liveness monitoring uses the app-level /health/ endpoint.
 """
 
 from django.utils import timezone
 from rest_framework import status
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import IsAdminUser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.billing.models import BillingEvent
-from apps.billing.services.circuit_breaker import stripe_circuit
+from apps.metering import polar_client
 
 
 class BillingHealthView(APIView):
     """
     GET /api/v1/billing/health/
 
-    Returns billing service health status for monitoring.
+    Returns billing service health status for staff/ops accounts.
     """
-    permission_classes = [AllowAny]
-    authentication_classes = []  # No auth required for health checks
+    permission_classes = [IsAdminUser]
 
     def get(self, request):
-        circuit_status = stripe_circuit.get_status()
+        from apps.billing.services import polar_billing
+
+        circuit_status = polar_client.breaker().status()
 
         # Last webhook event
         last_event = BillingEvent.objects.order_by("-created_at").first()
@@ -47,7 +49,9 @@ class BillingHealthView(APIView):
         ).count()
 
         # Overall status
-        if circuit_status["state"] == "open":
+        if not polar_billing.is_configured():
+            overall = "unconfigured"
+        elif circuit_status["state"] == "open":
             overall = "degraded"
         elif recent_failures > 5:
             overall = "degraded"
@@ -58,7 +62,8 @@ class BillingHealthView(APIView):
 
         return Response({
             "status": overall,
-            "stripe": {
+            "polar": {
+                "configured": polar_billing.is_configured(),
                 "circuit_breaker": circuit_status,
             },
             "webhooks": {

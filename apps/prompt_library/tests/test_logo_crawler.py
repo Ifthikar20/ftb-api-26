@@ -50,13 +50,13 @@ class TestFetchSiteLogo:
         assert logo_crawler.fetch_site_logo("nope") == ""
 
     def test_resolves_and_caches(self):
-        html = b'<html><head><link rel="apple-touch-icon" href="/logo.png"></head>'
-        fake_resp = MagicMock(url="https://acme.com/", encoding="utf-8")
-        fake_resp.raise_for_status.return_value = None
-        fake_resp.iter_content.return_value = iter([html])
+        # The crawler now fetches through the SSRF-guarded safe_get, which
+        # returns a SafeResponse (.status_code / .text / .final_url).
+        html = '<html><head><link rel="apple-touch-icon" href="/logo.png"></head>'
+        fake_resp = MagicMock(status_code=200, text=html, final_url="https://acme.com/")
 
         with patch.object(logo_crawler, "_is_public_host", return_value=True), \
-             patch("requests.get", return_value=fake_resp) as mock_get:
+             patch("core.validators.safe_http.safe_get", return_value=fake_resp) as mock_get:
             first = logo_crawler.fetch_site_logo("acme.com")
             # Second call is served from cache (no extra fetch).
             second = logo_crawler.fetch_site_logo("acme.com")

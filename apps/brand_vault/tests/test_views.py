@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import pytest
-from django.test import override_settings
 from django.urls import reverse
 from rest_framework.test import APIClient
 
@@ -10,14 +9,17 @@ from apps.accounts.tests.factories import UserFactory
 from apps.brand_vault.models import BrandFact, FactStatus
 from apps.websites.tests.factories import WebsiteFactory
 
-pytestmark = [
-    pytest.mark.django_db,
-    override_settings(
-        BRAND_VAULT_EXTRACTION_ENABLED=False,
-        CLAIM_VERIFICATION_ENABLED=False,
-        CITATION_EXTRACTION_ENABLED=False,
-    ),
-]
+pytestmark = pytest.mark.django_db
+
+
+@pytest.fixture(autouse=True)
+def _quiet_pipelines(settings):
+    # pytest 8 rejects non-Mark objects in pytestmark, so the old
+    # module-level override_settings entry broke collection; the
+    # pytest-django settings fixture is the supported equivalent.
+    settings.BRAND_VAULT_EXTRACTION_ENABLED = False
+    settings.CLAIM_VERIFICATION_ENABLED = False
+    settings.CITATION_EXTRACTION_ENABLED = False
 
 
 @pytest.fixture

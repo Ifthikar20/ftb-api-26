@@ -28,6 +28,15 @@ class User(AbstractBaseUser, PermissionsMixin, TimestampMixin):
     onboarding_complete = models.BooleanField(default=False)
     last_daily_brief = models.DateField(null=True, blank=True)
 
+    # Paywall funnel state: set when the user clicks "Continue with the
+    # free plan" on /paywall. Null = never dismissed; clearing it (e.g.
+    # in the admin) re-arms the paywall for this user.
+    paywall_dismissed_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="When the user chose the Free plan from the paywall. "
+                  "Null = never dismissed; clear to re-show the paywall.",
+    )
+
     # Calendar-month spend cap across every AI module. 0 = no cap.
     monthly_ai_cost_cap_usd = models.DecimalField(
         max_digits=10, decimal_places=2, default=0,
@@ -178,10 +187,21 @@ class PasswordResetToken(models.Model):
 class AITokenUsage(TimestampMixin):
     """A single AI API call — records model, tokens, cost, and which module made the call."""
 
+    # Every module that actually calls core.ai_tracking.record_usage.
+    # Choices are display hygiene (not DB-enforced); keep in sync with the
+    # Polar `llm_usage` event metadata's `module` values.
     MODULE_CHOICES = [
         ("llm_ranking", "LLM Ranking"),
         ("rag", "RAG / Embeddings"),
         ("onboarding", "Onboarding scan"),
+        ("prompt_library", "Prompt Library"),
+        ("agents", "Hired Agents"),
+        ("brand_vault", "Brand Vault"),
+        ("brand_security", "Brand Security"),
+        ("content_studio", "Content Studio"),
+        ("notifications", "Notifications / Chat"),
+        ("source_sentiment", "Source Sentiment"),
+        ("source_relevance", "Source Relevance"),
     ]
 
     PROVIDER_CHOICES = [
@@ -218,6 +238,13 @@ class AITokenUsage(TimestampMixin):
     )
     duration_ms = models.IntegerField(default=0, help_text="How long the API call took in ms")
     metadata = models.JSONField(default=dict, blank=True)
+    # Dedupe anchor: Celery retries / acks_late redeliveries re-record the
+    # same logical call under the same key and collapse to one row. Also
+    # sent to Polar as the event external_id (server-side dedupe). NULL on
+    # legacy rows; Postgres exempts NULLs from the unique constraint.
+    idempotency_key = models.CharField(
+        max_length=120, unique=True, null=True, blank=True, default=None
+    )
 
     class Meta:
         db_table = "accounts_aitokenusage"

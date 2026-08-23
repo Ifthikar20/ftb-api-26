@@ -1,56 +1,46 @@
 """Advanced analytics API views."""
 from rest_framework import status
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from rest_framework.views import APIView
 
-from apps.websites.services.website_service import WebsiteService
+from core.views import TenantScopedAPIView
 
 
-class ChartDataView(APIView):
-    permission_classes = [IsAuthenticated]
-
+class ChartDataView(TenantScopedAPIView):
     def get(self, request, website_id):
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        self.get_website(website_id)
         from apps.analytics.services.daily_stats import DailyStatsService
         period = request.query_params.get("period", "30d")
         data = DailyStatsService.get_chart_data(website_id=website_id, period=period)
         return Response(data)
 
 
-class DeviceBreakdownView(APIView):
-    permission_classes = [IsAuthenticated]
-
+class DeviceBreakdownView(TenantScopedAPIView):
     def get(self, request, website_id):
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        self.get_website(website_id)
         from apps.analytics.services.daily_stats import DailyStatsService
         period = request.query_params.get("period", "30d")
         data = DailyStatsService.get_device_breakdown(website_id=website_id, period=period)
         return Response(data)
 
 
-class CountryBreakdownView(APIView):
-    permission_classes = [IsAuthenticated]
-
+class CountryBreakdownView(TenantScopedAPIView):
     def get(self, request, website_id):
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        self.get_website(website_id)
         from apps.analytics.services.daily_stats import DailyStatsService
         period = request.query_params.get("period", "30d")
         data = DailyStatsService.get_country_breakdown(website_id=website_id, period=period)
         return Response(data)
 
 
-class FunnelListCreateView(APIView):
-    permission_classes = [IsAuthenticated]
-
+class FunnelListCreateView(TenantScopedAPIView):
     def get(self, request, website_id):
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        self.get_website(website_id)
         from apps.analytics.services.funnel_service import FunnelService
         data = FunnelService.list_funnels(website_id=website_id)
         return Response(data)
 
     def post(self, request, website_id):
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        self.get_website(website_id)
         from apps.analytics.services.funnel_service import FunnelService
         name = request.data.get("name", "New Funnel")
         steps = request.data.get("steps", [])
@@ -60,11 +50,9 @@ class FunnelListCreateView(APIView):
         return Response(data, status=status.HTTP_201_CREATED)
 
 
-class FunnelCalculateView(APIView):
-    permission_classes = [IsAuthenticated]
-
+class FunnelCalculateView(TenantScopedAPIView):
     def get(self, request, website_id, funnel_id):
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        self.get_website(website_id)
         from apps.analytics.services.funnel_service import FunnelService
         period = request.query_params.get("period", "30d")
         data = FunnelService.calculate_funnel(
@@ -73,33 +61,27 @@ class FunnelCalculateView(APIView):
         return Response(data)
 
 
-class RetentionView(APIView):
-    permission_classes = [IsAuthenticated]
-
+class RetentionView(TenantScopedAPIView):
     def get(self, request, website_id):
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        self.get_website(website_id)
         from apps.analytics.services.retention_service import RetentionService
         weeks = int(request.query_params.get("weeks", 8))
         data = RetentionService.get_retention_matrix(website_id=website_id, num_weeks=weeks)
         return Response(data)
 
 
-class RetentionCurveView(APIView):
-    permission_classes = [IsAuthenticated]
-
+class RetentionCurveView(TenantScopedAPIView):
     def get(self, request, website_id):
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        self.get_website(website_id)
         from apps.analytics.services.retention_service import RetentionService
         weeks = int(request.query_params.get("weeks", 8))
         data = RetentionService.get_retention_curve(website_id=website_id, num_weeks=weeks)
         return Response(data)
 
 
-class EngagementMetricsView(APIView):
-    permission_classes = [IsAuthenticated]
-
+class EngagementMetricsView(TenantScopedAPIView):
     def get(self, request, website_id):
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        self.get_website(website_id)
         from apps.analytics.services.retention_service import RetentionService
         period = request.query_params.get("period", "30d")
         data = RetentionService.get_engagement_metrics(
@@ -108,22 +90,18 @@ class EngagementMetricsView(APIView):
         return Response(data)
 
 
-class FlowView(APIView):
-    permission_classes = [IsAuthenticated]
-
+class FlowView(TenantScopedAPIView):
     def get(self, request, website_id):
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        self.get_website(website_id)
         from apps.analytics.services.flow_service import FlowService
         period = request.query_params.get("period", "30d")
         data = FlowService.get_user_flows(website_id=website_id, period=period)
         return Response(data)
 
 
-class EntryExitPagesView(APIView):
-    permission_classes = [IsAuthenticated]
-
+class EntryExitPagesView(TenantScopedAPIView):
     def get(self, request, website_id):
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        self.get_website(website_id)
         from apps.analytics.services.flow_service import FlowService
         period = request.query_params.get("period", "30d")
         entry = FlowService.get_entry_pages(website_id=website_id, period=period)
@@ -131,22 +109,18 @@ class EntryExitPagesView(APIView):
         return Response({"entry_pages": entry, "exit_pages": exit_})
 
 
-class VisitorJourneysView(APIView):
-    permission_classes = [IsAuthenticated]
-
+class VisitorJourneysView(TenantScopedAPIView):
     def get(self, request, website_id):
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        self.get_website(website_id)
         from apps.analytics.services.flow_service import FlowService
         period = request.query_params.get("period", "30d")
         data = FlowService.get_visitor_journeys(website_id=website_id, period=period)
         return Response(data)
 
 
-class VisitorListView(APIView):
-    permission_classes = [IsAuthenticated]
-
+class VisitorListView(TenantScopedAPIView):
     def get(self, request, website_id):
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        self.get_website(website_id)
         from django.db.models import Count
 
         from apps.analytics.models import Visitor
@@ -164,11 +138,9 @@ class VisitorListView(APIView):
         return Response(list(visitors))
 
 
-class VisitorTimelineView(APIView):
-    permission_classes = [IsAuthenticated]
-
+class VisitorTimelineView(TenantScopedAPIView):
     def get(self, request, website_id, visitor_id):
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        self.get_website(website_id)
         from apps.analytics.models import PageEvent
 
         events = (
@@ -181,22 +153,18 @@ class VisitorTimelineView(APIView):
         return Response(list(events))
 
 
-class AIInsightsView(APIView):
-    permission_classes = [IsAuthenticated]
-
+class AIInsightsView(TenantScopedAPIView):
     def get(self, request, website_id):
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        self.get_website(website_id)
         from apps.analytics.services.ai_insights_service import AIInsightsService
         insights = AIInsightsService.generate_insights(website_id=website_id)
         actions = AIInsightsService.suggest_actions(website_id=website_id)
         return Response({"insights": insights, "actions": actions})
 
 
-class LiveEventsView(APIView):
-    permission_classes = [IsAuthenticated]
-
+class LiveEventsView(TenantScopedAPIView):
     def get(self, request, website_id):
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        self.get_website(website_id)
         from datetime import timedelta
 
         from django.utils import timezone
@@ -221,7 +189,7 @@ class LiveEventsView(APIView):
 EVENT_LOG_RETENTION_DAYS = 180
 
 
-class EventLogView(APIView):
+class EventLogView(TenantScopedAPIView):
     """Persisted, paginated event log for the SEO Analytics Events tab.
 
     Returns rows straight out of PageEvent, in reverse-chronological order,
@@ -238,8 +206,6 @@ class EventLogView(APIView):
     start, end   ISO timestamps; clamped to the last 180 days
     format       set to 'csv' to download instead of paginate
     """
-
-    permission_classes = [IsAuthenticated]
 
     PAGE_SIZE_DEFAULT = 50
     PAGE_SIZE_MAX = 500
@@ -261,7 +227,7 @@ class EventLogView(APIView):
 
         from apps.analytics.models import PageEvent
 
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        self.get_website(website_id)
 
         retention_floor = timezone.now() - _dt.timedelta(days=EVENT_LOG_RETENTION_DAYS)
 
@@ -365,7 +331,7 @@ class EventLogView(APIView):
         return response
 
 
-class AnalyticsAccessLogView(APIView):
+class AnalyticsAccessLogView(TenantScopedAPIView):
     """Who has read this website's analytics, and when.
 
     Scoped exactly like every other analytics view: the caller must own the
@@ -375,12 +341,11 @@ class AnalyticsAccessLogView(APIView):
     trail the AnalyticsAccessLogMiddleware writes.
     """
 
-    permission_classes = [IsAuthenticated]
     PAGE_SIZE_DEFAULT = 50
     PAGE_SIZE_MAX = 200
 
     def get(self, request, website_id):
-        WebsiteService.get_for_user(user=request.user, website_id=website_id)
+        self.get_website(website_id)
         from apps.analytics.models import AnalyticsAccessLog
 
         qs = AnalyticsAccessLog.objects.filter(

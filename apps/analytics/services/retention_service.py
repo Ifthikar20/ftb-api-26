@@ -123,59 +123,62 @@ class RetentionService:
         - Avg session duration
         - Engagement score
         """
-        from django.db.models import Avg
+        from django.db.models import Avg, Count, DurationField, F, Q
 
         from apps.analytics.models import Session
 
         start, end = get_date_range(period)
 
-        # ── Visitor counts ──
-        total_visitors = Visitor.objects.filter(
+        # ── Visitor counts: one scan, four numbers ──
+        # These four differ only by date predicate, and every one of them is
+        # a subset of first_seen <= end, so a filtered aggregate computes all
+        # four in a single pass instead of four COUNTs over the same index.
+        vc = Visitor.objects.filter(
             website_id=website_id,
             first_seen__lte=end,
-        ).count()
+        ).aggregate(
+            total=Count("id"),
+            new=Count("id", filter=Q(first_seen__range=(start, end))),
+            returning=Count("id", filter=Q(
+                first_seen__lt=start,
+                last_seen__range=(start, end),
+            )),
+            multi=Count("id", filter=Q(
+                first_seen__range=(start, end),
+                visit_count__gt=1,
+            )),
+        )
+        total_visitors = vc["total"]
+        new_visitors = vc["new"]
+        returning_total = vc["returning"] + vc["multi"]
 
-        new_visitors = Visitor.objects.filter(
-            website_id=website_id,
-            first_seen__range=(start, end),
-        ).count()
-
-        returning_visitors = Visitor.objects.filter(
-            website_id=website_id,
-            first_seen__lt=start,
-            last_seen__range=(start, end),
-        ).count()
-
-        # Also count visitors who visited multiple times within the period
-        multi_visit = Visitor.objects.filter(
-            website_id=website_id,
-            first_seen__range=(start, end),
-            visit_count__gt=1,
-        ).count()
-
-        returning_total = returning_visitors + multi_visit
-
-        # ── Session metrics ──
+        # ── Session metrics: one scan, four numbers ──
+        # Postgres averages the interval directly, which retires the previous
+        # `for s in ended_sessions[:200]` loop. That loop was not only 200
+        # rows over the wire: it had no order_by, so it averaged 200
+        # arbitrary sessions and reported the result as the period average.
+        # Past 200 ended sessions in a window the figure quietly stopped
+        # meaning what the dashboard label claims.
         sessions_in_period = Session.objects.filter(
             visitor__website_id=website_id,
             started_at__range=(start, end),
         )
-
-        total_sessions = sessions_in_period.count()
-        bounced_sessions = sessions_in_period.filter(page_count__lte=1).count()
-        bounce_rate = round(bounced_sessions / max(total_sessions, 1) * 100, 1)
-
-        avg_pages = sessions_in_period.aggregate(
-            avg=Avg("page_count")
-        )["avg"] or 0
-
-        # Avg duration (from sessions that have ended)
-        ended_sessions = sessions_in_period.filter(ended_at__isnull=False)
-        durations = []
-        for s in ended_sessions[:200]:
-            if s.ended_at and s.started_at:
-                durations.append((s.ended_at - s.started_at).total_seconds())
-        avg_duration = round(sum(durations) / max(len(durations), 1))
+        sm = sessions_in_period.aggregate(
+            total=Count("id"),
+            bounced=Count("id", filter=Q(page_count__lte=1)),
+            avg_pages=Avg("page_count"),
+            avg_duration=Avg(
+                F("ended_at") - F("started_at"),
+                filter=Q(ended_at__isnull=False),
+                output_field=DurationField(),
+            ),
+        )
+        total_sessions = sm["total"]
+        bounce_rate = round(sm["bounced"] / max(total_sessions, 1) * 100, 1)
+        avg_pages = sm["avg_pages"] or 0
+        avg_duration = (
+            round(sm["avg_duration"].total_seconds()) if sm["avg_duration"] else 0
+        )
 
         # ── Engagement score (0-100) ──
         # Weighted: low bounce (40%), pages/session (30%), return rate (30%)
@@ -185,36 +188,36 @@ class RetentionService:
         return_score = min(return_rate, 100) * 0.3
         engagement_score = round(bounce_score + pages_score + return_score)
 
-        # ── Top returning visitors ──
-        top_returners = list(
+        # ── Top returning visitors: annotate instead of one query each ──
+        # This previously ran a separate Avg aggregate per returner, so the
+        # ten-row list cost eleven queries. Visitor is unique_together on
+        # (website, fingerprint_hash), so annotating per Visitor row returns
+        # exactly what the per-visitor lookup returned - it just does it once.
+        top_returners = (
             Visitor.objects.filter(
                 website_id=website_id,
                 visit_count__gt=1,
             )
-            .order_by("-visit_count", "-last_seen")[:10]
+            .annotate(avg_pages=Avg("sessions__page_count"))
+            .order_by("-visit_count", "-last_seen")
             .values(
                 "fingerprint_hash", "visit_count", "last_seen",
-                "device_type", "geo_country", "browser", "os",
-            )
+                "device_type", "geo_country", "browser", "avg_pages",
+            )[:10]
         )
 
-        returner_list = []
-        for v in top_returners:
-            # Get avg pages per visit for this visitor
-            visitor_sessions = Session.objects.filter(
-                visitor__fingerprint_hash=v["fingerprint_hash"],
-                visitor__website_id=website_id,
-            )
-            v_avg_pages = visitor_sessions.aggregate(avg=Avg("page_count"))["avg"] or 0
-            returner_list.append({
+        returner_list = [
+            {
                 "hash": (v["fingerprint_hash"] or "")[:12],
                 "visits": v["visit_count"],
                 "last_seen": v["last_seen"].isoformat() if v["last_seen"] else None,
                 "device": v["device_type"] or "",
                 "country": v["geo_country"] or "",
                 "browser": v["browser"] or "",
-                "avg_pages": round(v_avg_pages, 1),
-            })
+                "avg_pages": round(v["avg_pages"] or 0, 1),
+            }
+            for v in top_returners
+        ]
 
         return {
             "total_visitors": total_visitors,

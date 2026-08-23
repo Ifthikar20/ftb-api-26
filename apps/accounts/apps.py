@@ -8,3 +8,4 @@ class AccountsConfig(AppConfig):
 
     def ready(self):
         import apps.accounts.signals  # noqa: F401
+        import core.checks  # noqa: F401 — registers project-wide system checks

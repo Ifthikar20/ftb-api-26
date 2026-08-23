@@ -32,7 +32,7 @@ Status key:
 - [ ] Decide the Business-tier contact target. If email, confirm address in `pricing.js`. If Calendly, replace the `mailto:` link with the Calendly URL.
 - [ ] Decide trial behavior. Current code treats `TRIALING` as paying only when `stripe_subscription_id` is set. Confirm that is desired, or switch to “any TRIALING counts.”
 - [ ] Decide what happens when a paying user’s subscription lapses (webhook → status `past_due` or `canceled`). Should they be re-directed to `/paywall` on next navigation? (Currently yes — `next_route` in `SessionView` returns `paywall` whenever `is_paying` is false.)
-- [ ] Decide whether `/paywall` should allow “downgrade to free trial of X audits” or stay a hard gate. Today it is a hard gate.
+- [x] Decide whether `/paywall` should allow “downgrade to free trial of X audits” or stay a hard gate. Decided 2026-08-20: dismissible — “Continue with the free plan” sets `User.paywall_dismissed_at` (`POST /billing/paywall/dismiss/`) and the user proceeds on the Free plan; feature gating now resolves from the subscription (`current_plan_for`), not `user.plan`.
 
 ### Session / gate correctness
 - [ ] Backfill: any existing users without a `Subscription` row will get `next_route == "paywall"` on first login. Confirm this is desired, or write a one-time script that grandfathers existing users onto a chosen plan.

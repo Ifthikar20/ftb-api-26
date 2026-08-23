@@ -65,6 +65,12 @@ class DeepExtractor(HTMLParser):
         self.button_texts = []
         self.body_text_chunks = []
         self._tag_stack = []
+        # Parallel to _tag_stack: True where the element (or an ancestor) is
+        # hidden. Hidden text is a prompt-injection channel — it is invisible
+        # to a human reviewing the page but harvested and fed to the model —
+        # so it is dropped here, at the HTML layer, where CSS-hidden content
+        # is still detectable.
+        self._hidden_stack = []
         self._in_title = False
         self._in_h1 = False
         self._in_h2 = False
@@ -78,9 +84,26 @@ class DeepExtractor(HTMLParser):
         self._in_style = False
         self._in_footer = False
 
+    @staticmethod
+    def _is_hidden_element(tag, attrs_dict) -> bool:
+        """True if this element hides its text (so it must not be harvested)."""
+        if tag in ("template", "noscript"):
+            return True
+        if "hidden" in attrs_dict:  # boolean ``hidden`` attribute
+            return True
+        if (attrs_dict.get("aria-hidden") or "").lower() == "true":
+            return True
+        style = (attrs_dict.get("style") or "").lower().replace(" ", "")
+        if "display:none" in style or "visibility:hidden" in style:
+            return True
+        # opacity:0 / font-size:0, but not 0.5 / 0.9rem (visible).
+        return bool(re.search(r"(?:opacity|font-size):0(?![.0-9])", style))
+
     def handle_starttag(self, tag, attrs):
         attrs_dict = dict(attrs)
         self._tag_stack.append(tag)
+        parent_hidden = bool(self._hidden_stack and self._hidden_stack[-1])
+        self._hidden_stack.append(parent_hidden or self._is_hidden_element(tag, attrs_dict))
 
         if tag == "title":
             self._in_title = True
@@ -149,12 +172,17 @@ class DeepExtractor(HTMLParser):
 
         if self._tag_stack and self._tag_stack[-1] == tag:
             self._tag_stack.pop()
+            if self._hidden_stack:
+                self._hidden_stack.pop()
 
     def handle_data(self, data):
         text = data.strip()
         if not text or len(text) < 2:
             return
         if self._in_script or self._in_style:
+            return
+        # Drop text inside hidden elements — a prompt-injection channel.
+        if self._hidden_stack and self._hidden_stack[-1]:
             return
 
         if self._in_title:

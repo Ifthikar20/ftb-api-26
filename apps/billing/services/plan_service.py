@@ -1,81 +1,118 @@
 """
-Plan definitions — 2-tier model (Starter + Enterprise).
+Plan metadata exposed via the API — derived from core.utils.constants
+so pricing/limits exist in exactly ONE place. (This module previously
+carried its own divergent price table; that drift is gone.)
 
-This is the single source of truth for plan metadata exposed via the API.
-For feature-level gating, use constants.PLAN_LIMITS instead.
+For feature-level gating, use constants.PLAN_LIMITS / plan_limits.py.
 """
+from core.utils.constants import PLAN_LIMITS, Plan
 
-PLANS = [
-    {
-        "id": "starter",
-        "name": "Starter",
-        "segment": "individual",
-        "price_monthly": 39,
-        "price_yearly": 390,
-        "trial_days": 5,
+
+def _free() -> dict:
+    limits = PLAN_LIMITS[Plan.FREE]
+    return {
+        "id": "free",
+        "name": "Free",
+        "segment": str(limits["segment"]),
+        "price_monthly": 0,
+        "price_yearly": 0,
+        "trial_days": 0,
+        "features": [
+            "$1 of AI usage per month",
+            "1 website",
+            f"{limits['max_prompts_per_audit']} prompts per audit",
+            f"{limits['max_audits_per_month']} audits / month",
+            "Claude + GPT-4",
+            "Community support",
+        ],
+        "limits": {
+            "projects": limits["projects"],
+            "pageviews": limits["pageviews"],
+            "competitors": limits["competitors"],
+            "team_members": limits["team_members"],
+            "ai_credits": limits["ai_credits_monthly"],
+            "integrations": limits["integrations"],
+        },
+    }
+
+
+def _pro() -> dict:
+    limits = PLAN_LIMITS[Plan.PRO]
+    return {
+        "id": "pro",
+        "name": "Pro",
+        "segment": str(limits["segment"]),
+        "price_monthly": limits["price_monthly"],
+        "price_yearly": limits["price_yearly"],
+        "trial_days": limits["trial_days"],
         "popular": True,
         "features": [
-            "5 projects",
-            "Up to 100,000 pageviews/month",
-            "200 AI credits/month",
-            "Lead scoring & hot alerts",
-            "10 competitor tracking",
-            "Heatmaps & funnels",
-            "Keyword tracking & SEO tools",
-            "Pipeline builder",
+            f"{limits['projects']} projects",
+            f"Up to {limits['pageviews']:,} pageviews/month",
+            "Visibility audits across Claude, GPT, Gemini and Perplexity",
+            f"{limits['max_prompts_per_audit']} prompts per audit, daily scans",
+            f"{limits['max_agents']} hired agents",
+            f"{limits['competitors']} competitors tracked",
+            f"{limits['team_members']} team members",
+            f"{limits['integrations']} integrations (Slack/Discord)",
             "Trend intelligence",
-            "3 integrations (Slack/Discord/Telegram)",
+            "API access",
             "Email support",
         ],
         "limits": {
-            "projects": 5,
-            "pageviews": 100_000,
-            "competitors": 10,
-            "team_members": 1,
-            "ai_credits": 200,
-            "integrations": 3,
+            "projects": limits["projects"],
+            "pageviews": limits["pageviews"],
+            "competitors": limits["competitors"],
+            "team_members": limits["team_members"],
+            "ai_credits": limits["ai_credits_monthly"],
+            "integrations": limits["integrations"],
         },
-    },
-    {
-        "id": "enterprise",
-        "name": "Enterprise",
-        "segment": "enterprise",
-        "price_monthly": -1,  # Custom
-        "price_yearly": -1,
+    }
+
+
+def _business() -> dict:
+    limits = PLAN_LIMITS[Plan.BUSINESS]
+    return {
+        "id": "business",
+        "name": "Business",
+        "segment": str(limits["segment"]),
+        "price_monthly": limits["price_monthly"],  # -1 = custom
+        "price_yearly": limits["price_yearly"],
+        "trial_days": limits["trial_days"],
         "features": [
-            "Everything in Starter",
-            "Unlimited projects & pageviews",
-            "Unlimited AI credits",
+            "Everything in Pro",
+            "Unlimited projects and pageviews",
+            "Unlimited AI usage allowance",
             "Unlimited team members",
             "Unlimited competitor tracking",
             "Unlimited integrations",
             "SSO / SAML authentication",
-            "Full API access",
             "White-label reports",
-            "Agents & LLM Ranking",
             "Organization-level billing",
-            "Dedicated support & SLA",
+            "Dedicated support and SLA",
             "Custom onboarding",
         ],
         "limits": {
-            "projects": -1,
-            "pageviews": -1,
-            "competitors": -1,
-            "team_members": -1,
-            "ai_credits": -1,
-            "integrations": -1,
+            "projects": limits["projects"],
+            "pageviews": limits["pageviews"],
+            "competitors": limits["competitors"],
+            "team_members": limits["team_members"],
+            "ai_credits": limits["ai_credits_monthly"],
+            "integrations": limits["integrations"],
         },
-    },
-]
+    }
 
-# Legacy plan name → 2-tier mapping
+
+PLANS = [_free(), _pro(), _business()]
+
+# Legacy plan name → live-tier mapping
 _LEGACY_MAP = {
-    "individual": "starter",
-    "growth": "starter",
-    "free": "starter",
-    "scale": "enterprise",
-    "team": "enterprise",
-    "business": "enterprise",
+    "individual": "pro",
+    "starter": "pro",
+    "growth": "pro",
+    "scale": "business",
+    "team": "business",
+    "enterprise": "business",
 }
 
 

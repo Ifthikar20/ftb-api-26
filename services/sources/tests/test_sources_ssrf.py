@@ -56,3 +56,44 @@ def test_read_page_refuses_metadata_endpoint():
     out = logic.read_page("http://169.254.169.254/latest/meta-data/")
     assert out["status"] == "error"
     assert "unsafe URL" in out["detail"]
+
+
+@pytest.mark.parametrize("url,expected", [
+    ("https://www.reddit.com/r/x/comments/abc/title/", True),
+    ("https://reddit.com/r/x/comments/abc/", True),
+    ("https://old.reddit.com/r/x/comments/abc/", True),
+    # The bug: endswith("reddit.com") matched attacker-registered hosts,
+    # letting a SERP-supplied URL route this fetch anywhere.
+    ("https://evilreddit.com/r/x/comments/abc/", False),
+    ("https://reddit.com.attacker.example/r/x/comments/abc/", False),
+    ("https://notreddit.com/comments/abc/", False),
+])
+def test_is_reddit_thread_host_is_dot_anchored(url, expected):
+    from services.sources import logic
+    assert logic.is_reddit_thread(url) is expected
+
+
+@pytest.mark.parametrize("url,expected", [
+    ("https://www.yelp.com/biz/x", True),
+    ("https://yelp.com/biz/x", True),
+    ("https://evilyelp.com/biz/x", False),
+    ("https://yelp.com.attacker.example/biz/x", False),
+])
+def test_is_yelp_host_is_dot_anchored(url, expected):
+    from services.sources import logic
+    assert logic.is_yelp(url) is expected
+
+
+def test_read_reddit_thread_goes_through_safe_get(monkeypatch):
+    # Regression: read_reddit_thread used a raw requests.get. It must now go
+    # through safe_get, so a guard refusal surfaces as a non-ok result rather
+    # than an unguarded fetch.
+    from services.sources import logic
+
+    def refuse(*_a, **_kw):
+        raise safe_http.FetchError("unsafe URL: private address")
+
+    monkeypatch.setattr(logic, "safe_get", refuse)
+    out = logic.read_reddit_thread("https://www.reddit.com/r/x/comments/abc/")
+    assert out["status"] != "ok"
+    assert "unsafe URL" in out["detail"]

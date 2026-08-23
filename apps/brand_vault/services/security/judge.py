@@ -15,7 +15,8 @@ import json
 import logging
 import re
 
-from django.conf import settings
+from apps.brand_vault.models import SafetyAlert
+from core.llm import ClaudeUtility
 
 from .base import Verdict
 
@@ -28,11 +29,9 @@ _MAX_GROUND_TRUTH_CHARS = 4000
 
 _MODEL = "claude-haiku-4-5-20251001"
 
-_VALID_ISSUES = {
-    "hallucination", "unverified", "outdated", "harmful", "negative",
-    "emerging_narrative", "negative_outranking", "ranking_for_bad_query",
-    "sge_misrepresentation", "sentiment_drop", "impersonation", "none",
-}
+# Derived from the model choices so a new issue code is valid here the
+# moment it exists on SafetyAlert — the old hand-copied set drifted.
+_VALID_ISSUES = {code for code, _ in SafetyAlert.ISSUE_CHOICES} | {"none"}
 _VALID_SEVERITIES = {"high", "medium", "low", "none"}
 
 
@@ -44,6 +43,8 @@ def judge_finding(
     snippet: str,
     allowed_issues: tuple[str, ...],
     ground_truth: list[dict] | None = None,
+    user=None,
+    website=None,
 ) -> Verdict:
     """Ask Claude Haiku to adjudicate one finding. Returns a ``Verdict``.
 
@@ -57,9 +58,15 @@ def judge_finding(
     client's stated facts over its own priors, which converts vague
     "does this sound off" adjudication into concrete contradiction
     checking against the client's uploaded brand material.
+
+    ``user``/``website`` attribute the call's token spend to the tenant
+    via ``core.ai_tracking``; pass them from any call site that runs at
+    volume.
     """
-    api_key = getattr(settings, "ANTHROPIC_API_KEY", "") or ""
-    if not api_key:
+    # Instantiate the gateway provider up front: the is_configured() guard
+    # keeps the no-API-key dev path from paying for prompt construction.
+    provider = ClaudeUtility(model=_MODEL, max_tokens=400)
+    if not provider.is_configured():
         return Verdict()
 
     issue_list = ", ".join(allowed_issues + ("none",))
@@ -96,20 +103,20 @@ def judge_finding(
         'Use issue="none" and severity="none" if there is no brand-safety issue.'
     )
 
-    try:
-        import anthropic
-        client = anthropic.Anthropic(api_key=api_key)
-        resp = client.messages.create(
-            model=_MODEL,
-            max_tokens=400,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        raw = resp.content[0].text.strip()
-    except Exception as exc:
-        logger.warning("Brand security judge call failed: %s", exc)
+    # The gateway records token usage centrally (module="brand_security",
+    # role="judge" — same keys the old inline record_usage block wrote).
+    result = provider.query(
+        prompt,
+        user=user,
+        website=website,
+        module="brand_security",
+        role="judge",
+    )
+    if not result.succeeded:
+        logger.warning("Brand security judge call failed: %s", result.error)
         return Verdict()
 
-    return _parse_verdict(raw, allowed_issues)
+    return _parse_verdict(result.text, allowed_issues)
 
 
 def _format_ground_truth(hits: list[dict]) -> str:

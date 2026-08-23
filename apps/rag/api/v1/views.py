@@ -7,6 +7,7 @@ to another even within the same website (rare in practice, but the
 unique constraint on KnowledgeSource enforces it).
 """
 import hashlib
+import logging
 
 from django.db.models import Count, Q
 from django.utils import timezone
@@ -27,6 +28,8 @@ from apps.rag.services.retriever import retrieve
 from core.interceptors.pagination import StandardPagination
 from core.resilience import TokenBucket
 from core.views.base import TenantScopedAPIView
+
+logger = logging.getLogger("apps")
 
 
 def _ingest_bucket(user_id) -> TokenBucket:
@@ -202,7 +205,20 @@ class KnowledgeSourceDetailView(TenantScopedAPIView):
             KnowledgeSource.objects.filter(user=request.user, website=website),
             id=source_id,
         )
+        source_pk = source.id
         source.delete()
+
+        # Drop the source's vectors from the optional index too. Best
+        # effort: Postgres cascade already removed the chunks, and any
+        # orphaned vectors are filtered out at query time anyway.
+        from apps.rag.services.vector_backends import get_backend
+
+        backend = get_backend()
+        if backend is not None:
+            try:
+                backend.delete_source(website_id=website.id, source_id=source_pk)
+            except Exception:
+                logger.warning("vector index delete failed", exc_info=True)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 

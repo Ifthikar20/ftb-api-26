@@ -17,12 +17,12 @@ class SecurityHeadersMiddleware:
         response["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
         response["Content-Security-Policy"] = (
             "default-src 'self'; "
-            "script-src 'self' https://js.stripe.com; "
+            "script-src 'self'; "
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
             "font-src 'self' https://fonts.gstatic.com; "
             "img-src 'self' data: https:; "
-            "connect-src 'self' https://api.stripe.com wss:; "
-            "frame-src https://js.stripe.com; "
+            "connect-src 'self' wss:; "
+            "frame-src 'none'; "
             "object-src 'none'; "
             "base-uri 'self';"
         )

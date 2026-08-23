@@ -18,6 +18,8 @@ import re
 
 from django.conf import settings
 
+from core.llm import ClaudeUtility
+
 logger = logging.getLogger("apps")
 
 # Cheap, current model for structured extraction. Overridable per
@@ -55,35 +57,28 @@ Return JSON only, matching this schema exactly:
 }}"""
 
 
-def _call_haiku(prompt: str, *, user=None, website=None, audit_id=None) -> str:
-    """Call Claude Haiku and return the raw text response. Raises on failure."""
-    import anthropic
-    client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
-    resp = client.messages.create(
-        model=EXTRACTION_MODEL,
-        max_tokens=1024,
-        system=EXTRACTION_SYSTEM,
-        messages=[{"role": "user", "content": prompt}],
+def _call_haiku(prompt: str, *, user=None, website=None, audit_id=None,
+                idempotency_key=None) -> str:
+    """Call Claude Haiku and return the raw text response. Raises on failure.
+
+    Goes through the central LLM gateway, which handles spend-wall,
+    rate-limit/breaker, and usage recording (role=extraction).
+    ``idempotency_key`` collapses replayed recordings when the calling
+    Celery task is redelivered (acks_late).
+    """
+    result = ClaudeUtility(model=EXTRACTION_MODEL, max_tokens=1024).query(
+        prompt,
+        system_prompt=EXTRACTION_SYSTEM,
+        user=user,
+        website=website,
+        audit_id=audit_id,
+        role="extraction",
+        module="llm_ranking",
+        idempotency_key=idempotency_key,
     )
-    # Track token usage — tagged role=extraction so the centralized usage
-    # rollup can split internal parsing cost from upstream provider cost.
-    try:
-        from core.ai_tracking import record_usage
-        metadata = {"role": "extraction"}
-        if audit_id:
-            metadata["audit_id"] = str(audit_id)
-        record_usage(
-            module="llm_ranking",
-            model_name=EXTRACTION_MODEL,
-            input_tokens=resp.usage.input_tokens,
-            output_tokens=resp.usage.output_tokens,
-            user=user,
-            website=website,
-            metadata=metadata,
-        )
-    except Exception:
-        pass
-    return resp.content[0].text.strip()
+    if not result.succeeded:
+        raise ValueError(f"Haiku extraction call failed: {result.error}")
+    return result.text
 
 
 def _clean_domain(raw) -> str:
@@ -193,6 +188,7 @@ class HaikuExtractionService:
         user=None,
         website=None,
         audit_id=None,
+        idempotency_key=None,
     ) -> dict:
         """Extract structured mention data for `brand_name` from `response_text`.
 
@@ -213,6 +209,7 @@ class HaikuExtractionService:
         try:
             raw_text = _call_haiku(
                 prompt, user=user, website=website, audit_id=audit_id,
+                idempotency_key=idempotency_key,
             )
             parsed = _parse_json_object(raw_text)
             result = _normalise(parsed)

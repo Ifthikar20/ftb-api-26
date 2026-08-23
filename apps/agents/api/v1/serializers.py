@@ -29,12 +29,34 @@ class HiredAgentSerializer(serializers.ModelSerializer):
             "frequency", "schedule_time", "slack_connection", "config",
             "next_run_at", "last_run_at", "consecutive_failures", "created_at",
         )
+        # ``website`` and ``agent_key`` are the identity of the hire and are
+        # set only at creation (HireAgentView, with WebsiteService.get_for_user
+        # ownership checks). They MUST stay read-only here: without this, a
+        # PATCH could repoint an agent at another tenant's website (IDOR) and
+        # read that tenant's data back through AgentInsightsView.
         read_only_fields = (
-            "id", "next_run_at", "last_run_at", "consecutive_failures", "created_at",
+            "id", "agent_key", "website", "next_run_at", "last_run_at",
+            "consecutive_failures", "created_at",
         )
 
     def get_spec(self, obj):
         return _spec_meta(obj.agent_key)
+
+    def validate_slack_connection(self, value):
+        """Reject a slack_connection the requesting user does not own.
+
+        ``slack_connection`` is intentionally editable, but the default
+        PrimaryKeyRelatedField queryset spans all tenants, so ownership must
+        be enforced explicitly here to prevent binding another tenant's
+        IntegrationConnection.
+        """
+        if value is None:
+            return value
+        request = self.context.get("request")
+        if request is None or value.user_id != request.user.id:
+            # Generic message: do not disclose whether the id exists.
+            raise serializers.ValidationError("Invalid Slack connection.")
+        return value
 
 
 class AgentInsightSerializer(serializers.ModelSerializer):

@@ -1,6 +1,6 @@
 from datetime import timedelta
 
-from django.db.models import Count
+from django.db.models import Count, Q
 from django.utils import timezone
 
 from apps.analytics.models import PageEvent, Session, Visitor
@@ -13,18 +13,35 @@ class AnalyticsService:
         """Return KPI overview for the analytics dashboard."""
         start, end = get_date_range(period, **kwargs)
 
-        visitors_qs = Visitor.objects.filter(website_id=website_id, last_seen__range=(start, end))
-        events_qs = PageEvent.objects.filter(website_id=website_id, timestamp__range=(start, end))
-
-        total_visitors = visitors_qs.count()
-        total_pageviews = events_qs.filter(event_type="pageview").count()
-        hot_leads = visitors_qs.filter(lead_score__gte=70).count()
-
         # Previous period for comparison
         duration = end - start
         prev_start = start - duration
-        prev_visitors = Visitor.objects.filter(
-            website_id=website_id, last_seen__range=(prev_start, start)
+
+        # One scan over Visitor covering both periods, three numbers out.
+        # Previously this was three separate COUNTs across two adjacent date
+        # windows. Widening the base filter to span both lets Postgres do it
+        # in a single pass. Both ranges include `start`, exactly as the
+        # separate queries did, so a visitor last seen at the boundary is
+        # still counted in both periods.
+        vc = Visitor.objects.filter(
+            website_id=website_id,
+            last_seen__range=(prev_start, end),
+        ).aggregate(
+            total=Count("id", filter=Q(last_seen__range=(start, end))),
+            hot=Count("id", filter=Q(
+                last_seen__range=(start, end), lead_score__gte=70,
+            )),
+            prev=Count("id", filter=Q(last_seen__range=(prev_start, start))),
+        )
+        total_visitors = vc["total"]
+        hot_leads = vc["hot"]
+        prev_visitors = vc["prev"]
+
+        # Separate table, so this stays its own query.
+        total_pageviews = PageEvent.objects.filter(
+            website_id=website_id,
+            timestamp__range=(start, end),
+            event_type="pageview",
         ).count()
 
         growth_pct = (

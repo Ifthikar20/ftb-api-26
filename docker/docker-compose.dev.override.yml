@@ -1,0 +1,43 @@
+# Local dev overrides for running the stack entirely in Docker.
+#
+# .env is written for a *native* run, where Postgres and Redis are on
+# localhost. Inside the compose network they are reachable by service name
+# instead, and the db container is provisioned with the postgres/postgres
+# credentials from docker-compose.dev.yml. Compose gives `environment`
+# precedence over `env_file`, so these win without .env being edited --
+# .env stays correct for anyone running natively.
+#
+# Usage:
+#   docker compose -f docker/docker-compose.dev.yml \
+#                  -f docker/docker-compose.dev.override.yml up -d db redis web
+
+services:
+  web:
+    environment:
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_NAME: growthpilot
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+
+  celery:
+    environment:
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_NAME: growthpilot
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+
+  celery-beat:
+    environment:
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_NAME: growthpilot
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1

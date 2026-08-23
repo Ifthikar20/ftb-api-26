@@ -13,9 +13,12 @@ def send_verification_email(user_id: str):
 
     try:
         user = User.objects.get(id=user_id)
-        otp = AuthService.generate_email_otp(user=user)
-        logger.info(f"Verification OTP for {user.email}: {otp}")
-        # TODO: Send actual email via SendGrid
+        # generate_email_otp persists the OTP server-side (EmailVerificationOTP).
+        # SECURITY: never log the OTP itself — it is a live authentication
+        # secret. Real delivery is wired by the email transport work (P1.8);
+        # until then the OTP is retrievable only from the database, not logs.
+        AuthService.generate_email_otp(user=user)
+        logger.info("Verification OTP generated for user %s", user_id)
     except User.DoesNotExist:
         logger.error(f"User {user_id} not found for verification email.")
 
@@ -23,8 +26,10 @@ def send_verification_email(user_id: str):
 @shared_task(name="apps.accounts.tasks.send_password_reset_email")
 def send_password_reset_email(email: str, token: str):
     """Send password reset email."""
-    logger.info(f"Password reset token for {email}: {token}")
-    # TODO: Send actual email via SendGrid
+    # SECURITY: never log the reset token (grants reset) OR the email
+    # address (PII in the general log stream). Real delivery is wired by
+    # the email transport work (P1.8).
+    logger.info("Password reset email dispatched")
 
 
 @shared_task(name="apps.accounts.tasks.expire_inactive_sessions")

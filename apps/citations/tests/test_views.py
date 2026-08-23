@@ -1,6 +1,5 @@
 """API tests for the citations endpoints."""
 import pytest
-from django.test import override_settings
 from django.urls import reverse
 from rest_framework.test import APIClient
 
@@ -13,7 +12,15 @@ from apps.llm_ranking.tests.factories import (
 )
 from apps.websites.tests.factories import WebsiteFactory
 
-pytestmark = [pytest.mark.django_db, override_settings(CITATION_EXTRACTION_ENABLED=False)]
+pytestmark = pytest.mark.django_db
+
+
+@pytest.fixture(autouse=True)
+def _no_auto_extraction(settings):
+    # pytest 8 rejects non-Mark objects in pytestmark, so the old
+    # override_settings entry broke collection; the pytest-django settings
+    # fixture is the supported equivalent.
+    settings.CITATION_EXTRACTION_ENABLED = False
 
 
 @pytest.fixture

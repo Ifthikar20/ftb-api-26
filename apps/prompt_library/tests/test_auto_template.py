@@ -25,7 +25,7 @@ def test_fallback_when_no_provider():
         "apps.llm_ranking.providers.get_synthesis_provider",
         return_value=None,
     ):
-        out = auto_template("Best CRM in Dallas")
+        out = auto_template("Best CRM in Dallas", user=None)
     assert out["template_text"] == "Best CRM in Dallas"
     assert out["template_variables"] == []
     assert out["style"] == "question"
@@ -40,7 +40,7 @@ def test_extracts_envelope_from_provider_response():
         "apps.llm_ranking.providers.get_synthesis_provider",
         return_value=_provider(payload),
     ):
-        out = auto_template("Best CRM in Dallas")
+        out = auto_template("Best CRM in Dallas", user=None)
     assert "{{ location }}" in out["template_text"]
     assert "location" in out["template_variables"]
     assert out["style"] == "local"
@@ -55,7 +55,7 @@ def test_invalid_style_falls_back_to_question():
         "apps.llm_ranking.providers.get_synthesis_provider",
         return_value=_provider(payload),
     ):
-        out = auto_template("Hi Sam")
+        out = auto_template("Hi Sam", user=None)
     assert out["style"] == "question"
 
 
@@ -64,12 +64,12 @@ def test_malformed_json_falls_back():
         "apps.llm_ranking.providers.get_synthesis_provider",
         return_value=_provider("not json at all"),
     ):
-        out = auto_template("raw")
+        out = auto_template("raw", user=None)
     assert out["template_text"] == "raw"
     assert out["template_variables"] == []
 
 
 def test_empty_input_short_circuits():
-    out = auto_template("")
+    out = auto_template("", user=None)
     assert out["template_text"] == ""
     assert out["template_variables"] == []

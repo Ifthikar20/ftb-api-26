@@ -27,18 +27,24 @@ def build_kpis_for_user(
     start: datetime | None = None,
     end: datetime | None = None,
     prompts: list[str] | None = None,
+    providers: list[str] | None = None,
+    tags: list[str] | None = None,
+    topics: list[str] | None = None,
 ) -> list[dict] | None:
     """Return Visibility / Position / Sentiment tiles for the given window.
 
     When start is None the window is unbounded on the lower side (treated
-    as "overall"). When prompts is provided the metrics are recomputed
-    per-result so the filter actually narrows the cells we count.
+    as "overall"). When any result-level filter is provided the metrics
+    are recomputed per-result — the audit-level pre-aggregates cannot be
+    narrowed by prompt, provider, tag or topic.
     """
     has_any = LLMRankingAudit.objects.filter(
         created_by=user, status=LLMRankingAudit.STATUS_COMPLETED,
     ).exists()
     if not has_any:
         return None
+
+    flt = _make_flt(prompts=prompts, providers=providers, tags=tags, topics=topics)
 
     end = end or timezone.now()
     if start is None:
@@ -64,8 +70,8 @@ def build_kpis_for_user(
             ),
             higher_better=True,
             value_fmt=_pct,
-            current=_visibility(user, *current, prompts=prompts),
-            previous=_visibility(user, *previous, prompts=prompts),
+            current=_visibility(user, *current, flt=flt),
+            previous=_visibility(user, *previous, flt=flt),
         ),
         _build_tile(
             label="Position",
@@ -75,8 +81,8 @@ def build_kpis_for_user(
             ),
             higher_better=False,
             value_fmt=_rank,
-            current=_position(user, *current, prompts=prompts),
-            previous=_position(user, *previous, prompts=prompts),
+            current=_position(user, *current, flt=flt),
+            previous=_position(user, *previous, flt=flt),
         ),
         _build_tile(
             label="Sentiment",
@@ -86,8 +92,19 @@ def build_kpis_for_user(
             ),
             higher_better=True,
             value_fmt=_score,
-            current=_sentiment(user, *current, prompts=prompts),
-            previous=_sentiment(user, *previous, prompts=prompts),
+            current=_sentiment(user, *current, flt=flt),
+            previous=_sentiment(user, *previous, flt=flt),
+        ),
+        _build_tile(
+            label="Alignment",
+            subtext=(
+                "See how closely AI answers reflect your own brand facts "
+                "and key messages, and which messages are missing."
+            ),
+            higher_better=True,
+            value_fmt=_score,
+            current=_alignment(user, *current, flt=flt),
+            previous=_alignment(user, *previous, flt=flt),
         ),
     ]
 
@@ -100,8 +117,12 @@ def build_breakdowns_for_user(
     start=None,
     end=None,
     prompts: list[str] | None = None,
+    providers: list[str] | None = None,
+    tags: list[str] | None = None,
+    topics: list[str] | None = None,
 ) -> dict | None:
     """Return per-metric drill-downs for the dashboard, or None if no data."""
+    flt = _make_flt(prompts=prompts, providers=providers, tags=tags, topics=topics)
     end = end or timezone.now()
     if start is None:
         start = (
@@ -115,16 +136,17 @@ def build_breakdowns_for_user(
     if not audit_ids:
         return None
     return {
-        "visibility": _visibility_breakdown(audit_ids, prompts),
-        "position": _position_breakdown(audit_ids, prompts),
-        "sentiment": _sentiment_breakdown(audit_ids, prompts),
+        "visibility": _visibility_breakdown(audit_ids, flt),
+        "position": _position_breakdown(audit_ids, flt),
+        "sentiment": _sentiment_breakdown(audit_ids, flt),
+        "alignment": _alignment_breakdown(audit_ids, flt),
     }
 
 
-def _visibility_breakdown(audit_ids: list, prompts: list[str] | None) -> dict:
+def _visibility_breakdown(audit_ids: list, flt: dict | None) -> dict:
     """Mention share per LLM provider in the window."""
     rows: dict[str, dict[str, int]] = {}
-    for r in _filtered_results(audit_ids, prompts).values("provider", "is_mentioned"):
+    for r in _filtered_results(audit_ids, flt).values("provider", "is_mentioned"):
         bucket = rows.setdefault(r["provider"], {"total": 0, "mentions": 0})
         bucket["total"] += 1
         if r["is_mentioned"]:
@@ -142,11 +164,11 @@ def _visibility_breakdown(audit_ids: list, prompts: list[str] | None) -> dict:
     return {"by_provider": providers}
 
 
-def _position_breakdown(audit_ids: list, prompts: list[str] | None) -> dict:
+def _position_breakdown(audit_ids: list, flt: dict | None) -> dict:
     """Distribution of mention rank across the window."""
     buckets = {"1": 0, "2-3": 0, "4-10": 0, "11+": 0}
     qs = (
-        _filtered_results(audit_ids, prompts)
+        _filtered_results(audit_ids, flt)
         .filter(is_mentioned=True, mention_rank__isnull=False)
         .values_list("mention_rank", flat=True)
     )
@@ -172,9 +194,9 @@ def _position_breakdown(audit_ids: list, prompts: list[str] | None) -> dict:
     return {"distribution": distribution, "total_mentions": total}
 
 
-def _sentiment_breakdown(audit_ids: list, prompts: list[str] | None) -> dict:
+def _sentiment_breakdown(audit_ids: list, flt: dict | None) -> dict:
     """Positive/neutral/negative split plus a few representative quotes."""
-    qs = _filtered_results(audit_ids, prompts).filter(is_mentioned=True)
+    qs = _filtered_results(audit_ids, flt).filter(is_mentioned=True)
     counts = {"positive": 0, "neutral": 0, "negative": 0}
     for s in qs.values_list("sentiment", flat=True):
         if s in counts:
@@ -209,6 +231,53 @@ def _sentiment_breakdown(audit_ids: list, prompts: list[str] | None) -> dict:
     return {"split": split, "samples": samples, "total_mentions": total}
 
 
+def _alignment_breakdown(audit_ids: list, flt: dict | None) -> dict:
+    """Aligned/partial/unaligned bands plus the brand messages AI most
+    often reflects and misses — the actionable "what to publish next"
+    signal, aggregated from per-result alignment detail."""
+    qs = _filtered_results(audit_ids, flt).filter(alignment_score__isnull=False)
+    bands = {"aligned": 0, "partial": 0, "unaligned": 0}
+    reflected_counts: dict[str, int] = {}
+    missing_counts: dict[str, int] = {}
+    total = 0
+    for score, detail in qs.values_list("alignment_score", "alignment_detail"):
+        total += 1
+        if score >= 70:
+            bands["aligned"] += 1
+        elif score >= 40:
+            bands["partial"] += 1
+        else:
+            bands["unaligned"] += 1
+        coverage = (detail or {}).get("coverage") or {}
+        for item in coverage.get("reflected") or []:
+            text = (item or {}).get("text") or ""
+            if text:
+                reflected_counts[text] = reflected_counts.get(text, 0) + 1
+        for item in coverage.get("missing") or []:
+            text = (item or {}).get("text") or ""
+            if text:
+                missing_counts[text] = missing_counts.get(text, 0) + 1
+
+    def _top(counts: dict[str, int]) -> list[dict]:
+        ranked = sorted(counts.items(), key=lambda kv: kv[1], reverse=True)[:5]
+        return [{"text": text, "count": count} for text, count in ranked]
+
+    split = [
+        {
+            "band": band,
+            "count": count,
+            "pct": round(100.0 * count / total, 1) if total else 0.0,
+        }
+        for band, count in bands.items()
+    ]
+    return {
+        "split": split,
+        "top_reflected": _top(reflected_counts),
+        "top_missing": _top(missing_counts),
+        "total_scored": total,
+    }
+
+
 # ── metric calculators ─────────────────────────────────────────────────────
 
 def _audits_in(user, start, end):
@@ -222,23 +291,34 @@ def _audits_in(user, start, end):
     return qs
 
 
-def _filtered_results(audit_ids, prompts):
+def _make_flt(*, prompts=None, providers=None, tags=None, topics=None) -> dict | None:
+    """Bundle the result-level filters, or None when nothing is set.
+
+    A single object keeps every helper in this module on identical filter
+    semantics, and "is anything set" checks stay one truthiness test.
+    """
+    if not (prompts or providers or tags or topics):
+        return None
+    return {"prompts": prompts, "providers": providers, "tags": tags, "topics": topics}
+
+
+def _filtered_results(audit_ids, flt):
+    from apps.llm_ranking.services._window import apply_result_filters
+
     qs = LLMRankingResult.objects.filter(
         audit_id__in=audit_ids, query_succeeded=True,
     )
-    if prompts:
-        qs = qs.filter(prompt__in=prompts)
-    return qs
+    return apply_result_filters(qs, **(flt or {}))
 
 
-def _visibility(user, start, end, *, prompts=None) -> float | None:
+def _visibility(user, start, end, *, flt=None) -> float | None:
     if start is None and end is None:
         return None
-    if prompts:
+    if flt:
         audit_ids = list(_audits_in(user, start, end).values_list("id", flat=True))
         if not audit_ids:
             return None
-        qs = _filtered_results(audit_ids, prompts)
+        qs = _filtered_results(audit_ids, flt)
         total = qs.count()
         if total == 0:
             return None
@@ -250,15 +330,15 @@ def _visibility(user, start, end, *, prompts=None) -> float | None:
     return round(sum(rates) / len(rates), 1) if rates else None
 
 
-def _position(user, start, end, *, prompts=None) -> float | None:
+def _position(user, start, end, *, flt=None) -> float | None:
     if start is None and end is None:
         return None
-    if prompts:
+    if flt:
         audit_ids = list(_audits_in(user, start, end).values_list("id", flat=True))
         if not audit_ids:
             return None
         ranks = list(
-            _filtered_results(audit_ids, prompts)
+            _filtered_results(audit_ids, flt)
             .filter(is_mentioned=True, mention_rank__isnull=False)
             .values_list("mention_rank", flat=True)
         )
@@ -271,13 +351,13 @@ def _position(user, start, end, *, prompts=None) -> float | None:
     return round(sum(ranks) / len(ranks), 1) if ranks else None
 
 
-def _sentiment(user, start, end, *, prompts=None) -> float | None:
+def _sentiment(user, start, end, *, flt=None) -> float | None:
     if start is None and end is None:
         return None
     audit_ids = list(_audits_in(user, start, end).values_list("id", flat=True))
     if not audit_ids:
         return None
-    results = _filtered_results(audit_ids, prompts).filter(is_mentioned=True)
+    results = _filtered_results(audit_ids, flt).filter(is_mentioned=True)
     total = results.count()
     if total == 0:
         return None
@@ -286,6 +366,25 @@ def _sentiment(user, start, end, *, prompts=None) -> float | None:
     # 100 = all mentions positive, 50 = balanced/neutral, 0 = all negative.
     net = 50 + 50 * (pos - neg) / total
     return round(max(0.0, min(100.0, net)), 1)
+
+
+def _alignment(user, start, end, *, flt=None) -> float | None:
+    """Mean brand-alignment score over scored results in the window.
+
+    Always recomputed from result rows (the audit-level pre-aggregate is
+    a best-effort snapshot — alignment tasks run async).
+    """
+    if start is None and end is None:
+        return None
+    audit_ids = list(_audits_in(user, start, end).values_list("id", flat=True))
+    if not audit_ids:
+        return None
+    scores = list(
+        _filtered_results(audit_ids, flt)
+        .filter(alignment_score__isnull=False)
+        .values_list("alignment_score", flat=True)
+    )
+    return round(sum(scores) / len(scores), 1) if scores else None
 
 
 # ── tile shaping ───────────────────────────────────────────────────────────

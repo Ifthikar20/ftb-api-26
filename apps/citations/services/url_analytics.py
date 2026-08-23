@@ -18,8 +18,9 @@ Defined metrics (documented here so the frontend/product stay in sync):
                      explicitly referenced in answer text (a subset signal of
                      retrievals).
 * prompts         -- distinct prompts whose answer retrieved the URL.
-* citation_rate   -- citations / retrievals, rounded to 1 dp (Peec: how often
-                     a retrieved source is actually cited, averaged per use).
+* citation_rate   -- cited share: retrievals whose answer explicitly cited
+                     the URL (reference_count > 0) / retrievals. Bounded 0-1,
+                     rounded to 2 dp, rendered as a percentage in the UI.
 * gap_score       -- (distinct tracked competitors appearing in answers that
                      used the URL) x retrievals (Peec source-gap priority).
 """
@@ -47,8 +48,10 @@ _DOMAIN_TYPE_BY_CLASS = {
     SourceClass.DOCS: "Reference",
     SourceClass.GOV: "Reference",
     SourceClass.EDU: "Reference",
-    SourceClass.YOUR_SITE: "Corporate",
-    SourceClass.COMPETITOR_SITE: "Corporate",
+    # Ownership classes get their own buckets: collapsing them into
+    # "Corporate" hid the one distinction the reader cares most about.
+    SourceClass.YOUR_SITE: "Your site",
+    SourceClass.COMPETITOR_SITE: "Competitor",
     SourceClass.OTHER: "Reference",
 }
 
@@ -176,6 +179,7 @@ def _aggregate_rows(citations, competitors: set[str] | None = None) -> dict[str,
                 "source_class": c.source_class,
                 "retrievals": 0,
                 "references": 0,
+                "cited_retrievals": 0,
                 "prompts": set(),
                 "providers": set(),
                 "positions": [],
@@ -187,6 +191,8 @@ def _aggregate_rows(citations, competitors: set[str] | None = None) -> dict[str,
             }
         agg["retrievals"] += 1
         agg["references"] += getattr(c, "reference_count", 0) or 0
+        if (getattr(c, "reference_count", 0) or 0) > 0:
+            agg["cited_retrievals"] += 1
         if not agg["title"] and c.title:
             agg["title"] = c.title
         result = c.result
@@ -212,9 +218,12 @@ def _aggregate_rows(citations, competitors: set[str] | None = None) -> dict[str,
 def _row_payload(agg: dict) -> dict:
     retrievals = agg["retrievals"]
     references = agg["references"]
-    # Citation rate (Peec): how often a retrieved source is actually
-    # referenced in the answer text, averaged over retrievals.
-    citation_rate = round(references / retrievals, 1) if retrievals else 0.0
+    # Citation rate = cited share: of the times this URL was retrieved,
+    # how often the answer explicitly cited it. Bounded 0-1 so the UI can
+    # render a plain percentage.
+    citation_rate = (
+        round(agg["cited_retrievals"] / retrievals, 2) if retrievals else 0.0
+    )
     # Gap score (Peec): tracked competitors present in the source x usage.
     gap_score = len(agg["competitors"]) * retrievals
     parts = urlsplit(agg["url"])
@@ -235,6 +244,7 @@ def _row_payload(agg: dict) -> dict:
         "prompts": len(agg["prompts"]),
         "citation_rate": citation_rate,
         "gap_score": gap_score,
+        "competitor_names": sorted(agg["competitors"]),
         "is_target": agg["is_target"],
         "is_competitor": agg["is_competitor"],
         "first_seen": agg["first_seen"].isoformat(),
@@ -318,7 +328,7 @@ def build_urls_overview(website, *, start: date, end: date, provider: str | None
     }
 
     # ── Movers ──
-    movers = _build_movers(citations, rows, start, end)
+    movers = _build_movers(citations, rows, start, end, website)
 
     return {
         "period_start": start.isoformat(),
@@ -334,7 +344,7 @@ def build_urls_overview(website, *, start: date, end: date, provider: str | None
     }
 
 
-def _build_movers(citations, rows, start: date, end: date) -> dict:
+def _build_movers(citations, rows, start: date, end: date, website=None) -> dict:
     mid = start + timedelta(days=((end - start).days + 1) // 2)
     recent_cut = end - timedelta(days=min(7, max(1, (end - start).days // 4)))
 
@@ -353,6 +363,20 @@ def _build_movers(citations, rows, start: date, end: date) -> dict:
             recent[key] += 1
         else:
             prior[key] += 1
+
+    # "New" must mean new to this brand's history, not new to the query
+    # window — a URL cited months ago and again yesterday is not new. One
+    # bounded query over the window's keys pulls the all-time first seen.
+    if website is not None and first_seen:
+        from django.db.models import Min
+        all_time = (
+            Citation.objects
+            .filter(audit__website=website, normalized_url__in=list(first_seen))
+            .values("normalized_url")
+            .annotate(fs=Min("created_at"))
+        )
+        for row in all_time:
+            first_seen[row["normalized_url"]] = row["fs"].date()
 
     by_key = {r["normalized_url"]: r for r in rows}
 
@@ -432,10 +456,12 @@ def build_url_detail(website, *, normalized_url: str, start: date, end: date,
     prev_retr = len(previous)
     cur_prompts = len({(c.result.prompt_index, c.result.prompt) for c in current})
     prev_prompts = len({(c.result.prompt_index, c.result.prompt) for c in previous})
-    cur_refs = sum(getattr(c, "reference_count", 0) or 0 for c in current)
-    prev_refs = sum(getattr(c, "reference_count", 0) or 0 for c in previous)
-    cur_rate = round(cur_refs / cur_retr, 1) if cur_retr else 0.0
-    prev_rate = round(prev_refs / prev_retr, 1) if prev_retr else 0.0
+    # Cited share (see module docstring): retrievals with an explicit
+    # reference / all retrievals, bounded 0-1.
+    cur_cited = sum(1 for c in current if (getattr(c, "reference_count", 0) or 0) > 0)
+    prev_cited = sum(1 for c in previous if (getattr(c, "reference_count", 0) or 0) > 0)
+    cur_rate = round(cur_cited / cur_retr, 2) if cur_retr else 0.0
+    prev_rate = round(prev_cited / prev_retr, 2) if prev_retr else 0.0
     first_seen = min(c.created_at for c in citations)
     last_seen = max(c.created_at for c in citations)
 
@@ -444,8 +470,10 @@ def build_url_detail(website, *, normalized_url: str, start: date, end: date,
         "title": row["title"],
         "url_type": row["url_type"],
         "domain_type": row["domain_type"],
+        "source_class": row["source_class"],
+        "is_target": row["is_target"],
         "retrievals": {"value": cur_retr, "delta": cur_retr - prev_retr},
-        "citation_rate": {"value": cur_rate, "delta": round(cur_rate - prev_rate, 1)},
+        "citation_rate": {"value": cur_rate, "delta": round(cur_rate - prev_rate, 2)},
         "prompts": {"value": cur_prompts, "delta": cur_prompts - prev_prompts},
         "first_seen": first_seen.isoformat(),
         "last_seen": last_seen.isoformat(),
@@ -483,17 +511,18 @@ def build_url_detail(website, *, normalized_url: str, start: date, end: date,
             "prompt": r.prompt,
             "topic": topic_of(r) or r.get_prompt_type_display(),
             "retrieved": 0,
-            "references": 0,
+            "cited": 0,
         })
         p["retrieved"] += 1
-        p["references"] += getattr(c, "reference_count", 0) or 0
+        if (getattr(c, "reference_count", 0) or 0) > 0:
+            p["cited"] += 1
     prompts_table = []
     for p in sorted(prompt_acc.values(), key=lambda x: x["retrieved"], reverse=True):
         prompts_table.append({
             "prompt": p["prompt"],
             "topic": p["topic"],
             "retrieved": p["retrieved"],
-            "citation_rate": round(p["references"] / p["retrieved"], 1) if p["retrieved"] else 0.0,
+            "citation_rate": round(p["cited"] / p["retrieved"], 2) if p["retrieved"] else 0.0,
         })
 
     # ── Brands mentioned (target + competitors across the citing answers) ──
@@ -697,6 +726,30 @@ def build_chat_detail(website, *, result_id: str) -> dict | None:
     if isinstance(cc, dict) and cc:
         country = max(cc.items(), key=lambda kv: kv[1])[0]
 
+    # Brand alignment block for the modal's Details aside. Null when the
+    # response was never analyzed (legacy rows, feature disabled).
+    alignment = None
+    align_detail = getattr(result, "alignment_detail", None) or {}
+    if align_detail.get("status"):
+        coverage = align_detail.get("coverage") or {}
+        support = align_detail.get("support") or {}
+        alignment = {
+            "score": result.alignment_score,
+            "status": align_detail.get("status"),
+            "reflected": [
+                {"text": (i or {}).get("text") or ""}
+                for i in (coverage.get("reflected") or [])[:5]
+            ],
+            "missing": [
+                {"text": (i or {}).get("text") or ""}
+                for i in (coverage.get("missing") or [])[:5]
+            ],
+            "unsupported": [
+                {"text": (s or {}).get("text") or ""}
+                for s in (support.get("unsupported_samples") or [])[:5]
+            ],
+        }
+
     return {
         "result_id": str(result.public_id),
         "provider": result.provider,
@@ -709,5 +762,6 @@ def build_chat_detail(website, *, result_id: str) -> dict | None:
         "brands": brands,
         "fanout_queries": fanout_queries,
         "sources": sources,
+        "alignment": alignment,
         "created_at": result.created_at.isoformat(),
     }

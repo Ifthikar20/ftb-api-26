@@ -40,7 +40,7 @@ class HiredAgent(TimestampMixin):
     agent_key = models.CharField(max_length=64, db_index=True)
     is_active = models.BooleanField(default=True, db_index=True)
 
-    # Delivery target for the daily digest (Slack/Discord/Telegram connection).
+    # Delivery target for the daily digest (Slack/Discord connection).
     slack_connection = models.ForeignKey(
         "notifications.IntegrationConnection",
         null=True, blank=True,
@@ -160,7 +160,12 @@ class AgentMessage(TimestampMixin):
 
     CHANNEL_IN_APP = "in_app"
     CHANNEL_SLACK = "slack"
-    CHANNEL_CHOICES = [(CHANNEL_IN_APP, "In-app"), (CHANNEL_SLACK, "Slack")]
+    CHANNEL_DISCORD = "discord"
+    CHANNEL_CHOICES = [
+        (CHANNEL_IN_APP, "In-app"),
+        (CHANNEL_SLACK, "Slack"),
+        (CHANNEL_DISCORD, "Discord"),
+    ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     hired_agent = models.ForeignKey(

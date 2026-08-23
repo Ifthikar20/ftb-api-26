@@ -55,7 +55,6 @@ class IntegrationConnection(TimestampMixin):
     PLATFORM_CHOICES = [
         ("slack", "Slack"),
         ("discord", "Discord"),
-        ("telegram", "Telegram"),
     ]
 
     FREQUENCY_CHOICES = [
@@ -81,6 +80,13 @@ class IntegrationConnection(TimestampMixin):
     webhook_url = EncryptedTextField()
     channel_name = models.CharField(max_length=200, blank=True)
     is_active = models.BooleanField(default=True)
+
+    # Inbound-command linkage: the Slack team_id ("T...") or Discord guild_id
+    # (snowflake) this connection is bound to. Inbound events resolve their
+    # IntegrationConnection through this id.
+    external_team_id = models.CharField(max_length=64, blank=True, default="", db_index=True)
+    # Optional default channel id for bot posts (Slack "C...", Discord snowflake).
+    external_channel_id = models.CharField(max_length=64, blank=True, default="")
 
     # Schedule
     schedule_time = models.TimeField(default="09:00")

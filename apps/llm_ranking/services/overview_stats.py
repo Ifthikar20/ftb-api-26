@@ -32,8 +32,6 @@ from __future__ import annotations
 from collections import defaultdict
 from datetime import datetime
 
-from apps.citations.models import Citation
-from apps.citations.services.url_analytics import domain_type_for
 from apps.llm_ranking.models import LLMRankingAudit, LLMRankingResult
 
 # Matrix columns are labelled with the short provider name rather than the
@@ -51,14 +49,6 @@ PROVIDER_LABELS = {
     "amazon_nova": "Nova",
 }
 
-# Matching the frontend legend in DomainTypesCard.
-DOMAIN_TYPE_COLORS = {
-    "Corporate": "var(--chart-1)",
-    "UGC": "var(--chart-2)",
-    "Editorial": "var(--chart-3)",
-    "Reference": "var(--chart-4)",
-}
-
 _SENTIMENT_SCORE = {
     LLMRankingResult.SENTIMENT_POSITIVE: 100.0,
     LLMRankingResult.SENTIMENT_NEUTRAL: 50.0,
@@ -66,7 +56,6 @@ _SENTIMENT_SCORE = {
 }
 
 MAX_BRANDS = 10
-MAX_DOMAINS = 8
 MAX_MATRIX_ROWS = 8
 MAX_PROMPTS = 10
 
@@ -91,6 +80,9 @@ def build_overview_for_user(
     start: datetime | None = None,
     end: datetime | None = None,
     prompts: list[str] | None = None,
+    providers: list[str] | None = None,
+    tags: list[str] | None = None,
+    topics: list[str] | None = None,
 ) -> dict:
     """Aggregate the Overview cards for ``user`` within an optional window."""
     audits = _audits_in(user, start, end)
@@ -98,7 +90,9 @@ def build_overview_for_user(
     if not audit_ids:
         return empty_overview()
 
-    results = list(_filtered_results(audit_ids, prompts))
+    results = list(_filtered_results(
+        audit_ids, prompts, providers=providers, tags=tags, topics=topics,
+    ))
     if not results:
         return empty_overview()
 
@@ -109,7 +103,10 @@ def build_overview_for_user(
 
     # Trend needs the window before this one. Without an explicit window
     # there is no "preceding period" to speak of, so deltas stay None.
-    previous = _previous_brand_visibility(user, start, end, prompts, brand_name)
+    previous = _previous_brand_visibility(
+        user, start, end, prompts, brand_name,
+        providers=providers, tags=tags, topics=topics,
+    )
     for row in brands:
         prior = previous.get(row["name"].lower())
         row["trend"], row["up"] = _delta(row["visibility"], prior)
@@ -121,7 +118,14 @@ def build_overview_for_user(
         row["prompts"] = brand_prompts.get(row["name"].lower(), [])
         row["beat_count"] = sum(1 for p in row["prompts"] if p["beats_you"])
 
-    domains, domain_types = _build_domains(audit_ids)
+    # Composition seam: the domain cards' data root is Citation, which
+    # belongs to the citations app. Imported here (function-local, the
+    # one allowed llm_ranking -> citations edge) so the app dependency
+    # stays one-way at module level: citations -> llm_ranking.
+    from apps.citations.services.overview_domains import build_domain_cards
+    domains, domain_types = build_domain_cards(
+        audit_ids, providers=providers, tags=tags, topics=topics,
+    )
 
     return {
         "has_data": True,
@@ -148,13 +152,15 @@ def _audits_in(user, start, end):
     return qs
 
 
-def _filtered_results(audit_ids, prompts):
+def _filtered_results(audit_ids, prompts, *, providers=None, tags=None, topics=None):
+    from apps.llm_ranking.services._window import apply_result_filters
+
     qs = LLMRankingResult.objects.filter(
         audit_id__in=audit_ids, query_succeeded=True,
     )
-    if prompts:
-        qs = qs.filter(prompt__in=prompts)
-    return qs
+    return apply_result_filters(
+        qs, prompts=prompts, providers=providers, tags=tags, topics=topics,
+    )
 
 
 def _target_brand_name(audits) -> str:
@@ -248,8 +254,16 @@ def _build_brands(results, brand_name: str) -> list[dict]:
     return rows
 
 
-def _previous_brand_visibility(user, start, end, prompts, brand_name) -> dict:
-    """Visibility per brand over the window immediately before this one."""
+def _previous_brand_visibility(
+    user, start, end, prompts, brand_name,
+    *, providers=None, tags=None, topics=None,
+) -> dict:
+    """Visibility per brand over the window immediately before this one.
+
+    Must receive the same filters as the current window — comparing a
+    filtered present against an unfiltered past would fabricate a trend
+    direction that was never measured.
+    """
     if start is None or end is None:
         return {}
     span = end - start
@@ -259,6 +273,7 @@ def _previous_brand_visibility(user, start, end, prompts, brand_name) -> dict:
                 _audits_in(user, start - span, start).values_list("id", flat=True),
             ),
             prompts,
+            providers=providers, tags=tags, topics=topics,
         ),
     )
     if not prev_results:
@@ -491,62 +506,6 @@ def _build_prompts(results) -> list[dict]:
     return rows[:MAX_PROMPTS]
 
 
-# ── domains ──
-
-def _build_domains(audit_ids) -> tuple[list[dict], dict | None]:
-    citations = list(
-        Citation.objects.filter(audit_id__in=audit_ids).values_list(
-            "apex_domain", "domain", "source_class", "reference_count",
-        ),
-    )
-    if not citations:
-        return [], None
-
-    total = len(citations)
-    retrieved: dict[str, int] = defaultdict(int)
-    referenced: dict[str, int] = defaultdict(int)
-    types: dict[str, str] = {}
-    type_counts: dict[str, int] = defaultdict(int)
-
-    for apex, domain, source_class, ref_count in citations:
-        key = apex or domain
-        if not key:
-            continue
-        retrieved[key] += 1
-        referenced[key] += ref_count or 0
-        bucket = domain_type_for(source_class)
-        types[key] = bucket
-        type_counts[bucket] += 1
-
-    if not retrieved:
-        return [], None
-
-    rows = [
-        {
-            "domain": key,
-            "retrieved": _pct(count, total),
-            # Mean explicit references per retrieval, matching the
-            # citation_rate definition used by the Sources dashboard.
-            "citation": round(referenced[key] / count, 1) if count else 0.0,
-            "type": types.get(key, "Reference"),
-        }
-        for key, count in sorted(retrieved.items(), key=lambda kv: -kv[1])[:MAX_DOMAINS]
-    ]
-
-    domain_types = {
-        "total": _humanize(total),
-        "types": [
-            {
-                "label": label,
-                "pct": _pct(count, total),
-                "color": DOMAIN_TYPE_COLORS.get(label, "var(--chart-3)"),
-            }
-            for label, count in sorted(type_counts.items(), key=lambda kv: -kv[1])
-        ],
-    }
-    return rows, domain_types
-
-
 # ── headline + KPI strip ──
 
 def _build_kpis(brands: list[dict], brand_name: str) -> list[dict]:
@@ -620,7 +579,80 @@ def _mean(values) -> float:
     return sum(values) / len(values) if values else 0.0
 
 
-def _humanize(n: int) -> str:
-    if n >= 1000:
-        return f"{n / 1000:.1f}k".replace(".0k", "k")
-    return str(n)
+# ── filter options ──
+
+def build_filter_options(
+    user,
+    *,
+    start: datetime | None = None,
+    end: datetime | None = None,
+) -> dict:
+    """Option lists for the dashboard filter pills.
+
+    Computed from the UNFILTERED window so a selected filter never hides
+    its own menu entries. ``unlinked_results`` counts results with no
+    ``source_prompt`` link — those rows fall outside tag/topic filters by
+    construction, and the count makes that visible instead of silently
+    shrinking the page.
+    """
+    from collections import Counter
+
+    audit_ids = list(_audits_in(user, start, end).values_list("id", flat=True))
+    if not audit_ids:
+        return {"models": [], "tags": [], "topics": [], "unlinked_results": 0}
+
+    results = LLMRankingResult.objects.filter(
+        audit_id__in=audit_ids, query_succeeded=True,
+    )
+
+    provider_keys = sorted(
+        {p for p in results.values_list("provider", flat=True) if p},
+    )
+    models = [
+        {"value": key, "label": PROVIDER_LABELS.get(key, key.title())}
+        for key in provider_keys
+    ]
+
+    topic_counts = Counter(
+        name
+        for name in results.exclude(source_prompt=None).values_list(
+            "source_prompt__industry__name", flat=True,
+        )
+        if name
+    )
+    topics = [
+        {"name": name, "count": count}
+        for name, count in sorted(topic_counts.items(), key=lambda kv: -kv[1])
+    ]
+
+    # Tags come from the user's saved prompt rows for the prompts that were
+    # actually measured in this window, so the menu never offers a tag that
+    # cannot match anything.
+    from apps.prompt_library.models import BrandPrompt
+
+    prompt_ids = {
+        pid
+        for pid in results.exclude(source_prompt=None).values_list(
+            "source_prompt_id", flat=True,
+        )
+    }
+    tag_counts: Counter = Counter()
+    if prompt_ids:
+        rows = BrandPrompt.objects.filter(
+            website__user=user, prompt_id__in=prompt_ids,
+        ).values_list("tags", flat=True)
+        for tags in rows:
+            for tag in tags or []:
+                if isinstance(tag, str) and tag.strip():
+                    tag_counts[tag.strip()] += 1
+    tags = [
+        {"name": name, "count": count}
+        for name, count in sorted(tag_counts.items(), key=lambda kv: -kv[1])
+    ]
+
+    return {
+        "models": models,
+        "tags": tags,
+        "topics": topics,
+        "unlinked_results": results.filter(source_prompt=None).count(),
+    }

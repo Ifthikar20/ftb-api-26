@@ -26,9 +26,12 @@ class PixelService:
     @staticmethod
     def verify(*, website: Website) -> bool:
         """Check whether the pixel is installed correctly on the website."""
-        import requests
+        from core.validators.safe_http import FetchError, safe_get
         try:
-            response = requests.get(website.url, timeout=10)
+            # website.url is user-controlled; safe_get applies the SSRF guard
+            # (private/metadata IP blocking, redirect re-validation, body cap)
+            # so this verification probe cannot be turned into an SSRF oracle.
+            response = safe_get(website.url, timeout=10)
             if str(website.pixel_key) in response.text:
                 from django.utils import timezone
                 website.pixel_verified = True
@@ -36,6 +39,8 @@ class PixelService:
                 website.save(update_fields=["pixel_verified", "pixel_verified_at"])
                 audit_log("pixel.verified", action="update", resource_type="website", resource_id=str(website.id), metadata={"url": website.url})
                 return True
+        except FetchError as e:
+            logger.warning(f"Pixel verification blocked for {website.url}: {e}")
         except Exception as e:
             logger.warning(f"Pixel verification failed for {website.url}: {e}")
         return False

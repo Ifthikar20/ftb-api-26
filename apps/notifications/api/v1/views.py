@@ -58,7 +58,29 @@ class NotificationPreferencesView(TenantScopedAPIView):
         return Response(serializer.data)
 
 
-# ── Integration Connections (Slack / Discord / Telegram) ──────────────────────
+# ── Integration Connections (Slack / Discord) ─────────────────────────────────
+
+
+# Platform host allowlist for incoming-webhook URLs. Anything else is
+# rejected so a connection can never post FetchBot data to an arbitrary host.
+WEBHOOK_URL_PREFIXES = {
+    "slack": ("https://hooks.slack.com/",),
+    "discord": (
+        "https://discord.com/api/webhooks/",
+        "https://discordapp.com/api/webhooks/",
+    ),
+}
+
+
+def _validate_webhook_url(platform: str, url: str) -> str:
+    """Return an error message when the URL is not allowed for the platform."""
+    prefixes = WEBHOOK_URL_PREFIXES.get(platform)
+    if not prefixes:
+        return f"Unsupported platform: {platform}"
+    if not url.startswith(prefixes):
+        allowed = " or ".join(f"{p}..." for p in prefixes)
+        return f"Invalid {platform} webhook URL. Expected {allowed}"
+    return ""
 
 
 class IntegrationConnectionListView(TenantScopedAPIView):
@@ -80,6 +102,21 @@ class IntegrationConnectionListView(TenantScopedAPIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        payload = request.data.copy()
+        if "webhook_url" in payload:
+            webhook_url = (payload.get("webhook_url") or "").strip()
+            if webhook_url:
+                error = _validate_webhook_url(platform, webhook_url)
+                if error:
+                    return Response({"error": error}, status=status.HTTP_400_BAD_REQUEST)
+                payload["webhook_url"] = webhook_url
+            else:
+                # Blank on update = keep the stored webhook. The field is
+                # write-only (never read back), so the UI can't resend it;
+                # dropping it here preserves the existing value instead of
+                # wiping the connection when only other fields change.
+                payload.pop("webhook_url", None)
+
         # Upsert: one connection per user per platform
         connection, created = IntegrationConnection.objects.get_or_create(
             user=request.user,
@@ -88,7 +125,7 @@ class IntegrationConnectionListView(TenantScopedAPIView):
         )
 
         serializer = IntegrationConnectionSerializer(
-            connection, data=request.data, partial=True
+            connection, data=payload, partial=True
         )
         serializer.is_valid(raise_exception=True)
         serializer.save()
@@ -114,20 +151,23 @@ class IntegrationConnectionListView(TenantScopedAPIView):
                 from apps.notifications.services.slack_service import SlackService
                 SlackService.send_message(
                     webhook_url=connection.webhook_url,
-                    text="✅ FetchBot connected! You'll receive growth reports here.",
+                    text=(
+                        "FetchBot connected. You'll receive daily growth "
+                        "reports, brand-security alerts, and hot lead "
+                        "alerts here."
+                    ),
                 )
             elif connection.platform == "discord":
                 from apps.notifications.services.discord_service import DiscordService
                 DiscordService.send_message(
                     webhook_url=connection.webhook_url,
-                    title="✅ FetchBot Connected",
-                    description="You'll receive daily growth reports, hot lead alerts, and trend intelligence here.",
-                )
-            elif connection.platform == "telegram":
-                from apps.notifications.services.telegram_service import TelegramService
-                TelegramService.send_message(
-                    chat_id=connection.webhook_url,
-                    text="✅ *FetchBot connected!*\nYou'll receive growth reports here.",
+                    title="FetchBot Connected",
+                    # Name only what actually sends today; trend digests and
+                    # milestones are stored preferences with no sender yet.
+                    description=(
+                        "You'll receive daily growth reports, brand-security "
+                        "alerts, and hot lead alerts here."
+                    ),
                 )
         except Exception as e:
             logger.warning(f"Test message failed for {connection.platform}: {e}")
@@ -145,7 +185,17 @@ class IntegrationConnectionDetailView(TenantScopedAPIView):
         except IntegrationConnection.DoesNotExist:
             return Response({"error": "Connection not found"}, status=status.HTTP_404_NOT_FOUND)
 
-        serializer = IntegrationConnectionSerializer(connection, data=request.data, partial=True)
+        payload = request.data.copy()
+        if "webhook_url" in payload:
+            webhook_url = (payload.get("webhook_url") or "").strip()
+            if webhook_url:
+                platform = payload.get("platform") or connection.platform
+                error = _validate_webhook_url(platform, webhook_url)
+                if error:
+                    return Response({"error": error}, status=status.HTTP_400_BAD_REQUEST)
+            payload["webhook_url"] = webhook_url
+
+        serializer = IntegrationConnectionSerializer(connection, data=payload, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response({"data": serializer.data})

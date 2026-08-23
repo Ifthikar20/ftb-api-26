@@ -18,6 +18,7 @@ from __future__ import annotations
 import hashlib
 import logging
 from dataclasses import dataclass
+from datetime import datetime
 
 from django.db import transaction
 from django.utils import timezone
@@ -41,6 +42,36 @@ class IngestResult:
     error: str | None = None
 
 
+def _dispatch_auto_fact_extraction(website, kind: str) -> None:
+    """Auto-extract brand facts after fresh chunks land.
+
+    Debounced so a 12-page crawl triggers one extraction pass, not
+    twelve: the first ingest in the window claims the cache flag
+    (cache.add is atomic) and schedules extraction 120s out so the rest
+    of the crawl's pages land first. audit_context is excluded — the
+    learning loop must never mint facts from LLM-generated context.
+    Extraction itself is idempotent (only chunks without facts are read),
+    so overlapping dispatches are harmless.
+    """
+    try:
+        from django.conf import settings
+
+        if not getattr(settings, "BRAND_VAULT_EXTRACTION_ENABLED", True):
+            return
+        if kind == KnowledgeSource.KIND_AUDIT_CONTEXT:
+            return
+        from django.core.cache import cache
+
+        if cache.add(f"bv:auto_extract:{website.id}", 1, timeout=180):
+            from apps.brand_vault.tasks import extract_facts_for_website
+
+            extract_facts_for_website.apply_async(
+                args=[str(website.id)], countdown=120,
+            )
+    except Exception as exc:  # pragma: no cover — never block an ingest
+        logger.debug("auto fact-extraction dispatch skipped: %s", exc)
+
+
 def ingest_url(
     *,
     user,
@@ -49,22 +80,46 @@ def ingest_url(
     kind: str = KnowledgeSource.KIND_OTHER,
     title: str = "",
     text: str | None = None,
+    source_app: str | None = None,
+    source_ref: str | None = None,
+    metadata: dict | None = None,
+    recorded_at: datetime | None = None,
 ) -> IngestResult:
     """
     Ingest a single URL. If ``text`` is supplied (e.g. from an audit's
     enrichment step), we use it directly rather than re-fetching the page.
+
+    Provenance passthrough (all optional; defaults preserve the original
+    brand-input behavior): ``source_app``/``source_ref`` land on the
+    KnowledgeSource, ``metadata``/``recorded_at`` land on every chunk
+    written this pass. Source adapters use these so retrieval can filter
+    by producing app and weight by content time.
     """
+    defaults = {
+        "kind": kind, "title": title or "",
+        "status": KnowledgeSource.STATUS_PENDING,
+    }
+    if source_app:
+        defaults["source_app"] = source_app
+    if source_ref:
+        defaults["source_ref"] = source_ref
     source, created = KnowledgeSource.objects.get_or_create(
-        user=user, website=website, url=url,
-        defaults={"kind": kind, "title": title or "", "status": KnowledgeSource.STATUS_PENDING},
+        user=user, website=website, url=url, defaults=defaults,
     )
     if not created and kind and source.kind != kind:
         # Allow upgrading kind when a more specific tag is supplied.
         source.kind = kind
+    if not created and source_app and source.source_app != source_app:
+        source.source_app = source_app
+    if not created and source_ref and source.source_ref != source_ref:
+        source.source_ref = source_ref
 
     source.status = KnowledgeSource.STATUS_INGESTING
     source.error_message = ""
-    source.save(update_fields=["status", "kind", "error_message", "updated_at"])
+    source.save(update_fields=[
+        "status", "kind", "source_app", "source_ref",
+        "error_message", "updated_at",
+    ])
 
     try:
         if text is None:
@@ -105,16 +160,46 @@ def ingest_url(
 
         with transaction.atomic():
             KnowledgeChunk.objects.filter(source=source).delete()
-            KnowledgeChunk.objects.bulk_create([
+            new_rows = [
                 KnowledgeChunk(
                     source=source, user=user, website=website,
                     chunk_index=i, text=c.text,
                     embedding=vectors[i], embedding_model=model,
                     embedding_dim=dim, section_label=c.section_label,
                     token_count=c.token_count,
+                    metadata=dict(metadata) if metadata else {},
+                    recorded_at=recorded_at,
                 )
                 for i, c in enumerate(chunks)
-            ])
+            ]
+            KnowledgeChunk.objects.bulk_create(new_rows)
+
+            # Mirror into the optional vector index once (and only once)
+            # the transaction commits, so a rollback never leaves phantom
+            # vectors. UUID pks are client-generated, so the ids exist
+            # already. Best-effort: an index failure must never fail the
+            # ingest - Postgres is the source of truth and the index can
+            # be rebuilt from it.
+            from apps.rag.services.vector_backends import get_backend
+
+            backend = get_backend()
+            if backend is not None:
+                chunk_ids = [row.id for row in new_rows]
+                chunk_vectors = list(vectors)
+
+                def _mirror(wid=website.id, sid=source.id):
+                    try:
+                        backend.replace_source(
+                            website_id=wid, source_id=sid,
+                            chunk_ids=chunk_ids, vectors=chunk_vectors, dim=dim,
+                        )
+                    except Exception:
+                        logger.warning(
+                            "vector index mirror failed for source %s", sid,
+                            exc_info=True,
+                        )
+
+                transaction.on_commit(_mirror)
             source.title = (page_title or source.title)[:500]
             source.content_hash = digest
             source.chunk_count = len(chunks)
@@ -124,6 +209,8 @@ def ingest_url(
                 "title", "content_hash", "chunk_count", "status",
                 "last_ingested_at", "updated_at",
             ])
+
+        _dispatch_auto_fact_extraction(website, kind)
 
         return IngestResult(
             source_id=str(source.id), url=url,

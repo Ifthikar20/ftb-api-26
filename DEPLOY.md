@@ -163,6 +163,16 @@ server survives only until the next deploy. Manual runs of the script
 without `PAYWALL_ENABLED` in the environment leave the remote value
 untouched.
 
+With the paywall on, the gate is dismissible: after onboarding a user
+lands on `/paywall` once and either starts the Pro trial or clicks
+"Continue with the free plan", which records
+`User.paywall_dismissed_at` (via `POST /api/v1/billing/paywall/dismiss/`)
+so `next_route` returns `app` from then on. Clearing that field in the
+Django admin re-arms the paywall for that user. Flipping the variable on
+routes every existing unsubscribed user to the paywall once on their
+next session; they self-serve out via the free plan or the trial, so no
+grandfathering script is required.
+
 ## Pre-deploy checklist
 
 - CI lint job is green on the commit being deployed.

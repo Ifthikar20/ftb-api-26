@@ -118,7 +118,7 @@ def build_overview_for_website(user, website) -> dict:
         # genuinely scored zero. In an unmeasured bucket it is a gap.
         series = [
             round(b.get(name, 0.0), 1) if measured else None
-            for b, measured in zip(breakdowns, measured_mask)
+            for b, measured in zip(breakdowns, measured_mask, strict=False)
         ]
         competitors.append({
             "name": name,

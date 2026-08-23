@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import timedelta
 
 from celery import shared_task
 
@@ -51,13 +52,23 @@ def refresh_effectiveness_scores() -> int:
 
 @shared_task(name="apps.prompt_library.tasks.crawl_prompt_for_website",
              bind=True, max_retries=0)
-def crawl_prompt_for_website(self, website_id: str, prompt_id: str) -> dict:
+def crawl_prompt_for_website(
+    self, website_id: str, prompt_id: str, only_missing: bool = False,
+    acting_user_id: str | None = None,
+) -> dict:
     """Fan out + query providers for a single saved prompt.
 
-    Invoked from the Prompt-detail page's 'Run crawler' button. We
-    don't retry on failure — the crawler service updates the
-    PromptCrawlRun row with whatever it managed to capture, so the
-    UI can show partial results plus per-provider error notes.
+    Invoked from the Prompt-detail page's 'Run crawler' button and the
+    per-prompt schedule dispatcher. We don't retry on failure — the
+    crawler service updates the PromptCrawlRun row with whatever it
+    managed to capture, so the UI can show partial results plus
+    per-provider error notes. ``only_missing`` limits the run to models
+    that never answered (the page's silent gap-fill); the default is a
+    full re-run of every configured model.
+
+    ``acting_user_id`` is set when a person clicked the button — AI
+    spend is attributed to them. The scheduler leaves it None and spend
+    goes to the website owner as actor="system".
     """
     from apps.prompt_library.models import Prompt
     from apps.prompt_library.services.prompt_crawler import crawl_prompt
@@ -70,10 +81,160 @@ def crawl_prompt_for_website(self, website_id: str, prompt_id: str) -> dict:
         logger.warning("crawl_prompt_for_website: %s", exc)
         return {"ok": False, "error": str(exc)}
 
-    outcome = crawl_prompt(website, prompt)
+    acting_user = None
+    if acting_user_id:
+        from django.contrib.auth import get_user_model
+
+        acting_user = get_user_model().objects.filter(id=acting_user_id).first()
+
+    outcome = crawl_prompt(
+        website, prompt, only_missing=only_missing, acting_user=acting_user,
+    )
     return {
         "ok": True,
         "fanouts": len(outcome.fanouts),
         "responses": outcome.responses,
         "errors": outcome.errors,
     }
+
+
+# ── Periodic per-prompt scheduling ──────────────────────────────────────────
+
+PROMPT_FREQUENCY_DELTAS = {
+    "daily": timedelta(days=1),
+    "weekly": timedelta(weeks=1),
+    "monthly": timedelta(days=30),
+}
+
+# A crawl left running past this many minutes is treated as dead (the crawl
+# is effectively synchronous), so a fresh scheduled run may proceed.
+_STALE_RUN_MINUTES = 10
+
+
+@shared_task(name="apps.prompt_library.tasks.dispatch_scheduled_prompt_scans")
+def dispatch_scheduled_prompt_scans() -> None:
+    """Celery Beat task: run any per-prompt schedule whose ``next_run_at``
+    has passed, then advance it.
+
+    The per-prompt analogue of
+    ``apps.llm_ranking.tasks.dispatch_scheduled_audits``. Runs every 15
+    minutes via ``beat_schedule``.
+
+    Resilience guarantees (mirror the audit dispatcher):
+      * Skip + bump if the prompt's previous crawl is still in flight, so
+        a slow crawl that overruns its cadence never stacks duplicates.
+      * The per-user monthly AI spend cap is checked first — skip + bump
+        rather than burn credits while the cap is held.
+      * Track ``consecutive_failures`` and auto-pause once it crosses
+        ``auto_pause_threshold``.
+    """
+    from django.utils import timezone
+
+    from apps.prompt_library.models import PromptCrawlRun, PromptSchedule
+
+    now = timezone.now()
+    due = (
+        PromptSchedule.objects
+        .filter(is_enabled=True, next_run_at__lte=now)
+        .select_related(
+            "brand_prompt", "brand_prompt__website",
+            "brand_prompt__prompt", "created_by",
+        )
+    )
+
+    for schedule in due:
+        try:
+            bp = schedule.brand_prompt
+            website = bp.website
+            prompt = bp.prompt
+            cap_user = schedule.created_by
+
+            # ── 1. Skip if the previous crawl is still in flight ──────
+            prev = (
+                PromptCrawlRun.objects
+                .filter(website=website, prompt=prompt)
+                .order_by("-created_at")
+                .first()
+            )
+            if prev and prev.status in (
+                PromptCrawlRun.STATUS_PENDING,
+                PromptCrawlRun.STATUS_RUNNING,
+            ):
+                anchor = prev.started_at or prev.created_at
+                is_fresh = bool(anchor) and (now - anchor) <= timedelta(
+                    minutes=_STALE_RUN_MINUTES
+                )
+                if is_fresh:
+                    logger.info(
+                        "Skipping scheduled prompt scan for %s/%s: previous "
+                        "crawl %s still %s.",
+                        website.name, prompt.id, prev.id, prev.status,
+                    )
+                    _bump_prompt_next_run(schedule, now)
+                    continue
+
+            # ── 2. Spend-cap check (plan-derived allowance) ───────────
+            from core.ai_tracking import effective_ai_cap, month_to_date_cost
+            cap = effective_ai_cap(cap_user)
+            if cap > 0 and month_to_date_cost(cap_user) >= cap:
+                logger.warning(
+                    "Skipping scheduled prompt scan for %s/%s: user %s at cap.",
+                    website.name, prompt.id, cap_user.id,
+                )
+                _bump_prompt_next_run(schedule, now)
+                continue
+
+            # ── 3. Run the single-prompt crawl ────────────────────────
+            crawl_prompt_for_website.delay(str(website.id), str(prompt.id))
+
+            # Advance + reset the failure counter (success path).
+            delta = PROMPT_FREQUENCY_DELTAS.get(schedule.frequency, timedelta(weeks=1))
+            schedule.last_run_at = now
+            schedule.next_run_at = now + delta
+            schedule.consecutive_failures = 0
+            schedule.last_failure_at = None
+            schedule.save(update_fields=[
+                "last_run_at", "next_run_at",
+                "consecutive_failures", "last_failure_at", "updated_at",
+            ])
+            logger.info(
+                "Scheduled prompt scan queued for %s/%s (schedule=%s, next=%s)",
+                website.name, prompt.id, schedule.id, schedule.next_run_at,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.error(
+                "Failed to dispatch scheduled prompt scan for schedule %s: %s",
+                schedule.id, exc,
+            )
+            _record_prompt_failure(schedule, now)
+
+
+def _bump_prompt_next_run(schedule, now) -> None:
+    """Advance next_run_at without recording success or failure."""
+    delta = PROMPT_FREQUENCY_DELTAS.get(schedule.frequency, timedelta(weeks=1))
+    schedule.next_run_at = now + delta
+    schedule.save(update_fields=["next_run_at", "updated_at"])
+
+
+def _record_prompt_failure(schedule, now) -> None:
+    """Increment consecutive_failures; auto-pause past the threshold.
+
+    Always advance next_run_at so a transient error can't tight-loop the
+    dispatcher.
+    """
+    delta = PROMPT_FREQUENCY_DELTAS.get(schedule.frequency, timedelta(weeks=1))
+    schedule.consecutive_failures = (schedule.consecutive_failures or 0) + 1
+    schedule.last_failure_at = now
+    schedule.next_run_at = now + delta
+    update_fields = [
+        "consecutive_failures", "last_failure_at",
+        "next_run_at", "updated_at",
+    ]
+    if schedule.consecutive_failures >= (schedule.auto_pause_threshold or 3):
+        schedule.is_enabled = False
+        update_fields.append("is_enabled")
+        logger.warning(
+            "Auto-pausing prompt schedule %s after %d consecutive failures.",
+            schedule.id, schedule.consecutive_failures,
+        )
+    schedule.save(update_fields=update_fields)

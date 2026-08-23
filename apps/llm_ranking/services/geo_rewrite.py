@@ -37,6 +37,7 @@ from collections.abc import Callable
 
 from django.conf import settings
 
+from core.llm import ClaudeUtility
 from core.quota import DailyQuota
 
 logger = logging.getLogger("apps")
@@ -149,31 +150,23 @@ def _consume_quota(user_id, n: int = 1) -> bool:
 def _call_rewriter_default(
     *, system: str, user_prompt: str, user=None, audit_id=None,
 ) -> str:
-    """Real Claude Sonnet call. Used unless callers inject their own."""
-    import anthropic
-    client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
-    resp = client.messages.create(
-        model=REWRITE_MODEL,
-        max_tokens=MAX_OUTPUT_TOKENS,
-        system=system,
-        messages=[{"role": "user", "content": user_prompt}],
+    """Real Claude Sonnet call. Used unless callers inject their own.
+
+    Goes through the central LLM gateway (spend-wall, rate-limit/breaker,
+    usage recording with role=geo_rewrite). Raises on failure so
+    ``rewrite`` can map it to its ``rewriter_error`` envelope.
+    """
+    result = ClaudeUtility(model=REWRITE_MODEL, max_tokens=MAX_OUTPUT_TOKENS).query(
+        user_prompt,
+        system_prompt=system,
+        user=user,
+        audit_id=audit_id,
+        role="geo_rewrite",
+        module="llm_ranking",
     )
-    try:
-        from core.ai_tracking import record_usage
-        metadata = {"role": "geo_rewrite"}
-        if audit_id:
-            metadata["audit_id"] = str(audit_id)
-        record_usage(
-            module="llm_ranking",
-            model_name=REWRITE_MODEL,
-            input_tokens=resp.usage.input_tokens,
-            output_tokens=resp.usage.output_tokens,
-            user=user,
-            metadata=metadata,
-        )
-    except Exception:
-        pass
-    return resp.content[0].text.strip()
+    if not result.succeeded:
+        raise RuntimeError(f"GEO rewrite call failed: {result.error}")
+    return result.text
 
 
 def _diff_stats(before: str, after: str) -> dict:

@@ -7,12 +7,15 @@ class Segment(models.TextChoices):
 
 
 class Plan(models.TextChoices):
-    INDIVIDUAL = "individual", "Individual ($45/mo)"
-    PRO = "pro", "Pro ($100/mo)"
-    ENTERPRISE = "enterprise", "Business / Enterprise"
+    # ── Live model (2026-08): Free -> Pro $45/mo self-serve -> Business custom ──
+    FREE = "free", "Free"
+    PRO = "pro", "Pro ($45/mo)"
+    BUSINESS = "business", "Business (custom)"
     # Legacy aliases for migration compatibility — these still appear
-    # on existing Subscription rows and must keep resolving to a real
-    # plan via PLAN_LIMITS until a backfill migrates them.
+    # on existing Subscription/User rows and must keep resolving to a
+    # real plan via PLAN_LIMITS until a backfill migrates them.
+    INDIVIDUAL = "individual", "Individual (Legacy)"
+    ENTERPRISE = "enterprise", "Enterprise (Legacy)"
     STARTER = "starter", "Starter (Legacy)"
     GROWTH = "growth", "Growth (Legacy)"
     SCALE = "scale", "Scale (Legacy)"
@@ -25,22 +28,26 @@ class Plan(models.TextChoices):
 # user's current plan and caps the prompt list accordingly. Bumping a
 # user's tier widens the cap on the next audit immediately.
 PLAN_LIMITS = {
-    Plan.INDIVIDUAL: {
+    # Free: what an account WITHOUT an active/trialing subscription gets.
+    # The AI allowance is a small acquisition cost (settings.
+    # AI_FREE_MONTHLY_CAP_USD, default $1/month) — enough to feel the
+    # product, not enough to burn margin.
+    Plan.FREE: {
         "segment": Segment.INDIVIDUAL,
-        "price_monthly": 45,
-        "price_yearly": 450,
+        "price_monthly": 0,
+        "price_yearly": 0,
         "trial_days": 0,
         "projects": 1,
-        "pageviews": 50_000,
+        "pageviews": 10_000,
         "team_members": 1,
-        "ai_credits_monthly": 150,
-        "integrations": 3,
+        "ai_credits_monthly": 50,
+        "integrations": 1,
         "max_agents": 1,
-        "competitors": 8,
+        "competitors": 3,
         "max_prompts_per_audit": 5,
-        "max_audits_per_month": 4,            # weekly cadence cap
+        "max_audits_per_month": 2,
         "providers_allowed": ["claude", "gpt4"],
-        "pipeline_builder": True,
+        "pipeline_builder": False,
         "trend_intelligence": False,
         "sso": False,
         "api_access": False,
@@ -53,11 +60,14 @@ PLAN_LIMITS = {
             "integrations", "billing", "settings",
         ],
     },
+    # Pro carries the full self-serve feature set at $45/mo. The AI spend
+    # wall (65% of price -> $29.25/mo of model cost) is what protects
+    # margin, so the feature limits can stay generous.
     Plan.PRO: {
         "segment": Segment.INDIVIDUAL,
-        "price_monthly": 100,
-        "price_yearly": 1000,
-        "trial_days": 0,
+        "price_monthly": 45,
+        "price_yearly": 450,
+        "trial_days": 7,
         "projects": 5,
         "pageviews": 250_000,
         "team_members": 5,
@@ -81,10 +91,11 @@ PLAN_LIMITS = {
             "integrations", "billing", "settings",
         ],
     },
-    Plan.ENTERPRISE: {
+    Plan.BUSINESS: {
         "segment": Segment.ENTERPRISE,
-        "price_monthly": -1,  # custom
+        "price_monthly": -1,  # custom — contact sales
         "price_yearly": -1,
+        "trial_days": 0,
         "projects": -1,
         "pageviews": -1,
         "team_members": -1,
@@ -110,34 +121,56 @@ PLAN_LIMITS = {
     },
 }
 
-# Legacy aliases — keep resolving so existing Subscription rows don't
-# 500 on read. Starter maps to Individual (closest match in the new
-# 3-tier model); Growth/Scale follow Starter/Enterprise as before.
-PLAN_LIMITS[Plan.STARTER] = PLAN_LIMITS[Plan.INDIVIDUAL]
-PLAN_LIMITS[Plan.GROWTH] = PLAN_LIMITS[Plan.INDIVIDUAL]
-PLAN_LIMITS[Plan.SCALE] = PLAN_LIMITS[Plan.ENTERPRISE]
+# Legacy aliases — keep resolving so existing Subscription/User rows
+# don't 500 on read. Every historical self-serve tier maps to Pro; the
+# historical top tiers map to Business.
+PLAN_LIMITS[Plan.INDIVIDUAL] = PLAN_LIMITS[Plan.PRO]
+PLAN_LIMITS[Plan.STARTER] = PLAN_LIMITS[Plan.PRO]
+PLAN_LIMITS[Plan.GROWTH] = PLAN_LIMITS[Plan.PRO]
+PLAN_LIMITS[Plan.ENTERPRISE] = PLAN_LIMITS[Plan.BUSINESS]
+PLAN_LIMITS[Plan.SCALE] = PLAN_LIMITS[Plan.BUSINESS]
+
+
+# The RBAC feature lists and the integrations registry still key their
+# tier tables on the historical starter/growth/scale names. This maps
+# ANY plan value (live or legacy) onto those table keys so a plan="pro"
+# or plan="business" user resolves entitlements correctly.
+LEGACY_TIER_KEY = {
+    "pro": "growth",
+    "business": "scale",
+    "individual": "growth",
+    "enterprise": "scale",
+    "free": "starter",
+    "team": "scale",
+    "starter": "starter",
+    "growth": "growth",
+    "scale": "scale",
+}
+
+
+def legacy_tier_key(plan: str) -> str:
+    """Map a plan value onto the starter/growth/scale tier-table keys."""
+    return LEGACY_TIER_KEY.get(plan, "growth")
 
 
 def max_prompts_for_user(user) -> int:
     """
     Return the prompts-per-audit cap for ``user``'s current plan.
 
-    Falls back to the Individual cap when the user has no subscription
-    or the subscription's plan isn't recognised. Never returns 0 — even
-    a user with no subscription can run a tiny 5-prompt audit so the
-    "first run" experience isn't gated.
+    Resolves the plan through ``current_plan_for`` (the single source of
+    truth): an active/trialing subscription grants its tier, everything
+    else — no row, canceled, past due, lapsed trial — is the Free cap.
+    Never returns 0: even a Free user can run a tiny 5-prompt audit so
+    the "first run" experience isn't gated.
     """
     from django.conf import settings
 
     if not settings.PAYWALL_ENABLED:
-        limits = PLAN_LIMITS[Plan.ENTERPRISE]
+        limits = PLAN_LIMITS[Plan.BUSINESS]
     else:
-        try:
-            sub = getattr(user, "subscription", None)
-            plan = getattr(sub, "plan", None) if sub else None
-        except Exception:
-            plan = None
-        limits = PLAN_LIMITS.get(plan) or PLAN_LIMITS[Plan.INDIVIDUAL]
+        from apps.billing.services.plan_limits import current_plan_for
+
+        limits = PLAN_LIMITS.get(current_plan_for(user)) or PLAN_LIMITS[Plan.FREE]
     raw = limits.get("max_prompts_per_audit") or 5
     cap = int(raw) if isinstance(raw, int | float) else 5
     return cap if cap > 0 else 50  # treat -1 as "effectively unlimited"

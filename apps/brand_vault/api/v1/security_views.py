@@ -6,13 +6,17 @@ keep working while we migrate. Prefer these views for new work.
 """
 from __future__ import annotations
 
+import uuid
 from collections import Counter
-from datetime import timedelta
+from datetime import datetime, time
 
-from django.db.models import Count
+from django.db.models import Case, Count, IntegerField, Q, Value, When
 from django.utils import timezone
+from django.utils.dateparse import parse_date, parse_datetime
 from rest_framework import status
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from apps.brand_vault.api.v1.serializers import (
     BrandSecurityAgentPatchSerializer,
@@ -28,11 +32,15 @@ from apps.brand_vault.models import (
     SafetyAlert,
     SafetyPrompt,
 )
-from apps.brand_vault.services.security.orchestrator import (
-    ensure_agent_rows,
-    run_agent,
+from apps.brand_vault.services.security import response_auditor
+from apps.brand_vault.services.security.detectors import (
+    CATEGORIES,
+    DETECTOR_INDEX,
+    DETECTORS,
+    ISSUE_FALLBACK,
 )
-from apps.brand_vault.services.security.registry import AGENTS, agent_catalog
+from apps.brand_vault.services.security.orchestrator import ensure_agent_rows
+from apps.brand_vault.services.security.registry import agent_catalog
 from core.exceptions import ResourceNotFound
 from core.views import TenantScopedAPIView, TenantScopedListAPIView
 
@@ -100,6 +108,47 @@ def _seed_starter_prompts(website, agent_id: str, user) -> int:
     return inserted
 
 
+_CATEGORY_DISPLAY = dict(CATEGORIES)
+
+
+class BrandSecurityTaxonomyView(APIView):
+    """The detector catalog: every trigger point the auditor can raise.
+
+    Global (the registry is code, not tenant data) — hence a plain
+    authenticated APIView rather than a tenant-scoped one. The frontend
+    fetches this once and stops hardcoding detection vocabulary.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        return Response({
+            "engine": {
+                "agent_id": response_auditor.AGENT_ID,
+                "display_name": response_auditor.DISPLAY_NAME,
+                "description": response_auditor.DESCRIPTION,
+            },
+            "categories": [
+                {"key": key, "display": display} for key, display in CATEGORIES
+            ],
+            "detectors": [
+                {
+                    "code": d.code,
+                    "slug": d.slug,
+                    "display_name": d.display_name,
+                    "category": d.category,
+                    "category_display": _CATEGORY_DISPLAY.get(d.category, d.category),
+                    "issue": d.issue,
+                    "default_severity": d.default_severity,
+                    "uses_llm_judge": d.judge_mode != "never",
+                    "description": d.description,
+                    "recommended_action": d.recommended_action,
+                }
+                for d in DETECTORS
+            ],
+        })
+
+
 class BrandSecurityOverviewView(TenantScopedAPIView):
     """Top-of-page summary tiles: health, counters, and last-scan timing."""
 
@@ -119,6 +168,16 @@ class BrandSecurityOverviewView(TenantScopedAPIView):
         by_source = Counter(open_alerts.values_list("source", flat=True))
         by_agent = Counter(open_alerts.values_list("agent_id", flat=True))
 
+        # Per-detector and per-category counts for the summary chips.
+        # Legacy rows without a detector code fall back via their issue.
+        by_detector: Counter = Counter()
+        by_category: Counter = Counter()
+        for code, issue in open_alerts.values_list("detector_code", "issue"):
+            code = code or ISSUE_FALLBACK.get(issue, "")
+            detector = DETECTOR_INDEX.get(code)
+            by_detector[code or "other"] += 1
+            by_category[detector.category if detector else "other"] += 1
+
         agents = ensure_agent_rows(website)
         last_run_at = max(
             (a.last_run_at for a in agents if a.last_run_at),
@@ -128,6 +187,19 @@ class BrandSecurityOverviewView(TenantScopedAPIView):
             (a.next_run_at for a in agents if a.next_run_at),
             default=None,
         )
+
+        # The auditor runs on completion hooks, so "last checked" is the
+        # newest scanned response rather than an agent run timestamp.
+        config = BrandSecurityConfig.objects.filter(website=website).first()
+        last_scan_at = config.last_response_scan_at if config else None
+        latest_alert = (
+            SafetyAlert.objects.filter(website=website)
+            .order_by("-detected_at")
+            .values_list("detected_at", flat=True)
+            .first()
+        )
+        candidates = [t for t in (last_run_at, last_scan_at, latest_alert) if t]
+        last_checked_at = max(candidates) if candidates else None
 
         return Response({
             "health_score": health,
@@ -139,7 +211,10 @@ class BrandSecurityOverviewView(TenantScopedAPIView):
             },
             "by_source": dict(by_source),
             "by_agent": dict(by_agent),
+            "by_detector": dict(by_detector),
+            "by_category": dict(by_category),
             "last_run_at": last_run_at,
+            "last_checked_at": last_checked_at,
             "next_run_at": next_run_at,
             "prompts_monitored": SafetyPrompt.objects.filter(
                 website=website, status=SafetyPrompt.STATUS_ACTIVE,
@@ -189,7 +264,7 @@ class BrandSecurityAgentsView(TenantScopedAPIView):
 
 
 class BrandSecurityAgentDetailView(TenantScopedAPIView):
-    """PATCH an agent's config or POST to run it now."""
+    """PATCH an agent's config (enable, sensitivity, schedule)."""
 
     def _get(self, request, website_id, agent_id) -> BrandSecurityAgent:
         website = self.get_website(website_id)
@@ -219,12 +294,30 @@ class BrandSecurityAgentDetailView(TenantScopedAPIView):
         return Response(BrandSecurityAgentSerializer(row).data)
 
 
+def _parse_boundary(value: str | None, *, end: bool = False):
+    """ISO datetime or bare date -> aware datetime (dates span the full day)."""
+    if not value:
+        return None
+    dt = parse_datetime(value)
+    if dt is None:
+        d = parse_date(value)
+        if d is None:
+            return None
+        dt = datetime.combine(d, time.max if end else time.min)
+    if timezone.is_naive(dt):
+        dt = timezone.make_aware(dt)
+    return dt
+
+
 class BrandSecurityAlertsView(TenantScopedListAPIView):
-    """List alerts filterable by agent, severity, source, issue, status."""
+    """List alerts filterable by agent, severity, source, issue, detector,
+    status, reference, free-text search and detection date range."""
 
     def get(self, request, website_id):
         website = self.get_website(website_id)
-        qs = SafetyAlert.objects.filter(website=website)
+        # select_related: the serializer reads result.public_id and
+        # result.source_prompt_id for the conversation/prompt links.
+        qs = SafetyAlert.objects.filter(website=website).select_related("result")
 
         agent_ids = request.query_params.getlist("agent_id")
         if agent_ids:
@@ -238,22 +331,70 @@ class BrandSecurityAlertsView(TenantScopedListAPIView):
         issues = request.query_params.getlist("issue")
         if issues:
             qs = qs.filter(issue__in=issues)
+        detector_codes = request.query_params.getlist("detector_code")
+        if detector_codes:
+            qs = qs.filter(detector_code__in=detector_codes)
         status_filter = request.query_params.get("status")
         if status_filter:
             qs = qs.filter(status=status_filter)
+
+        # Exact reference lookup powers the UI's ?alert=BSA-... deep links.
+        reference = request.query_params.get("reference")
+        if reference:
+            qs = qs.filter(reference__iexact=reference.strip())
+
+        search = (request.query_params.get("search") or "").strip()
+        if search:
+            qs = qs.filter(
+                Q(reference__iexact=search)
+                | Q(detector_code__iexact=search)
+                | Q(title__icontains=search)
+                | Q(snippet__icontains=search)
+                | Q(detail__icontains=search)
+            )
+
+        detected_after = _parse_boundary(request.query_params.get("detected_after"))
+        if detected_after:
+            qs = qs.filter(detected_at__gte=detected_after)
+        detected_before = _parse_boundary(
+            request.query_params.get("detected_before"), end=True,
+        )
+        if detected_before:
+            qs = qs.filter(detected_at__lte=detected_before)
 
         # Scope to findings raised from a single audit response, or from every
         # response for one library prompt. This is what lets the prompt detail
         # page show the findings against the answers it is already displaying,
         # instead of sending the reader to a global list to hunt for them.
-        result_id = request.query_params.get("result")
-        if result_id:
-            qs = qs.filter(result_id=result_id)
+        # The result param accepts the response's public_id (what the chat
+        # modal navigates by) as well as the legacy integer PK.
+        result_ref = (request.query_params.get("result") or "").strip()
+        if result_ref:
+            try:
+                qs = qs.filter(result__public_id=uuid.UUID(result_ref))
+            except ValueError:
+                if result_ref.isdigit():
+                    qs = qs.filter(result_id=int(result_ref))
+                else:
+                    qs = qs.none()
         source_prompt = request.query_params.get("source_prompt")
         if source_prompt:
             qs = qs.filter(result__source_prompt_id=source_prompt)
 
-        qs = qs.order_by("-detected_at")
+        ordering = request.query_params.get("ordering") or "-detected_at"
+        if ordering == "severity":
+            qs = qs.annotate(
+                _sev_rank=Case(
+                    When(severity=SafetyAlert.SEVERITY_HIGH, then=Value(0)),
+                    When(severity=SafetyAlert.SEVERITY_MEDIUM, then=Value(1)),
+                    default=Value(2),
+                    output_field=IntegerField(),
+                ),
+            ).order_by("_sev_rank", "-detected_at")
+        elif ordering in ("-last_seen_at", "detected_at", "-detected_at"):
+            qs = qs.order_by(ordering)
+        else:
+            qs = qs.order_by("-detected_at")
         return self.paginated_response(qs, SafetyAlertSerializer)
 
 
@@ -301,6 +442,9 @@ class BrandSecurityConfigView(TenantScopedAPIView):
             cfg.negative_keywords = [
                 str(x).strip() for x in negatives if str(x).strip()
             ]
+        llm_judge = request.data.get("llm_judge_enabled")
+        if isinstance(llm_judge, bool):
+            cfg.llm_judge_enabled = llm_judge
         cfg.save()
         return Response(BrandSecurityConfigSerializer(cfg).data)
 

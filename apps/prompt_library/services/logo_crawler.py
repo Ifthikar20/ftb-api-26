@@ -90,30 +90,29 @@ def fetch_site_logo(domain: str) -> str:
 
 
 def _crawl(domain: str) -> str:
+    # _is_public_host is only a cheap fast-path: it validates the initial
+    # domain but not redirect targets. safe_get re-validates every hop, which
+    # is what actually closes the redirect-to-private-IP bypass that the old
+    # allow_redirects=True left open.
     if not _is_public_host(domain):
         logger.info("logo crawl refused for non-public host: %s", domain)
         return ""
-    try:
-        import requests
-    except Exception:
-        return ""
+    from core.validators.safe_http import FetchError, safe_get
 
     html, final_url = "", f"https://{domain}/"
     for scheme in ("https", "http"):
         url = f"{scheme}://{domain}/"
         try:
-            resp = requests.get(
-                url, timeout=FETCH_TIMEOUT, allow_redirects=True,
-                headers={"User-Agent": "FetchBot-LogoCrawler/1.0"},
-                stream=True,
+            resp = safe_get(
+                url, timeout=FETCH_TIMEOUT,
+                headers={"User-Agent": "FetchBot/1.0 (+https://fetchbot.ai/bot)"},
             )
-            resp.raise_for_status()
-            final_url = resp.url
-            chunk = next(resp.iter_content(MAX_BYTES), b"") or b""
-            html = chunk.decode(resp.encoding or "utf-8", errors="ignore")
-            resp.close()
+            if resp.status_code >= 400:
+                continue
+            final_url = resp.final_url
+            html = resp.text
             break
-        except Exception as exc:  # noqa: BLE001
+        except FetchError as exc:
             logger.debug("logo crawl %s failed: %s", url, exc)
             continue
 

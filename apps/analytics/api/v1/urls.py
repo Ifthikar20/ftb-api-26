@@ -10,6 +10,10 @@ urlpatterns = [
     path("<uuid:website_id>/realtime/", views.RealtimeView.as_view(), name="analytics-realtime"),
     path("<uuid:website_id>/ai-traffic/", views.AITrafficView.as_view(), name="analytics-ai-traffic"),
 
+    # The five panels above in one request. Additive: they all still work,
+    # so the frontend can migrate a panel at a time.
+    path("<uuid:website_id>/dashboard/", views.DashboardView.as_view(), name="analytics-dashboard"),
+
     # New — Advanced Analytics
     path("<uuid:website_id>/chart/", analytics_views.ChartDataView.as_view(), name="analytics-chart"),
     path("<uuid:website_id>/devices/", analytics_views.DeviceBreakdownView.as_view(), name="analytics-devices"),

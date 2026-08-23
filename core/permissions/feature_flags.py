@@ -7,8 +7,10 @@ def user_has_feature(user, feature: str) -> bool:
     """Check if a user's plan includes a specific feature."""
     if not settings.PAYWALL_ENABLED:
         return True
-    plan = getattr(user, "plan", "starter")
-    return feature in PLAN_FEATURES.get(plan, [])
+    from core.utils.constants import legacy_tier_key
+    plan = getattr(user, "plan", "pro")
+    features = PLAN_FEATURES.get(plan) or PLAN_FEATURES.get(legacy_tier_key(plan), [])
+    return feature in features
 
 
 def get_competitor_limit(user) -> int:
@@ -19,12 +21,16 @@ def get_competitor_limit(user) -> int:
 
 
 def get_team_member_limit(user) -> int:
-    """Return the number of team members the user's plan allows."""
+    """Return the number of team members the user's plan allows.
+
+    Reads the canonical PLAN_LIMITS table (via plan_limits) instead of a
+    private copy, so live and legacy plan names resolve identically.
+    """
     if not settings.PAYWALL_ENABLED:
         return 9999
-    plan = getattr(user, "plan", "starter")
-    limits = {"starter": 1, "growth": 5, "scale": 9999}
-    return limits.get(plan, 1)
+    from apps.billing.services.plan_limits import get_limits
+    raw = get_limits(user).get("team_members", 1)
+    return 9999 if raw == -1 else int(raw)
 
 
 def user_has_integration(user, integration_name: str) -> bool:

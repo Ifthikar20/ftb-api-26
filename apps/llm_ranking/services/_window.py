@@ -80,3 +80,56 @@ def parse_prompt_filter(raw) -> list[str] | None:
     else:
         return None
     return items or None
+
+
+def parse_csv_filter(raw) -> list[str] | None:
+    """Normalise ``?x=a,b`` or repeated ``?x=a&x=b`` into a list.
+
+    Returns None for unfiltered so callers can pass the value straight
+    through as a keyword argument default.
+    """
+    if raw is None:
+        return None
+    if isinstance(raw, str):
+        parts = raw.split(",")
+    elif isinstance(raw, list | tuple):
+        parts = []
+        for item in raw:
+            parts.extend(str(item).split(","))
+    else:
+        return None
+    items = [p.strip() for p in parts if p.strip()]
+    return items or None
+
+
+def apply_result_filters(qs, *, prompts=None, providers=None, tags=None, topics=None):
+    """Apply the dashboard pill filters to an LLMRankingResult queryset.
+
+    Single home for the filter semantics so the overview, KPI, breakdown
+    and deep-dive builders can never drift apart. Tag and topic filters
+    join through ``source_prompt`` — results without that link (legacy or
+    custom prompts) fall outside those filters by construction; the
+    dashboard surfaces the count rather than hiding it.
+    """
+    from django.db.models import F, Q
+
+    if prompts:
+        qs = qs.filter(prompt__in=prompts)
+    if providers:
+        qs = qs.filter(provider__in=providers)
+    if topics:
+        qs = qs.filter(source_prompt__industry__name__in=topics)
+    if tags:
+        # Tags live on BrandPrompt, which is per-website: scope the join to
+        # the audit's own website so one tenant's tag names never match
+        # another tenant's identical Prompt row.
+        tag_q = Q()
+        for tag in tags:
+            tag_q |= Q(source_prompt__brand_prompts__tags__contains=[tag])
+        qs = qs.filter(
+            tag_q,
+            source_prompt__brand_prompts__website_id=F("audit__website_id"),
+        )
+    if tags or topics:
+        qs = qs.distinct()
+    return qs

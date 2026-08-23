@@ -79,6 +79,16 @@ class NotificationService:
         )
 
         EmailService.send_hot_lead_alert(user=user, lead=lead)
+
+        # Legacy per-user Slack prefs path. Remember which webhook it used so
+        # the IntegrationConnection loop below never double-sends to it.
+        legacy_slack_webhook = ""
+        try:
+            prefs = user.notification_preferences
+            if prefs.hot_lead_slack and prefs.slack_webhook_url:
+                legacy_slack_webhook = prefs.slack_webhook_url
+        except Exception:
+            pass
         SlackService.send_hot_lead_alert(user=user, lead=lead)
 
         # Dispatch to all active IntegrationConnections
@@ -94,12 +104,16 @@ class NotificationService:
                         DiscordService.send_hot_lead_alert(
                             webhook_url=conn.webhook_url, lead=lead
                         )
-                    elif conn.platform == "telegram":
-                        from apps.notifications.services.telegram_service import TelegramService
-                        TelegramService.send_hot_lead_alert(
-                            chat_id=conn.webhook_url, lead=lead
-                        )
-                    # Slack is already handled above via user prefs
+                    elif conn.platform == "slack":
+                        if conn.webhook_url and conn.webhook_url != legacy_slack_webhook:
+                            SlackService.send_message(
+                                webhook_url=conn.webhook_url,
+                                text=(
+                                    f"Hot lead detected on {lead.website.name}. "
+                                    f"Score: {lead.score}. "
+                                    f"Company: {lead.company or 'unknown'}."
+                                ),
+                            )
                 except Exception as e:
                     logger.warning(f"Hot lead alert failed for {conn.platform}: {e}")
         except Exception as e:
