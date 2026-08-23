@@ -160,7 +160,7 @@ def ingest_url(
 
         with transaction.atomic():
             KnowledgeChunk.objects.filter(source=source).delete()
-            KnowledgeChunk.objects.bulk_create([
+            new_rows = [
                 KnowledgeChunk(
                     source=source, user=user, website=website,
                     chunk_index=i, text=c.text,
@@ -171,7 +171,35 @@ def ingest_url(
                     recorded_at=recorded_at,
                 )
                 for i, c in enumerate(chunks)
-            ])
+            ]
+            KnowledgeChunk.objects.bulk_create(new_rows)
+
+            # Mirror into the optional vector index once (and only once)
+            # the transaction commits, so a rollback never leaves phantom
+            # vectors. UUID pks are client-generated, so the ids exist
+            # already. Best-effort: an index failure must never fail the
+            # ingest - Postgres is the source of truth and the index can
+            # be rebuilt from it.
+            from apps.rag.services.vector_backends import get_backend
+
+            backend = get_backend()
+            if backend is not None:
+                chunk_ids = [row.id for row in new_rows]
+                chunk_vectors = list(vectors)
+
+                def _mirror(wid=website.id, sid=source.id):
+                    try:
+                        backend.replace_source(
+                            website_id=wid, source_id=sid,
+                            chunk_ids=chunk_ids, vectors=chunk_vectors, dim=dim,
+                        )
+                    except Exception:
+                        logger.warning(
+                            "vector index mirror failed for source %s", sid,
+                            exc_info=True,
+                        )
+
+                transaction.on_commit(_mirror)
             source.title = (page_title or source.title)[:500]
             source.content_hash = digest
             source.chunk_count = len(chunks)

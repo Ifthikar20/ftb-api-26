@@ -82,6 +82,37 @@ def retrieve(
     if not query.strip():
         return []
 
+    # ── Optional vector-index path (RAG_VECTOR_BACKEND) ──────────────
+    # The index only knows (website, embedding) - the narrowing filters
+    # below live in Postgres. So the backend path engages only for the
+    # unfiltered case, which is what the assistant's knowledge provider
+    # uses; filtered calls keep the exact Python path. Any backend error
+    # degrades to the Python path rather than failing retrieval.
+    from apps.rag.services.vector_backends import get_backend
+
+    backend = get_backend()
+    if backend is not None and not (kinds or source_ids or source_apps or since):
+        try:
+            backend_hits = _retrieve_via_backend(
+                backend, user=user, website=website, query=query,
+                top_k=top_k, min_score=min_score,
+            )
+            if backend_hits:
+                return backend_hits
+            # Zero hits falls through to the Python path rather than
+            # returning empty. The dangerous case this guards: the flag
+            # is on but the index was never backfilled (or a collection
+            # was lost), in which case trusting the index would silently
+            # empty the whole knowledge base - the same failure mode as
+            # the embedder's dimension mismatch. When the corpus is
+            # genuinely empty the Python path is a cheap no-op anyway.
+            logger.debug("vector backend returned no hits; using python path")
+        except Exception:
+            logger.warning(
+                "vector backend retrieval failed; falling back to python path",
+                exc_info=True,
+            )
+
     qs = (
         KnowledgeChunk.objects
         .filter(user=user, website=website)
@@ -141,6 +172,68 @@ def retrieve(
             recorded_at=chunk.recorded_at,
         ))
     return hits
+
+
+def _retrieve_via_backend(
+    backend, *, user, website, query: str, top_k: int, min_score: float,
+) -> list[Hit]:
+    """Candidate selection through the vector index; everything else is
+    unchanged. The index returns (chunk_id, cosine) pairs; the rows are
+    then re-fetched from Postgres - which re-asserts (user, website)
+    tenant scoping no matter what the index contains, and drops ids
+    whose chunks have since been deleted (index orphans).
+
+    Over-fetches 3x top_k because recency decay can reorder past the
+    cut and min_score can eliminate candidates.
+    """
+    query_vec, _model, _dim = embed_one(
+        query, user=user, website=website,
+        metadata={"role": "retrieval_query"},
+    )
+    if not query_vec:
+        return []
+
+    ranked = backend.query(
+        website_id=website.id, vector=query_vec, top_k=top_k * 3,
+    )
+    if not ranked:
+        return []
+
+    by_id = {
+        str(c.id): c
+        for c in (
+            KnowledgeChunk.objects
+            .filter(user=user, website=website, id__in=[cid for cid, _ in ranked])
+            .select_related("source")
+        )
+    }
+
+    now = timezone.now()
+    scored: list[tuple[float, KnowledgeChunk]] = []
+    for cid, similarity in ranked:
+        chunk = by_id.get(str(cid))
+        if chunk is None:
+            continue
+        score = similarity * _recency_weight(chunk, now)
+        if score >= min_score:
+            scored.append((score, chunk))
+
+    scored.sort(key=lambda t: t[0], reverse=True)
+    return [
+        Hit(
+            chunk_id=str(chunk.id),
+            source_id=str(chunk.source_id),
+            source_url=chunk.source.url,
+            source_kind=chunk.source.kind,
+            section_label=chunk.section_label,
+            text=chunk.text,
+            score=float(score),
+            source_app=chunk.source.source_app,
+            metadata=chunk.metadata or {},
+            recorded_at=chunk.recorded_at,
+        )
+        for score, chunk in scored[:top_k]
+    ]
 
 
 def _recency_weight(chunk: KnowledgeChunk, now: datetime) -> float:

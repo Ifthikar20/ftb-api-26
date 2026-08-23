@@ -57,6 +57,13 @@ POLAR_ACCESS_TOKEN = ""
 POLAR_INGEST_MODE = "off"
 POLAR_READS_ENABLED = False
 
+# The suite must stay deterministic and offline: pin retrieval to the
+# Python path regardless of what the developer's .env sets. Tests that
+# cover the vector backend opt in per-test via override_settings, with
+# a tmp-dir index - never the shared dev server.
+RAG_VECTOR_BACKEND = "python"
+RAG_CHROMA_URL = ""
+
 # Deterministic free-plan allowance regardless of the developer's .env
 # (local dev raises it so the $1 default doesn't stall testing).
 AI_FREE_MONTHLY_CAP_USD = 1.0

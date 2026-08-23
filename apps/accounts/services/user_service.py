@@ -27,13 +27,78 @@ class UserService:
 
     @staticmethod
     def delete_account(*, user: User) -> None:
-        """GDPR Article 17 — soft delete account and anonymize PII."""
-        user.is_active = False
-        user.email = f"deleted_{user.id}@deleted.invalid"
-        user.full_name = "Deleted User"
-        user.company_name = ""
-        user.save(update_fields=["is_active", "email", "full_name", "company_name"])
-        audit_log("user.account_deleted", action="delete", resource_type="user", resource_id=str(user.id), metadata={"user_id": str(user.id)})
+        """GDPR Article 17 — hard-delete the account and everything it owns.
+
+        This is erasure, not deactivation: the User row and its entire
+        cascade tree (websites, visitors, sessions, events, knowledge
+        sources and chunks, subscription, usage ledger, tokens,
+        preferences) are removed from Postgres; the vector-index
+        collections for each website are dropped; login-attempt rows
+        keyed by the email string are purged; and a Polar-managed
+        subscription is cancelled so billing stops.
+
+        Provider cancel and index cleanup are best-effort: an outage
+        there must never block the user's right to erasure. Every user
+        FK in the codebase is on_delete=CASCADE (verified — none are
+        PROTECT/SET_NULL), so user.delete() is authoritative for the
+        database.
+
+        What survives, stated honestly: the payment provider retains
+        invoices it is legally required to keep, rotating server logs
+        age out on their own schedule, and one audit line records that
+        an account with this opaque id was deleted — containing no
+        name, email, or content.
+        """
+        user_id = str(user.id)
+        email = user.email
+        website_ids = list(user.websites.values_list("id", flat=True))
+
+        # 1. Stop provider billing (best effort).
+        try:
+            sub = getattr(user, "subscription", None)
+            if sub is not None and sub.polar_subscription_id:
+                from apps.billing.services import polar_billing
+
+                polar_billing.set_cancel_at_period_end(user, cancel=True)
+        except Exception:
+            logger.warning(
+                "Polar cancel during account deletion failed; proceeding "
+                "with erasure", exc_info=True,
+            )
+
+        # 2. Drop vector-index collections (best effort; orphans are
+        #    also filtered at query time, so this is hygiene not safety).
+        try:
+            from apps.rag.services.vector_backends import get_backend
+
+            backend = get_backend()
+            if backend is not None:
+                for wid in website_ids:
+                    backend.delete_website(website_id=wid)
+        except Exception:
+            logger.warning(
+                "vector index cleanup during account deletion failed",
+                exc_info=True,
+            )
+
+        # 3. Login-attempt rows are keyed by the email STRING (django-axes
+        #    has no user FK), so the cascade cannot reach them.
+        try:
+            from axes.models import AccessAttempt, AccessLog
+
+            AccessAttempt.objects.filter(username=email).delete()
+            AccessLog.objects.filter(username=email).delete()
+        except Exception:
+            logger.warning("axes purge during account deletion failed",
+                           exc_info=True)
+
+        # 4. The cascade. After this the user and all owned rows are gone.
+        user.delete()
+
+        audit_log(
+            "user.account_deleted", action="delete", resource_type="user",
+            resource_id=user_id, metadata={"websites": len(website_ids)},
+        )
 
     @staticmethod
     def export_data(*, user: User) -> dict:

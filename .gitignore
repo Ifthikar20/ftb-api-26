@@ -106,3 +106,8 @@ infra/backend.hcl
 infra/terraform.tfvars
 infra/*.tfplan
 crash.log
+
+# Local RAG vector indexes (RAG_VECTOR_BACKEND=chroma), the benchmark
+# twin and the eval scratch. Derived data, rebuildable from Postgres -
+# never commit.
+.chroma*/

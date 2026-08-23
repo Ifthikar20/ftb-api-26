@@ -64,6 +64,7 @@ LOCAL_APPS = [
     "apps.content_studio",
     "apps.agents",
     "apps.search_console",
+    "apps.assistant",
     # Stub app — kept only to satisfy historical lazy FK references
     # from analytics migrations. All tables are managed=False.
     "apps.leads",
@@ -382,6 +383,30 @@ POLAR_EVENT_NAME = "llm_usage"
 # Local ledger retention. Pruning only runs once POLAR_READS_ENABLED is on;
 # the floor protects the audit-cost preflight's historical averages.
 AI_USAGE_RETENTION_DAYS = env.int("AI_USAGE_RETENTION_DAYS", default=400)
+
+# ── Ask FetchBot assistant ──
+# The header side-panel chat plus (eventually) the Slack/Discord ask
+# path. The kill switch exists so a misbehaving provider can be taken
+# out of rotation without a deploy; the message is what users see.
+ASSISTANT_ENABLED = env.bool("ASSISTANT_ENABLED", default=True)
+ASSISTANT_MAINTENANCE_MESSAGE = env(
+    "ASSISTANT_MAINTENANCE_MESSAGE",
+    default="Ask FetchBot is temporarily unavailable.",
+)
+
+# ── RAG vector index (optional) ──
+# "python" (default): retriever.py scores every (user, website) chunk in
+# a Python loop - the original behaviour, no extra dependencies.
+# "chroma": embedded ChromaDB index at RAG_CHROMA_PATH. Local/dev
+# evaluation only for now: web and celery in prod are separate
+# containers without a shared filesystem, and Chroma's PersistentClient
+# is single-process. See apps/rag/services/vector_backends.py.
+RAG_VECTOR_BACKEND = env("RAG_VECTOR_BACKEND", default="python")
+RAG_CHROMA_PATH = env("RAG_CHROMA_PATH", default=str(BASE_DIR / ".chroma"))
+# Set to e.g. http://chroma:8000 to use a Chroma SERVER instead of the
+# embedded client. Required for any topology where more than one process
+# touches the index (prod: web + celery are separate containers).
+RAG_CHROMA_URL = env("RAG_CHROMA_URL", default="")
 
 # Build identity of the running backend, surfaced by /api/v1/version/.
 # Baked into the Docker image at deploy time via build args (see
