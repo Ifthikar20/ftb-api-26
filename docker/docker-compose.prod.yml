@@ -194,6 +194,9 @@ services:
     volumes:
       - ./nginx/nginx.prod.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/pixel:/etc/nginx/pixel:ro
+      # Error and maintenance pages, served when Django is down (502/504)
+      # or the maintenance flag file exists (503). See nginx.prod.conf.
+      - ./nginx/errors:/etc/nginx/errors:ro
       - static_files:/static:ro
       - frontend_dist:/usr/share/nginx/html:ro
       - /opt/fetchbot/ssl:/etc/nginx/ssl:ro

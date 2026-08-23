@@ -82,6 +82,24 @@ class TestSyncFromCustomerState:
         assert sub.status == SubscriptionStatus.TRIALING
 
     @polar_configured
+    def test_empty_state_never_grants_access(self):
+        # A Polar customer with no subscriptions (metering creates
+        # customers for everyone) must not leave behind a fresh row on
+        # the model's TRIALING default — that would leak paid feature
+        # gates through current_plan_for.
+        from apps.billing.services.plan_limits import current_plan_for, is_paying
+
+        user = UserFactory(plan="starter")
+        with patch.object(
+            polar_client, "get_customer_state", return_value=_state([])
+        ):
+            sub = polar_billing.sync_from_customer_state(user)
+        assert sub.status == SubscriptionStatus.CANCELED
+        assert is_paying(user) is False
+        user.refresh_from_db()
+        assert current_plan_for(user) == Plan.FREE
+
+    @polar_configured
     def test_enum_status_is_unwrapped(self):
         # The real SDK returns enum statuses whose str() is
         # "Status.TRIALING" — regression: trials rendered as active.
@@ -163,10 +181,47 @@ class TestConfirmCheckout:
 
 @pytest.mark.django_db
 class TestCheckoutView:
+    @pytest.fixture(autouse=True)
+    def _no_polar_customer(self, request):
+        # create_checkout self-heals stale local state by consulting
+        # Polar's customer state first. Default that to "no customer"
+        # (PolarRejected) so the suite stays offline; tests that cover
+        # the self-heal re-patch it themselves.
+        if "no_customer_state_patch" in request.keywords:
+            yield
+            return
+        with patch.object(
+            polar_client, "get_customer_state",
+            side_effect=polar_client.PolarRejected("no customer"),
+        ):
+            yield
+
     def _client(self, user):
         client = APIClient()
         client.force_authenticate(user=user)
         return client
+
+    @polar_configured
+    @pytest.mark.no_customer_state_patch
+    def test_checkout_self_heals_stale_local_state(self):
+        # A paid checkout whose confirm redirect never landed leaves the
+        # local DB unpaid while Polar has an active subscription — the
+        # paywall then loops forever. The pre-checkout sync must repair
+        # the row and refuse the duplicate checkout.
+        user = UserFactory(plan="starter")
+        with patch.object(
+            polar_client, "get_customer_state",
+            return_value=_state([_polar_sub(status="trialing")]),
+        ), patch.object(polar_client, "create_checkout") as mock_create:
+            resp = self._client(user).post(
+                "/api/v1/billing/checkout/", {"plan": "pro"}, format="json",
+            )
+        assert resp.status_code == 400
+        assert resp.json()["error"]["code"] == "already_subscribed"
+        mock_create.assert_not_called()
+        sub = Subscription.objects.get(user=user)
+        assert sub.status == SubscriptionStatus.TRIALING
+        assert sub.polar_subscription_id == "ps_123"
 
     @polar_configured
     def test_checkout_returns_polar_url(self):
@@ -320,8 +375,66 @@ class TestBillingOverview:
         user = UserFactory(plan="individual")
         client = APIClient()
         client.force_authenticate(user=user)
-        data = client.get("/api/v1/billing/").json()["data"]
+        # The stale-state safety net consults Polar for sub-less users;
+        # model "no customer" so the test stays offline.
+        with patch.object(
+            polar_client, "get_customer_state",
+            side_effect=polar_client.PolarRejected("no customer"),
+        ):
+            data = client.get("/api/v1/billing/").json()["data"]
         assert data["billing_ready"] is True
+        assert data["plan"] == "free"
+        assert data["subscription_status"] == "none"
+
+    @polar_configured
+    def test_trialing_subscription_shows_paid_plan(self):
+        # The complaint this guards against: an account that paid must
+        # NEVER render as Free on the billing page.
+        user = UserFactory(plan="starter")
+        Subscription.objects.create(
+            user=user, status=SubscriptionStatus.TRIALING,
+            plan=Plan.PRO, polar_subscription_id="ps_123",
+        )
+        client = APIClient()
+        client.force_authenticate(user=user)
+        data = client.get("/api/v1/billing/").json()["data"]
+        assert data["plan"] == "pro"
+        assert data["subscription_status"] == "trialing"
+        assert data["subscription_plan"] == "pro"
+
+    @polar_configured
+    def test_overview_self_heals_stale_local_state(self):
+        # Paid in Polar, but the confirm redirect never landed (no local
+        # row). Opening the billing page must repair the record and show
+        # the paid plan, not Free.
+        user = UserFactory(plan="starter")
+        client = APIClient()
+        client.force_authenticate(user=user)
+        with patch.object(
+            polar_client, "get_customer_state",
+            return_value=_state([_polar_sub(status="trialing")]),
+        ):
+            data = client.get("/api/v1/billing/").json()["data"]
+        assert data["plan"] == "pro"
+        assert data["subscription_status"] == "trialing"
+        sub = Subscription.objects.get(user=user)
+        assert sub.polar_subscription_id == "ps_123"
+
+    @polar_configured
+    def test_past_due_exposes_subscription_plan(self):
+        # Feature gates close (top-level plan is free) but the UI keeps
+        # showing the paid plan via subscription_plan + past_due status.
+        user = UserFactory(plan="starter")
+        Subscription.objects.create(
+            user=user, status=SubscriptionStatus.PAST_DUE,
+            plan=Plan.PRO, polar_subscription_id="ps_9",
+        )
+        client = APIClient()
+        client.force_authenticate(user=user)
+        data = client.get("/api/v1/billing/").json()["data"]
+        assert data["plan"] == "free"
+        assert data["subscription_plan"] == "pro"
+        assert data["subscription_status"] == "past_due"
 
 
 @pytest.mark.django_db

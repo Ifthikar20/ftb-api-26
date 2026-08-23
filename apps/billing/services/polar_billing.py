@@ -26,6 +26,7 @@ from __future__ import annotations
 import logging
 
 from django.conf import settings
+from django.core.cache import cache
 from django.db import transaction
 from django.utils import timezone
 
@@ -130,12 +131,54 @@ def bootstrap_products() -> dict[str, str]:
 
 # ── Checkout ──────────────────────────────────────────────────────────────
 
+# Minimum interval between request-path Polar state syncs per user. The
+# overview and pre-checkout self-heals run on hot authenticated paths;
+# without a floor, one account polling them could drive unbounded Polar
+# API calls and trip the SHARED circuit breaker for every user.
+_SELF_HEAL_COOLDOWN_S = 60
+
+
+def self_heal_from_polar(user) -> Subscription | None:
+    """Rate-limited wrapper around sync_from_customer_state for
+    request-path self-heals. cache.add is atomic: at most one Polar
+    round-trip per user per cooldown window; every other caller in the
+    window just reads the local row."""
+    key = f"billing:selfheal:{user.id}"
+    if not cache.add(key, 1, _SELF_HEAL_COOLDOWN_S):
+        return Subscription.objects.filter(user=user).first()
+    return sync_from_customer_state(user)
+
 
 def create_checkout(user, *, annual: bool, origin: str, customer_ip: str = "") -> str:
     """Create a Polar checkout for Pro; returns the hosted checkout URL."""
     _require_configured()
 
     sub = Subscription.objects.filter(user=user).first()
+    if not (
+        sub
+        and (
+            sub.polar_subscription_id
+            or sub.status in (SubscriptionStatus.ACTIVE, SubscriptionStatus.TRIALING)
+        )
+    ):
+        # The local row says unpaid, but Polar may know better: a paid
+        # checkout whose confirm redirect never landed (closed tab,
+        # broken success_url) leaves the local DB stale, the paywall
+        # gate looping, and Polar refusing the duplicate checkout with
+        # "You already have an active subscription" — a trap with no
+        # exit. Self-heal from Polar's customer state before creating
+        # anything. Rows already carrying a polar_subscription_id are
+        # owned by the webhook/confirm sync and are not second-guessed
+        # (an ex-subscriber goes straight to a fresh checkout).
+        # Best-effort: a sync failure must not block a legitimate first
+        # checkout.
+        try:
+            sub = self_heal_from_polar(user)
+        except Exception:
+            logger.warning(
+                "Pre-checkout Polar state sync failed for %s; continuing",
+                user.id, exc_info=True,
+            )
     if sub and sub.status in (SubscriptionStatus.ACTIVE, SubscriptionStatus.TRIALING):
         raise GrowthPilotException(
             "You already have an active subscription. Use Manage billing "
@@ -167,9 +210,10 @@ def create_checkout(user, *, annual: bool, origin: str, customer_ip: str = "") -
         # stays bound through external_customer_id.
         if "customer_email" not in str(exc):
             raise
+        # Log the user id, not the email — no PII in application logs.
         logger.warning(
-            "Checkout email %s rejected by Polar; retrying without prefill",
-            user.email,
+            "Checkout email for user %s rejected by Polar; retrying without prefill",
+            user.id,
         )
         checkout = polar_client.create_checkout(customer_email=None, **common)
     audit_log(
@@ -241,7 +285,7 @@ def sync_from_customer_state(user) -> Subscription | None:
             chosen = (s, plan)
 
     with transaction.atomic():
-        sub, _ = Subscription.objects.select_for_update().get_or_create(user=user)
+        sub, created = Subscription.objects.select_for_update().get_or_create(user=user)
         if chosen is not None:
             polar_sub, plan = chosen
             sub.polar_subscription_id = str(polar_sub.id)
@@ -262,6 +306,13 @@ def sync_from_customer_state(user) -> Subscription | None:
                 user.save(update_fields=["plan"])
         elif sub.polar_subscription_id:
             # Previously Polar-managed, now gone upstream: access ends.
+            sub.status = SubscriptionStatus.CANCELED
+            sub.save(update_fields=["status", "updated_at"])
+        elif created:
+            # get_or_create minted this row a moment ago and Polar has
+            # nothing for the user. The model default (TRIALING) would
+            # leak paid-tier feature gates through current_plan_for, so
+            # a row born from an empty sync must deny access.
             sub.status = SubscriptionStatus.CANCELED
             sub.save(update_fields=["status", "updated_at"])
 

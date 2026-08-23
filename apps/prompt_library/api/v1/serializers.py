@@ -138,7 +138,7 @@ class BrandPromptSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = BrandPrompt
-        fields = ("id", "website", "prompt", "prompt_id", "notes", "created_at")
+        fields = ("id", "website", "prompt", "prompt_id", "notes", "is_archived", "created_at")
         read_only_fields = ("id", "website", "created_at")
 
 

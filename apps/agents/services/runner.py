@@ -114,6 +114,16 @@ def run_agent(hired_agent, *, deliver: bool = True) -> AgentInsight:
 
     _persist_proposed_actions(hired_agent, insight, spec, parsed.get("proposed_actions", []))
 
+    # Assistant Phase 2: mirror the insight into the unified knowledge
+    # corpus. Best-effort - never fail an agent run for this.
+    try:
+        from django.conf import settings as _settings_assistant
+        if getattr(_settings_assistant, "ASSISTANT_KNOWLEDGE_INGEST_ENABLED", True):
+            from apps.assistant.tasks import ingest_agent_insight
+            ingest_agent_insight.delay(str(insight.id))  # type: ignore[attr-defined]
+    except Exception:
+        pass
+
     hired_agent.last_run_at = timezone.now()
     hired_agent.consecutive_failures = 0
     hired_agent.last_failure_at = None

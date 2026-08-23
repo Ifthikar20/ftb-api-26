@@ -5,6 +5,24 @@ from django.conf import settings
 from core.utils.constants import PLAN_LIMITS, Plan, SubscriptionStatus
 
 
+def plan_for_subscription(sub) -> str:
+    """Resolve a Subscription row (or None) to the plan it grants.
+
+    Prefer this over ``current_plan_for`` when you already hold the row
+    — ``getattr(user, "subscription")`` caches misses on the instance,
+    so a row created or synced mid-request would otherwise be invisible.
+    """
+    if sub is not None and sub.status in (
+        SubscriptionStatus.ACTIVE,
+        SubscriptionStatus.TRIALING,
+    ):
+        plan = _LEGACY_MAP.get(sub.plan, sub.plan)
+        if plan in (Plan.PRO, Plan.BUSINESS):
+            return plan
+        return Plan.PRO  # active sub on an unrecognized value: honor payment
+    return Plan.FREE
+
+
 def current_plan_for(user) -> str:
     """The plan the account is ACTUALLY on, resolved from subscription
     status — the single source of truth for billing-facing surfaces.
@@ -21,15 +39,7 @@ def current_plan_for(user) -> str:
         sub = getattr(user, "subscription", None)
     except Exception:
         sub = None
-    if sub is not None and sub.status in (
-        SubscriptionStatus.ACTIVE,
-        SubscriptionStatus.TRIALING,
-    ):
-        plan = _LEGACY_MAP.get(sub.plan, sub.plan)
-        if plan in (Plan.PRO, Plan.BUSINESS):
-            return plan
-        return Plan.PRO  # active sub on an unrecognized value: honor payment
-    return Plan.FREE
+    return plan_for_subscription(sub)
 
 # Legacy plan → live-tier mapping (Free / Pro $45 self-serve / Business custom)
 _LEGACY_MAP = {
@@ -42,16 +52,47 @@ _LEGACY_MAP = {
 }
 
 
+def is_paying(user) -> bool:
+    """Provider-backed payment gate used for paywall routing.
+
+    ACTIVE always counts; TRIALING counts only when a Polar subscription
+    backs it (card on file, auto-converts). Deliberately stricter than
+    ``current_plan_for``, which grants the tier for any ACTIVE/TRIALING
+    row.
+    """
+    sub = getattr(user, "subscription", None) if user is not None else None
+    if sub is None:
+        return False
+    if sub.status == SubscriptionStatus.ACTIVE:
+        return True
+    return bool(sub.status == SubscriptionStatus.TRIALING and sub.polar_subscription_id)
+
+
 def _resolve_plan_key(user):
     """Resolve the user's effective plan to a PLAN_LIMITS key."""
     # Paywall off: everyone gets the top tier so no feature or numeric
     # limit blocks them.
     if not settings.PAYWALL_ENABLED:
         return Plan.BUSINESS
-    plan_key = getattr(user, "effective_plan", None) or getattr(user, "plan", "pro")
-    # Map legacy names
-    plan_key = _LEGACY_MAP.get(plan_key, plan_key)
-    return plan_key
+    # System callers and anonymous users keep the Pro-tier fallback that
+    # the old ``user.plan`` default provided.
+    if user is None or not getattr(user, "pk", None):
+        return Plan.PRO
+    # Enterprise org members inherit the org's manually provisioned plan
+    # (Business has no self-serve checkout). Mirrors User.effective_plan's
+    # org branch WITHOUT its personal ``user.plan`` fallback, which
+    # defaults to a paid tier and leaked paid features to unsubscribed
+    # accounts.
+    if hasattr(user, "org_memberships"):
+        org = getattr(user, "_org_cache", None)
+        if org is None:
+            membership = user.org_memberships.select_related("organization").first()
+            if membership:
+                org = membership.organization
+                user._org_cache = org
+        if org is not None:
+            return _LEGACY_MAP.get(org.plan, org.plan)
+    return current_plan_for(user)
 
 
 def get_limits(user):

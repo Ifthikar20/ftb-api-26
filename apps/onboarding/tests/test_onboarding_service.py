@@ -1,13 +1,23 @@
 """
 Tests for the onboarding orchestrator.
 
-External services (domain_scanner, competitor_discovery, anthropic) are
-patched at the module boundary so the suite never hits the network.
+External boundaries are controlled two ways:
+    - ``scan_domain`` is imported inside ``run_onboarding_scan`` (import
+      cycle), so it must be patched at its SOURCE module,
+      ``apps.llm_ranking.services.domain_scanner`` — patching the
+      orchestrator module has no such attribute.
+    - The LLM helpers key off ``settings.ANTHROPIC_API_KEY``. base.py's
+      read_env loads the developer's real .env, so the autouse fixture
+      blanks the key to guarantee the suite never reaches the network.
 """
 from unittest.mock import patch
 
+import pytest
+
 from apps.onboarding.services import onboarding_service
 from apps.onboarding.services.onboarding_service import run_onboarding_scan
+
+SCAN_DOMAIN = "apps.llm_ranking.services.domain_scanner.scan_domain"
 
 _HEALTHY_SCAN = {
     "success": True,
@@ -22,22 +32,23 @@ _HEALTHY_SCAN = {
 }
 
 
+@pytest.fixture(autouse=True)
+def _no_llm(settings):
+    settings.ANTHROPIC_API_KEY = ""
+
+
 class TestRunOnboardingScan:
     def test_returns_failure_payload_when_scan_fails(self):
-        with patch.object(onboarding_service, "scan_domain",
-                          return_value={"success": False, "error": "404"}):
+        with patch(SCAN_DOMAIN, return_value={"success": False, "error": "404"}):
             payload = run_onboarding_scan("https://example.com")
         assert payload.success is False
         assert payload.error == "404"
         assert payload.competitors == []
 
-    def test_happy_path_populates_all_fields(self, settings):
-        # Ensure description polish + competitor discovery silently
-        # skip when their dependencies aren't available — the
-        # orchestrator should still return a valid payload.
-        settings.ANTHROPIC_API_KEY = ""
-        with patch.object(onboarding_service, "scan_domain",
-                          return_value=_HEALTHY_SCAN), \
+    def test_happy_path_populates_all_fields(self):
+        # Description polish + topic generation silently skip without an
+        # API key — the orchestrator must still return a valid payload.
+        with patch(SCAN_DOMAIN, return_value=_HEALTHY_SCAN), \
              patch.object(onboarding_service, "_safe_discover_competitors",
                           return_value=[
                               {"name": "Mixpanel", "domain": "mixpanel.com"},
@@ -52,21 +63,18 @@ class TestRunOnboardingScan:
         assert len(payload.products) == 3
         assert len(payload.competitors) == 2
 
-    def test_polish_falls_back_to_raw_description_when_no_api_key(self, settings):
-        settings.ANTHROPIC_API_KEY = ""
-        with patch.object(onboarding_service, "scan_domain",
-                          return_value=_HEALTHY_SCAN), \
+    def test_polish_falls_back_to_raw_description_when_no_api_key(self):
+        with patch(SCAN_DOMAIN, return_value=_HEALTHY_SCAN), \
              patch.object(onboarding_service, "_safe_discover_competitors",
                           return_value=[]):
             payload = run_onboarding_scan("https://acme.com")
         # Without a key the polish helper returns the scraped description.
         assert payload.description_short == _HEALTHY_SCAN["description"]
 
-    def test_long_raw_description_truncated_in_fallback(self, settings):
-        settings.ANTHROPIC_API_KEY = ""
+    def test_long_raw_description_truncated_in_fallback(self):
         long_desc = "x" * 600
         scan = {**_HEALTHY_SCAN, "description": long_desc}
-        with patch.object(onboarding_service, "scan_domain", return_value=scan), \
+        with patch(SCAN_DOMAIN, return_value=scan), \
              patch.object(onboarding_service, "_safe_discover_competitors",
                           return_value=[]):
             payload = run_onboarding_scan("https://acme.com")
@@ -81,7 +89,7 @@ class TestRunOnboardingScan:
             "selling_points": [f"S{i}" for i in range(100)],
             "topics": [f"T{i}" for i in range(100)],
         }
-        with patch.object(onboarding_service, "scan_domain", return_value=scan), \
+        with patch(SCAN_DOMAIN, return_value=scan), \
              patch.object(onboarding_service, "_safe_discover_competitors",
                           return_value=[]):
             payload = run_onboarding_scan("https://acme.com")
@@ -91,16 +99,11 @@ class TestRunOnboardingScan:
         assert len(payload.topics) <= 10
 
     def test_competitor_discovery_failure_does_not_break_scan(self):
-        with patch.object(onboarding_service, "scan_domain",
-                          return_value=_HEALTHY_SCAN), \
-             patch("apps.onboarding.services.onboarding_service"
-                   "._safe_discover_competitors",
-                   side_effect=Exception("boom")):
-            # The orchestrator wraps the call site, so an exception
-            # leaking out would be a regression.
-            try:
-                run_onboarding_scan("https://acme.com")
-            except Exception:  # noqa: BLE001
-                # Expected: orchestrator should NOT propagate.
-                # If it does, the test fails here.
-                pass
+        with patch(SCAN_DOMAIN, return_value=_HEALTHY_SCAN), \
+             patch.object(onboarding_service, "_safe_discover_competitors",
+                          side_effect=Exception("boom")):
+            payload = run_onboarding_scan("https://acme.com")
+        # The orchestrator wraps the call site: discovery blowing up
+        # degrades to an empty list, never a failed scan.
+        assert payload.success is True
+        assert payload.competitors == []

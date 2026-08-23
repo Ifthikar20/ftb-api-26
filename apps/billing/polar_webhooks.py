@@ -21,7 +21,7 @@ import logging
 import time
 
 from django.contrib.auth import get_user_model
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError
 from django.http import HttpResponse, JsonResponse
 from django.utils.decorators import method_decorator
 from django.views import View
@@ -99,8 +99,12 @@ class PolarWebhookView(View):
                             sync_from_customer_state,
                         )
 
-                        with transaction.atomic():
-                            sync_from_customer_state(user)
+                        # No outer transaction on purpose: the sync makes
+                        # an outbound Polar call first and opens its own
+                        # atomic block around the local write. Wrapping it
+                        # here pinned a DB connection open for the whole
+                        # network round-trip.
+                        sync_from_customer_state(user)
                     else:
                         logger.warning(
                             "Polar webhook for unknown external customer %s", ext_id

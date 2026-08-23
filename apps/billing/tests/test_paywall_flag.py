@@ -13,6 +13,7 @@ unchanged, so flipping the env var restores the paywall with no code
 change.
 """
 import pytest
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.accounts.tests.factories import UserFactory
@@ -70,6 +71,40 @@ class TestSessionRouting:
         assert data["next_route"] == "app"
         assert data["subscription"]["is_paying"] is True
 
+    def test_paywall_on_dismissed_user_goes_to_app(self, user, settings):
+        settings.PAYWALL_ENABLED = True
+        WebsiteFactory(user=user)
+        user.paywall_dismissed_at = timezone.now()
+        user.save(update_fields=["paywall_dismissed_at", "updated_at"])
+        data = _session(user)
+        assert data["next_route"] == "app"
+        assert data["paywall_dismissed"] is True
+
+    def test_paywall_off_dismissed_user_goes_to_app(self, user, settings):
+        settings.PAYWALL_ENABLED = False
+        WebsiteFactory(user=user)
+        user.paywall_dismissed_at = timezone.now()
+        user.save(update_fields=["paywall_dismissed_at", "updated_at"])
+        assert _session(user)["next_route"] == "app"
+
+    def test_onboarding_still_first_when_dismissed(self, user, settings):
+        settings.PAYWALL_ENABLED = True
+        user.paywall_dismissed_at = timezone.now()
+        user.save(update_fields=["paywall_dismissed_at", "updated_at"])
+        assert _session(user)["next_route"] == "onboarding"
+
+    def test_paywall_on_dismissed_paying_user_goes_to_app(self, user, settings):
+        settings.PAYWALL_ENABLED = True
+        WebsiteFactory(user=user)
+        user.paywall_dismissed_at = timezone.now()
+        user.save(update_fields=["paywall_dismissed_at", "updated_at"])
+        Subscription.objects.create(
+            user=user, status=SubscriptionStatus.ACTIVE, plan="pro",
+        )
+        data = _session(user)
+        assert data["next_route"] == "app"
+        assert data["subscription"]["is_paying"] is True
+
 
 @pytest.mark.django_db
 class TestEntitlementBypass:
@@ -81,7 +116,19 @@ class TestEntitlementBypass:
 
     def test_plan_limits_gate_when_enabled(self, user, settings):
         settings.PAYWALL_ENABLED = True
-        # starter maps to the Pro tier ($45): 5 projects, no SSO.
+        # No subscription resolves to the Free plan: 1 project, no SSO.
+        # user.plan ("starter") is deliberately ignored — it defaults to
+        # a paid tier and used to leak paid limits.
+        assert plan_limits.check_feature(user, "sso") is False
+        assert plan_limits.get_numeric_limit(user, "projects") == 1
+
+    def test_plan_limits_gate_paid_tier(self, user, settings):
+        settings.PAYWALL_ENABLED = True
+        Subscription.objects.create(
+            user=user, status=SubscriptionStatus.ACTIVE, plan="starter",
+        )
+        # An active legacy-starter subscription maps to the Pro tier
+        # ($45): 5 projects, still no SSO.
         assert plan_limits.check_feature(user, "sso") is False
         assert plan_limits.get_numeric_limit(user, "projects") == 5
 
@@ -91,8 +138,8 @@ class TestEntitlementBypass:
         assert get_team_member_limit(user) == 9999
         settings.PAYWALL_ENABLED = True
         assert user_has_feature(user, "white_label") is False
-        # starter resolves to the Pro tier: 5 team members.
-        assert get_team_member_limit(user) == 5
+        # No subscription resolves to the Free plan: 1 team member.
+        assert get_team_member_limit(user) == 1
 
     def test_integration_registry_bypass(self, user, settings):
         # hubspot is disabled on starter, enabled on growth/scale
@@ -128,4 +175,4 @@ class TestEntitlementBypass:
         settings.PAYWALL_ENABLED = False
         assert max_prompts_for_user(user) == 50
         settings.PAYWALL_ENABLED = True
-        assert max_prompts_for_user(user) == 15  # no subscription -> Pro cap
+        assert max_prompts_for_user(user) == 5  # no subscription -> Free cap

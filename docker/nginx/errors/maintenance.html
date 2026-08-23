@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>FetchBot maintenance</title>
+<style>
+  /* Served by nginx while the maintenance flag file exists
+     (see nginx.prod.conf). Deliberate downtime, so the tone is
+     calmer than 50x.html: planned, short, nothing is wrong. */
+  :root {
+    --bg: #f5f7fa;
+    --card: #ffffff;
+    --ink: #16212e;
+    --muted: #5b6b7d;
+    --accent: #0e7c6b;
+    --rule: #d9e0e8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0e1420;
+      --card: #16202e;
+      --ink: #e6ecf3;
+      --muted: #93a3b5;
+      --accent: #3fbfa4;
+      --rule: #26374a;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    display: grid;
+    place-items: center;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.6;
+    padding: 24px;
+  }
+  .card {
+    max-width: 30rem;
+    background: var(--card);
+    border: 1px solid var(--rule);
+    border-radius: 12px;
+    padding: 44px 44px 36px;
+    text-align: center;
+  }
+  .wordmark {
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 0 0 30px;
+  }
+  /* A small orbit: one dot circling a ring. Planned work in progress,
+     rather than the distress pulse on 50x.html. */
+  .orbit {
+    position: relative;
+    width: 46px;
+    height: 46px;
+    margin: 0 auto 28px;
+  }
+  .orbit .ring {
+    position: absolute;
+    inset: 0;
+    border: 2px solid var(--rule);
+    border-radius: 50%;
+  }
+  .orbit .sat {
+    position: absolute;
+    inset: 0;
+    animation: orbit 2.4s linear infinite;
+  }
+  .orbit .sat::before {
+    content: "";
+    position: absolute;
+    top: -4px;
+    left: 50%;
+    width: 8px;
+    height: 8px;
+    margin-left: -4px;
+    border-radius: 50%;
+    background: var(--accent);
+  }
+  @keyframes orbit {
+    to { transform: rotate(360deg); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .orbit .sat { animation: none; }
+  }
+  h1 {
+    font-size: 22px;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+    margin: 0 0 10px;
+  }
+  p {
+    margin: 0 0 8px;
+    color: var(--muted);
+    font-size: 15px;
+  }
+  .status {
+    margin-top: 26px;
+    padding-top: 18px;
+    border-top: 1px solid var(--rule);
+    font-size: 13px;
+    color: var(--muted);
+  }
+</style>
+</head>
+<body>
+  <main class="card" role="main">
+    <p class="wordmark">FetchBot</p>
+    <div class="orbit" aria-hidden="true"><div class="ring"></div><div class="sat"></div></div>
+    <h1>Down for scheduled maintenance</h1>
+    <p>We are making improvements and will be back shortly. Your data and tracking history are unaffected.</p>
+    <p>No need to refresh — this page returns to the app on its own.</p>
+    <div class="status" id="status">Waiting for the all-clear&hellip;</div>
+  </main>
+  <script>
+    /* Poll the site root. While the maintenance flag is up it answers
+       503; once lifted (and the app is healthy) it answers 200 and we
+       return the visitor to what they were doing. */
+    (function () {
+      var el = document.getElementById("status");
+      function check() {
+        fetch("/", { cache: "no-store" })
+          .then(function (r) {
+            if (r.ok) { location.reload(); return; }
+            schedule();
+          })
+          .catch(schedule);
+      }
+      function schedule() {
+        el.textContent = "Still in maintenance. Checking again in 30 seconds…";
+        setTimeout(check, 30000);
+      }
+      setTimeout(check, 30000);
+    })();
+  </script>
+</body>
+</html>

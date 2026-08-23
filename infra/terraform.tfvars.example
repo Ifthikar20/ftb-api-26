@@ -1,0 +1,14 @@
+# Copy to terraform.tfvars and adjust. Defaults in variables.tf are
+# already sized for the sub-$100/mo budget, so most of this is optional.
+
+aws_region  = "us-east-1"
+environment = "prod"
+domain_name = "fetchbot.ai"
+
+# Leave empty to use SSM Session Manager instead of SSH. Setting this
+# opens port 22 and reintroduces the .pem you are trying to retire.
+admin_cidr_blocks = []
+
+# Flip to true when automatic failover is worth ~$12/mo. Single-AZ
+# still gives automated snapshots and point-in-time recovery.
+db_multi_az = false

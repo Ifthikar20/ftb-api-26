@@ -1166,6 +1166,17 @@ class LLMRankingService:
         except Exception as exc:  # pragma: no cover
             logger.debug("content_studio dispatch failed for %s: %s", audit_id, exc)
 
+        # Assistant Phase 2 — mirror this audit's answers (and the
+        # website's citation rollup) into the unified knowledge corpus so
+        # "what did Claude say about us" is answerable later.
+        try:
+            from django.conf import settings as _settings_assistant
+            if getattr(_settings_assistant, "ASSISTANT_KNOWLEDGE_INGEST_ENABLED", True):
+                from apps.assistant.tasks import ingest_audit_knowledge
+                ingest_audit_knowledge.delay(str(audit.id))  # type: ignore[attr-defined]
+        except Exception as exc:  # pragma: no cover
+            logger.debug("assistant ingest dispatch failed for %s: %s", audit_id, exc)
+
     # ── Legacy single-task runner (eager mode + tests) ─────────────────────
 
     @staticmethod

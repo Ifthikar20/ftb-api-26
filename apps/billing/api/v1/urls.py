@@ -10,6 +10,7 @@ urlpatterns = [
     path("plans/", views.PlansView.as_view(), name="billing-plans"),
     path("checkout/", views.CheckoutView.as_view(), name="billing-checkout"),
     path("confirm/", views.CheckoutConfirmView.as_view(), name="billing-confirm"),
+    path("paywall/dismiss/", views.PaywallDismissView.as_view(), name="billing-paywall-dismiss"),
     path("cancel/", views.SubscriptionCancelView.as_view(), name="billing-cancel"),
     path("resume/", views.SubscriptionResumeView.as_view(), name="billing-resume"),
     path("portal/", views.PortalView.as_view(), name="billing-portal"),

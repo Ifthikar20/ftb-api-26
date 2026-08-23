@@ -1,0 +1,238 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 950" width="1440" height="950" role="img" aria-label="The same AWS topology drawn at 5, 10000 and 20000 active users. EC2 instance count grows from 1 to about 20 to about 41, RDS from 1 instance to a primary plus one read replica to a primary plus two, subnets from 4 to 6 to 9, and a NAT gateway appears once compute moves into private subnets.">
+  <title>FetchBot — AWS topology at 5, 10,000 and 20,000 users</title>
+  <desc>Three panels of the same architecture. Counts of EC2 instances, database instances, cache nodes and subnets increase across the panels, with the metric that triggers each step.</desc>
+
+  <defs>
+    <marker id="ar" viewBox="0 0 10 8" refX="9" refY="4" markerWidth="8" markerHeight="6.5" orient="auto">
+      <polygon points="0,0 10,4 0,8" fill="#535D6D"/>
+    </marker>
+    <marker id="arB" viewBox="0 0 10 8" refX="9" refY="4" markerWidth="8" markerHeight="6.5" orient="auto">
+      <polygon points="0,0 10,4 0,8" fill="#2E5AA8"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="1440" height="950" fill="#F7F9FB"/>
+
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" fill="#141920">
+
+    <text x="24" y="34" font-size="22" font-weight="700"
+          font-family="Archivo, 'Helvetica Neue', Arial, sans-serif">The same architecture at 5, 10,000 and 20,000 users</text>
+    <text x="24" y="56" font-size="12.5" fill="#535D6D">What multiplies, what appears, and the metric that tells you to add the next one.</text>
+    <text x="24" y="76" font-size="11" fill="#7C8698">Model from docs/INFRASTRUCTURE.md: ~0.2 sync req/s per active user, ~5% with an in-flight AI job. Instance counts follow from those two numbers; treat them as order-of-magnitude.</text>
+
+    <!-- ═══════════════ COLUMN 1 — 5 users ═══════════════ -->
+    <rect x="24" y="96" width="440" height="30" rx="4" fill="#E1F2EA" stroke="#1F7A54"/>
+    <text x="40" y="117" font-size="14" font-weight="700" fill="#1F7A54">5 ACTIVE USERS</text>
+    <text x="330" y="117" font-size="12" fill="#1F7A54">~$73 / mo</text>
+
+    <rect x="24" y="132" width="440" height="56" rx="5" fill="#FFFFFF" stroke="#C9D2DE"/>
+    <text x="40" y="153" font-size="11" fill="#535D6D">~1 sync req/s          0 in-flight AI jobs</text>
+    <text x="40" y="174" font-size="11" fill="#535D6D">Everything idle. The LLM round-trip is the only latency.</text>
+
+    <rect x="24" y="200" width="440" height="452" rx="7" fill="none" stroke="#B4BECC" stroke-width="1.4"/>
+    <text x="40" y="222" font-size="12" font-weight="700">VPC   2 AZs   4 subnets</text>
+
+    <rect x="38" y="232" width="412" height="104" rx="5" fill="#EDF1F7" stroke="#B4BECC" stroke-dasharray="4 3"/>
+    <text x="52" y="251" font-size="11.5" font-weight="700">EDGE — public subnets</text>
+    <rect x="52" y="260" width="384" height="42" rx="4" fill="#E9EDF2" stroke="#B4BECC"/>
+    <text x="66" y="277" font-size="12">ALB  x1</text>
+    <text x="66" y="294" font-size="10.5" fill="#535D6D">self-scaling, 2 AZ nodes</text>
+    <text x="52" y="325" font-size="10.5" fill="#7C8698">no NAT gateway needed</text>
+
+    <line x1="230" y1="338" x2="230" y2="356" stroke="#535D6D" stroke-width="1.4" marker-end="url(#ar)"/>
+
+    <rect x="38" y="358" width="412" height="146" rx="5" fill="#EDF1F7" stroke="#B4BECC" stroke-dasharray="4 3"/>
+    <text x="52" y="377" font-size="11.5" font-weight="700">COMPUTE — public subnets</text>
+    <rect x="52" y="386" width="384" height="72" rx="4" fill="#DEEFEA" stroke="#0E7C6B" stroke-width="1.3"/>
+    <text x="66" y="406" font-size="13" font-weight="700" fill="#0E7C6B">EC2  x1</text>
+    <text x="66" y="424" font-size="10.5" fill="#535D6D">t3.small, 6 containers</text>
+    <text x="66" y="441" font-size="10.5" fill="#535D6D">web + worker + beat together</text>
+    <text x="52" y="478" font-size="10.5" fill="#7C8698">gunicorn 2 workers, celery concurrency 2</text>
+    <text x="52" y="494" font-size="10.5" fill="#7C8698">both untouched, both fine here</text>
+
+    <line x1="180" y1="506" x2="180" y2="522" stroke="#2E5AA8" stroke-width="1.6" marker-end="url(#arB)"/>
+    <line x1="330" y1="506" x2="330" y2="522" stroke="#2E5AA8" stroke-width="1.6" marker-end="url(#arB)"/>
+
+    <rect x="38" y="524" width="412" height="114" rx="5" fill="#DFE5EF" stroke="#B4BECC" stroke-dasharray="4 3"/>
+    <text x="52" y="543" font-size="11.5" font-weight="700">DATA — private subnets</text>
+    <rect x="52" y="552" width="188" height="76" rx="4" fill="#E2EAF7" stroke="#2E5AA8" stroke-width="1.5"/>
+    <text x="64" y="571" font-size="12" font-weight="700" fill="#2E5AA8">RDS  x1</text>
+    <text x="64" y="589" font-size="10.5" fill="#2E5AA8">db.t4g.micro</text>
+    <text x="64" y="605" font-size="10.5" fill="#2E5AA8">Single-AZ</text>
+    <text x="64" y="621" font-size="10.5" fill="#535D6D">~112 connections</text>
+
+    <rect x="248" y="552" width="188" height="76" rx="4" fill="#E2EAF7" stroke="#2E5AA8" stroke-width="1.5"/>
+    <text x="260" y="571" font-size="12" font-weight="700" fill="#2E5AA8">CACHE  x1</text>
+    <text x="260" y="589" font-size="10.5" fill="#2E5AA8">cache.t4g.micro</text>
+    <text x="260" y="605" font-size="10.5" fill="#535D6D">db0 cache, db1 broker</text>
+    <text x="260" y="621" font-size="10.5" fill="#535D6D">on one node</text>
+
+    <rect x="24" y="664" width="440" height="96" rx="5" fill="#FFFFFF" stroke="#C9D2DE"/>
+    <text x="40" y="685" font-size="11" font-weight="700" fill="#535D6D">COUNTS</text>
+    <text x="40" y="708" font-size="12">EC2  1        RDS  1        cache  1</text>
+    <text x="40" y="730" font-size="12">subnets  4    AZs  2        NAT  0</text>
+    <text x="40" y="750" font-size="10.5" fill="#7C8698">4 subnets is the floor: ALB and RDS both demand 2 AZs.</text>
+
+    <rect x="24" y="772" width="440" height="150" rx="5" fill="#FFFFFF" stroke="#1F7A54"/>
+    <text x="40" y="793" font-size="11" font-weight="700" fill="#1F7A54">WHAT TRIGGERS THE NEXT STEP</text>
+    <text x="40" y="817" font-size="11">ALB RequestCountPerTarget rising</text>
+    <text x="40" y="835" font-size="11">Celery queue depth staying above 0</text>
+    <text x="40" y="853" font-size="11">p99 latency creeping past ~500 ms</text>
+    <text x="40" y="877" font-size="10.5" fill="#535D6D">First moves are free: raise gunicorn</text>
+    <text x="40" y="893" font-size="10.5" fill="#535D6D">workers, raise celery concurrency,</text>
+    <text x="40" y="909" font-size="10.5" fill="#535D6D">split beat out. No new instances.</text>
+
+    <!-- ═══════════════ COLUMN 2 — 10,000 users ═══════════════ -->
+    <rect x="500" y="96" width="440" height="30" rx="4" fill="#FBF0DC" stroke="#96631A"/>
+    <text x="516" y="117" font-size="14" font-weight="700" fill="#96631A">10,000 ACTIVE USERS</text>
+    <text x="790" y="117" font-size="12" fill="#96631A">~$1,400 / mo</text>
+
+    <rect x="500" y="132" width="440" height="56" rx="5" fill="#FFFFFF" stroke="#C9D2DE"/>
+    <text x="516" y="153" font-size="11" fill="#535D6D">~2,000 sync req/s      ~500 in-flight AI jobs</text>
+    <text x="516" y="174" font-size="11" fill="#96631A">Compute moves into private subnets. NAT appears.</text>
+
+    <rect x="500" y="200" width="440" height="452" rx="7" fill="none" stroke="#B4BECC" stroke-width="1.4"/>
+    <text x="516" y="222" font-size="12" font-weight="700">VPC   2 AZs   6 subnets</text>
+
+    <rect x="514" y="232" width="412" height="104" rx="5" fill="#EDF1F7" stroke="#B4BECC" stroke-dasharray="4 3"/>
+    <text x="528" y="251" font-size="11.5" font-weight="700">EDGE — public subnets</text>
+    <rect x="528" y="260" width="188" height="42" rx="4" fill="#E9EDF2" stroke="#B4BECC"/>
+    <text x="540" y="277" font-size="12">ALB  x1</text>
+    <text x="540" y="294" font-size="10.5" fill="#535D6D">same one, more targets</text>
+    <rect x="724" y="260" width="188" height="42" rx="4" fill="#FBF0DC" stroke="#96631A" stroke-width="1.5"/>
+    <text x="736" y="277" font-size="12" fill="#96631A">NAT  x1   NEW</text>
+    <text x="736" y="294" font-size="10.5" fill="#96631A">+$35/mo, now required</text>
+    <text x="528" y="325" font-size="10.5" fill="#7C8698">public subnets now hold no compute at all</text>
+
+    <line x1="706" y1="338" x2="706" y2="356" stroke="#535D6D" stroke-width="1.4" marker-end="url(#ar)"/>
+
+    <rect x="514" y="358" width="412" height="146" rx="5" fill="#DFE5EF" stroke="#B4BECC" stroke-dasharray="4 3"/>
+    <text x="528" y="377" font-size="11.5" font-weight="700">COMPUTE — private subnets</text>
+
+    <rect x="536" y="392" width="176" height="66" rx="4" fill="#DEEFEA" stroke="#0E7C6B"/>
+    <rect x="532" y="388" width="176" height="66" rx="4" fill="#DEEFEA" stroke="#0E7C6B"/>
+    <rect x="528" y="384" width="176" height="66" rx="4" fill="#DEEFEA" stroke="#0E7C6B" stroke-width="1.5"/>
+    <text x="540" y="404" font-size="13" font-weight="700" fill="#0E7C6B">web ASG  x12</text>
+    <text x="540" y="421" font-size="10.5" fill="#535D6D">t3.medium</text>
+    <text x="540" y="437" font-size="10.5" fill="#535D6D">8 workers each</text>
+
+    <rect x="744" y="392" width="176" height="66" rx="4" fill="#DEEFEA" stroke="#0E7C6B"/>
+    <rect x="740" y="388" width="176" height="66" rx="4" fill="#DEEFEA" stroke="#0E7C6B"/>
+    <rect x="736" y="384" width="176" height="66" rx="4" fill="#DEEFEA" stroke="#0E7C6B" stroke-width="1.5"/>
+    <text x="748" y="404" font-size="13" font-weight="700" fill="#0E7C6B">celery ASG  x8</text>
+    <text x="748" y="421" font-size="10.5" fill="#535D6D">ai queue separated</text>
+    <text x="748" y="437" font-size="10.5" fill="#A8431F">beat stays at exactly 1</text>
+
+    <text x="528" y="478" font-size="10.5" fill="#7C8698">~160 req/s per box once workers go 2 -&gt; 8</text>
+    <text x="528" y="494" font-size="10.5" fill="#7C8698">2,000 / 160 = 12 instances, plus headroom</text>
+
+    <line x1="656" y1="506" x2="656" y2="522" stroke="#2E5AA8" stroke-width="1.6" marker-end="url(#arB)"/>
+    <line x1="806" y1="506" x2="806" y2="522" stroke="#2E5AA8" stroke-width="1.6" marker-end="url(#arB)"/>
+
+    <rect x="514" y="524" width="412" height="114" rx="5" fill="#DFE5EF" stroke="#B4BECC" stroke-dasharray="4 3"/>
+    <text x="528" y="543" font-size="11.5" font-weight="700">DATA — private subnets</text>
+    <rect x="528" y="552" width="188" height="76" rx="4" fill="#E2EAF7" stroke="#2E5AA8" stroke-width="1.5"/>
+    <text x="540" y="571" font-size="12" font-weight="700" fill="#2E5AA8">RDS  x2</text>
+    <text x="540" y="589" font-size="10.5" fill="#2E5AA8">r6g.large, Multi-AZ</text>
+    <text x="540" y="605" font-size="10.5" fill="#2E5AA8">+1 read replica</text>
+    <text x="540" y="621" font-size="10.5" fill="#96631A">+ RDS Proxy, required</text>
+
+    <rect x="724" y="552" width="188" height="76" rx="4" fill="#E2EAF7" stroke="#2E5AA8" stroke-width="1.5"/>
+    <text x="736" y="571" font-size="12" font-weight="700" fill="#2E5AA8">CACHE  x3</text>
+    <text x="736" y="589" font-size="10.5" fill="#2E5AA8">primary + replica</text>
+    <text x="736" y="605" font-size="10.5" fill="#96631A">broker on its own node</text>
+    <text x="736" y="621" font-size="10.5" fill="#535D6D">so LRU cannot evict it</text>
+
+    <rect x="500" y="664" width="440" height="96" rx="5" fill="#FFFFFF" stroke="#C9D2DE"/>
+    <text x="516" y="685" font-size="11" font-weight="700" fill="#535D6D">COUNTS</text>
+    <text x="516" y="708" font-size="12">EC2  20       RDS  2        cache  3</text>
+    <text x="516" y="730" font-size="12">subnets  6    AZs  2        NAT  1</text>
+    <text x="516" y="750" font-size="10.5" fill="#7C8698">Subnets grew by tier, not by user count: compute got its own.</text>
+
+    <rect x="500" y="772" width="440" height="150" rx="5" fill="#FFFFFF" stroke="#96631A"/>
+    <text x="516" y="793" font-size="11" font-weight="700" fill="#96631A">WHAT TRIGGERS THE NEXT STEP</text>
+    <text x="516" y="817" font-size="11">RDS DatabaseConnections near the cap</text>
+    <text x="516" y="835" font-size="11">RDS CPU sustained above ~70%</text>
+    <text x="516" y="853" font-size="11">ai queue depth not draining nightly</text>
+    <text x="516" y="877" font-size="10.5" fill="#A8431F">Fix the ingestion path before adding</text>
+    <text x="516" y="893" font-size="10.5" fill="#A8431F">instances: ~8 statements per pageview</text>
+    <text x="516" y="909" font-size="10.5" fill="#A8431F">multiplies by every box you add.</text>
+
+    <!-- ═══════════════ COLUMN 3 — 20,000 users ═══════════════ -->
+    <rect x="976" y="96" width="440" height="30" rx="4" fill="#FAEBE4" stroke="#A8431F"/>
+    <text x="992" y="117" font-size="14" font-weight="700" fill="#A8431F">20,000 ACTIVE USERS</text>
+    <text x="1266" y="117" font-size="12" fill="#A8431F">~$3,000 / mo</text>
+
+    <rect x="976" y="132" width="440" height="56" rx="5" fill="#FFFFFF" stroke="#C9D2DE"/>
+    <text x="992" y="153" font-size="11" fill="#535D6D">~4,000 sync req/s      ~1,000 in-flight AI jobs</text>
+    <text x="992" y="174" font-size="11" fill="#A8431F">Third AZ added. Failure isolation starts to matter.</text>
+
+    <rect x="976" y="200" width="440" height="452" rx="7" fill="none" stroke="#B4BECC" stroke-width="1.4"/>
+    <text x="992" y="222" font-size="12" font-weight="700">VPC   3 AZs   9 subnets</text>
+
+    <rect x="990" y="232" width="412" height="104" rx="5" fill="#EDF1F7" stroke="#B4BECC" stroke-dasharray="4 3"/>
+    <text x="1004" y="251" font-size="11.5" font-weight="700">EDGE — public subnets</text>
+    <rect x="1004" y="260" width="188" height="42" rx="4" fill="#E9EDF2" stroke="#B4BECC"/>
+    <text x="1016" y="277" font-size="12">ALB  x1</text>
+    <text x="1016" y="294" font-size="10.5" fill="#535D6D">still one, 3 AZ nodes</text>
+    <rect x="1200" y="260" width="188" height="42" rx="4" fill="#FAEBE4" stroke="#A8431F" stroke-width="1.5"/>
+    <text x="1212" y="277" font-size="12" fill="#A8431F">NAT  x3</text>
+    <text x="1212" y="294" font-size="10.5" fill="#A8431F">one per AZ, ~$105/mo</text>
+    <text x="1004" y="325" font-size="10.5" fill="#7C8698">one NAT per AZ so a zone outage cannot strand a subnet</text>
+
+    <line x1="1182" y1="338" x2="1182" y2="356" stroke="#535D6D" stroke-width="1.4" marker-end="url(#ar)"/>
+
+    <rect x="990" y="358" width="412" height="146" rx="5" fill="#DFE5EF" stroke="#B4BECC" stroke-dasharray="4 3"/>
+    <text x="1004" y="377" font-size="11.5" font-weight="700">COMPUTE — private subnets</text>
+
+    <rect x="1012" y="392" width="176" height="66" rx="4" fill="#DEEFEA" stroke="#0E7C6B"/>
+    <rect x="1008" y="388" width="176" height="66" rx="4" fill="#DEEFEA" stroke="#0E7C6B"/>
+    <rect x="1004" y="384" width="176" height="66" rx="4" fill="#DEEFEA" stroke="#0E7C6B" stroke-width="1.5"/>
+    <text x="1016" y="404" font-size="13" font-weight="700" fill="#0E7C6B">web ASG  x25</text>
+    <text x="1016" y="421" font-size="10.5" fill="#535D6D">spread over 3 AZs</text>
+    <text x="1016" y="437" font-size="10.5" fill="#535D6D">4,000 / 160 req/s</text>
+
+    <rect x="1220" y="392" width="176" height="66" rx="4" fill="#DEEFEA" stroke="#0E7C6B"/>
+    <rect x="1216" y="388" width="176" height="66" rx="4" fill="#DEEFEA" stroke="#0E7C6B"/>
+    <rect x="1212" y="384" width="176" height="66" rx="4" fill="#DEEFEA" stroke="#0E7C6B" stroke-width="1.5"/>
+    <text x="1224" y="404" font-size="13" font-weight="700" fill="#0E7C6B">celery ASG  x16</text>
+    <text x="1224" y="421" font-size="10.5" fill="#535D6D">ai queue on its own</text>
+    <text x="1224" y="437" font-size="10.5" fill="#A8431F">beat STILL exactly 1</text>
+
+    <text x="1004" y="478" font-size="10.5" fill="#7C8698">Doubling users doubles boxes. That is the whole</text>
+    <text x="1004" y="494" font-size="10.5" fill="#7C8698">argument for fixing the per-request cost instead.</text>
+
+    <line x1="1132" y1="506" x2="1132" y2="522" stroke="#2E5AA8" stroke-width="1.6" marker-end="url(#arB)"/>
+    <line x1="1282" y1="506" x2="1282" y2="522" stroke="#2E5AA8" stroke-width="1.6" marker-end="url(#arB)"/>
+
+    <rect x="990" y="524" width="412" height="114" rx="5" fill="#DFE5EF" stroke="#B4BECC" stroke-dasharray="4 3"/>
+    <text x="1004" y="543" font-size="11.5" font-weight="700">DATA — private subnets</text>
+    <rect x="1004" y="552" width="188" height="76" rx="4" fill="#E2EAF7" stroke="#2E5AA8" stroke-width="1.5"/>
+    <text x="1016" y="571" font-size="12" font-weight="700" fill="#2E5AA8">RDS  x3</text>
+    <text x="1016" y="589" font-size="10.5" fill="#2E5AA8">r6g.2xlarge, Multi-AZ</text>
+    <text x="1016" y="605" font-size="10.5" fill="#2E5AA8">+2 read replicas</text>
+    <text x="1016" y="621" font-size="10.5" fill="#535D6D">reads split off writes</text>
+
+    <rect x="1200" y="552" width="188" height="76" rx="4" fill="#E2EAF7" stroke="#2E5AA8" stroke-width="1.5"/>
+    <text x="1212" y="571" font-size="12" font-weight="700" fill="#2E5AA8">CACHE  x4</text>
+    <text x="1212" y="589" font-size="10.5" fill="#2E5AA8">cache pair + broker pair</text>
+    <text x="1212" y="605" font-size="10.5" fill="#535D6D">semantic cache lands</text>
+    <text x="1212" y="621" font-size="10.5" fill="#535D6D">here too</text>
+
+    <rect x="976" y="664" width="440" height="96" rx="5" fill="#FFFFFF" stroke="#C9D2DE"/>
+    <text x="992" y="685" font-size="11" font-weight="700" fill="#535D6D">COUNTS</text>
+    <text x="992" y="708" font-size="12">EC2  41       RDS  3        cache  4</text>
+    <text x="992" y="730" font-size="12">subnets  9    AZs  3        NAT  3</text>
+    <text x="992" y="750" font-size="10.5" fill="#7C8698">9 = 3 AZs x 3 tiers (edge, compute, data).</text>
+
+    <rect x="976" y="772" width="440" height="150" rx="5" fill="#FFFFFF" stroke="#A8431F"/>
+    <text x="992" y="793" font-size="11" font-weight="700" fill="#A8431F">WHAT TRIGGERS THE NEXT STEP</text>
+    <text x="992" y="817" font-size="11">Write throughput on the primary</text>
+    <text x="992" y="835" font-size="11">Cost per user stops falling</text>
+    <text x="992" y="853" font-size="11">One AZ becoming a real risk</text>
+    <text x="992" y="877" font-size="10.5" fill="#535D6D">Beyond here the answers stop being</text>
+    <text x="992" y="893" font-size="10.5" fill="#535D6D">"add a box": sharding, ECS Fargate,</text>
+    <text x="992" y="909" font-size="10.5" fill="#535D6D">and a real analytics store.</text>
+
+  </g>
+</svg>

@@ -109,7 +109,13 @@ class IntegrationConnectionListView(TenantScopedAPIView):
                 error = _validate_webhook_url(platform, webhook_url)
                 if error:
                     return Response({"error": error}, status=status.HTTP_400_BAD_REQUEST)
-            payload["webhook_url"] = webhook_url
+                payload["webhook_url"] = webhook_url
+            else:
+                # Blank on update = keep the stored webhook. The field is
+                # write-only (never read back), so the UI can't resend it;
+                # dropping it here preserves the existing value instead of
+                # wiping the connection when only other fields change.
+                payload.pop("webhook_url", None)
 
         # Upsert: one connection per user per platform
         connection, created = IntegrationConnection.objects.get_or_create(

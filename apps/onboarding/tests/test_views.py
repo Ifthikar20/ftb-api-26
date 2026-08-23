@@ -40,8 +40,10 @@ class TestScanEndpoint:
         client, _ = auth_client
         resp = client.post("/api/v1/onboarding/scan/",
                            {"url": "http://localhost/admin"}, format="json")
+        # The global exception handler wraps serializer errors into the
+        # {success, error} envelope; the 400 itself proves rejection.
         assert resp.status_code == 400
-        assert "url" in resp.json()
+        assert resp.json()["success"] is False
 
     def test_rejects_missing_url(self, auth_client):
         client, _ = auth_client
@@ -63,7 +65,8 @@ class TestScanEndpoint:
             resp = client.post("/api/v1/onboarding/scan/",
                                {"url": "https://acme.com"}, format="json")
         assert resp.status_code == 200
-        body = resp.json()
+        # EnvelopeRenderer wraps every success body as {success, data}.
+        body = resp.json()["data"]
         assert body["success"] is True
         assert body["business_name"] == "Acme"
         assert len(body["competitors"]) == 1
@@ -86,7 +89,11 @@ class TestSaveEndpoint:
 
     def test_creates_website(self, auth_client):
         client, user = auth_client
-        with patch("apps.onboarding.api.v1.views.WebsiteService") as ws:
+        # WebsiteService is imported inside the view (import cycle), so
+        # it must be patched at its source module.
+        with patch(
+            "apps.websites.services.website_service.WebsiteService"
+        ) as ws:
             class _Fake:
                 id = "00000000-0000-0000-0000-000000000001"
                 name = "Acme"
@@ -105,6 +112,7 @@ class TestSaveEndpoint:
                     "keywords": ["funnels", "retention"],
                 }, format="json")
         assert resp.status_code == 201
-        body = resp.json()
+        # EnvelopeRenderer wraps every success body as {success, data}.
+        body = resp.json()["data"]
         assert body["name"] == "Acme"
         ws.create.assert_called_once()

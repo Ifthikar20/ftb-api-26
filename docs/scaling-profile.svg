@@ -1,0 +1,161 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 880" width="1180" height="880" role="img" aria-label="How FetchBot behaves at one user, five hundred active users, and ten thousand active users. The same five-layer stack is shown at each load level with the binding constraint and required changes.">
+  <title>FetchBot — load profile at 1, 500 and 10,000 users</title>
+  <desc>At 1 user the constraint is the external LLM API. At 500 the constraint is gunicorn --workers 2 and celery --concurrency 2. At 10,000 the web tier is roughly fifty times over capacity.</desc>
+
+  <defs>
+    <marker id="a" viewBox="0 0 10 8" refX="9" refY="4" markerWidth="8" markerHeight="6.5" orient="auto">
+      <polygon points="0,0 10,4 0,8" fill="#535D6D"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="1180" height="880" fill="#F7F9FB"/>
+
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" fill="#141920">
+
+    <text x="30" y="34" font-size="22" font-weight="700"
+          font-family="Archivo, 'Helvetica Neue', Arial, sans-serif">Load profile — 1, 500 and 10,000 active users</text>
+    <text x="30" y="56" font-size="12.5" fill="#535D6D">Same stack, three load levels. The binding constraint moves, and it is never where you expect.</text>
+    <text x="30" y="76" font-size="11" fill="#7C8698">Assumes the model in docs/INFRASTRUCTURE.md: ~5% of active users have an in-flight AI job, ~0.2 sync req/s each.</text>
+
+    <!-- ══ Column 1: 1 user ══════════════════════════════════ -->
+    <rect x="30" y="94" width="350" height="26" rx="4" fill="#E1F2EA" stroke="#1F7A54"/>
+    <text x="44" y="112" font-size="13" font-weight="700" fill="#1F7A54">1 USER</text>
+
+    <rect x="30" y="126" width="350" height="70" rx="5" fill="#FFFFFF" stroke="#C9D2DE"/>
+    <text x="44" y="147" font-size="11" fill="#535D6D">1 concurrent request</text>
+    <text x="44" y="165" font-size="11" fill="#535D6D">0-1 in-flight AI job</text>
+    <text x="44" y="183" font-size="11" fill="#535D6D">~3 of 50 DB connections</text>
+
+    <rect x="30" y="208" width="350" height="54" rx="5" fill="#E1F2EA" stroke="#1F7A54"/>
+    <text x="44" y="228" font-size="12" font-weight="700" fill="#1F7A54">edge</text>
+    <text x="44" y="248" font-size="10.5" fill="#535D6D">idle</text>
+
+    <rect x="30" y="268" width="350" height="54" rx="5" fill="#E1F2EA" stroke="#1F7A54"/>
+    <text x="44" y="288" font-size="12" font-weight="700" fill="#1F7A54">gunicorn  2 sync workers</text>
+    <text x="44" y="308" font-size="10.5" fill="#535D6D">1 of 2 slots busy</text>
+
+    <rect x="30" y="328" width="350" height="54" rx="5" fill="#E1F2EA" stroke="#1F7A54"/>
+    <text x="44" y="348" font-size="12" font-weight="700" fill="#1F7A54">celery  concurrency 2</text>
+    <text x="44" y="368" font-size="10.5" fill="#535D6D">task picked up in under 100 ms</text>
+
+    <rect x="30" y="388" width="350" height="54" rx="5" fill="#E1F2EA" stroke="#1F7A54"/>
+    <text x="44" y="408" font-size="12" font-weight="700" fill="#1F7A54">postgres</text>
+    <text x="44" y="428" font-size="10.5" fill="#535D6D">idle</text>
+
+    <rect x="30" y="448" width="350" height="54" rx="5" fill="#E1F2EA" stroke="#1F7A54"/>
+    <text x="44" y="468" font-size="12" font-weight="700" fill="#1F7A54">redis</text>
+    <text x="44" y="488" font-size="10.5" fill="#535D6D">idle</text>
+
+    <rect x="30" y="516" width="350" height="86" rx="5" fill="#FFFFFF" stroke="#C9D2DE"/>
+    <text x="44" y="537" font-size="11" font-weight="700" fill="#535D6D">BINDING CONSTRAINT</text>
+    <text x="44" y="559" font-size="11.5">The external LLM API.</text>
+    <text x="44" y="577" font-size="11" fill="#535D6D">~60 s round-trip to Perplexity</text>
+    <text x="44" y="593" font-size="11" fill="#535D6D">or Claude. Infra is irrelevant.</text>
+
+    <rect x="30" y="616" width="350" height="150" rx="5" fill="#FFFFFF" stroke="#C9D2DE"/>
+    <text x="44" y="637" font-size="11" font-weight="700" fill="#535D6D">WHAT YOU CHANGE</text>
+    <text x="44" y="661" font-size="12">Nothing.</text>
+    <text x="44" y="685" font-size="11" fill="#535D6D">Every number here has two or</text>
+    <text x="44" y="701" font-size="11" fill="#535D6D">three orders of magnitude of</text>
+    <text x="44" y="717" font-size="11" fill="#535D6D">headroom. Optimising now would</text>
+    <text x="44" y="733" font-size="11" fill="#535D6D">be guessing at which wall you</text>
+    <text x="44" y="749" font-size="11" fill="#535D6D">hit first.</text>
+
+    <!-- ══ Column 2: 500 users ═══════════════════════════════ -->
+    <rect x="415" y="94" width="350" height="26" rx="4" fill="#FAEBE4" stroke="#A8431F"/>
+    <text x="429" y="112" font-size="13" font-weight="700" fill="#A8431F">500 ACTIVE USERS</text>
+
+    <rect x="415" y="126" width="350" height="70" rx="5" fill="#FFFFFF" stroke="#C9D2DE"/>
+    <text x="429" y="147" font-size="11" fill="#535D6D">~100 sync req/s wanted</text>
+    <text x="429" y="165" font-size="11" fill="#535D6D">~25 in-flight AI jobs</text>
+    <text x="429" y="183" font-size="11" fill="#535D6D">~10 of 50 DB connections</text>
+
+    <rect x="415" y="208" width="350" height="54" rx="5" fill="#E1F2EA" stroke="#1F7A54"/>
+    <text x="429" y="228" font-size="12" font-weight="700" fill="#1F7A54">edge</text>
+    <text x="429" y="248" font-size="10.5" fill="#535D6D">nginx is not the problem</text>
+
+    <rect x="415" y="268" width="350" height="54" rx="5" fill="#FAEBE4" stroke="#A8431F" stroke-width="1.6"/>
+    <text x="429" y="288" font-size="12" font-weight="700" fill="#A8431F">gunicorn  2 sync workers</text>
+    <text x="429" y="308" font-size="10.5" fill="#A8431F">2 at a time. ~40 req/s ceiling.</text>
+
+    <rect x="415" y="328" width="350" height="54" rx="5" fill="#FAEBE4" stroke="#A8431F" stroke-width="1.6"/>
+    <text x="429" y="348" font-size="12" font-weight="700" fill="#A8431F">celery  concurrency 2</text>
+    <text x="429" y="368" font-size="10.5" fill="#A8431F">25 jobs / 2 slots = 12.5 min wait</text>
+
+    <rect x="415" y="388" width="350" height="54" rx="5" fill="#E1F2EA" stroke="#1F7A54"/>
+    <text x="429" y="408" font-size="12" font-weight="700" fill="#1F7A54">postgres</text>
+    <text x="429" y="428" font-size="10.5" fill="#535D6D">comfortable. not the constraint.</text>
+
+    <rect x="415" y="448" width="350" height="54" rx="5" fill="#FBF0DC" stroke="#96631A"/>
+    <text x="429" y="468" font-size="12" font-weight="700" fill="#96631A">redis</text>
+    <text x="429" y="488" font-size="10.5" fill="#96631A">queue depth 23 and growing</text>
+
+    <rect x="415" y="516" width="350" height="86" rx="5" fill="#FFFFFF" stroke="#A8431F"/>
+    <text x="429" y="537" font-size="11" font-weight="700" fill="#A8431F">BINDING CONSTRAINT</text>
+    <text x="429" y="559" font-size="11.5">Two settings, both the number 2.</text>
+    <text x="429" y="577" font-size="11" fill="#535D6D">gunicorn --workers 2 caps sync</text>
+    <text x="429" y="593" font-size="11" fill="#535D6D">work; --concurrency 2 caps AI.</text>
+
+    <rect x="415" y="616" width="350" height="150" rx="5" fill="#FFFFFF" stroke="#C9D2DE"/>
+    <text x="429" y="637" font-size="11" font-weight="700" fill="#535D6D">WHAT YOU CHANGE</text>
+    <text x="429" y="659" font-size="11">Raise gunicorn workers to 4-8.</text>
+    <text x="429" y="677" font-size="11">Raise celery concurrency.</text>
+    <text x="429" y="695" font-size="11">Split beat into its own service.</text>
+    <text x="429" y="713" font-size="11">Move Postgres to RDS.</text>
+    <text x="429" y="737" font-size="11" fill="#535D6D">All four are config, not code.</text>
+    <text x="429" y="753" font-size="11" fill="#535D6D">Cost: roughly one afternoon.</text>
+
+    <!-- ══ Column 3: 10,000 users ════════════════════════════ -->
+    <rect x="800" y="94" width="350" height="26" rx="4" fill="#FAEBE4" stroke="#A8431F"/>
+    <text x="814" y="112" font-size="13" font-weight="700" fill="#A8431F">10,000 ACTIVE USERS</text>
+
+    <rect x="800" y="126" width="350" height="70" rx="5" fill="#FFFFFF" stroke="#C9D2DE"/>
+    <text x="814" y="147" font-size="11" fill="#535D6D">~2,000 sync req/s wanted</text>
+    <text x="814" y="165" font-size="11" fill="#535D6D">~500 in-flight AI jobs</text>
+    <text x="814" y="183" font-size="11" fill="#A8431F">plus pixel traffic, see below</text>
+
+    <rect x="800" y="208" width="350" height="54" rx="5" fill="#FBF0DC" stroke="#96631A"/>
+    <text x="814" y="228" font-size="12" font-weight="700" fill="#96631A">edge</text>
+    <text x="814" y="248" font-size="10.5" fill="#96631A">ALB fine, but needs many targets</text>
+
+    <rect x="800" y="268" width="350" height="54" rx="5" fill="#FAEBE4" stroke="#A8431F" stroke-width="1.6"/>
+    <text x="814" y="288" font-size="12" font-weight="700" fill="#A8431F">gunicorn  2 sync workers</text>
+    <text x="814" y="308" font-size="10.5" fill="#A8431F">~50x over capacity on one box</text>
+
+    <rect x="800" y="328" width="350" height="54" rx="5" fill="#FAEBE4" stroke="#A8431F" stroke-width="1.6"/>
+    <text x="814" y="348" font-size="12" font-weight="700" fill="#A8431F">celery  concurrency 2</text>
+    <text x="814" y="368" font-size="10.5" fill="#A8431F">500 jobs / 2 slots = 4.2 h backlog</text>
+
+    <rect x="800" y="388" width="350" height="54" rx="5" fill="#FAEBE4" stroke="#A8431F" stroke-width="1.6"/>
+    <text x="814" y="408" font-size="12" font-weight="700" fill="#A8431F">postgres</text>
+    <text x="814" y="428" font-size="10.5" fill="#A8431F">CONN_MAX_AGE 600 x workers x boxes</text>
+
+    <rect x="800" y="448" width="350" height="54" rx="5" fill="#FAEBE4" stroke="#A8431F" stroke-width="1.6"/>
+    <text x="814" y="468" font-size="12" font-weight="700" fill="#A8431F">redis</text>
+    <text x="814" y="488" font-size="10.5" fill="#A8431F">allkeys-lru can evict queued tasks</text>
+
+    <rect x="800" y="516" width="350" height="86" rx="5" fill="#FFFFFF" stroke="#A8431F"/>
+    <text x="814" y="537" font-size="11" font-weight="700" fill="#A8431F">BINDING CONSTRAINT</text>
+    <text x="814" y="559" font-size="11.5">Everything, in this order:</text>
+    <text x="814" y="577" font-size="11" fill="#535D6D">web workers, then celery slots,</text>
+    <text x="814" y="593" font-size="11" fill="#535D6D">then RDS connections, then code.</text>
+
+    <rect x="800" y="616" width="350" height="150" rx="5" fill="#FFFFFF" stroke="#C9D2DE"/>
+    <text x="814" y="637" font-size="11" font-weight="700" fill="#535D6D">WHAT YOU CHANGE</text>
+    <text x="814" y="659" font-size="11">Auto Scaling Group behind the ALB.</text>
+    <text x="814" y="677" font-size="11">Dedicated workers for the ai queue.</text>
+    <text x="814" y="695" font-size="11">RDS Proxy, then a bigger class.</text>
+    <text x="814" y="713" font-size="11" fill="#A8431F">Fix the ingestion path first.</text>
+    <text x="814" y="737" font-size="11" fill="#535D6D">Scale on RequestCountPerTarget,</text>
+    <text x="814" y="753" font-size="11" fill="#535D6D">not CPU: this is I/O bound.</text>
+
+    <!-- ══ Footnotes ═════════════════════════════════════════ -->
+    <line x1="30" y1="788" x2="1150" y2="788" stroke="#C9D2DE" stroke-width="1"/>
+
+    <text x="30" y="810" font-size="11" fill="#A8431F">Two figures in docs/INFRASTRUCTURE.md need correcting against the running config:</text>
+    <text x="30" y="828" font-size="11" fill="#535D6D">Section 4 says Postgres allows ~100 connections. docker-compose.prod.yml sets -c max_connections=50, so the real ceiling is half that.</text>
+    <text x="30" y="846" font-size="11" fill="#535D6D">Section 5 quotes 50-100 sync req/s. With --worker-class sync --workers 2, only 2 requests run at once, so ~40 req/s is the honest number.</text>
+    <text x="30" y="866" font-size="11" fill="#7C8698">Pixel traffic scales with your customers' visitors, not your user count, and each tracked pageview costs ~8 sequential Postgres statements.</text>
+
+  </g>
+</svg>

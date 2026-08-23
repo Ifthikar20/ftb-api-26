@@ -13,8 +13,8 @@
 # Usage:
 #   scripts/create_user.sh                                    # full prompts
 #   scripts/create_user.sh local                              # skip env prompt
-#   scripts/create_user.sh prod ali44@gmail.com Password@44   # skip almost everything
-#   scripts/create_user.sh prod ali44@gmail.com Password@44 "Ali Test"
+#   scripts/create_user.sh prod jane@example.com 'S3cure-Example!' # skip almost everything
+#   scripts/create_user.sh prod jane@example.com 'S3cure-Example!' "Jane Doe"
 
 set -euo pipefail
 

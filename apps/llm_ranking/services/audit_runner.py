@@ -43,7 +43,9 @@ def gather_saved_prompts(website, user) -> list[dict]:
     from core.utils.constants import max_prompts_for_user
 
     rows = (
-        BrandPrompt.objects.filter(website=website, prompt__is_active=True)
+        BrandPrompt.objects.filter(
+            website=website, prompt__is_active=True, is_archived=False,
+        )
         .exclude(prompt__rejections__website=website)
         .select_related("prompt")
         .order_by("-created_at")

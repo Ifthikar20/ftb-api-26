@@ -70,10 +70,21 @@ class TestAuthService:
         user.save()
 
         AuthService.change_password(
-            user=user, old_password="OldPass123!", new_password="NewPass456!"
+            user=user, old_password="OldPass123!", new_password="NewStrongPass456!"
         )
         user.refresh_from_db()
-        assert user.check_password("NewPass456!")
+        assert user.check_password("NewStrongPass456!")
+
+    def test_change_password_rejects_weak(self):
+        # The configured validators (length/common/numeric) are enforced
+        # on every password write, not just at serializer length checks.
+        user = UserFactory(email="weak@test.com")
+        user.set_password("OldPass123!")
+        user.save()
+        with pytest.raises(ValueError):
+            AuthService.change_password(
+                user=user, old_password="OldPass123!", new_password="123456789012",
+            )
 
     def test_change_password_wrong_old_raises(self):
         user = UserFactory()

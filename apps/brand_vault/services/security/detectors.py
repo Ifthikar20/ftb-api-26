@@ -552,6 +552,110 @@ def _detect_impersonation(ctx: DetectionContext, det: Detector) -> list[Detected
     )]
 
 
+# ── Private / non-public data (PII, NPI, credentials) ───────────────────
+#
+# Two tiers, because the cost of being wrong differs:
+#   SECRETS  — credentials and government/financial identifiers. A match
+#              is a problem regardless of context.
+#   CONTACT  — emails, phone numbers, postal addresses. These are only a
+#              problem when the data is PERSONAL rather than the brand's
+#              published business contact, so the judge adjudicates
+#              (judge_mode="confirm") before the finding is kept.
+_PRIVATE_SECRET_PATTERNS: tuple[tuple[str, str], ...] = (
+    (r"-----BEGIN [A-Z ]*PRIVATE KEY-----", "Private key"),
+    (r"\bAKIA[0-9A-Z]{16}\b", "AWS access key"),
+    (r"\bsk-[A-Za-z0-9_-]{20,}\b", "API secret key"),
+    (r"\b(?:api[_-]?key|secret|access[_-]?token|bearer)\b\s*[:=]\s*['\"]?[A-Za-z0-9_\-]{16,}",
+     "Credential"),
+    (r"\b\d{3}-\d{2}-\d{4}\b", "Government ID (SSN format)"),
+    (r"\b(?:4\d{3}|5[1-5]\d{2}|3[47]\d{2}|6011)[ -]?\d{4}[ -]?\d{4}[ -]?\d{2,4}\b",
+     "Payment card number"),
+    (r"\b(?:IBAN|routing(?:\s+number)?|account\s+number)\b\s*[:#]?\s*[A-Z0-9]{8,}",
+     "Bank account detail"),
+)
+_PRIVATE_CONTACT_PATTERNS: tuple[tuple[str, str], ...] = (
+    (r"\b[\w.+-]+@[\w-]+\.[\w.]{2,}\b", "Email address"),
+    (r"(?:\+?\d{1,3}[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}\b", "Phone number"),
+    (r"\b\d{1,5}\s+[A-Z][\w.]*(?:\s+[A-Z][\w.]*)*\s+"
+     r"(?:Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Lane|Ln|Drive|Dr|Way|Court|Ct)\b",
+     "Postal address"),
+    (r"\b(?:date\s+of\s+birth|DOB|home\s+address|personal\s+(?:email|phone|mobile))\b",
+     "Personal identifier"),
+)
+
+
+def _detect_private_data(ctx: DetectionContext, det: Detector) -> list[DetectedFinding]:
+    """Flag private / non-public data about the brand or its people
+    surfacing inside an AI answer.
+
+    Unlike the accuracy detectors, a finding here does NOT mean the model
+    is wrong — a correct home address or live API key is worse than a
+    wrong one. Only runs when the answer actually names the brand, so a
+    generic answer that happens to contain a phone-shaped number does not
+    raise an alert.
+    """
+    brand_hits = find_term_spans(ctx.text, ctx.brand_terms, "Brand mention", limit=2)
+    if not brand_hits:
+        return []
+
+    secret_spans: list[Span] = []
+    secret_labels: list[str] = []
+    for pattern, label in _PRIVATE_SECRET_PATTERNS:
+        hits = find_pattern_spans(ctx.text, pattern, label, limit=3)
+        if hits:
+            secret_spans += hits
+            secret_labels.append(label)
+
+    contact_spans: list[Span] = []
+    contact_labels: list[str] = []
+    for pattern, label in _PRIVATE_CONTACT_PATTERNS:
+        hits = find_pattern_spans(ctx.text, pattern, label, limit=3)
+        if hits:
+            contact_spans += hits
+            contact_labels.append(label)
+
+    spans = secret_spans + contact_spans
+    if not spans:
+        return []
+
+    kinds = secret_labels + contact_labels
+    anchor = min(spans, key=lambda s: s.start)
+    snippet, rebased = build_snippet(ctx.text, anchor.start, anchor.end, spans + brand_hits)
+
+    # Lead with what was found, then why it matters — a credential leak
+    # and a stray phone number deserve different urgency in the copy.
+    if secret_labels:
+        lead = (
+            f"This answer contains what looks like credential or identifier "
+            f"data ({', '.join(secret_labels)}) in a response naming {ctx.brand}."
+        )
+        why = (
+            "Secrets echoed by an AI answer can be harvested at scale and "
+            "suggest the model ingested material that was never meant to be "
+            "public. Rotate anything real and trace where it was published."
+        )
+        severity = "high"
+    else:
+        lead = (
+            f"This answer exposes contact or personal data "
+            f"({', '.join(contact_labels)}) in a response naming {ctx.brand}."
+        )
+        why = (
+            "If this is a person's direct line or private address rather "
+            "than your published business contact, it is a privacy exposure "
+            "for that individual and a compliance risk for you."
+        )
+        severity = det.default_severity
+
+    quoted = ", ".join(f'"{s.text[:60]}"' for s in spans[:3])
+    return [DetectedFinding(
+        detector=det, issue=det.issue, severity=severity,
+        title=f"Private data about {ctx.brand} in an AI answer: {kinds[0]}",
+        detail=f"{lead} The answer includes {quoted}. {why}",
+        snippet=snippet, spans=rebased, sentiment_score=None,
+    )]
+
+
 def _detect_distrust(ctx: DetectionContext, det: Detector) -> list[DetectedFinding]:
     window = unit_containing_any(ctx.text, ctx.brand_terms)
     if not window:
@@ -585,6 +689,7 @@ CATEGORIES: tuple[tuple[str, str], ...] = (
     ("accuracy", "Accuracy"),
     ("identity", "Identity"),
     ("trust", "Trust"),
+    ("privacy", "Privacy"),
 )
 
 DETECTORS: tuple[Detector, ...] = (
@@ -719,6 +824,29 @@ DETECTORS: tuple[Detector, ...] = (
             "can verify."
         ),
     ),
+    Detector(
+        code="BS-PRIV-001", slug="private_data_exposure",
+        display_name="Private data exposure", category="privacy",
+        issue=SafetyAlert.ISSUE_PRIVATE_DATA, default_severity="medium",
+        judge_mode="confirm",
+        judge_question=(
+            "Does this answer expose private, personal or non-public data "
+            "(a personal email or direct phone line, home address, "
+            "government or financial identifier, or a credential) as "
+            "opposed to the brand's published business contact details?"
+        ),
+        description=(
+            "Personal, non-public or credential data about the brand or "
+            "its people appearing inside an AI answer. Unlike an accuracy "
+            "issue, correct data is worse than wrong data here."
+        ),
+        recommended_action=(
+            "Confirm whether the data is genuinely private; if it is, "
+            "rotate any exposed credential, then find and remove the "
+            "public page or dataset the model learned it from and request "
+            "removal from caches and training sources."
+        ),
+    ),
 )
 
 DETECTOR_INDEX: dict[str, Detector] = {d.code: d for d in DETECTORS}
@@ -732,6 +860,7 @@ _DETECT_FN = {
     "BS-FACT-001": _detect_factual_claims,
     "BS-IMP-001": _detect_impersonation,
     "BS-TRST-001": _detect_distrust,
+    "BS-PRIV-001": _detect_private_data,
 }
 
 # Legacy issue code -> detector code, for rows written before detector
@@ -748,6 +877,7 @@ ISSUE_FALLBACK: dict[str, str] = {
     SafetyAlert.ISSUE_OUTDATED: "BS-FACT-001",
     SafetyAlert.ISSUE_IMPERSONATION: "BS-IMP-001",
     SafetyAlert.ISSUE_DISTRUST: "BS-TRST-001",
+    SafetyAlert.ISSUE_PRIVATE_DATA: "BS-PRIV-001",
 }
 
 

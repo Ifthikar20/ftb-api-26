@@ -18,12 +18,38 @@ from apps.accounts.services.user_service import UserService
 from core.interceptors.throttling import AuthRateThrottle, PasswordResetThrottle
 
 
-# Cookie attributes for the JWT refresh token. In production we require
-# Secure + SameSite=None so the cookie crosses domains (frontend ↔ API)
-# safely. In dev (DEBUG=True) modern browsers grant a localhost
-# exemption for Secure, but Vite's proxy + http causes flaky
-# delivery — relax to Secure=False / SameSite=Lax so refresh just
-# works locally and stops kicking users to /login.
+# Cookie attributes for the JWT refresh token.
+#
+# SameSite=Lax is the CSRF control for this cookie, and it is the only
+# one. The refresh/logout endpoints authenticate from the cookie alone,
+# so with SameSite=None any origin could make a browser POST to them
+# with the victim's credentials attached: forced logout, refresh-token
+# churn against ROTATE_REFRESH_TOKENS, and login-CSRF that silently
+# drops a victim into an attacker-controlled account. Lax stops the
+# browser attaching the cookie to cross-site POSTs at all, which
+# removes the precondition rather than mitigating the consequence.
+#
+# Nothing in production needs cross-site delivery: nginx.prod.conf
+# serves the SPA (location /) and the API (location /api/) from the
+# same fetchbot.ai server block, so every request that matters is
+# same-origin. The earlier SameSite=None dated from a topology that no
+# longer exists.
+#
+# Note SameSite keys on the registrable domain, not the full host, so
+# splitting to app.fetchbot.ai + api.fetchbot.ai stays same-site and
+# keeps working. Lax also still sends the cookie on top-level GET
+# navigations, so the Google Search Console OAuth callback is fine.
+#
+# Only a genuinely different registrable domain (a *.vercel.app preview,
+# say) would force SameSite=None. If that ever happens, do NOT just flip
+# this value: SameSite=None reopens the CSRF hole above, so it has to
+# come with csrf_protect on the three cookie-reading endpoints, an
+# ensure_csrf_cookie bootstrap route, X-CSRFToken on the SPA client, and
+# the new origin added to CSRF_TRUSTED_ORIGINS.
+#
+# Dev (DEBUG=True) additionally relaxes Secure: browsers grant a
+# localhost exemption, but Vite's proxy over http makes delivery flaky,
+# which kicks developers to /login.
 def _refresh_cookie_settings():
     from django.conf import settings as _settings
     if getattr(_settings, "DEBUG", False):
@@ -39,7 +65,7 @@ def _refresh_cookie_settings():
         "key": "refresh_token",
         "httponly": True,
         "secure": True,
-        "samesite": "None",
+        "samesite": "Lax",
         "max_age": 7 * 24 * 60 * 60,
         "path": "/",
     }
@@ -268,8 +294,8 @@ class SessionView(APIView):
     def get(self, request):
         from django.conf import settings
 
+        from apps.billing.services.plan_limits import is_paying as compute_is_paying
         from apps.websites.models import Website
-        from core.utils.constants import SubscriptionStatus
 
         user = request.user
 
@@ -279,16 +305,7 @@ class SessionView(APIView):
         needs_onboarding = not websites
 
         sub = getattr(user, "subscription", None)
-        if sub is None:
-            is_paying = False
-        elif sub.status == SubscriptionStatus.ACTIVE:
-            is_paying = True
-        elif sub.status == SubscriptionStatus.TRIALING and sub.polar_subscription_id:
-            # Trialing counts as paying only when a real provider-managed
-            # subscription backs it (card on file, auto-converts).
-            is_paying = True
-        else:
-            is_paying = False
+        is_paying = compute_is_paying(user)
 
         # Onboarding first, then paywall. We want users to see the
         # value (their topics, competitors, tracked brands) before
@@ -297,10 +314,16 @@ class SessionView(APIView):
         # dashboard.
         # The paywall step is skipped entirely while PAYWALL_ENABLED is
         # False (the flag lives in settings and is env-driven, so it can
-        # be flipped back on without a code change).
+        # be flipped back on without a code change), and permanently for
+        # users who chose the Free plan from the paywall once
+        # (paywall_dismissed_at set via POST /billing/paywall/dismiss/).
         if needs_onboarding:
             next_route = "onboarding"
-        elif not is_paying and settings.PAYWALL_ENABLED:
+        elif (
+            not is_paying
+            and settings.PAYWALL_ENABLED
+            and user.paywall_dismissed_at is None
+        ):
             next_route = "paywall"
         else:
             next_route = "app"
@@ -316,6 +339,7 @@ class SessionView(APIView):
                 "plan": sub.plan if sub else None,
                 "is_paying": is_paying,
             },
+            "paywall_dismissed": user.paywall_dismissed_at is not None,
             "next_route": next_route,
         })
 

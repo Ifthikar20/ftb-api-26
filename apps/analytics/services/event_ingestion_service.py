@@ -172,12 +172,26 @@ def _clamp_timestamp(raw, now=None):
 
 class EventIngestionService:
     @staticmethod
-    def ingest_event(*, pixel_key: str, event_data: dict, request=None) -> PageEvent:
-        """Process an incoming pixel event and store it."""
-        try:
-            website = Website.objects.get(pixel_key=pixel_key, is_active=True)
-        except Website.DoesNotExist:
-            raise ValueError(f"Invalid pixel key: {pixel_key}") from None
+    def ingest_event(
+        *, pixel_key: str, event_data: dict, request=None, website=None,
+    ) -> PageEvent:
+        """Process an incoming pixel event and store it.
+
+        ``website`` lets a caller that has already resolved the row hand it
+        over instead of paying for a second lookup. The pixel views do
+        exactly that: they resolve the Website to authorise the request, so
+        without this the hottest endpoint in the product fetched the same
+        row twice per event - and the second fetch was the unrestricted
+        one, discarding the ``.only(...)`` the view had applied.
+
+        ingest_batch passes it once for a whole batch, which turns N
+        lookups into one.
+        """
+        if website is None:
+            try:
+                website = Website.objects.get(pixel_key=pixel_key, is_active=True)
+            except Website.DoesNotExist:
+                raise ValueError(f"Invalid pixel key: {pixel_key}") from None
 
         # Parse user-agent server-side for accuracy
         ua_string = ""
@@ -430,13 +444,25 @@ class EventIngestionService:
         return source[:100], medium[:100], campaign
 
     @staticmethod
-    def ingest_batch(*, pixel_key: str, events: list, request=None) -> list:
-        """Ingest up to 50 events in one request."""
+    def ingest_batch(*, pixel_key: str, events: list, request=None, website=None) -> list:
+        """Ingest up to 50 events in one request.
+
+        The Website is resolved once and reused for every event in the
+        batch. Previously each event re-fetched it, so a full batch spent 50
+        queries establishing the same fact 50 times.
+        """
+        if website is None:
+            try:
+                website = Website.objects.get(pixel_key=pixel_key, is_active=True)
+            except Website.DoesNotExist:
+                raise ValueError(f"Invalid pixel key: {pixel_key}") from None
+
         results = []
         for event_data in events[:50]:
             try:
                 event = EventIngestionService.ingest_event(
-                    pixel_key=pixel_key, event_data=event_data, request=request
+                    pixel_key=pixel_key, event_data=event_data,
+                    request=request, website=website,
                 )
                 results.append(event)
             except Exception as e:

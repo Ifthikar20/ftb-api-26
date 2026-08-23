@@ -6,12 +6,14 @@ Returns the current state of the billing service:
     - Polar circuit breaker state
     - Webhook event backlog
 
-No authentication required — designed for monitoring systems.
+Staff-only: breaker state and webhook backlog are operational detail an
+attacker could use to time abuse (e.g. probe while the breaker is
+stressed). Liveness monitoring uses the app-level /health/ endpoint.
 """
 
 from django.utils import timezone
 from rest_framework import status
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import IsAdminUser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -23,10 +25,9 @@ class BillingHealthView(APIView):
     """
     GET /api/v1/billing/health/
 
-    Returns billing service health status for monitoring.
+    Returns billing service health status for staff/ops accounts.
     """
-    permission_classes = [AllowAny]
-    authentication_classes = []  # No auth required for health checks
+    permission_classes = [IsAdminUser]
 
     def get(self, request):
         from apps.billing.services import polar_billing

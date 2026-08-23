@@ -25,12 +25,28 @@ class AuthService:
     """
 
     @staticmethod
+    def _enforce_password_policy(password: str, user=None) -> None:
+        """Run the configured AUTH_PASSWORD_VALIDATORS (common-password,
+        numeric-only, user-attribute-similarity, length). set_password /
+        create_user do NOT validate, so every write path calls this or
+        the validators are silently bypassed."""
+        from django.contrib.auth.password_validation import validate_password
+        from django.core.exceptions import ValidationError
+
+        try:
+            validate_password(password, user)
+        except ValidationError as exc:
+            raise ValueError(" ".join(exc.messages)) from exc
+
+    @staticmethod
     def register(
         *, email: str, password: str, full_name: str, company_name: str = ""
     ) -> User:
         """Create a new user account with email verification pending."""
         if User.objects.filter(email__iexact=email).exists():
             raise ValueError("An account with this email already exists.")
+
+        AuthService._enforce_password_policy(password)
 
         user = User.objects.create_user(
             email=email,
@@ -186,6 +202,7 @@ class AuthService:
             raise ValueError("Invalid or expired reset token.") from None
 
         user = reset_token.user
+        AuthService._enforce_password_policy(new_password, user)
         user.set_password(new_password)
         user.save(update_fields=["password"])
 
@@ -200,6 +217,7 @@ class AuthService:
         """Change password for an authenticated user."""
         if not user.check_password(old_password):
             raise ValueError("Current password is incorrect.")
+        AuthService._enforce_password_policy(new_password, user)
         user.set_password(new_password)
         user.save(update_fields=["password"])
         audit_log("user.password_changed", user=user, action="update", resource_type="user", resource_id=str(user.id))

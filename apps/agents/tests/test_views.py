@@ -6,7 +6,9 @@ from rest_framework.test import APIClient
 
 from apps.accounts.tests.factories import UserFactory
 from apps.agents.models import HiredAgent
+from apps.billing.models import Subscription
 from apps.websites.tests.factories import WebsiteFactory
+from core.utils.constants import Plan, SubscriptionStatus
 
 
 @pytest.fixture(autouse=True)
@@ -20,6 +22,12 @@ def _paywall_on(settings):
 def auth():
     user = UserFactory()
     website = WebsiteFactory(user=user)
+    # Plan gating resolves from the subscription (current_plan_for), not
+    # user.plan — give the fixture an active Pro subscription so the
+    # tests below keep exercising the paid-tier limits.
+    Subscription.objects.create(
+        user=user, status=SubscriptionStatus.ACTIVE, plan=Plan.PRO,
+    )
     client = APIClient()
     client.force_authenticate(user=user)
     return client, user, website
@@ -39,6 +47,18 @@ def test_catalog_lists_agents(auth):
     keys = {a["key"] for a in body["data"]}
     assert {"visibility_analyst", "citation_hunter", "brand_watchdog"} <= keys
     assert body["capacity"]["max_agents"] == 5  # Pro tier ($45)
+
+
+@pytest.mark.django_db
+def test_catalog_free_user_capacity():
+    # An account without a subscription resolves to the Free plan.
+    user = UserFactory()
+    client = APIClient()
+    client.force_authenticate(user=user)
+    resp = client.get("/api/v1/agents/catalog/")
+    assert resp.status_code == 200
+    body = resp.json()["data"]
+    assert body["capacity"]["max_agents"] == 1
 
 
 @pytest.mark.django_db

@@ -85,3 +85,24 @@ service-account*.json
 *service*account*.json
 fb-project-*.json
 gcp-*.json
+
+# Ruff writes its own self-ignore file into .ruff_cache/, but don't rely on it.
+.ruff_cache/
+
+# Stray Windows absolute paths created by tools run in POSIX mode: pip-audit
+# passed a "C:\Users\...\Temp\.cache" path was treated as a *relative* dir and
+# built the whole tree inside the repo. Narrow pattern so a legitimate
+# capitalised top-level dir is never silently ignored.
+/C*/Users/
+
+# Terraform — state, per-environment config, provider binaries.
+# State can contain resource metadata; backend.hcl and tfvars are
+# per-environment. The lock file IS committed on purpose.
+infra/.terraform/
+infra/.terraform.lock.hcl.bak
+infra/*.tfstate
+infra/*.tfstate.*
+infra/backend.hcl
+infra/terraform.tfvars
+infra/*.tfplan
+crash.log

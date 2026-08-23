@@ -44,13 +44,15 @@ def _safe_origin(request) -> str:
 
 
 def _client_ip(request) -> str:
-    """Best-effort customer IP for Polar's location-based tax/currency
-    detection. Behind the nginx proxy the first X-Forwarded-For hop is
-    the client; direct connections use REMOTE_ADDR."""
-    forwarded = request.META.get("HTTP_X_FORWARDED_FOR", "")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    return request.META.get("REMOTE_ADDR", "")
+    """Customer IP for Polar's location-based tax/currency detection.
+
+    Proxy-aware: the LEFT-most X-Forwarded-For hop is client-controlled
+    (a customer could claim a low-tax jurisdiction's IP), so delegate to
+    the hardened resolver that only trusts our own proxy hops.
+    """
+    from core.utils.ua_parser import get_client_ip
+
+    return get_client_ip(request)
 
 
 class BillingOverviewView(APIView):
@@ -59,19 +61,48 @@ class BillingOverviewView(APIView):
 
     def get(self, request):
         from apps.billing.services import polar_billing
-        from apps.billing.services.plan_limits import current_plan_for
+        from apps.billing.services.plan_limits import plan_for_subscription
+        from core.utils.constants import SubscriptionStatus
 
         try:
             subscription = request.user.subscription
         except Subscription.DoesNotExist:
             subscription = None
 
+        # Stale-state safety net: a paid checkout whose confirm redirect
+        # never landed leaves the local row missing while Polar has the
+        # subscription — and this page would tell a paying customer they
+        # are on the Free plan. When there is neither an access-granting
+        # row nor any Polar-managed row, ask Polar before answering.
+        # (Rows that already carry a polar_subscription_id are owned by
+        # the webhook/confirm sync — do not second-guess them here.)
+        if polar_billing.is_configured() and not (
+            subscription
+            and (
+                subscription.polar_subscription_id
+                or subscription.status in (
+                    SubscriptionStatus.ACTIVE, SubscriptionStatus.TRIALING,
+                )
+            )
+        ):
+            try:
+                # Cooldown-limited: at most one Polar round-trip per
+                # user per window, so a polling client cannot trip the
+                # shared circuit breaker.
+                subscription = polar_billing.self_heal_from_polar(request.user)
+            except Exception:
+                logger.warning(
+                    "Billing overview Polar state sync failed for %s",
+                    request.user.id, exc_info=True,
+                )
+
         # The plan the account is ACTUALLY on: an active/trialing
-        # subscription grants its tier; everything else is Free. Never
-        # derived from the denormalized user.plan, which defaults to a
-        # paid tier and used to leak paid allowances to unsubscribed
-        # accounts.
-        active_plan = str(current_plan_for(request.user))
+        # subscription grants its tier; everything else is Free. Derived
+        # from the row we hold (NOT current_plan_for: the user instance
+        # may cache a pre-sync "no subscription" miss), and never from
+        # the denormalized user.plan, which defaults to a paid tier and
+        # used to leak paid allowances to unsubscribed accounts.
+        active_plan = str(plan_for_subscription(subscription))
         plan_data = PlanService.get_plan(active_plan)
 
         # Determine segment
@@ -86,6 +117,11 @@ class BillingOverviewView(APIView):
             # letting the button fail silently.
             "billing_ready": polar_billing.is_configured(),
             "subscription_status": subscription.status if subscription else "none",
+            # Raw plan on the subscription row (legacy values included).
+            # The frontend needs it for non-access-granting states the
+            # top-level `plan` reports as free — e.g. a past_due paying
+            # customer must still be shown their paid plan, not "Free".
+            "subscription_plan": subscription.plan if subscription else None,
             "current_period_end": (
                 subscription.current_period_end.isoformat()
                 if subscription and subscription.current_period_end else None
@@ -139,6 +175,7 @@ class CheckoutView(APIView):
         origin = _safe_origin(request)
 
         from apps.billing.services import polar_billing
+        from core.exceptions import GrowthPilotException
 
         try:
             url = polar_billing.create_checkout(
@@ -146,13 +183,34 @@ class CheckoutView(APIView):
                 customer_ip=_client_ip(request),
             )
             return Response({"success": True, "data": {"checkout_url": url}})
-        except Exception as e:
-            logger.error(f"Checkout creation failed: {e}")
-            error_msg = str(e) if hasattr(e, "message") else (
-                "We couldn't start the checkout. Please try again."
-            )
+        except GrowthPilotException as e:
+            # Keep the domain error code (e.g. already_subscribed) — the
+            # frontend branches on it to recover instead of just
+            # showing a failure toast.
+            logger.warning(f"Checkout refused: {e}")
             return Response(
-                {"success": False, "error": {"code": "checkout_failed", "message": error_msg}},
+                {
+                    "success": False,
+                    "error": {
+                        "code": getattr(e, "code", "checkout_failed"),
+                        "message": str(e),
+                    },
+                },
+                status=getattr(e, "status_code", status.HTTP_400_BAD_REQUEST),
+            )
+        except Exception as e:
+            # Unexpected failure: log the detail, return only a generic
+            # message. Never echo raw exception text to the client — it
+            # can carry upstream/internal detail.
+            logger.error(f"Checkout creation failed: {e}")
+            return Response(
+                {
+                    "success": False,
+                    "error": {
+                        "code": "checkout_failed",
+                        "message": "We couldn't start the checkout. Please try again.",
+                    },
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -347,3 +405,45 @@ class AITokenUsageView(APIView):
         # double-wrapped by that renderer, which is why the Billing card
         # read one envelope level too shallow.
         return Response(payload)
+
+
+class PaywallDismissView(APIView):
+    """POST — record that the user chose to continue on the Free plan.
+
+    Idempotent: repeat calls keep the original dismissal timestamp.
+    Paying users are a no-op (the paywall never routes for them) and the
+    flag stays unset, so a later lapse re-surfaces the paywall once.
+    Deliberately settings-independent: inert but harmless while
+    PAYWALL_ENABLED is off.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        from django.utils import timezone
+
+        from apps.billing.services.plan_limits import is_paying
+        from core.logging.audit_logger import audit_log
+
+        user = request.user
+
+        if is_paying(user):
+            return Response({
+                "paywall_dismissed": user.paywall_dismissed_at is not None,
+                "dismissed_at": (
+                    user.paywall_dismissed_at.isoformat()
+                    if user.paywall_dismissed_at else None
+                ),
+                "already_paying": True,
+            })
+
+        if user.paywall_dismissed_at is None:
+            user.paywall_dismissed_at = timezone.now()
+            user.save(update_fields=["paywall_dismissed_at", "updated_at"])
+            audit_log("billing.paywall_dismissed", user=user, request=request)
+
+        return Response({
+            "paywall_dismissed": True,
+            "dismissed_at": user.paywall_dismissed_at.isoformat(),
+            "already_paying": False,
+        })

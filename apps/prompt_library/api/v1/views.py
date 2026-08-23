@@ -15,7 +15,7 @@ import random
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.generics import ListAPIView
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAdminUser, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -265,13 +265,30 @@ class WebsiteBrandPromptsView(TenantScopedAPIView):
 
 
 class BrandPromptDetailView(APIView):
-    """Delete a single brand prompt entry."""
+    """Update or delete a single brand-prompt entry.
+
+    Both actions are tenant-scoped: the row is fetched by id, then
+    WebsiteService.get_for_user 404s unless the caller owns the website
+    it belongs to — so one tenant can never touch another's saved
+    prompts.
+    """
 
     permission_classes = [IsAuthenticated]
 
-    def delete(self, request, brand_prompt_id):
+    def _owned(self, request, brand_prompt_id):
         bp = get_object_or_404(BrandPrompt, id=brand_prompt_id)
         WebsiteService.get_for_user(user=request.user, website_id=bp.website_id)
+        return bp
+
+    def patch(self, request, brand_prompt_id):
+        bp = self._owned(request, brand_prompt_id)
+        if "is_archived" in request.data:
+            bp.is_archived = bool(request.data["is_archived"])
+            bp.save(update_fields=["is_archived", "updated_at"])
+        return Response(BrandPromptSerializer(bp).data)
+
+    def delete(self, request, brand_prompt_id):
+        bp = self._owned(request, brand_prompt_id)
         bp.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -585,14 +602,20 @@ class PromptSynthesizeView(APIView):
                 audit_id="prompt_library_synthesize", role="synthesis",
                 module="prompt_library",
             )
-        except Exception as exc:
+        except Exception:
+            # Log the detail server-side; never echo raw provider/library
+            # exception text to the client.
+            logger.exception("Prompt synthesis failed")
             return Response(
-                {"error": "synthesis_failed", "detail": str(exc)[:200]},
+                {"error": "synthesis_failed",
+                 "detail": "Prompt synthesis is temporarily unavailable."},
                 status=status.HTTP_502_BAD_GATEWAY,
             )
         if not getattr(result, "succeeded", False):
+            logger.warning("Prompt synthesis unsuccessful: %s", getattr(result, "error", ""))
             return Response(
-                {"error": "synthesis_failed", "detail": getattr(result, "error", "")},
+                {"error": "synthesis_failed",
+                 "detail": "Prompt synthesis is temporarily unavailable."},
                 status=status.HTTP_502_BAD_GATEWAY,
             )
 
@@ -781,9 +804,17 @@ class WebsiteVariablesView(TenantScopedAPIView):
 
 
 class PromptToggleView(APIView):
-    """Activate or deactivate a prompt (`/enable/` or `/disable/`)."""
+    """Activate or deactivate a SHARED-CATALOG prompt (`/enable/` or
+    `/disable/`).
 
-    permission_classes = [IsAuthenticated]
+    Prompt.is_active is a global catalog flag shared across every
+    tenant, so this is staff-only. Per-website archiving lives on the
+    tenant-owned BrandPrompt (PATCH /brand-prompts/<id>/) instead — a
+    normal user archiving a prompt must not flip a row that other
+    tenants also depend on.
+    """
+
+    permission_classes = [IsAdminUser]
 
     def post(self, request, prompt_id, action: str):
         prompt = get_object_or_404(Prompt, id=prompt_id)
@@ -1803,6 +1834,9 @@ class WebsiteSavedPromptsAggView(TenantScopedAPIView):
                 "demand_score": p.demand_score,
                 "runs_count": p.runs_count,
                 "is_active": p.is_active,
+                # Per-website archive state (drives the Active/Archived
+                # split); distinct from the global catalog p.is_active.
+                "is_archived": bp.is_archived,
                 "created_at": p.created_at.isoformat() if p.created_at else None,
                 "visibility_pct": 0,
                 "sentiment_score": None,

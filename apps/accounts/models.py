@@ -28,6 +28,15 @@ class User(AbstractBaseUser, PermissionsMixin, TimestampMixin):
     onboarding_complete = models.BooleanField(default=False)
     last_daily_brief = models.DateField(null=True, blank=True)
 
+    # Paywall funnel state: set when the user clicks "Continue with the
+    # free plan" on /paywall. Null = never dismissed; clearing it (e.g.
+    # in the admin) re-arms the paywall for this user.
+    paywall_dismissed_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="When the user chose the Free plan from the paywall. "
+                  "Null = never dismissed; clear to re-show the paywall.",
+    )
+
     # Calendar-month spend cap across every AI module. 0 = no cap.
     monthly_ai_cost_cap_usd = models.DecimalField(
         max_digits=10, decimal_places=2, default=0,

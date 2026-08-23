@@ -109,12 +109,19 @@ def run_onboarding_scan(url: str) -> OnboardingPayload:
         payload.topics = [row["topic"] for row in llm_topic_rows]
         payload.topic_brands = [row.get("brands", []) for row in llm_topic_rows]
 
-    payload.competitors = _safe_discover_competitors(
-        business_name=payload.business_name,
-        industry=payload.industry,
-        domain=payload.domain,
-        description=payload.description_short or payload.description_raw,
-    )
+    # Best-effort, like everything else here: a crash in discovery must
+    # degrade to an empty list, never abort the scan the user is
+    # waiting on.
+    try:
+        payload.competitors = _safe_discover_competitors(
+            business_name=payload.business_name,
+            industry=payload.industry,
+            domain=payload.domain,
+            description=payload.description_short or payload.description_raw,
+        )
+    except Exception as exc:
+        logger.warning("Competitor discovery failed: %s", exc)
+        payload.competitors = []
 
     return payload
 
@@ -230,7 +237,8 @@ def _llm_topics(
             "3. Each query is highly correlated with the description.\n"
             "4. Mix query styles: 'best X for Y', 'how to find Z', "
             "'top alternatives to ...', 'who handles ...', 'compare ...'.\n"
-            "5. Each query is 4-12 words. No trailing punctuation.\n\n"
+            "5. Each query is 4-12 words. No trailing punctuation. No "
+            "year references (they age badly).\n\n"
             "6. For 'brands', list 3-5 real, currently-operating "
             "competitor companies most likely to appear in a top-tier "
             "LLM's answer to that query. Use the public-facing brand "

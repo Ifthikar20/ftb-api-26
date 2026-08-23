@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from core.utils.constants import Plan, max_prompts_for_user
+from core.utils.constants import Plan, SubscriptionStatus, max_prompts_for_user
 
 
 @pytest.fixture(autouse=True)
@@ -18,8 +18,9 @@ def _paywall_on(settings):
 
 
 class _FakeSub:
-    def __init__(self, plan):
+    def __init__(self, plan, status=SubscriptionStatus.ACTIVE):
         self.plan = plan
+        self.status = status
 
 
 class _FakeUser:
@@ -41,17 +42,20 @@ class TestMaxPromptsForUser:
     def test_legacy_enterprise_resolves_to_business_limit(self):
         assert max_prompts_for_user(_FakeUser(Plan.ENTERPRISE)) == 50
 
-    def test_no_subscription_falls_back_to_pro(self):
+    def test_no_subscription_falls_back_to_free(self):
         user = MagicMock()
         # Simulate the OneToOne reverse relation raising
         # Subscription.DoesNotExist when accessed.
         type(user).subscription = property(
             fget=lambda self: (_ for _ in ()).throw(AttributeError("missing")),
         )
-        # The helper should not propagate the error.
-        assert max_prompts_for_user(user) == 15
+        # The helper should not propagate the error; no subscription
+        # resolves to the Free plan cap.
+        assert max_prompts_for_user(user) == 5
 
     def test_unknown_plan_falls_back_to_pro(self):
+        # An ACTIVE subscription on an unrecognised plan honours the
+        # payment and resolves to the Pro cap.
         assert max_prompts_for_user(_FakeUser("ghost-tier")) == 15
 
     def test_legacy_starter_resolves_to_pro_limit(self):

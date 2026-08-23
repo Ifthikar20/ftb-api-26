@@ -236,6 +236,11 @@ class SafetyAlert(TimestampMixin):
     ISSUE_UNFAVORABLE_COMPARISON = "unfavorable_comparison"
     ISSUE_WEAK_ENDORSEMENT = "weak_endorsement"
     ISSUE_DISTRUST = "distrust"
+    # Private / non-public information about the brand or its people
+    # surfacing inside an AI answer (contact details, credentials,
+    # identifiers). Distinct from accuracy: the claim may be TRUE, and
+    # that is exactly the problem.
+    ISSUE_PRIVATE_DATA = "private_data"
     ISSUE_CHOICES = [
         (ISSUE_HALLUCINATION, "Hallucination"),
         (ISSUE_UNVERIFIED, "Unverified claim"),
@@ -252,6 +257,7 @@ class SafetyAlert(TimestampMixin):
         (ISSUE_UNFAVORABLE_COMPARISON, "Unfavorable comparison"),
         (ISSUE_WEAK_ENDORSEMENT, "Weak endorsement"),
         (ISSUE_DISTRUST, "Distrust signals"),
+        (ISSUE_PRIVATE_DATA, "Private data exposure"),
     ]
 
     SOURCE_LLM = "llm"

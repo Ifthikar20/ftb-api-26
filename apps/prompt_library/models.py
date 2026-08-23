@@ -186,6 +186,12 @@ class BrandPrompt(TimestampMixin):
     # ISO-2 country the prompt is scanned from; routes web-search geo when
     # the prompt is run in an audit. Empty == global/default.
     location = models.CharField(max_length=8, blank=True, default="")
+    # Per-website archive state. Archived prompts stay in the saved list
+    # (under the Archived tab) but are excluded from audits. This is a
+    # TENANT-OWNED flag: it replaced an earlier design that toggled the
+    # shared catalog Prompt.is_active, which let one tenant's archive
+    # affect every other tenant that saved the same prompt.
+    is_archived = models.BooleanField(default=False, db_index=True)
 
     class Meta:
         db_table = "prompt_library_brandprompt"

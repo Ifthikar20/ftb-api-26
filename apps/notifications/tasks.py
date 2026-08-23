@@ -35,7 +35,7 @@ def send_weekly_reports():
                 html_content=f"<p>Hi {user.first_name}, here is your weekly growth summary.</p>",
             )
         except Exception as e:
-            logger.error(f"Weekly report failed for {user.email}: {e}")
+            logger.error(f"Weekly report failed for user {user.id}: {e}")
 
 
 @shared_task(name="apps.notifications.tasks.send_daily_growth_reports")
@@ -90,10 +90,10 @@ def send_daily_growth_reports():
                 logger.warning(f"Unknown report platform skipped: {conn.platform}")
                 continue
 
-            logger.info(f"Daily report sent to {conn.platform} for {conn.user.email}")
+            logger.info(f"Daily report sent to {conn.platform} for user {conn.user_id}")
 
         except Exception as e:
-            logger.error(f"Daily report failed for {conn.user.email} ({conn.platform}): {e}")
+            logger.error(f"Daily report failed for user {conn.user_id} ({conn.platform}): {e}")
 
 
 def _build_report_data(user) -> dict:

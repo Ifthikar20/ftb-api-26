@@ -26,9 +26,10 @@ def send_verification_email(user_id: str):
 @shared_task(name="apps.accounts.tasks.send_password_reset_email")
 def send_password_reset_email(email: str, token: str):
     """Send password reset email."""
-    # SECURITY: never log the reset token — it grants password reset for the
-    # account. Real delivery is wired by the email transport work (P1.8).
-    logger.info("Password reset requested for %s", email)
+    # SECURITY: never log the reset token (grants reset) OR the email
+    # address (PII in the general log stream). Real delivery is wired by
+    # the email transport work (P1.8).
+    logger.info("Password reset email dispatched")
 
 
 @shared_task(name="apps.accounts.tasks.expire_inactive_sessions")
