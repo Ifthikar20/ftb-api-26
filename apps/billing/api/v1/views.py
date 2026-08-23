@@ -61,7 +61,10 @@ class BillingOverviewView(APIView):
 
     def get(self, request):
         from apps.billing.services import polar_billing
-        from apps.billing.services.plan_limits import plan_for_subscription
+        from apps.billing.services.plan_limits import (
+            plan_for_subscription,
+            subscription_state,
+        )
         from core.utils.constants import SubscriptionStatus
 
         try:
@@ -96,6 +99,13 @@ class BillingOverviewView(APIView):
                     request.user.id, exc_info=True,
                 )
 
+        # The mirror image of the guard above: a Polar-managed TRIALING
+        # row whose trial end has passed is re-verified (cooldown-
+        # limited, never raises) so a converted trial reads Active and a
+        # failed charge reads Past due instead of "trialing" forever.
+        subscription = polar_billing.reverify_ended_trial(request.user, subscription)
+        state = subscription_state(subscription)
+
         # The plan the account is ACTUALLY on: an active/trialing
         # subscription grants its tier; everything else is Free. Derived
         # from the row we hold (NOT current_plan_for: the user instance
@@ -117,6 +127,11 @@ class BillingOverviewView(APIView):
             # letting the button fail silently.
             "billing_ready": polar_billing.is_configured(),
             "subscription_status": subscription.status if subscription else "none",
+            # Shared trial/tier vocabulary (same builder as the session
+            # payload) so labels cannot drift between surfaces.
+            "tier": state["tier"],
+            "is_trialing": state["is_trialing"],
+            "trial_end": state["trial_end"],
             # Raw plan on the subscription row (legacy values included).
             # The frontend needs it for non-access-granting states the
             # top-level `plan` reports as free — e.g. a past_due paying

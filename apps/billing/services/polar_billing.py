@@ -31,6 +31,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.billing.models import Subscription
+from apps.billing.services.plan_limits import trial_ended
 from apps.metering import polar_client
 from core.exceptions import GrowthPilotException
 from core.logging.audit_logger import audit_log
@@ -43,7 +44,10 @@ PRODUCT_PRO_ANNUAL = "FetchBot Pro (Annual)"
 
 # Polar subscription status -> local SubscriptionStatus. Anything that
 # still grants access maps to ACTIVE/TRIALING; terminal states to
-# CANCELED so entitlement gates close.
+# CANCELED so entitlement gates close. Customer state only ever reports
+# active/trialing subscriptions; the non-access entries are reached
+# through the by-id lookup in sync_from_customer_state (a failed
+# trial-end charge lands as PAST_DUE, not as a silent CANCELED).
 _STATUS_MAP = {
     "active": SubscriptionStatus.ACTIVE,
     "trialing": SubscriptionStatus.TRIALING,
@@ -149,6 +153,31 @@ def self_heal_from_polar(user) -> Subscription | None:
     return sync_from_customer_state(user)
 
 
+def reverify_ended_trial(user, sub):
+    """Settle a TRIALING row whose trial end has passed.
+
+    At trial end Polar charges the card and flips the subscription to
+    active; the webhook mirrors that here — except when no webhook can
+    arrive (dev: localhost) or one was missed. Without this, such a row
+    would read "trialing" forever. Re-sync through the cooldown-limited
+    self-heal so a converted trial lands ACTIVE with its paid period and
+    a failed charge lands PAST_DUE (by-id lookup). Request-path only:
+    never raises, returns the row to use.
+    """
+    if not (
+        sub is not None
+        and sub.polar_subscription_id
+        and trial_ended(sub)
+        and is_configured()
+    ):
+        return sub
+    try:
+        return self_heal_from_polar(user) or sub
+    except Exception:
+        logger.warning("Ended-trial re-verify failed for %s", user.id, exc_info=True)
+        return sub
+
+
 def create_checkout(user, *, annual: bool, origin: str, customer_ip: str = "") -> str:
     """Create a Polar checkout for Pro; returns the hosted checkout URL."""
     _require_configured()
@@ -179,6 +208,9 @@ def create_checkout(user, *, annual: bool, origin: str, customer_ip: str = "") -
                 "Pre-checkout Polar state sync failed for %s; continuing",
                 user.id, exc_info=True,
             )
+    # A trial that ended upstream (charge failed, canceled) must not trap
+    # the user behind a stale local TRIALING row: settle it first.
+    sub = reverify_ended_trial(user, sub)
     if sub and sub.status in (SubscriptionStatus.ACTIVE, SubscriptionStatus.TRIALING):
         raise GrowthPilotException(
             "You already have an active subscription. Use Manage billing "
@@ -257,13 +289,58 @@ def confirm_checkout(user, checkout_id: str) -> dict:
 # ── State sync (the single writer) ────────────────────────────────────────
 
 
+def _apply_polar_subscription(sub, polar_sub, plan) -> None:
+    """Copy a Polar subscription object onto the local row (no save)."""
+    sub.polar_subscription_id = str(polar_sub.id)
+    sub.plan = plan
+    # SDK statuses are enums whose str() is "Status.TRIALING" —
+    # unwrap .value before mapping or trials render as active.
+    raw_status = getattr(polar_sub, "status", "active")
+    raw_status = getattr(raw_status, "value", raw_status)
+    sub.status = _STATUS_MAP.get(str(raw_status), SubscriptionStatus.ACTIVE)
+    sub.current_period_start = getattr(polar_sub, "current_period_start", None)
+    sub.current_period_end = getattr(polar_sub, "current_period_end", None)
+    sub.cancel_at_period_end = bool(getattr(polar_sub, "cancel_at_period_end", False))
+
+
+def _lookup_managed_subscription(user, subscription_id):
+    """Fetch the subscription we manage by id; ``(polar_sub, plan)`` or None.
+
+    Customer state lists only active/trialing subscriptions, so a
+    subscription that dropped out of it is indistinguishable there
+    between "charge failed" (past_due), "dunning exhausted" (unpaid) and
+    "canceled". The by-id read carries the real status. None means gone,
+    not ours, or not a Pro product — callers fall back to CANCELED.
+    ``PolarUnavailable`` propagates on purpose: the local row is left
+    untouched rather than guessed (webhook -> 500 -> Polar redelivers;
+    request-path callers catch and log).
+    """
+    try:
+        polar_sub = polar_client.get_subscription(subscription_id)
+    except polar_client.PolarRejected:
+        return None
+    customer = getattr(polar_sub, "customer", None)
+    ext = str(getattr(customer, "external_id", "") or "")
+    if ext and ext != str(user.id):
+        logger.warning(
+            "Polar subscription %s is not owned by user %s", subscription_id, user.id
+        )
+        return None
+    plan = _plan_for_product(str(getattr(polar_sub, "product_id", "")))
+    if plan is None:
+        return None
+    return polar_sub, plan
+
+
 def sync_from_customer_state(user) -> Subscription | None:
     """Pull the customer state from Polar and mirror it locally.
 
     Called from checkout confirmation, the webhook, and manual refresh.
     Picks the newest access-granting subscription; if none exists and the
-    local row is Polar-managed, it is marked canceled (plan value is kept
-    for display; entitlement gates read status).
+    local row is Polar-managed, the managed subscription is looked up by
+    id so its real non-access status (past_due, canceled, ...) is
+    mirrored; if it is gone entirely the row is marked canceled (plan
+    value is kept for display; entitlement gates read status).
     """
     try:
         state = polar_client.get_customer_state(str(user.id))
@@ -284,26 +361,33 @@ def sync_from_customer_state(user) -> Subscription | None:
         ):
             chosen = (s, plan)
 
+    # Nothing access-granting upstream but a managed row locally: ask for
+    # that subscription by id BEFORE taking the row lock (network call).
+    fallback = None
+    if chosen is None:
+        managed_id = (
+            Subscription.objects.filter(user=user)
+            .values_list("polar_subscription_id", flat=True)
+            .first()
+        )
+        if managed_id:
+            fallback = _lookup_managed_subscription(user, managed_id)
+
     with transaction.atomic():
         sub, created = Subscription.objects.select_for_update().get_or_create(user=user)
         if chosen is not None:
             polar_sub, plan = chosen
-            sub.polar_subscription_id = str(polar_sub.id)
-            sub.plan = plan
-            # SDK statuses are enums whose str() is "Status.TRIALING" —
-            # unwrap .value before mapping or trials render as active.
-            raw_status = getattr(polar_sub, "status", "active")
-            raw_status = getattr(raw_status, "value", raw_status)
-            sub.status = _STATUS_MAP.get(str(raw_status), SubscriptionStatus.ACTIVE)
-            sub.current_period_start = getattr(polar_sub, "current_period_start", None)
-            sub.current_period_end = getattr(polar_sub, "current_period_end", None)
-            sub.cancel_at_period_end = bool(
-                getattr(polar_sub, "cancel_at_period_end", False)
-            )
+            _apply_polar_subscription(sub, polar_sub, plan)
             sub.save()
             if user.plan != plan:
                 user.plan = plan
                 user.save(update_fields=["plan"])
+        elif fallback is not None:
+            # Still exists upstream in a non-access state: mirror the REAL
+            # status. past_due keeps the paid tier visible with a payment
+            # notice; canceled/unpaid/revoked close the gate.
+            _apply_polar_subscription(sub, *fallback)
+            sub.save()
         elif sub.polar_subscription_id:
             # Previously Polar-managed, now gone upstream: access ends.
             sub.status = SubscriptionStatus.CANCELED

@@ -1,8 +1,48 @@
 """Feature-gating helpers that resolve a user's plan and check limits."""
 
+from datetime import timedelta
+
 from django.conf import settings
+from django.utils import timezone
 
 from core.utils.constants import PLAN_LIMITS, Plan, SubscriptionStatus
+
+# A TRIALING row is only trusted this long past its trial end. Polar charges
+# the first invoice at trial end and emits subscription.active/updated +
+# order.paid within minutes; if our webhook endpoint is down Polar redelivers
+# with backoff over roughly a day. 24h absorbs both, so a converting customer
+# is never flickered to Free by a late webhook, while a failed card (or a dev
+# box that can never receive webhooks) buys at most one extra day of Pro.
+# Request paths re-verify an ended trial against Polar well before this
+# (see polar_billing.reverify_ended_trial); this is the offline safety net.
+TRIAL_LAPSE_GRACE = timedelta(hours=24)
+
+
+def trial_end_for(sub):
+    """End of the trial window for a TRIALING row, else None.
+
+    Polar sets ``current_period_end == trial_end`` while a subscription is
+    trialing (the trial IS the first billing period), so no extra column
+    is needed. This accessor is the only place that knows that; swap in a
+    dedicated column here if one is ever added.
+    """
+    if sub is None or getattr(sub, "status", None) != SubscriptionStatus.TRIALING:
+        return None
+    return getattr(sub, "current_period_end", None)
+
+
+def trial_ended(sub, now=None) -> bool:
+    """True when a TRIALING row's trial end has passed (no grace)."""
+    end = trial_end_for(sub)
+    return end is not None and end <= (now or timezone.now())
+
+
+def trial_lapsed(sub, now=None) -> bool:
+    """True when a TRIALING row is past its trial end by more than
+    TRIAL_LAPSE_GRACE — i.e. the conversion webhook never arrived and the
+    row can no longer be trusted to grant anything."""
+    end = trial_end_for(sub)
+    return end is not None and end + TRIAL_LAPSE_GRACE <= (now or timezone.now())
 
 
 def plan_for_subscription(sub) -> str:
@@ -12,9 +52,10 @@ def plan_for_subscription(sub) -> str:
     — ``getattr(user, "subscription")`` caches misses on the instance,
     so a row created or synced mid-request would otherwise be invisible.
     """
-    if sub is not None and sub.status in (
-        SubscriptionStatus.ACTIVE,
-        SubscriptionStatus.TRIALING,
+    if (
+        sub is not None
+        and sub.status in (SubscriptionStatus.ACTIVE, SubscriptionStatus.TRIALING)
+        and not trial_lapsed(sub)
     ):
         plan = _LEGACY_MAP.get(sub.plan, sub.plan)
         if plan in (Plan.PRO, Plan.BUSINESS):
@@ -52,20 +93,80 @@ _LEGACY_MAP = {
 }
 
 
-def is_paying(user) -> bool:
-    """Provider-backed payment gate used for paywall routing.
+def is_paying_subscription(sub) -> bool:
+    """Provider-backed payment gate used for paywall routing, on a row.
 
     ACTIVE always counts; TRIALING counts only when a Polar subscription
-    backs it (card on file, auto-converts). Deliberately stricter than
-    ``current_plan_for``, which grants the tier for any ACTIVE/TRIALING
-    row.
+    backs it (card on file, auto-converts) and the trial has not lapsed.
+    Deliberately stricter than ``plan_for_subscription``, which grants the
+    tier for any ACTIVE/TRIALING row.
     """
-    sub = getattr(user, "subscription", None) if user is not None else None
     if sub is None:
         return False
     if sub.status == SubscriptionStatus.ACTIVE:
         return True
-    return bool(sub.status == SubscriptionStatus.TRIALING and sub.polar_subscription_id)
+    return bool(
+        sub.status == SubscriptionStatus.TRIALING
+        and sub.polar_subscription_id
+        and not trial_lapsed(sub)
+    )
+
+
+def is_paying(user) -> bool:
+    """``is_paying_subscription`` for the user's own row (see the caching
+    caveat on ``plan_for_subscription``)."""
+    sub = getattr(user, "subscription", None) if user is not None else None
+    return is_paying_subscription(sub)
+
+
+def is_trialing_subscription(sub) -> bool:
+    """A live free trial: TRIALING and not lapsed. Labels must say
+    "Free trial" here — the card has not been charged yet."""
+    return bool(
+        sub is not None
+        and sub.status == SubscriptionStatus.TRIALING
+        and not trial_lapsed(sub)
+    )
+
+
+def tier_for_subscription(sub) -> str | None:
+    """The tier the row is FOR (pro|business, legacy names normalized),
+    regardless of status — for labels in non-access states such as
+    past_due ("Pro plan · payment issue"). None when there is no row."""
+    if sub is None:
+        return None
+    plan = _LEGACY_MAP.get(sub.plan, sub.plan)
+    return plan if plan in (Plan.PRO, Plan.BUSINESS) else Plan.PRO
+
+
+def subscription_state(sub) -> dict:
+    """The subscription block of the session / billing-overview payloads.
+
+    One builder so every surface labels a trial, a paid plan and a lapsed
+    row the same way:
+      status               raw row status (or None)
+      plan                 resolved ACCESS tier: free|pro|business
+      tier                 subscribed tier regardless of status, or None
+      is_paying            paywall gate (see is_paying_subscription)
+      is_trialing          live free trial, not yet charged
+      trial_end            ISO trial end while trialing, else None
+      current_period_end   ISO, or None
+      cancel_at_period_end bool
+    """
+
+    def _iso(dt):
+        return dt.isoformat() if dt else None
+
+    return {
+        "status": sub.status if sub is not None else None,
+        "plan": str(plan_for_subscription(sub)),
+        "tier": tier_for_subscription(sub),
+        "is_paying": is_paying_subscription(sub),
+        "is_trialing": is_trialing_subscription(sub),
+        "trial_end": _iso(trial_end_for(sub)),
+        "current_period_end": _iso(getattr(sub, "current_period_end", None)) if sub is not None else None,
+        "cancel_at_period_end": bool(getattr(sub, "cancel_at_period_end", False)) if sub is not None else False,
+    }
 
 
 def _resolve_plan_key(user):

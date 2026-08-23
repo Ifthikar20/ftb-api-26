@@ -126,7 +126,14 @@ class TestSyncFromCustomerState:
             plan=Plan.PRO,
             status=SubscriptionStatus.ACTIVE,
         )
-        with patch.object(polar_client, "get_customer_state", return_value=_state([])):
+        # Gone from customer state AND the by-id read 404s: truly gone.
+        with (
+            patch.object(polar_client, "get_customer_state", return_value=_state([])),
+            patch.object(
+                polar_client, "get_subscription",
+                side_effect=polar_client.PolarRejected("404"),
+            ),
+        ):
             sub = polar_billing.sync_from_customer_state(user)
         assert sub.status == SubscriptionStatus.CANCELED
 
@@ -401,6 +408,9 @@ class TestBillingOverview:
         assert data["plan"] == "pro"
         assert data["subscription_status"] == "trialing"
         assert data["subscription_plan"] == "pro"
+        # ...but it is described as a trial, never as a paid Pro plan.
+        assert data["is_trialing"] is True
+        assert data["tier"] == "pro"
 
     @polar_configured
     def test_overview_self_heals_stale_local_state(self):
@@ -500,4 +510,7 @@ class TestSessionIsPaying:
         client.force_authenticate(user=user)
         data = client.get("/api/v1/auth/session/").data
         assert data["subscription"]["is_paying"] is True
+        assert data["subscription"]["is_trialing"] is True
+        assert data["subscription"]["plan"] == "pro"
+        assert data["subscription"]["trial_end"] is not None
         assert data["next_route"] == "app"

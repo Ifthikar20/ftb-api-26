@@ -274,6 +274,17 @@ def update_subscription(subscription_id: str, updates: dict):
     )
 
 
+def get_subscription(subscription_id: str):
+    """One subscription by id.
+
+    Unlike customer state (whose subscriptions are only ever active or
+    trialing) this carries the full status enum — past_due, unpaid,
+    canceled, paused, incomplete_expired — so a vanished subscription can
+    be mirrored with its REAL status. Scope: subscriptions:read.
+    """
+    return _guarded(lambda c: c.subscriptions.get(id=subscription_id))
+
+
 class WebhookInvalid(Exception):
     """Webhook signature/payload failed verification."""
 

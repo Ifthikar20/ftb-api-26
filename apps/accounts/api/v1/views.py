@@ -294,7 +294,8 @@ class SessionView(APIView):
     def get(self, request):
         from django.conf import settings
 
-        from apps.billing.services.plan_limits import is_paying as compute_is_paying
+        from apps.billing.services import polar_billing
+        from apps.billing.services.plan_limits import subscription_state
         from apps.websites.models import Website
 
         user = request.user
@@ -305,7 +306,14 @@ class SessionView(APIView):
         needs_onboarding = not websites
 
         sub = getattr(user, "subscription", None)
-        is_paying = compute_is_paying(user)
+        # A trial whose end date passed without a conversion webhook
+        # (dev has none; prod can lag) is settled against Polar here,
+        # cooldown-limited, so the row below is the real state.
+        sub = polar_billing.reverify_ended_trial(user, sub)
+        # One builder for the whole subscription block so every surface
+        # labels a trial, a paid plan and a lapsed row the same way.
+        subscription = subscription_state(sub)
+        is_paying = subscription["is_paying"]
 
         # Onboarding first, then paywall. We want users to see the
         # value (their topics, competitors, tracked brands) before
@@ -334,11 +342,7 @@ class SessionView(APIView):
                 "needs_onboarding": needs_onboarding,
                 "websites_count": len(websites),
             },
-            "subscription": {
-                "status": sub.status if sub else None,
-                "plan": sub.plan if sub else None,
-                "is_paying": is_paying,
-            },
+            "subscription": subscription,
             "paywall_dismissed": user.paywall_dismissed_at is not None,
             "next_route": next_route,
         })
