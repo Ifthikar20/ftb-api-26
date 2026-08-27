@@ -1037,7 +1037,9 @@ def _live_fact_block(user, website=None) -> str:
 
 
 def _answer_question(connection, question: str, thread_ref: str = "") -> str:
-    """Answer a free-form question, via a hired agent when one exists."""
+    """Answer a free-form question with a one-shot synthesis, grounded in
+    live account facts and the company brain when available. (The hired-
+    agents routing was removed with the agents app, 2026-08-24.)"""
     user = connection.user
     if not question:
         return "Ask a question after the command, e.g.: ask How is my AI visibility trending?"
@@ -1046,29 +1048,10 @@ def _answer_question(connection, question: str, thread_ref: str = "") -> str:
     if website is None:
         return "No active website found on your account. Add a website in FetchBot first."
 
-    # Both answer paths get the same deterministic fact pack so questions
-    # about live metrics and account content are grounded in real rows.
+    # The answer is grounded in a deterministic fact pack so questions
+    # about live metrics and account content reflect real rows.
     facts = _live_fact_block(user, website)
 
-    from apps.agents.models import HiredAgent
-
-    hired = (
-        HiredAgent.objects.filter(
-            website=website, is_active=True, agent_key="visibility_analyst",
-        ).first()
-        or HiredAgent.objects.filter(website=website, is_active=True).first()
-    )
-    if hired is not None:
-        from apps.agents.services.chat import handle_user_message
-
-        reply = handle_user_message(
-            hired, question, channel=connection.platform, thread_ts=thread_ref,
-            context_block=facts,
-        )
-        return (reply.text or "").strip() or "I don't have an answer for that yet."
-
-    # No hired agent: one-shot synthesis with a generic FetchBot persona,
-    # grounded in the company brain when available.
     from apps.llm_ranking.providers import get_provider, get_synthesis_provider
 
     provider = get_provider("claude") or get_synthesis_provider()

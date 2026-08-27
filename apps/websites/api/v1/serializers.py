@@ -17,7 +17,9 @@ class WebsiteSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "pixel_key", "pixel_verified", "pixel_verified_at", "crawl_status"]
 
     def get_pixel_snippet(self, obj):
-        return f'<script src="https://fetchbot.ai/pixel/growthpilot.min.js" data-key="{obj.pixel_key}"></script>'
+        from apps.websites.services.pixel_service import PixelService
+
+        return PixelService.get_snippet(website=obj)
 
 
 class WebsiteCreateSerializer(serializers.Serializer):

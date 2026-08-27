@@ -7,27 +7,39 @@ from core.views import TenantScopedAPIView
 
 class ChartDataView(TenantScopedAPIView):
     def get(self, request, website_id):
-        self.get_website(website_id)
+        website = self.get_website(website_id)
+        from apps.analytics.api.v1.views import _external_slice
         from apps.analytics.services.daily_stats import DailyStatsService
         period = request.query_params.get("period", "30d")
+        external = _external_slice(website, "chart", period)
+        if external is not None:
+            return Response(external)
         data = DailyStatsService.get_chart_data(website_id=website_id, period=period)
         return Response(data)
 
 
 class DeviceBreakdownView(TenantScopedAPIView):
     def get(self, request, website_id):
-        self.get_website(website_id)
+        website = self.get_website(website_id)
+        from apps.analytics.api.v1.views import _external_slice
         from apps.analytics.services.daily_stats import DailyStatsService
         period = request.query_params.get("period", "30d")
+        external = _external_slice(website, "devices", period)
+        if external is not None:
+            return Response(external)
         data = DailyStatsService.get_device_breakdown(website_id=website_id, period=period)
         return Response(data)
 
 
 class CountryBreakdownView(TenantScopedAPIView):
     def get(self, request, website_id):
-        self.get_website(website_id)
+        website = self.get_website(website_id)
+        from apps.analytics.api.v1.views import _external_slice
         from apps.analytics.services.daily_stats import DailyStatsService
         period = request.query_params.get("period", "30d")
+        external = _external_slice(website, "countries", period)
+        if external is not None:
+            return Response(external)
         data = DailyStatsService.get_country_breakdown(website_id=website_id, period=period)
         return Response(data)
 

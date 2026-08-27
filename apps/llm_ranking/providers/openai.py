@@ -45,27 +45,43 @@ class OpenAIProvider(LLMProvider):
 
         Returns a ProviderResult, or None to signal the caller to fall back
         to a plain chat completion (older SDK, tool unavailable, etc.).
+        The GA tool type is ``web_search``; ``web_search_preview`` is kept
+        as a second attempt for accounts/models still on the preview alias.
         """
+        from apps.llm_ranking.providers.openai_compat import (
+            extract_responses_citations,
+        )
         from apps.llm_ranking.services.regions import get_region
 
-        try:
-            tool: dict = {"type": "web_search_preview"}
-            country = get_region(region).perplexity_country if region else ""
+        country = get_region(region).perplexity_country if region else ""
+        resp = None
+        for tool_type in ("web_search", "web_search_preview"):
+            tool: dict = {"type": tool_type}
             if country:
                 tool["user_location"] = {"type": "approximate", "country": country}
-            resp = client.responses.create(
-                model=self.model,
-                instructions=system_prompt or DEFAULT_SYSTEM,
-                input=prompt,
-                tools=[tool],
-                max_output_tokens=1024,
-            )
-            usage = getattr(resp, "usage", None)
-            return ProviderResult(
-                succeeded=True,
-                text=(getattr(resp, "output_text", "") or "").strip(),
-                input_tokens=getattr(usage, "input_tokens", 0) if usage else 0,
-                output_tokens=getattr(usage, "output_tokens", 0) if usage else 0,
-            )
-        except Exception:
+            try:
+                resp = client.responses.create(
+                    model=self.model,
+                    instructions=system_prompt or DEFAULT_SYSTEM,
+                    input=prompt,
+                    tools=[tool],
+                    # Force the search: left to its own judgment gpt-4o-mini
+                    # rarely browses, which would make this audit measure its
+                    # training data instead of the search-augmented answer a
+                    # consumer sees (and would leave the Sources panel empty).
+                    tool_choice={"type": tool_type},
+                    max_output_tokens=1024,
+                )
+                break
+            except Exception:
+                resp = None
+        if resp is None:
             return None
+        usage = getattr(resp, "usage", None)
+        return ProviderResult(
+            succeeded=True,
+            text=(getattr(resp, "output_text", "") or "").strip(),
+            input_tokens=getattr(usage, "input_tokens", 0) if usage else 0,
+            output_tokens=getattr(usage, "output_tokens", 0) if usage else 0,
+            citations=extract_responses_citations(resp),
+        )

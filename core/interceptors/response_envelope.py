@@ -14,6 +14,12 @@ class EnvelopeRenderer(JSONRenderer):
     def render(self, data, accepted_media_type=None, renderer_context=None):
         response = renderer_context.get("response") if renderer_context else None
 
+        # 204 must not carry a body (RFC 9110). Wrapping it in the envelope
+        # makes Django emit JSON on a bodiless status, which proxies and
+        # browsers reject with a content-length mismatch.
+        if response and response.status_code == 204:
+            return b""
+
         if response and response.status_code >= 400:
             # Error responses already formatted by exception handler
             return super().render(data, accepted_media_type, renderer_context)

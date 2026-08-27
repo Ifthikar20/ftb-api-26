@@ -180,8 +180,6 @@ app.conf.task_routes = {
     "apps.citations.tasks.*": {"queue": "ai"},
     "apps.brand_vault.tasks.*": {"queue": "ai"},
     "apps.content_studio.tasks.*": {"queue": "ai"},
-    "apps.agents.tasks.run_hired_agent": {"queue": "ai"},
-    "apps.agents.tasks.execute_agent_action": {"queue": "integrations"},
 }
 ```
 

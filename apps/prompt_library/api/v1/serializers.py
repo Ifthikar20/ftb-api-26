@@ -82,6 +82,26 @@ class PromptCreateSerializer(serializers.Serializer):
         child=serializers.CharField(), required=False, default=list,
     )
     location = serializers.CharField(required=False, allow_blank=True)
+    # Model variants ("<provider>:<model_id>") every prompt in this request
+    # is scanned with. Empty == every configured provider's default model.
+    models = serializers.ListField(
+        child=serializers.CharField(), required=False, default=list,
+    )
+
+    def validate_models(self, value):
+        from apps.llm_ranking.providers import list_model_variants
+        valid = {v["id"] for v in list_model_variants()}
+        cleaned: list[str] = []
+        seen: set[str] = set()
+        for vid in value or []:
+            vid = (vid or "").strip()
+            if not vid or vid in seen:
+                continue
+            if vid not in valid:
+                raise serializers.ValidationError(f"Unknown model variant: {vid}")
+            seen.add(vid)
+            cleaned.append(vid)
+        return cleaned
 
     def validate(self, attrs):
         if not (attrs.get("template_text") or "").strip() and not (attrs.get("text") or "").strip():

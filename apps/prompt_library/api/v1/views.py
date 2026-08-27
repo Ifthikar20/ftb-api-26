@@ -346,6 +346,7 @@ class WebsitePromptCreateView(TenantScopedAPIView):
 
         tags = [t.strip() for t in (data.get("tags") or []) if t and t.strip()]
         location = (data.get("location") or "").strip()
+        model_variants = data.get("models") or []
 
         # Each non-empty line becomes a separate prompt (matches the modal's
         # "every line is a prompt" + bulk-upload behaviour). Template-only
@@ -385,6 +386,9 @@ class WebsitePromptCreateView(TenantScopedAPIView):
             if location and brand_prompt.location != location:
                 brand_prompt.location = location
                 changed.append("location")
+            if model_variants and brand_prompt.model_variants != model_variants:
+                brand_prompt.model_variants = model_variants
+                changed.append("model_variants")
             if changed:
                 brand_prompt.save(update_fields=[*changed, "updated_at"])
             created_prompts.append(prompt)
@@ -396,8 +400,13 @@ class WebsitePromptCreateView(TenantScopedAPIView):
         # Auto-scan: run the new prompts through the ranking pipeline so they
         # start collecting mentions/citations. Best-effort — never blocks or
         # fails the create if the queue or provider keys are unavailable.
+        # A custom model selection routes through the per-prompt crawler,
+        # the only path that honors BrandPrompt.model_variants.
         scan_audit_id = self._trigger_scan(
             website, request.user, [p.text for p in created_prompts], location,
+            crawl_prompt_ids=(
+                [str(p.id) for p in created_prompts] if model_variants else None
+            ),
         )
 
         payload = PromptSerializer(created_prompts[0]).data
@@ -408,9 +417,24 @@ class WebsitePromptCreateView(TenantScopedAPIView):
         return Response(payload, status=status.HTTP_201_CREATED)
 
     @staticmethod
-    def _trigger_scan(website, user, prompts, location):
-        """Kick off an LLM ranking audit for freshly added prompts."""
+    def _trigger_scan(website, user, prompts, location, crawl_prompt_ids=None):
+        """Kick off a scan for freshly added prompts.
+
+        Default: one LLM ranking audit over all created prompts. When
+        ``crawl_prompt_ids`` is set (custom model selection), each prompt
+        is dispatched through the per-prompt crawler instead — the audit
+        pipeline always queries provider-default models and would ignore
+        the selection.
+        """
         try:
+            if crawl_prompt_ids:
+                from apps.prompt_library.tasks import crawl_prompt_for_website
+                for prompt_id in crawl_prompt_ids:
+                    crawl_prompt_for_website.delay(
+                        str(website.id), str(prompt_id),
+                        acting_user_id=str(user.id) if user else None,
+                    )
+                return None
             from apps.llm_ranking.services.audit_factory import create_audit
             from apps.llm_ranking.services.scan_dispatch import dispatch_scan
 
@@ -1634,6 +1658,7 @@ class BrandPromptDetailAggView(TenantScopedAPIView):
                 ),
                 "models": [model_key(r.provider)],
                 "provider": r.provider,
+                "model_id": getattr(r, "model_id", "") or "",
                 "sources": srcs[:6],
                 "country": country,
                 "status": chat_status,

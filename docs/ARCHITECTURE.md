@@ -91,7 +91,7 @@ FetchBot is a Django + Vue SaaS that measures and improves how a brand appears i
 ### Apps relevant to the LLM product
 - `apps/llm_ranking/` — generative-engine-optimization (GEO) audits.
 - `apps/voice_agent/` — separate voice conversation product.
-- `apps/agents/` — older agent orchestration (recent commit `d9ac818` removed parts of it).
+- `apps/agents/` — REMOVED 2026-08-24 (hired-agents feature deleted end to end: app, API, UI, celery schedule; tables dropped via `migrate agents zero`).
 - `apps/messaging/`, `apps/leads/`, `apps/social_leads/`, `apps/competitors/` — call into the same `core.ai_tracking` so all LLM spend lands in one ledger.
 
 ### Data model — `apps/llm_ranking/models.py`

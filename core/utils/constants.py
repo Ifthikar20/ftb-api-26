@@ -42,7 +42,6 @@ PLAN_LIMITS = {
         "team_members": 1,
         "ai_credits_monthly": 50,
         "integrations": 1,
-        "max_agents": 1,
         "competitors": 3,
         "max_prompts_per_audit": 5,
         "max_audits_per_month": 2,
@@ -73,7 +72,6 @@ PLAN_LIMITS = {
         "team_members": 5,
         "ai_credits_monthly": 600,
         "integrations": 10,
-        "max_agents": 5,
         "competitors": 25,
         "max_prompts_per_audit": 15,
         "max_audits_per_month": 30,           # daily cadence cap
@@ -101,7 +99,6 @@ PLAN_LIMITS = {
         "team_members": -1,
         "ai_credits_monthly": -1,
         "integrations": -1,
-        "max_agents": -1,
         "competitors": -1,
         "max_prompts_per_audit": 50,
         "max_audits_per_month": -1,

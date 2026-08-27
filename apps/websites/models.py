@@ -117,6 +117,8 @@ class Integration(TimestampMixin):
 
     INTEGRATION_TYPES = [
         ("ga", "Google Analytics"),
+        ("ga_hosted", "FetchBot Google tag"),
+        ("cloudflare", "Cloudflare"),
         ("gsc", "Google Search Console"),
         ("facebook", "Facebook Ads"),
         ("shopify", "Shopify"),

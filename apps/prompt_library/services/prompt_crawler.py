@@ -29,9 +29,13 @@ from django.utils import timezone
 from apps.llm_ranking.models import LLMRankingAudit, LLMRankingResult
 from apps.llm_ranking.providers import (
     PROVIDERS,
+    get_provider_for_variant,
     list_model_variants,
+    parse_variant,
 )
+from apps.llm_ranking.services.ranking_service import _merge_citation_lists
 from apps.prompt_library.models import (
+    BrandPrompt,
     Prompt,
     PromptCrawlRun,
     PromptFanout,
@@ -312,54 +316,97 @@ def crawl_prompt(
     # (manual re-scan, scheduled runs) re-query everything — each run is
     # its own audit, so fresh rows extend the time series rather than
     # duplicating within a run.
+    # Gap-fill bookkeeping. Keys are provider names for default-selection
+    # runs and "provider:model_id" for prompts with an explicit model
+    # selection, so "never answered" is judged at the granularity the
+    # prompt is actually scanned at. Rows predating model_id tracking
+    # count only at provider level.
     already_answered: set[str] = set()
     if only_missing:
-        already_answered = set(
+        answered_rows = (
             LLMRankingResult.objects
             .filter(audit__website=website, query_succeeded=True)
             .filter(Q(source_prompt=prompt) | Q(prompt=prompt.text))
             .exclude(response_text="")
-            .values_list("provider", flat=True)
+            .values_list("provider", "model_id")
         )
+        for answered_provider, answered_model in answered_rows:
+            already_answered.add(answered_provider)
+            if answered_model:
+                already_answered.add(f"{answered_provider}:{answered_model}")
 
     queried_providers: list[str] = []
     skipped_have_answer = 0
-    try:
-        variants = list_model_variants()
-    except Exception as exc:
-        variants = []
-        errors.append(f"model registry unavailable: {exc!s}"[:200])
-    if not variants and not errors:
-        errors.append("model registry returned no variants")
 
-    seen_providers: set[str] = set()
-    for v in variants:
-        # list_model_variants() returns dicts. The previous attribute-style
-        # reads (getattr) were always falsy on dicts, which silently skipped
-        # EVERY provider — scans "ran" without querying a single model.
-        if isinstance(v, dict):
-            configured = v.get("configured", False)
-            provider_key = v.get("provider", "")
-        else:  # defensive: tolerate object-shaped variants too
-            configured = getattr(v, "configured", False)
-            provider_key = getattr(v, "provider", "")
-        if not configured:
-            continue
-        if not provider_key or provider_key in seen_providers:
-            continue
-        seen_providers.add(provider_key)
-        if provider_key in already_answered:
-            skipped_have_answer += 1
-            continue
-        cls = PROVIDERS.get(provider_key)
-        if cls is None:
-            continue
+    # The models this prompt runs against: the BrandPrompt's explicit
+    # selection when one exists (several variants of one provider are
+    # allowed), else every configured provider's default model — the
+    # pre-selection behaviour, unchanged.
+    selected = list(
+        BrandPrompt.objects
+        .filter(website=website, prompt=prompt)
+        .values_list("model_variants", flat=True)
+        .first() or []
+    )
+
+    # (gap-fill skip key, provider key, bound provider instance)
+    run_specs: list[tuple] = []
+    if selected:
+        seen_variants: set[str] = set()
+        for vid in selected:
+            vid = str(vid or "").strip()
+            if not vid or vid in seen_variants or parse_variant(vid) is None:
+                continue
+            seen_variants.add(vid)
+            if vid in already_answered:
+                skipped_have_answer += 1
+                continue
+            instance = get_provider_for_variant(vid)
+            if instance is None:
+                errors.append(f"{vid}: provider not configured")
+                continue
+            run_specs.append((vid, vid.split(":", 1)[0], instance))
+        if not run_specs and not skipped_have_answer and not errors:
+            errors.append("no configured models in this prompt's selection")
+    else:
         try:
-            instance = cls()
+            variants = list_model_variants()
         except Exception as exc:
-            errors.append(f"{provider_key}: {exc!s}")
-            continue
+            variants = []
+            errors.append(f"model registry unavailable: {exc!s}"[:200])
+        if not variants and not errors:
+            errors.append("model registry returned no variants")
 
+        seen_providers: set[str] = set()
+        for v in variants:
+            # list_model_variants() returns dicts. The previous attribute-style
+            # reads (getattr) were always falsy on dicts, which silently skipped
+            # EVERY provider — scans "ran" without querying a single model.
+            if isinstance(v, dict):
+                configured = v.get("configured", False)
+                provider_key = v.get("provider", "")
+            else:  # defensive: tolerate object-shaped variants too
+                configured = getattr(v, "configured", False)
+                provider_key = getattr(v, "provider", "")
+            if not configured:
+                continue
+            if not provider_key or provider_key in seen_providers:
+                continue
+            seen_providers.add(provider_key)
+            if provider_key in already_answered:
+                skipped_have_answer += 1
+                continue
+            cls = PROVIDERS.get(provider_key)
+            if cls is None:
+                continue
+            try:
+                instance = cls()
+            except Exception as exc:
+                errors.append(f"{provider_key}: {exc!s}")
+                continue
+            run_specs.append((provider_key, provider_key, instance))
+
+    for _skip_key, provider_key, instance in run_specs:
         # One query, one retry. A model that doesn't answer (transient
         # error, rate limit) gets a single second attempt, then we record
         # the failure and move on instead of looping. A hard failure with
@@ -388,9 +435,17 @@ def crawl_prompt(
             user=spend_user,
         )
 
+        # The exact model that answered — distinguishes rows when a prompt
+        # scans several variants of one provider. Guarded to str: provider
+        # doubles in tests carry mock attributes.
+        model_used = getattr(instance, "model", "")
+        if not isinstance(model_used, str):
+            model_used = ""
+
         result_obj = LLMRankingResult.objects.create(
             audit=audit,
             provider=provider_key,
+            model_id=model_used[:64],
             prompt_index=0,
             prompt=prompt.text,
             source_prompt=prompt,
@@ -405,7 +460,13 @@ def crawl_prompt(
             is_linked=analysis.get("is_linked", False),
             competitors_mentioned=analysis.get("competitors_mentioned", []),
             primary_recommendation=analysis.get("primary_recommendation", ""),
-            citations=analysis.get("citations", []),
+            # Provider-reported sources first (Perplexity's citation list,
+            # Claude's web-search citations) — this path used to store only
+            # the analysis-extracted URLs, silently dropping every native
+            # source on per-prompt scans while full audits kept them.
+            citations=_merge_citation_lists(
+                getattr(result, "citations", None), analysis.get("citations"),
+            ),
             extraction_model=analysis.get("extraction_model", ""),
             extraction_version=analysis.get("extraction_version", ""),
         )

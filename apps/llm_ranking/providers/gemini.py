@@ -7,7 +7,9 @@ from .claude import DEFAULT_SYSTEM
 
 class GeminiProvider(LLMProvider):
     name = "gemini"
-    model = "gemini-1.5-flash"
+    # gemini-1.5-* was retired upstream; 2.5 Flash is the oldest Flash
+    # Google still serves (2.0 shut down 2026-06-01).
+    model = "gemini-2.5-flash"
     api_key_setting = "GEMINI_API_KEY"
     # Gemini 1.5 Flash free tier = 15 RPM. Paid tier higher; stay conservative.
     rpm = 15

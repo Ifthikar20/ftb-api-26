@@ -35,7 +35,11 @@ logger = logging.getLogger("apps")
 def _strategy_for_provider(provider: str) -> list:
     """Return the ordered list of extractor instances for ``provider``."""
     p = (provider or "").lower()
-    if p == "perplexity":
+    # PerplexityNativeExtractor is provider-agnostic despite the name: it
+    # reads LLMRankingResult.citations, which every web-search-enabled
+    # provider now fills (Perplexity's native list, Claude's web-search
+    # citations, OpenAI/grok Responses url_citation annotations).
+    if p in ("perplexity", "claude", "gpt4", "grok"):
         return [PerplexityNativeExtractor(), RegexExtractor()]
     if p == "gemini":
         return [GeminiGroundingExtractor(), RegexExtractor()]

@@ -201,6 +201,10 @@ class LLMRankingResult(TimestampMixin):
         default=uuid.uuid4, editable=False, unique=True, db_index=True,
     )
     provider = models.CharField(max_length=30, choices=PROVIDER_CHOICES, db_index=True)
+    # The exact model that answered (e.g. "gpt-5.6-terra"). Empty on rows
+    # that predate per-prompt model selection; those ran the provider's
+    # default model of their day.
+    model_id = models.CharField(max_length=64, blank=True, default="")
     # Index of the prompt within the audit's prompts list. Together with
     # (audit, provider) this is the natural idempotency key, so a retried
     # cell task cannot create a duplicate row.
@@ -312,8 +316,12 @@ class LLMRankingResult(TimestampMixin):
         # duplicate rows. run_id distinguishes replicate runs of the same cell
         # so the unique key is the full triple plus run_id.
         constraints = [
+            # model_id joined the key when per-prompt model selection
+            # landed: one crawl may query several variants of the same
+            # provider. Audit-pipeline rows all carry model_id="" so their
+            # retry idempotency is unchanged.
             models.UniqueConstraint(
-                fields=["audit", "prompt_index", "provider", "run_id"],
+                fields=["audit", "prompt_index", "provider", "model_id", "run_id"],
                 name="uq_llm_result_audit_prompt_provider_run",
             ),
         ]

@@ -151,26 +151,6 @@ class TestCommandRouter:
         # BS-FACT-001.recommended_action for hallucination rows).
         assert "Correct the record" in text
 
-    def test_ask_routes_through_hired_agent(self):
-        connection = _slack_connection()
-        website = WebsiteFactory(user=connection.user)
-        from apps.agents.models import HiredAgent
-        HiredAgent.objects.create(
-            user=connection.user, website=website, created_by=connection.user,
-            agent_key="visibility_analyst",
-        )
-        reply = SimpleNamespace(text="agent says hi")
-        with patch(
-            "apps.agents.services.chat.handle_user_message", return_value=reply,
-        ) as mock_chat, patch("apps.notifications.tasks.requests.post") as mock_post:
-            answer_chat_command(
-                connection_id=str(connection.id), command="ask",
-                text="how are we doing", respond_to=SLACK_RESPONSE_URL,
-            )
-        assert mock_chat.call_args.args[1] == "how are we doing"
-        assert mock_chat.call_args.kwargs["channel"] == "slack"
-        assert _slack_reply_text(mock_post) == "agent says hi"
-
     def test_ask_without_agent_uses_one_shot_provider(self):
         connection = _slack_connection()
         WebsiteFactory(user=connection.user)
@@ -492,27 +472,6 @@ class TestAskFactPack:
         assert "visitor change +20.0% vs yesterday" in prompt
         assert "never fabricate numbers" in prompt
         assert _slack_reply_text(mock_post) == "grounded answer"
-
-    def test_ask_hired_agent_receives_fact_block_out_of_band(self):
-        connection = _slack_connection()
-        website = WebsiteFactory(user=connection.user)
-        from apps.agents.models import HiredAgent
-        HiredAgent.objects.create(
-            user=connection.user, website=website, created_by=connection.user,
-            agent_key="visibility_analyst",
-        )
-        reply = SimpleNamespace(text="agent grounded")
-        with patch(
-            "apps.agents.services.chat.handle_user_message", return_value=reply,
-        ) as mock_chat, patch("apps.notifications.tasks.requests.post"):
-            answer_chat_command(
-                connection_id=str(connection.id), command="ask",
-                text="how are we doing", respond_to=SLACK_RESPONSE_URL,
-            )
-        # The question stays the persisted message; facts ride the
-        # context_block kwarg so the transcript is not polluted.
-        assert mock_chat.call_args.args[1] == "how are we doing"
-        assert "Live account facts as of" in mock_chat.call_args.kwargs["context_block"]
 
     def test_ask_prompt_includes_saved_prompts_and_latest_audit_content(self):
         from django.utils import timezone

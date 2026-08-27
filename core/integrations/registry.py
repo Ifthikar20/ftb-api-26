@@ -210,6 +210,31 @@ GOOGLE_ANALYTICS = IntegrationConfig(
     scale=TierEntitlement(enabled=True, feature_key="full_analytics"),
 )
 
+GA_HOSTED = IntegrationConfig(
+    name="ga_hosted",
+    display_name="FetchBot Google tag",
+    auth_type="api_key",
+    # Credentials are app-level (service account with Editor on the
+    # FetchBot-owned GA4 pool property), not per-tenant tokens; the
+    # tenant only pastes the generated gtag snippet on their site.
+    api_key=ApiKeyConfig(api_key_setting="GA4_SA_CREDENTIALS_JSON"),
+    starter=TierEntitlement(enabled=True, feature_key="basic_analytics"),
+    growth=TierEntitlement(enabled=True, feature_key="full_analytics"),
+    scale=TierEntitlement(enabled=True, feature_key="full_analytics"),
+)
+
+CLOUDFLARE = IntegrationConfig(
+    name="cloudflare",
+    display_name="Cloudflare",
+    # Tenant-supplied zone API token stored on the Integration row; no
+    # server-side credentials, no OAuth, and Cloudflare tokens do not
+    # expire, so there is no refresh_token_fn.
+    auth_type="api_token",
+    starter=TierEntitlement(enabled=True, feature_key="basic_analytics"),
+    growth=TierEntitlement(enabled=True, feature_key="full_analytics"),
+    scale=TierEntitlement(enabled=True, feature_key="full_analytics"),
+)
+
 GOOGLE_SEARCH_CONSOLE = IntegrationConfig(
     name="gsc",
     display_name="Google Search Console",
@@ -400,7 +425,7 @@ def get_registry() -> IntegrationRegistry:
         _registry = IntegrationRegistry()
         for config in [
             HUBSPOT, GOOGLE_ADS, SEMRUSH, SLACK, DISCORD, WEBHOOKS,
-            GOOGLE_ANALYTICS, GOOGLE_SEARCH_CONSOLE,
+            GOOGLE_ANALYTICS, GA_HOSTED, CLOUDFLARE, GOOGLE_SEARCH_CONSOLE,
             MAILCHIMP, GOOGLE_DRIVE, CANVA,
         ]:
             _registry.register(config)

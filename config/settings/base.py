@@ -62,9 +62,9 @@ LOCAL_APPS = [
     "apps.citations",
     "apps.brand_vault",
     "apps.content_studio",
-    "apps.agents",
     "apps.search_console",
     "apps.assistant",
+    "apps.web_analytics",
     # Stub app — kept only to satisfy historical lazy FK references
     # from analytics migrations. All tables are managed=False.
     "apps.leads",
@@ -524,6 +524,36 @@ GSC_DAILY_API_LIMIT_PER_USER = env.int("GSC_DAILY_API_LIMIT_PER_USER", default=2
 GSC_PROMPT_MIN_IMPRESSIONS = env.int("GSC_PROMPT_MIN_IMPRESSIONS", default=10)
 # Prompt-library feed: max queries considered per website per sync.
 GSC_PROMPT_TOP_N = env.int("GSC_PROMPT_TOP_N", default=50)
+
+# ── Web Analytics external sources (apps.web_analytics) ──
+# Read-only traffic sources connected per website: the client's own GA4
+# property (OAuth via the "ga" registry entry, same Google client as GSC),
+# a FetchBot-owned GA4 pool property behind our hosted Google tag, and
+# tenant-supplied Cloudflare zone tokens. Raw analytics rows are never
+# stored — endpoints serve short-lived Redis snapshots (read-through,
+# fetched only while a dashboard is open).
+WEB_ANALYTICS_ENABLED = env.bool("WEB_ANALYTICS_ENABLED", default=True)
+GA4_OAUTH_REDIRECT_URI = env(
+    "GA4_OAUTH_REDIRECT_URI",
+    default="http://localhost:8000/api/v1/web-analytics/ga4/oauth/callback/",
+)
+# Seconds a GA4 realtime snapshot is served from cache before re-fetching.
+# At the frontend's 30s poll this costs at most ~480 API requests/hr per
+# open dashboard vs Google's 40k tokens/hr/property realtime budget.
+GA4_SNAPSHOT_TTL_SECONDS = env.int("GA4_SNAPSHOT_TTL_SECONDS", default=25)
+# Hard cap on each upstream Google Analytics request (inline in a sync
+# worker, so this bounds the worst-case request latency).
+GA4_FETCH_TIMEOUT_SECONDS = env.float("GA4_FETCH_TIMEOUT_SECONDS", default=6.0)
+# Per-website daily cap on Analytics Data/Admin API calls.
+GA4_DAILY_API_LIMIT_PER_WEBSITE = env.int("GA4_DAILY_API_LIMIT_PER_WEBSITE", default=15000)
+# Hosted Google tag: service-account key JSON (single line) with Editor
+# access to the pool property below. Both unset = hosted source hidden.
+GA4_SA_CREDENTIALS_JSON = env("GA4_SA_CREDENTIALS_JSON", default="")
+GA4_HOSTED_PROPERTY_ID = env("GA4_HOSTED_PROPERTY_ID", default="")
+# Cloudflare zone snapshots: edge data lags 1-5 minutes anyway, so a
+# longer TTL; the GraphQL budget (~300 queries/5min) is never a factor.
+CLOUDFLARE_SNAPSHOT_TTL_SECONDS = env.int("CLOUDFLARE_SNAPSHOT_TTL_SECONDS", default=120)
+CLOUDFLARE_FETCH_TIMEOUT_SECONDS = env.float("CLOUDFLARE_FETCH_TIMEOUT_SECONDS", default=10.0)
 
 # ── Social Leads (Facebook, LinkedIn, X) ──
 FACEBOOK_APP_ID = env("FACEBOOK_APP_ID", default="")
