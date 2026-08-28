@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 950" width="1440" height="950" role="img" aria-label="The same AWS topology drawn at 5, 10000 and 20000 active users. EC2 instance count grows from 1 to about 20 to about 41, RDS from 1 instance to a primary plus one read replica to a primary plus two, subnets from 4 to 6 to 9, and a NAT gateway appears once compute moves into private subnets.">
-  <title>FetchBot — AWS topology at 5, 10,000 and 20,000 users</title>
+  <title>Cansee — AWS topology at 5, 10,000 and 20,000 users</title>
   <desc>Three panels of the same architecture. Counts of EC2 instances, database instances, cache nodes and subnets increase across the panels, with the metric that triggers each step.</desc>
 
   <defs>

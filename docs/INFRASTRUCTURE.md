@@ -1,9 +1,9 @@
-# FetchBot Infrastructure — How the Setup Works
+# Cansee Infrastructure — How the Setup Works
 
 Date: 2026-07-19
-Host: EC2 `i-0464b3dd1b1d1c979` (fetchbot-prod), Elastic IP `100.55.196.80`
+Host: EC2 `i-0464b3dd1b1d1c979` (cansee-prod), Elastic IP `100.55.196.80`
 Instance type: t3.small (2 vCPU, 2 GB RAM), Ubuntu 22.04
-App root on host: `/opt/fetchbot/ftb-api-26`
+App root on host: `/opt/cansee/ftb-api-26`
 Compose file in use: `docker/docker-compose.prod.yml`
 
 ---
@@ -180,8 +180,6 @@ app.conf.task_routes = {
     "apps.citations.tasks.*": {"queue": "ai"},
     "apps.brand_vault.tasks.*": {"queue": "ai"},
     "apps.content_studio.tasks.*": {"queue": "ai"},
-    "apps.agents.tasks.run_hired_agent": {"queue": "ai"},
-    "apps.agents.tasks.execute_agent_action": {"queue": "integrations"},
 }
 ```
 
@@ -318,7 +316,7 @@ docker compose -f docker/docker-compose.prod.yml logs celery | grep -i beat
 
 ### Elastic IP is not attached at instance launch
 
-When the current prod instance was launched, no Elastic IP was assigned. The instance came up on an auto-assigned public IP (`3.238.239.241`), while Cloudflare continued to resolve `fetchbot.ai` to the previous EIP `100.55.196.80`. Cloudflare returned 522 until the EIP was manually associated.
+When the current prod instance was launched, no Elastic IP was assigned. The instance came up on an auto-assigned public IP (`3.238.239.241`), while Cloudflare continued to resolve `cansee.ai` to the previous EIP `100.55.196.80`. Cloudflare returned 522 until the EIP was manually associated.
 
 **Prevention:** in the EC2 launch config or Terraform, associate the EIP as part of instance creation, not as a manual post-step. Or use an ALB with a stable DNS name and point Cloudflare at that instead of a raw IP.
 
@@ -329,8 +327,8 @@ When the current prod instance was launched, no Elastic IP was assigned. The ins
 All commands assume you have SSHed in:
 
 ```
-ssh -i fynda-deploy.pem ubuntu@100.55.196.80
-cd /opt/fetchbot/ftb-api-26
+ssh -i cansee-deploy.pem ubuntu@100.55.196.80
+cd /opt/cansee/ftb-api-26
 ```
 
 ### Container health
@@ -380,7 +378,7 @@ sudo docker exec docker-nginx-1 tail -f /var/log/nginx/access.log
 ### Which commit is deployed
 
 ```bash
-git -C /opt/fetchbot/ftb-api-26 rev-parse HEAD
+git -C /opt/cansee/ftb-api-26 rev-parse HEAD
 ```
 
 ---

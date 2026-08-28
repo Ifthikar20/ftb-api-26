@@ -1,4 +1,4 @@
-class GrowthPilotException(Exception):
+class CanseeException(Exception):
     """Base exception for all domain errors."""
 
     def __init__(self, message: str, code: str = "error", status_code: int = 400):
@@ -8,29 +8,29 @@ class GrowthPilotException(Exception):
         super().__init__(message)
 
 
-class PlanLimitExceeded(GrowthPilotException):
+class PlanLimitExceeded(CanseeException):
     def __init__(self, message="You've reached your plan limit."):
         super().__init__(message, code="plan_limit_exceeded", status_code=403)
 
 
-class ResourceNotFound(GrowthPilotException):
+class ResourceNotFound(CanseeException):
     def __init__(self, message="Resource not found."):
         super().__init__(message, code="not_found", status_code=404)
 
 
-class PixelNotVerified(GrowthPilotException):
+class PixelNotVerified(CanseeException):
     def __init__(self):
         super().__init__(
             "Tracking pixel is not yet verified.", code="pixel_not_verified"
         )
 
 
-class AuditInProgress(GrowthPilotException):
+class AuditInProgress(CanseeException):
     def __init__(self):
         super().__init__("An audit is already running.", code="audit_in_progress")
 
 
-class AIGenerationFailed(GrowthPilotException):
+class AIGenerationFailed(CanseeException):
     def __init__(self):
         super().__init__(
             "AI generation failed. Please try again.",
@@ -39,7 +39,7 @@ class AIGenerationFailed(GrowthPilotException):
         )
 
 
-class CompetitorLimitReached(GrowthPilotException):
+class CompetitorLimitReached(CanseeException):
     def __init__(self):
         super().__init__(
             "Competitor tracking limit reached for your plan.",
@@ -47,7 +47,7 @@ class CompetitorLimitReached(GrowthPilotException):
         )
 
 
-class InvalidWebsiteURL(GrowthPilotException):
+class InvalidWebsiteURL(CanseeException):
     def __init__(self):
         super().__init__(
             "The provided URL is not a valid, reachable website.",
@@ -55,7 +55,7 @@ class InvalidWebsiteURL(GrowthPilotException):
         )
 
 
-class PermissionDenied(GrowthPilotException):
+class PermissionDenied(CanseeException):
     def __init__(self, message="You do not have permission to perform this action."):
         super().__init__(message, code="permission_denied", status_code=403)
 
@@ -70,7 +70,7 @@ class LeadNotFound(ResourceNotFound):
         super().__init__("Lead not found.")
 
 
-class DomainOwnershipRequired(GrowthPilotException):
+class DomainOwnershipRequired(CanseeException):
     def __init__(self):
         super().__init__(
             "You can only run services on websites you own. Please verify ownership first.",
@@ -79,7 +79,7 @@ class DomainOwnershipRequired(GrowthPilotException):
         )
 
 
-class RateLimited(GrowthPilotException):
+class RateLimited(CanseeException):
     def __init__(self):
         super().__init__(
             "You're making requests too quickly. Please wait a moment and try again.",
@@ -88,7 +88,7 @@ class RateLimited(GrowthPilotException):
         )
 
 
-class SuspiciousInput(GrowthPilotException):
+class SuspiciousInput(CanseeException):
     def __init__(self):
         super().__init__(
             "Your request was blocked for security reasons.",

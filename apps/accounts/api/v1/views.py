@@ -31,12 +31,12 @@ from core.interceptors.throttling import AuthRateThrottle, PasswordResetThrottle
 #
 # Nothing in production needs cross-site delivery: nginx.prod.conf
 # serves the SPA (location /) and the API (location /api/) from the
-# same fetchbot.ai server block, so every request that matters is
+# same cansee.ai server block, so every request that matters is
 # same-origin. The earlier SameSite=None dated from a topology that no
 # longer exists.
 #
 # Note SameSite keys on the registrable domain, not the full host, so
-# splitting to app.fetchbot.ai + api.fetchbot.ai stays same-site and
+# splitting to app.cansee.ai + api.cansee.ai stays same-site and
 # keeps working. Lax also still sends the cookie on top-level GET
 # navigations, so the Google Search Console OAuth callback is fine.
 #
@@ -51,27 +51,36 @@ from core.interceptors.throttling import AuthRateThrottle, PasswordResetThrottle
 # localhost exemption, but Vite's proxy over http makes delivery flaky,
 # which kicks developers to /login.
 def _refresh_cookie_settings():
+    """Cookie kwargs for the refresh token, resolved per call.
+
+    ``secure`` follows ``SESSION_COOKIE_SECURE``, which base.py derives from
+    PUBLIC_SCHEME -- so this cookie can never disagree with the session and
+    CSRF cookies about whether the deployment is on TLS. That matters
+    because a Secure cookie is silently discarded by the browser over
+    http://: on a plaintext deployment, login would return 200 and the
+    session would then die on the first reload, with nothing in the logs.
+
+    DEBUG still forces it off regardless: Vite proxies over http locally, so
+    Secure would drop the cookie and bounce developers to /login.
+
+    This is deliberately NOT cached in a module-level constant. It used to
+    be, which froze the value at import time under whatever DEBUG was then
+    and made it unreachable by settings -- see TestRefreshCookieBinding.
+    """
     from django.conf import settings as _settings
+
+    secure = bool(getattr(_settings, "SESSION_COOKIE_SECURE", True))
     if getattr(_settings, "DEBUG", False):
-        return {
-            "key": "refresh_token",
-            "httponly": True,
-            "secure": False,
-            "samesite": "Lax",
-            "max_age": 7 * 24 * 60 * 60,
-            "path": "/",
-        }
+        secure = False
+
     return {
         "key": "refresh_token",
         "httponly": True,
-        "secure": True,
+        "secure": secure,
         "samesite": "Lax",
         "max_age": 7 * 24 * 60 * 60,
         "path": "/",
     }
-
-
-REFRESH_COOKIE_SETTINGS = _refresh_cookie_settings()
 
 
 class RegisterView(APIView):
@@ -90,7 +99,7 @@ class RegisterView(APIView):
                     "error": {
                         "code": "signups_closed",
                         "message": (
-                            "FetchBot is in private beta. New sign-ups are paused — "
+                            "Cansee is in private beta. New sign-ups are paused — "
                             "please contact us for access."
                         ),
                     }
@@ -131,7 +140,7 @@ class LoginView(APIView):
             {"access": result["access"], "user": result["user"]},
             status=status.HTTP_200_OK,
         )
-        response.set_cookie(value=result["refresh"], **REFRESH_COOKIE_SETTINGS)
+        response.set_cookie(value=result["refresh"], **_refresh_cookie_settings())
         return response
 
 
@@ -162,7 +171,7 @@ class TokenRefreshView(APIView):
         result = AuthService.refresh_token(refresh_token=refresh_token)
 
         response = Response({"access": result["access"]}, status=status.HTTP_200_OK)
-        response.set_cookie(value=result["refresh"], **REFRESH_COOKIE_SETTINGS)
+        response.set_cookie(value=result["refresh"], **_refresh_cookie_settings())
         return response
 
 
@@ -252,7 +261,7 @@ class GoogleOAuthView(APIView):
                 },
             }
         )
-        response.set_cookie(value=str(refresh), **REFRESH_COOKIE_SETTINGS)
+        response.set_cookie(value=str(refresh), **_refresh_cookie_settings())
         return response
 
 

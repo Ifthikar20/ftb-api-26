@@ -124,7 +124,7 @@ def _discord_ephemeral(content: str) -> JsonResponse:
 
 def _handle_discord_command(body: dict) -> JsonResponse:
     data = body.get("data") or {}
-    if data.get("name") != "fetchbot":
+    if data.get("name") != "cansee":
         return _discord_ephemeral("Unknown command.")
 
     guild_id = str(body.get("guild_id") or "")
@@ -133,10 +133,10 @@ def _handle_discord_command(body: dict) -> JsonResponse:
         # blank external_team_id, so an empty-id lookup would bind the
         # command to an arbitrary account - refuse instead.
         return _discord_ephemeral(
-            "FetchBot commands work inside a linked server, not in direct messages."
+            "Cansee commands work inside a linked server, not in direct messages."
         )
 
-    # /fetchbot <subcommand> [question]
+    # /cansee <subcommand> [question]
     command = "help"
     text = ""
     options = data.get("options") or []
@@ -153,7 +153,7 @@ def _handle_discord_command(body: dict) -> JsonResponse:
     ).first()
     if connection is None:
         return _discord_ephemeral(
-            "This Discord server is not linked to FetchBot yet. Open FetchBot "
+            "This Discord server is not linked to Cansee yet. Open Cansee "
             "Integrations settings, edit your Discord connection, and paste "
             f"this server id: {guild_id}"
         )
@@ -173,7 +173,7 @@ def _handle_discord_command(body: dict) -> JsonResponse:
         },
         invoker=invoker,
     )
-    # DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE: "FetchBot is thinking..." -
+    # DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE: "Cansee is thinking..." -
     # the task follows up through the interaction webhook.
     return JsonResponse({"type": DISCORD_RESPONSE_DEFERRED})
 
@@ -282,7 +282,7 @@ def _handle_slack_mention(body: dict, event: dict) -> None:
     if connection is None:
         logger.info(
             f"Slack mention from unlinked team {body.get('team_id', '')} ignored. "
-            "Link the workspace in FetchBot Integrations settings."
+            "Link the workspace in Cansee Integrations settings."
         )
         return
 
@@ -308,7 +308,7 @@ def _handle_slack_mention(body: dict, event: dict) -> None:
 @csrf_exempt
 @require_POST
 def slack_commands(request):
-    """Slack slash-command endpoint (/fetchbot <command> [text])."""
+    """Slack slash-command endpoint (/cansee <command> [text])."""
     # Verify against the RAW body bytes before touching the parsed form.
     ok, reason = _verify_slack_request(request)
     if not ok:
@@ -324,8 +324,8 @@ def slack_commands(request):
         return JsonResponse({
             "response_type": "ephemeral",
             "text": (
-                "This Slack workspace is not linked to FetchBot yet. Open "
-                "FetchBot Integrations settings, edit your Slack connection, "
+                "This Slack workspace is not linked to Cansee yet. Open "
+                "Cansee Integrations settings, edit your Slack connection, "
                 f"and paste this team id: {team_id}"
             ),
         })
@@ -339,5 +339,5 @@ def slack_commands(request):
     )
     return JsonResponse({
         "response_type": "ephemeral",
-        "text": "FetchBot is thinking - answer coming up.",
+        "text": "Cansee is thinking - answer coming up.",
     })

@@ -1,4 +1,4 @@
-"""Celery configuration for GrowthPilot."""
+"""Celery configuration for Cansee."""
 import os
 
 from celery import Celery
@@ -6,7 +6,7 @@ from celery.schedules import crontab
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings.prod")
 
-app = Celery("growthpilot")
+app = Celery("cansee")
 app.config_from_object("django.conf:settings", namespace="CELERY")
 app.autodiscover_tasks()
 
@@ -29,9 +29,6 @@ app.conf.task_routes = {
     "apps.citations.tasks.*": {"queue": "ai"},
     "apps.brand_vault.tasks.*": {"queue": "ai"},
     "apps.content_studio.tasks.*": {"queue": "ai"},
-    # agents: runs are AI-heavy; action execution hits integrations
-    "apps.agents.tasks.run_hired_agent": {"queue": "ai"},
-    "apps.agents.tasks.execute_agent_action": {"queue": "integrations"},
     # notifications: chat commands may call an LLM; report digests hit
     # third-party webhooks
     "apps.notifications.tasks.answer_chat_command": {"queue": "ai"},
@@ -44,6 +41,10 @@ app.conf.task_routes = {
     "apps.metering.tasks.prune_ai_usage_ledger": {"queue": "integrations"},
     "apps.metering.tasks.prune_polar_outbox": {"queue": "integrations"},
     "apps.metering.tasks.notify_cap_threshold": {"queue": "default"},
+    # Long-running batch deletes: keep them off the default queue so they
+    # cannot delay request-path work.
+    "apps.analytics.tasks.prune_analytics_events": {"queue": "integrations"},
+    "apps.analytics.tasks.prune_llm_results": {"queue": "integrations"},
 }
 
 app.conf.beat_schedule = {
@@ -84,11 +85,6 @@ app.conf.beat_schedule = {
     # ── LLM Ranking ──
     "llm-ranking-schedule-dispatcher": {
         "task": "apps.llm_ranking.tasks.dispatch_scheduled_audits",
-        "schedule": crontab(minute="*/15"),  # Every 15 min — checks next_run_at
-    },
-    # ── Hireable Agents ──
-    "agents-run-dispatcher": {
-        "task": "apps.agents.tasks.dispatch_agent_runs",
         "schedule": crontab(minute="*/15"),  # Every 15 min — checks next_run_at
     },
     # ── Prompt Library ──
@@ -155,5 +151,20 @@ app.conf.beat_schedule = {
     "prune-polar-outbox": {
         "task": "apps.metering.tasks.prune_polar_outbox",
         "schedule": crontab(minute=50, hour=2, day_of_week=0),
+    },
+    # Retention. Windows live in settings (ANALYTICS_RETENTION_DAYS et al) and
+    # are published on /what-we-track, so these two tasks are what makes that
+    # page true. Scheduled off-peak and after the metering prunes.
+    #
+    # NOTE: the first production run clears a backlog that has never been
+    # pruned. Run `manage.py prune_retention --dry-run` and check the counts
+    # before letting beat fire this.
+    "prune-analytics-events": {
+        "task": "apps.analytics.tasks.prune_analytics_events",
+        "schedule": crontab(minute=10, hour=3),
+    },
+    "prune-llm-results": {
+        "task": "apps.analytics.tasks.prune_llm_results",
+        "schedule": crontab(minute=30, hour=3, day_of_week=0),
     },
 }

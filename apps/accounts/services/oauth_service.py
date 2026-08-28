@@ -62,7 +62,7 @@ class OAuthService:
                 metadata={"method": "google_oauth", "reason": "no_account"},
             )
             raise PermissionDenied(
-                "No FetchBot account exists for this Google email. "
+                "No Cansee account exists for this Google email. "
                 "Contact your administrator for access."
             )
 

@@ -16,7 +16,7 @@ measuring three things:
                  the query-embedding call factored out, so the OpenAI
                  network cost is not misattributed to either store.
 
-Uses the growthpilot_test scratch database (never dev data) and a
+Uses the cansee_test scratch database (never dev data) and a
 scratch chroma dir. Costs a fraction of a cent in OpenAI embeddings.
 
 Run:  ./venv/Scripts/python.exe scripts/rag_eval.py
@@ -47,7 +47,7 @@ from django.core.management import call_command  # noqa: E402
 from django.db import connection  # noqa: E402
 from django.test.utils import override_settings  # noqa: E402
 
-# ── Corpus: FetchBot-flavoured documents with topic labels ──────────
+# ── Corpus: Cansee-flavoured documents with topic labels ──────────
 # Each entry: (topic, title, text). Topics are the gold labels - a
 # query is "answered correctly" when the top hit's document carries the
 # expected topic.
@@ -82,7 +82,7 @@ GOLD_DOCS = [
      "after repeated failed attempts. We support time-based one-time "
      "passwords for two-factor authentication on every plan."),
     ("visibility", "AI visibility tracking",
-     "FetchBot asks the major AI assistants the questions your buyers ask "
+     "Cansee asks the major AI assistants the questions your buyers ask "
      "and records whether your brand is mentioned, how it is described, "
      "and which competitors appear alongside it in each answer."),
     ("visibility", "Share of voice metric",

@@ -23,9 +23,9 @@ When a user navigates to `/llm-ranking/:websiteId` and has never run an audit, t
    - **AI Visibility Score widget** shows a progress bar (`queries_completed / total_queries`) and a pulsing "Running" badge.
    - **Pipeline Log card** auto-expands — a terminal-style feed that auto-scrolls as log entries arrive:
      ```
-     10:32:01  Starting audit for FetchBot (SaaS analytics)
+     10:32:01  Starting audit for Cansee (SaaS analytics)
      10:32:01  Selected LLM providers: Claude, GPT-4, Gemini, Perplexity
-     10:32:02  🔍 Scanning main website: https://fetchbot.ai
+     10:32:02  🔍 Scanning main website: https://cansee.ai
      10:32:04  ✅ Website scanned — found 4 product(s)/service(s)
      10:32:05  🌐 Google Search: found 6 competitive snippet(s)
      10:32:06  📦 Context assembled — 3,412 chars of business intelligence
@@ -33,7 +33,7 @@ When a user navigates to `/llm-ranking/:websiteId` and has never run an audit, t
      10:32:07  ━━━ Querying Claude ━━━
      10:32:07  📤 → Claude: "What are the best SaaS analytics platforms?"
      10:32:09  📥 ← Claude responded (1,842 chars) — extracting mentions...
-     10:32:10  🏆 FetchBot mentioned at rank #3 — sentiment: positive
+     10:32:10  🏆 Cansee mentioned at rank #3 — sentiment: positive
      10:32:10     ↳ Competitors found: Mixpanel, Amplitude, Heap
      ```
    - **Live Results ticker** — as each query completes, a row appears showing provider, prompt, and result badge (Ranked #3 / Not mentioned / API error).
@@ -214,7 +214,7 @@ Uses `claude-haiku-4-5` to parse each raw LLM response into structured JSON:
   "target_position": 3,
   "target_linked": false,
   "target_sentiment": "positive",
-  "target_context": "FetchBot is a powerful analytics...",
+  "target_context": "Cansee is a powerful analytics...",
   "competitors_mentioned": [
     {"name": "Mixpanel", "position": 1, "linked": true}
   ],
@@ -375,14 +375,14 @@ UI ──poll (2s)──> GET /audits/<aid>/logs/?after=<ts>
                     ▲
                     │ append after each step
          Celery task (run_llm_ranking_audit)
-           ├─ "Starting audit for FetchBot"              (info)
+           ├─ "Starting audit for Cansee"              (info)
            ├─ "🔍 Scanning main website: ..."            (info)
            ├─ "✅ Website scanned — found 4 products"    (success)
            ├─ "🌐 Google Search: found 6 snippets"       (success)
            ├─ "🚀 Running 40 queries (10 × 4)"           (info)
            ├─ "📤 → Claude: "Best analytics...""         (info)
            ├─ "📥 ← Claude responded (1842 chars)"       (success)
-           ├─ "🏆 FetchBot at rank #3 — positive"        (success)
+           ├─ "🏆 Cansee at rank #3 — positive"        (success)
            ├─ "❌ GPT-4 query failed: rate limit"        (error)
            └─ "🏁 AUDIT COMPLETE — Score: 73/100"        (success)
 ```

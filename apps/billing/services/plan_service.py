@@ -51,7 +51,6 @@ def _pro() -> dict:
             f"Up to {limits['pageviews']:,} pageviews/month",
             "Visibility audits across Claude, GPT, Gemini and Perplexity",
             f"{limits['max_prompts_per_audit']} prompts per audit, daily scans",
-            f"{limits['max_agents']} hired agents",
             f"{limits['competitors']} competitors tracked",
             f"{limits['team_members']} team members",
             f"{limits['integrations']} integrations (Slack/Discord)",

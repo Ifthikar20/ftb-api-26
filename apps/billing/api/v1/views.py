@@ -40,7 +40,7 @@ def _safe_origin(request) -> str:
     candidate = f"{parts.scheme}://{parts.netloc}" if parts.scheme and parts.netloc else ""
     if candidate and candidate in allowed:
         return candidate
-    return canonical or "https://app.fetchbot.io"
+    return canonical or "https://app.cansee.ai"
 
 
 def _client_ip(request) -> str:
@@ -180,7 +180,7 @@ class CheckoutView(APIView):
                         "code": "invalid_plan",
                         "message": (
                             "Business plans require a custom quote. "
-                            "Please contact sales@fetchbot.ai."
+                            "Please contact sales@cansee.ai."
                         ),
                     },
                 },
@@ -190,7 +190,7 @@ class CheckoutView(APIView):
         origin = _safe_origin(request)
 
         from apps.billing.services import polar_billing
-        from core.exceptions import GrowthPilotException
+        from core.exceptions import CanseeException
 
         try:
             url = polar_billing.create_checkout(
@@ -198,7 +198,7 @@ class CheckoutView(APIView):
                 customer_ip=_client_ip(request),
             )
             return Response({"success": True, "data": {"checkout_url": url}})
-        except GrowthPilotException as e:
+        except CanseeException as e:
             # Keep the domain error code (e.g. already_subscribed) — the
             # frontend branches on it to recover instead of just
             # showing a failure toast.

@@ -57,8 +57,8 @@ class Command(BaseCommand):
                     visitor=v, started_at=start,
                     ended_at=start + timedelta(minutes=random.randint(1, 30)),
                     page_count=random.randint(1, 8),
-                    entry_page=f"https://fetchbot.ai{random.choice(pages)}",
-                    exit_page=f"https://fetchbot.ai{random.choice(pages)}",
+                    entry_page=f"https://cansee.ai{random.choice(pages)}",
+                    exit_page=f"https://cansee.ai{random.choice(pages)}",
                     source=random.choice(sources),
                 ))
         created_sessions = Session.objects.bulk_create(sessions_objs)
@@ -68,7 +68,7 @@ class Command(BaseCommand):
             for _ in range(random.randint(1, 4)):
                 events.append(PageEvent(
                     visitor=sess.visitor, website=website, session=sess,
-                    url=f"https://fetchbot.ai{random.choice(pages)}",
+                    url=f"https://cansee.ai{random.choice(pages)}",
                     event_type=random.choice(["pageview", "click", "scroll", "form_submit"]),
                     timestamp=sess.started_at + timedelta(minutes=random.randint(0, 15)),
                 ))
@@ -89,7 +89,7 @@ class Command(BaseCommand):
                     y = max(0, min(100, random.uniform(*yr) + random.gauss(0, 2)))
                     clicks.append(PageEvent(
                         visitor=random.choice(visitors[:20]), website=website,
-                        url=f"https://fetchbot.ai{page}", event_type="click",
+                        url=f"https://cansee.ai{page}", event_type="click",
                         properties={"x_pct": round(x, 1), "y_pct": round(y, 1), "selector": "button.cta"},
                         timestamp=now - timedelta(days=random.randint(0, 30), hours=random.randint(0, 23)),
                     ))

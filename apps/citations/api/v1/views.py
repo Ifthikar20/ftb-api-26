@@ -449,10 +449,31 @@ class SourceScanDetailView(TenantScopedAPIView):
                 "word_count": r.word_count,
                 "brands": r.brands,
                 "analysis_error": r.analysis_error,
+                # Which lane found this row, and its platform-native
+                # metadata (subreddit, upvotes, comment count).
+                "discovery": r.discovery,
+                "platform_meta": r.platform_meta or {},
             }
             for r in scan.results.all()
         ]
         payload["opportunities"] = derive_opportunities(scan)
+        # What each AI engine answered. Rows with status != "ok" are kept so
+        # the UI can grey out an engine that has no key rather than omit it.
+        payload["engines"] = [
+            {
+                "provider": a.provider,
+                "model": a.model,
+                "status": a.status,
+                "answer_text": a.answer_text,
+                "brands": a.brands,
+                "citations": a.citations,
+                "cited_ranks": a.cited_ranks,
+                "error": a.error,
+            }
+            for a in scan.engine_answers.all()
+        ]
+        # People Also Ask, related searches, AI Overview, knowledge panel.
+        payload["serp_features"] = scan.serp_features or {}
         return Response(payload)
 
 
@@ -531,6 +552,10 @@ def _scan_summary(scan) -> dict:
         "error": scan.error,
         "results_count": scan.results_count,
         "analyzed_count": scan.analyzed_count,
+        # Per-lane progress. Older scans predate the field and get {}, which
+        # the UI reads as "no lane breakdown available" and falls back to the
+        # scan-level status.
+        "stages": scan.stages or {},
         "brands": scan.brands,
         "own_brand_present": scan.own_brand_present,
         "created_at": scan.created_at.isoformat() if scan.created_at else None,

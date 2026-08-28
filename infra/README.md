@@ -1,4 +1,4 @@
-# FetchBot infrastructure
+# Cansee infrastructure
 
 Terraform for the migration described in the AWS migration plan: managed
 data layer (RDS + ElastiCache), EC2 compute retained, under $100/mo.
@@ -32,15 +32,15 @@ cannot create the bucket that stores its own state, so these two are
 made by hand, once. Replace `<ACCOUNT_ID>`:
 
 ```bash
-aws s3api create-bucket --bucket fetchbot-tfstate-<ACCOUNT_ID> --region us-east-1
+aws s3api create-bucket --bucket cansee-tfstate-<ACCOUNT_ID> --region us-east-1
 ```
 
 ```bash
-aws s3api put-bucket-versioning --bucket fetchbot-tfstate-<ACCOUNT_ID> --versioning-configuration Status=Enabled
+aws s3api put-bucket-versioning --bucket cansee-tfstate-<ACCOUNT_ID> --versioning-configuration Status=Enabled
 ```
 
 ```bash
-aws dynamodb create-table --table-name fetchbot-tflock --attribute-definitions AttributeName=LockID,AttributeType=S --key-schema AttributeName=LockID,KeyType=HASH --billing-mode PAY_PER_REQUEST --region us-east-1
+aws dynamodb create-table --table-name cansee-tflock --attribute-definitions AttributeName=LockID,AttributeType=S --key-schema AttributeName=LockID,KeyType=HASH --billing-mode PAY_PER_REQUEST --region us-east-1
 ```
 
 Then copy `backend.hcl.example` to `backend.hcl`, fill in the bucket
@@ -86,7 +86,7 @@ aws ec2 describe-route-tables --route-table-ids $(terraform output -raw private_
 from the app instance, enable pgvector:
 
 ```bash
-psql "host=$(terraform output -raw db_host) user=postgres dbname=growthpilot sslmode=require" -c "CREATE EXTENSION IF NOT EXISTS vector;"
+psql "host=$(terraform output -raw db_host) user=postgres dbname=cansee sslmode=require" -c "CREATE EXTENSION IF NOT EXISTS vector;"
 ```
 
 The connection must succeed from the EC2 instance and fail from

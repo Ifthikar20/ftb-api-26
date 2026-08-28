@@ -1,4 +1,4 @@
-"""ASGI config for GrowthPilot (Django Channels)."""
+"""ASGI config for Cansee (Django Channels)."""
 import os
 
 from django.core.asgi import get_asgi_application

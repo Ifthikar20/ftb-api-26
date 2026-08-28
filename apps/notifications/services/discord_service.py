@@ -8,7 +8,7 @@ import requests
 
 logger = logging.getLogger("apps")
 
-# FetchBot brand color
+# Cansee brand color
 BRAND_COLOR = 0x8b5cf6  # Purple
 
 DISCORD_API_BASE = "https://discord.com/api/v10"
@@ -41,7 +41,7 @@ class DiscordService:
             return False
 
         payload = {
-            "username": "FetchBot",
+            "username": "Cansee",
             "embeds": [_build_embed(
                 title=title, description=description,
                 fields=fields, footer=footer, color=color,

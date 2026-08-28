@@ -1,4 +1,5 @@
 """Advanced analytics API views."""
+from django.conf import settings
 from rest_framework import status
 from rest_framework.response import Response
 
@@ -7,27 +8,39 @@ from core.views import TenantScopedAPIView
 
 class ChartDataView(TenantScopedAPIView):
     def get(self, request, website_id):
-        self.get_website(website_id)
+        website = self.get_website(website_id)
+        from apps.analytics.api.v1.views import _external_slice
         from apps.analytics.services.daily_stats import DailyStatsService
         period = request.query_params.get("period", "30d")
+        external = _external_slice(website, "chart", period)
+        if external is not None:
+            return Response(external)
         data = DailyStatsService.get_chart_data(website_id=website_id, period=period)
         return Response(data)
 
 
 class DeviceBreakdownView(TenantScopedAPIView):
     def get(self, request, website_id):
-        self.get_website(website_id)
+        website = self.get_website(website_id)
+        from apps.analytics.api.v1.views import _external_slice
         from apps.analytics.services.daily_stats import DailyStatsService
         period = request.query_params.get("period", "30d")
+        external = _external_slice(website, "devices", period)
+        if external is not None:
+            return Response(external)
         data = DailyStatsService.get_device_breakdown(website_id=website_id, period=period)
         return Response(data)
 
 
 class CountryBreakdownView(TenantScopedAPIView):
     def get(self, request, website_id):
-        self.get_website(website_id)
+        website = self.get_website(website_id)
+        from apps.analytics.api.v1.views import _external_slice
         from apps.analytics.services.daily_stats import DailyStatsService
         period = request.query_params.get("period", "30d")
+        external = _external_slice(website, "countries", period)
+        if external is not None:
+            return Response(external)
         data = DailyStatsService.get_country_breakdown(website_id=website_id, period=period)
         return Response(data)
 
@@ -182,11 +195,15 @@ class LiveEventsView(TenantScopedAPIView):
         return Response(list(events))
 
 
-# Maximum window we ever serve from this endpoint. Mirrors the UI claim
-# in AnalyticsPage that we retain analytics + event logs for the most
-# recent six months. The pixel ingestion task already purges older
-# rows; this clamp is belt-and-suspenders.
-EVENT_LOG_RETENTION_DAYS = 180
+# Maximum window we ever serve from this endpoint, and the read half of the
+# retention promise on /what-we-track. The storage half is
+# apps.analytics.tasks.prune_analytics_events, driven by
+# settings.ANALYTICS_RETENTION_DAYS -- keep the two numbers equal.
+#
+# This previously claimed "the pixel ingestion task already purges older
+# rows". It did not: no purge existed anywhere, so this clamp was the only
+# thing making the six-month claim look true.
+EVENT_LOG_RETENTION_DAYS = settings.ANALYTICS_RETENTION_DAYS
 
 
 class EventLogView(TenantScopedAPIView):
@@ -364,12 +381,16 @@ class AnalyticsAccessLogView(TenantScopedAPIView):
 
         total = qs.count()
         offset = (page - 1) * page_size
-        rows = list(
-            qs.values(
-                "id", "user_email", "path", "method", "status_code",
-                "ip_address", "user_agent", "accessed_at",
+        # user_email comes from the FK, not a stored copy: the row itself
+        # holds no personal data, and a deleted user reads back as null
+        # here instead of leaving their address in the audit trail.
+        rows = [
+            {**row, "user_email": row.pop("user__email", None) or ""}
+            for row in qs.values(
+                "id", "user__email", "path", "method", "status_code",
+                "accessed_at",
             )[offset:offset + page_size]
-        )
+        ]
         return Response({
             "results": rows,
             "page": page,

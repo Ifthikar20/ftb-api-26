@@ -21,6 +21,7 @@ PATH_TIERS = {
     "/api/v1/auth/forgot-password": "sensitive",
     "/api/v1/auth/reset-password": "sensitive",
     "/api/v1/analytics/": "api",
+    "/api/v1/web-analytics/": "api",
     "/api/v1/track/": "default",  # pixel ingest has its own DRF throttle
 }
 

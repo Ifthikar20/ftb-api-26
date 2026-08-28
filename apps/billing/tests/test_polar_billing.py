@@ -286,15 +286,15 @@ class TestCheckoutView:
     def test_allowlisted_origin_is_honored(self):
         user = UserFactory(plan="starter")
         checkout = SimpleNamespace(id="co_1", url="https://x")
-        with override_settings(CORS_ALLOWED_ORIGINS=["https://app.fetchbot.io"]), patch.object(
+        with override_settings(CORS_ALLOWED_ORIGINS=["https://app.cansee.ai"]), patch.object(
             polar_client, "create_checkout", return_value=checkout
         ) as mock_create:
             self._client(user).post(
                 "/api/v1/billing/checkout/", {"plan": "pro"}, format="json",
-                HTTP_ORIGIN="https://app.fetchbot.io",
+                HTTP_ORIGIN="https://app.cansee.ai",
             )
         assert mock_create.call_args.kwargs["success_url"].startswith(
-            "https://app.fetchbot.io/billing?"
+            "https://app.cansee.ai/billing?"
         )
 
     @polar_configured

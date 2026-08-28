@@ -2,6 +2,7 @@ from datetime import timedelta
 from pathlib import Path
 
 import environ
+from django.core.exceptions import ImproperlyConfigured
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
@@ -62,9 +63,9 @@ LOCAL_APPS = [
     "apps.citations",
     "apps.brand_vault",
     "apps.content_studio",
-    "apps.agents",
     "apps.search_console",
     "apps.assistant",
+    "apps.web_analytics",
     # Stub app — kept only to satisfy historical lazy FK references
     # from analytics migrations. All tables are managed=False.
     "apps.leads",
@@ -211,7 +212,7 @@ ASGI_APPLICATION = "config.asgi.application"
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
-        "NAME": env("DB_NAME", default="growthpilot"),
+        "NAME": env("DB_NAME", default="cansee"),
         "USER": env("DB_USER", default="postgres"),
         "PASSWORD": env("DB_PASSWORD", default="postgres"),
         "HOST": env("DB_HOST", default="localhost"),
@@ -264,16 +265,51 @@ CELERY_TASK_SOFT_TIME_LIMIT = 240
 LLM_SCAN_MODE = env("LLM_SCAN_MODE", default="celery")
 
 # ── SECURITY ──
-SECURE_SSL_REDIRECT = True
-SECURE_HSTS_SECONDS = 31536000
-SECURE_HSTS_INCLUDE_SUBDOMAINS = True
-SECURE_HSTS_PRELOAD = True
+#
+# PUBLIC_SCHEME is the single switch for "is this deployment reachable over
+# TLS or not". It defaults to "https", so an unset environment gets the safe
+# behaviour and a plaintext deployment has to be asked for explicitly.
+#
+# Everything TLS-dependent is derived from it rather than being six separate
+# booleans, because the failure mode of setting them inconsistently is
+# vicious: leave the cookies Secure on a plaintext host and the browser
+# silently discards them, so login returns 200 and then the session dies on
+# the next page load. Deriving them together makes that combination
+# unreachable.
+#
+# The plaintext mode exists for deployments reached by bare IP, where no
+# certificate authority will issue a certificate. It is not a preference --
+# core.checks.check_public_scheme refuses to let it ship alongside a real
+# hostname. When a domain is added, set PUBLIC_SCHEME=https (or unset it) and
+# nothing else changes.
+PUBLIC_SCHEME = env("PUBLIC_SCHEME", default="https").strip().lower()
+if PUBLIC_SCHEME not in ("http", "https"):
+    raise ImproperlyConfigured(
+        f"PUBLIC_SCHEME must be 'http' or 'https', got {PUBLIC_SCHEME!r}."
+    )
+_TLS = PUBLIC_SCHEME == "https"
+
+SECURE_SSL_REDIRECT = _TLS
+# HSTS over plaintext is not merely useless, it is a trap: a browser that
+# ever honoured it would refuse the http:// origin afterwards. Zero disables
+# the header entirely.
+SECURE_HSTS_SECONDS = 31536000 if _TLS else 0
+SECURE_HSTS_INCLUDE_SUBDOMAINS = _TLS
+SECURE_HSTS_PRELOAD = _TLS
 SECURE_CONTENT_TYPE_NOSNIFF = True
 SECURE_BROWSER_XSS_FILTER = True
-SESSION_COOKIE_SECURE = True
+# The Secure attribute is what makes a cookie undeliverable over http://.
+SESSION_COOKIE_SECURE = _TLS
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = "Lax"
-CSRF_COOKIE_SECURE = True
+CSRF_COOKIE_SECURE = _TLS
+# /health/ must answer 200 over plain HTTP, not redirect. The container
+# healthcheck and the deploy smoke test both curl it from inside the box on
+# http://localhost:8000/, where no proxy header is set -- so with
+# SECURE_SSL_REDIRECT on, Django 301s them. `curl -sf` does not fail on a
+# 3xx and does not follow it, which means the web container has been
+# reporting healthy on a redirect rather than on a working app.
+SECURE_REDIRECT_EXEMPT = [r"^health/"]
 X_FRAME_OPTIONS = "DENY"
 # Keep users signed in across tabs / browser restarts. The cookie lives
 # for 30 days, and SAVE_EVERY_REQUEST slides the expiry forward on every
@@ -314,6 +350,13 @@ USE_TZ = True
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # ── FIELD ENCRYPTION ──
+# Database hosts on private infrastructure that are allowed to run without
+# enforced TLS. Loopback, Unix sockets and single-label container hostnames
+# (DB_HOST=db) are recognised automatically -- this is only needed for a
+# dotted name that is nonetheless private, e.g. a VPC-internal DNS record.
+# Consumed by core.checks.check_database_ssl (deploy check only).
+DB_TRUSTED_HOSTS = env.list("DB_TRUSTED_HOSTS", default=[])
+
 FIELD_ENCRYPTION_KEY = env("FIELD_ENCRYPTION_KEY", default="")
 # When true, EncryptedTextField refuses to read or write plaintext if the key
 # is missing (fail closed) and a Django system check errors at startup. Left
@@ -384,14 +427,41 @@ POLAR_EVENT_NAME = "llm_usage"
 # the floor protects the audit-cost preflight's historical averages.
 AI_USAGE_RETENTION_DAYS = env.int("AI_USAGE_RETENTION_DAYS", default=400)
 
-# ── Ask FetchBot assistant ──
+# ── Data retention ──────────────────────────────────────────────────
+# Single source of truth for how long each table is kept. These numbers are
+# published to customers on /what-we-track, so changing one here means
+# changing the copy there too — they are a representation, not a default.
+#
+# Enforced by apps.analytics.tasks.prune_analytics_events (beat: nightly).
+# Before this existed the 180-day figure was only a READ clamp in
+# analytics_views.EVENT_LOG_RETENTION_DAYS; rows were never actually deleted.
+ANALYTICS_RETENTION_DAYS = env.int("ANALYTICS_RETENTION_DAYS", default=180)
+# Which account read which website's analytics, and when. Shorter window than
+# the analytics itself: it is a security trail, not product data. Holds no
+# personal data of its own -- migration analytics/0013 dropped the
+# denormalised email/IP/user-agent columns, so identity is the user FK alone.
+ACCESS_LOG_RETENTION_DAYS = env.int("ACCESS_LOG_RETENTION_DAYS", default=90)
+# Stored LLM answers and their extracted citations. Long by design — the
+# verbatim record of what a model said on a given date is a product feature —
+# but bounded, so storage limitation is satisfiable.
+LLM_RESULT_RETENTION_DAYS = env.int("LLM_RESULT_RETENTION_DAYS", default=730)
+# Brand-security findings history.
+SAFETY_ALERT_RETENTION_DAYS = env.int("SAFETY_ALERT_RETENTION_DAYS", default=730)
+
+# Hard ceiling for Google-provider rows when Gemini runs in grounded mode.
+# Gemini's additional terms permit storing the text of Grounded Results for
+# thirty days only (and exclude the links entirely), so LLM_RESULT_RETENTION_DAYS
+# must not apply to those rows. See effective_llm_result_retention_days().
+GROUNDED_RESULT_MAX_RETENTION_DAYS = 30
+
+# ── Ask Cansee assistant ──
 # The header side-panel chat plus (eventually) the Slack/Discord ask
 # path. The kill switch exists so a misbehaving provider can be taken
 # out of rotation without a deploy; the message is what users see.
 ASSISTANT_ENABLED = env.bool("ASSISTANT_ENABLED", default=True)
 ASSISTANT_MAINTENANCE_MESSAGE = env(
     "ASSISTANT_MAINTENANCE_MESSAGE",
-    default="Ask FetchBot is temporarily unavailable.",
+    default="Ask Cansee is temporarily unavailable.",
 )
 
 # ── RAG vector index (optional) ──
@@ -436,6 +506,17 @@ X_BEARER_TOKEN = env("X_BEARER_TOKEN", default="")  # X (Twitter) API for trendi
 TWITTER_BEARER_TOKEN = env("TWITTER_BEARER_TOKEN", default=X_BEARER_TOKEN)
 FEATURE_X_SCANNER = env.bool("FEATURE_X_SCANNER", default=False)
 SERPAPI_KEY = env("SERPAPI_KEY", default="")
+
+# Brand Research community lane (Reddit search). Unauthenticated public
+# endpoint, so it has no key to gate on and can be rate-limited or blocked
+# without warning. This is the operator switch for turning it off without a
+# deploy; the lane then reports as skipped rather than failing the scan.
+BRAND_RESEARCH_COMMUNITY_ENABLED = env.bool("BRAND_RESEARCH_COMMUNITY_ENABLED", default=True)
+
+# Brand Research AI-engine lane. One LLM call per configured provider per
+# scan, so this is the most expensive part of a scan and the first thing to
+# turn off under cost pressure. Off means the lane reports as skipped.
+BRAND_RESEARCH_ENGINES_ENABLED = env.bool("BRAND_RESEARCH_ENGINES_ENABLED", default=True)
 
 # ── OpenClaw AI Agent ──
 OPENCLAW_GATEWAY_URL = env("OPENCLAW_GATEWAY_URL", default="")
@@ -525,6 +606,36 @@ GSC_PROMPT_MIN_IMPRESSIONS = env.int("GSC_PROMPT_MIN_IMPRESSIONS", default=10)
 # Prompt-library feed: max queries considered per website per sync.
 GSC_PROMPT_TOP_N = env.int("GSC_PROMPT_TOP_N", default=50)
 
+# ── Web Analytics external sources (apps.web_analytics) ──
+# Read-only traffic sources connected per website: the client's own GA4
+# property (OAuth via the "ga" registry entry, same Google client as GSC),
+# a Cansee-owned GA4 pool property behind our hosted Google tag, and
+# tenant-supplied Cloudflare zone tokens. Raw analytics rows are never
+# stored — endpoints serve short-lived Redis snapshots (read-through,
+# fetched only while a dashboard is open).
+WEB_ANALYTICS_ENABLED = env.bool("WEB_ANALYTICS_ENABLED", default=True)
+GA4_OAUTH_REDIRECT_URI = env(
+    "GA4_OAUTH_REDIRECT_URI",
+    default="http://localhost:8000/api/v1/web-analytics/ga4/oauth/callback/",
+)
+# Seconds a GA4 realtime snapshot is served from cache before re-fetching.
+# At the frontend's 30s poll this costs at most ~480 API requests/hr per
+# open dashboard vs Google's 40k tokens/hr/property realtime budget.
+GA4_SNAPSHOT_TTL_SECONDS = env.int("GA4_SNAPSHOT_TTL_SECONDS", default=25)
+# Hard cap on each upstream Google Analytics request (inline in a sync
+# worker, so this bounds the worst-case request latency).
+GA4_FETCH_TIMEOUT_SECONDS = env.float("GA4_FETCH_TIMEOUT_SECONDS", default=6.0)
+# Per-website daily cap on Analytics Data/Admin API calls.
+GA4_DAILY_API_LIMIT_PER_WEBSITE = env.int("GA4_DAILY_API_LIMIT_PER_WEBSITE", default=15000)
+# Hosted Google tag: service-account key JSON (single line) with Editor
+# access to the pool property below. Both unset = hosted source hidden.
+GA4_SA_CREDENTIALS_JSON = env("GA4_SA_CREDENTIALS_JSON", default="")
+GA4_HOSTED_PROPERTY_ID = env("GA4_HOSTED_PROPERTY_ID", default="")
+# Cloudflare zone snapshots: edge data lags 1-5 minutes anyway, so a
+# longer TTL; the GraphQL budget (~300 queries/5min) is never a factor.
+CLOUDFLARE_SNAPSHOT_TTL_SECONDS = env.int("CLOUDFLARE_SNAPSHOT_TTL_SECONDS", default=120)
+CLOUDFLARE_FETCH_TIMEOUT_SECONDS = env.float("CLOUDFLARE_FETCH_TIMEOUT_SECONDS", default=10.0)
+
 # ── Social Leads (Facebook, LinkedIn, X) ──
 FACEBOOK_APP_ID = env("FACEBOOK_APP_ID", default="")
 FACEBOOK_APP_SECRET = env("FACEBOOK_APP_SECRET", default="")
@@ -536,7 +647,21 @@ TIKTOK_APP_SECRET = env("TIKTOK_APP_SECRET", default="")
 # Beta gate — set SIGNUPS_ENABLED=true in env to re-enable public registration.
 SIGNUPS_ENABLED = env.bool("SIGNUPS_ENABLED", default=False)
 
-DEFAULT_FROM_EMAIL = env("SERVER_EMAIL", default="noreply@growthpilot.io")
+# ── ADMIN PATH ──
+# Where Django admin is mounted. Defaults to "admin/" so development and the
+# test suite are unchanged; production sets ADMIN_URL to an unguessable path.
+#
+# This is noise reduction, not access control. /admin/ is among the most
+# scanned paths on the internet, and with django-axes locking an account
+# after 5 failures, a bot spraying `admin` at the default path can lock out
+# a real user. Moving it means the failed logins left in the log are worth
+# investigating. It does NOT protect against anyone who learns the path.
+#
+# Normalised so ADMIN_URL=secret, /secret and secret/ all behave the same --
+# Django's path() requires no leading slash and a trailing one.
+ADMIN_URL = env("ADMIN_URL", default="admin/").strip().strip("/") + "/"
+
+DEFAULT_FROM_EMAIL = env("SERVER_EMAIL", default="noreply@cansee.ai")
 
 # ── LOGGING ──
 LOGGING = {
@@ -578,7 +703,7 @@ LOGGING = {
 
 # ── DRF SPECTACULAR ──
 SPECTACULAR_SETTINGS = {
-    "TITLE": "GrowthPilot API",
+    "TITLE": "Cansee API",
     "DESCRIPTION": "AI-powered growth intelligence platform API",
     "VERSION": "1.0.0",
     "SERVE_INCLUDE_SCHEMA": False,

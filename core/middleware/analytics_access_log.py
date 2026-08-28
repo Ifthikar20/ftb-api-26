@@ -16,11 +16,16 @@ Design choices:
   - Best-effort: a failure to write the log never breaks the response. The
     customer's dashboard must not 500 because the audit insert hiccuped.
   - Skips the access-log read endpoint itself to avoid recursion / noise.
+  - Stores no personal data. The row records the user FOREIGN KEY, not a
+    copy of their email, IP address or user agent. Identity is resolved by
+    joining when the trail is read, so deleting a user erases them from
+    every historical row rather than leaving denormalized copies behind.
 """
 from __future__ import annotations
 
 import logging
 import re
+import uuid
 
 logger = logging.getLogger("apps")
 
@@ -58,23 +63,26 @@ class AnalyticsAccessLogMiddleware:
             return
 
         from apps.analytics.models import AnalyticsAccessLog
-        from apps.websites.models import Website
 
         wid = m.group("wid")
-        website = Website.objects.filter(id=wid).only("id").first()
 
-        xff = request.META.get("HTTP_X_FORWARDED_FOR", "")
-        ip = xff.split(",")[0].strip() if xff else request.META.get("REMOTE_ADDR", "")
+        # Assign the FK by id rather than fetching the Website first: this
+        # runs on every dashboard read, and the row is only reached on a 2xx
+        # from a tenant-scoped view, which already proved the website exists
+        # and belongs to the caller. Saves one query per request. A
+        # non-UUID segment cannot satisfy the FK, so it is left null and
+        # website_id_raw carries the original value.
+        try:
+            website_id = uuid.UUID(str(wid))
+        except (ValueError, AttributeError, TypeError):
+            website_id = None
 
         AnalyticsAccessLog.objects.create(
             user=user,
-            user_email=getattr(user, "email", "") or "",
-            website=website,
+            website_id=website_id,
             website_id_raw=str(wid)[:64],
             path=path[:300],
             method=request.method,
             status_code=response.status_code,
-            ip_address=(ip or "")[:64],
-            user_agent=request.META.get("HTTP_USER_AGENT", "")[:400],
             request_id=str(getattr(request, "request_id", ""))[:64],
         )

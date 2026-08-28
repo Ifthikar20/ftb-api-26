@@ -7,7 +7,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     environment:
-      POSTGRES_DB: ${DB_NAME:-growthpilot}
+      POSTGRES_DB: ${DB_NAME:-cansee}
       POSTGRES_USER: ${DB_USER:-postgres}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
     command: >
@@ -56,7 +56,7 @@ services:
     env_file: ../.env.prod
     environment:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
-      OPENCLAW_AUTH_TOKEN: ${OPENCLAW_AUTH_TOKEN:-fetchbot-openclaw-token}
+      OPENCLAW_AUTH_TOKEN: ${OPENCLAW_AUTH_TOKEN:-cansee-openclaw-token}
     volumes:
       - openclaw_data:/home/user/.openclaw
     deploy:
@@ -130,7 +130,7 @@ services:
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/1
       OPENCLAW_GATEWAY_URL: http://openclaw:18789
-      OPENCLAW_AUTH_TOKEN: ${OPENCLAW_AUTH_TOKEN:-fetchbot-openclaw-token}
+      OPENCLAW_AUTH_TOKEN: ${OPENCLAW_AUTH_TOKEN:-cansee-openclaw-token}
     depends_on:
       db:
         condition: service_healthy
@@ -187,14 +187,23 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./nginx/nginx.prod.conf:/etc/nginx/nginx.conf:ro
+      # NGINX_CONF selects the deployment mode: nginx.prod.conf (default,
+      # domain + TLS) or nginx.http.conf (bare IP, plaintext). It must agree
+      # with PUBLIC_SCHEME in .env.prod -- core.checks.check_public_scheme
+      # enforces that at deploy time.
+      #
+      # This interpolates from docker/.env (the compose project directory),
+      # NOT from .env.prod: `env_file:` only populates the container's
+      # environment, while ${...} in the compose file is resolved from the
+      # shell and the project-directory .env before the file is parsed.
+      - ./nginx/${NGINX_CONF:-nginx.prod.conf}:/etc/nginx/nginx.conf:ro
       - ./nginx/pixel:/etc/nginx/pixel:ro
       # Error and maintenance pages, served when Django is down (502/504)
       # or the maintenance flag file exists (503). See nginx.prod.conf.
       - ./nginx/errors:/etc/nginx/errors:ro
       - static_files:/static:ro
       - frontend_dist:/usr/share/nginx/html:ro
-      - /opt/fetchbot/ssl:/etc/nginx/ssl:ro
+      - /opt/cansee/ssl:/etc/nginx/ssl:ro
     depends_on:
       - web
       - frontend

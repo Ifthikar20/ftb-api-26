@@ -1,5 +1,5 @@
 ---
-description: UI design rules and conventions for all FetchBot frontend changes
+description: UI design rules and conventions for all Cansee frontend changes
 ---
 
 # UI Design Rules

@@ -296,22 +296,6 @@ def content_lines(user, website) -> list[str]:
     return out
 
 
-# ── Agents ───────────────────────────────────────────────────────────
-
-def agents_lines(user, website) -> list[str]:
-    from apps.agents.models import AgentInsight, HiredAgent
-
-    hired = list(HiredAgent.objects.filter(website=website, user=user, is_active=True))
-    if not hired:
-        return ["No agents are hired for this website."]
-    out = [f"Hired agents: {', '.join(h.agent_key for h in hired)}."]
-    for ins in (
-        AgentInsight.objects.filter(hired_agent__in=hired).order_by("-created_at")[:5]
-    ):
-        out.append(f"- {ins.created_at:%Y-%m-%d} {(ins.title or '')[:110]}")
-    return out
-
-
 # ── AI usage / billing ───────────────────────────────────────────────
 
 def usage_lines(user, website) -> list[str]:
@@ -397,9 +381,6 @@ PROVIDERS: tuple[ContextProvider, ...] = (
     )),
     ContextProvider("content", "CONTENT BRIEFS", content_lines, keywords=(
         "content", "brief", "draft", "article", "blog", "write", "gap",
-    )),
-    ContextProvider("agents", "AGENTS", agents_lines, keywords=(
-        "agent", "agents", "insight", "recommendation", "hired",
     )),
     ContextProvider("usage", "AI USAGE", usage_lines, default=True, keywords=(
         "usage", "token", "cost", "spend", "bill", "billing", "plan",

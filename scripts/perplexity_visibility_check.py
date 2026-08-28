@@ -5,14 +5,14 @@ For each query, asks the Perplexity Search API for the top results and
 records where (if anywhere) the target domain ranks. Summarizes
 coverage, average rank, and every URL of the domain that surfaced.
 This measures Perplexity's own index and ranking, which is one of the
-AI engines FetchBot tracks; it is not Google's ranking.
+AI engines Cansee tracks; it is not Google's ranking.
 
 Usage:
-  python scripts/perplexity_visibility_check.py fetchbot.ai \
+  python scripts/perplexity_visibility_check.py cansee.ai \
       "ai visibility tools" "how to rank in chatgpt answers" "geo marketing software"
 
-  python scripts/perplexity_visibility_check.py fetchbot.ai --queries-file queries.txt
-  python scripts/perplexity_visibility_check.py fetchbot.ai "ai seo tools" --json
+  python scripts/perplexity_visibility_check.py cansee.ai --queries-file queries.txt
+  python scripts/perplexity_visibility_check.py cansee.ai "ai seo tools" --json
 
 Reads PERPLEXITY_API_KEY from the shell env or the repo .env file.
 """
@@ -54,7 +54,7 @@ def main():
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    parser.add_argument("domain", help="Target domain to measure, e.g. fetchbot.ai")
+    parser.add_argument("domain", help="Target domain to measure, e.g. cansee.ai")
     parser.add_argument("queries", nargs="*", help="Queries to test the domain against.")
     parser.add_argument("--queries-file", default="", help="File with one query per line.")
     parser.add_argument("--num", type=int, default=10, help="Results to inspect per query (default 10).")

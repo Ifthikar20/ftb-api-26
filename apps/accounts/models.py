@@ -195,6 +195,9 @@ class AITokenUsage(TimestampMixin):
         ("rag", "RAG / Embeddings"),
         ("onboarding", "Onboarding scan"),
         ("prompt_library", "Prompt Library"),
+        # The agents app was removed 2026-08-24; the choice stays (label
+        # unchanged, so no migration) because historical AITokenUsage
+        # rows still carry module="agents".
         ("agents", "Hired Agents"),
         ("brand_vault", "Brand Vault"),
         ("brand_security", "Brand Security"),
@@ -202,6 +205,7 @@ class AITokenUsage(TimestampMixin):
         ("notifications", "Notifications / Chat"),
         ("source_sentiment", "Source Sentiment"),
         ("source_relevance", "Source Relevance"),
+        ("brand_research", "Brand Research"),
     ]
 
     PROVIDER_CHOICES = [

@@ -71,7 +71,7 @@ class TestSecurityAlertProducer:
             issue=SafetyAlert.ISSUE_HALLUCINATION,
             severity=SafetyAlert.SEVERITY_HIGH,
             status=SafetyAlert.STATUS_OPEN,
-            model="claude", prompt_text="Does FetchBot have a free tier?",
+            model="claude", prompt_text="Does Cansee have a free tier?",
             detail="No free tier is offered.",
         )
         with patch(EMBED, side_effect=_fake_embed):

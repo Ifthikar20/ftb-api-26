@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ════════════════════════════════════════════════════════════════════
-#  FetchBot — Postgres backup to S3.
+#  Cansee — Postgres backup to S3.
 #
 #  Runs ON the EC2 host (not over SSH). Wired to cron every 6h.
 #
@@ -22,7 +22,7 @@
 #
 #  Optional environment:
 #    BACKUP_S3_PREFIX     key prefix           (default: postgres)
-#    DB_NAME              database             (default: growthpilot)
+#    DB_NAME              database             (default: cansee)
 #    DB_USER              role                 (default: postgres)
 #    DB_HOST              set to dump a REMOTE server (e.g. RDS)
 #                         instead of the local `db` container
@@ -48,7 +48,7 @@ REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 COMPOSE_FILE="${COMPOSE_FILE:-docker/docker-compose.prod.yml}"
 BACKUP_S3_BUCKET="${BACKUP_S3_BUCKET:-}"
 BACKUP_S3_PREFIX="${BACKUP_S3_PREFIX:-postgres}"
-DB_NAME="${DB_NAME:-growthpilot}"
+DB_NAME="${DB_NAME:-cansee}"
 DB_USER="${DB_USER:-postgres}"
 DB_HOST="${DB_HOST:-}"
 BACKUP_TMPDIR="${BACKUP_TMPDIR:-/var/tmp}"
@@ -101,7 +101,7 @@ cmd_backup() {
   local ts key tmp size
   ts="$(stamp)"
   key="${BACKUP_S3_PREFIX}/${DB_NAME}-${ts}.dump"
-  tmp="${BACKUP_TMPDIR}/fetchbot-backup-${ts}.dump"
+  tmp="${BACKUP_TMPDIR}/cansee-backup-${ts}.dump"
 
   # Always clean up the local dump, including on failure — the box has
   # limited disk and deploy.sh already warns under 5 GB free.
@@ -176,8 +176,8 @@ cmd_verify() {
   [[ -n "$key" ]] || die "no backups found under ${BACKUP_S3_PREFIX}/"
   [[ "$key" == */* ]] || key="${BACKUP_S3_PREFIX}/${key}"
 
-  tmp="${BACKUP_TMPDIR}/fetchbot-verify-$$.dump"
-  cname="fetchbot-verify-$$"
+  tmp="${BACKUP_TMPDIR}/cansee-verify-$$.dump"
+  cname="cansee-verify-$$"
 
   cleanup_verify() {
     docker rm -f "$cname" >/dev/null 2>&1 || true
@@ -243,7 +243,7 @@ cmd_restore() {
   [[ -n "$DB_HOST" ]] \
     || die "refusing to restore without an explicit DB_HOST target."
 
-  local tmp="${BACKUP_TMPDIR}/fetchbot-restore-$$.dump"
+  local tmp="${BACKUP_TMPDIR}/cansee-restore-$$.dump"
   trap '[[ -f "$tmp" ]] && rm -f "$tmp"' EXIT
 
   printf "\n%s%sThis OVERWRITES %s on %s.%s\n" "$Y" "$B" "$DB_NAME" "$DB_HOST" "$N"

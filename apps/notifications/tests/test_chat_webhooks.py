@@ -76,7 +76,7 @@ def _slash_payload(guild_id: str, subcommand: str = "report",
         "guild_id": guild_id,
         "channel_id": "42",
         "member": {"user": {"username": "tester"}},
-        "data": {"name": "fetchbot", "options": [option]},
+        "data": {"name": "cansee", "options": [option]},
     }
 
 

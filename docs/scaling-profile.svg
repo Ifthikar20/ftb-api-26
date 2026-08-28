@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 880" width="1180" height="880" role="img" aria-label="How FetchBot behaves at one user, five hundred active users, and ten thousand active users. The same five-layer stack is shown at each load level with the binding constraint and required changes.">
-  <title>FetchBot — load profile at 1, 500 and 10,000 users</title>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 880" width="1180" height="880" role="img" aria-label="How Cansee behaves at one user, five hundred active users, and ten thousand active users. The same five-layer stack is shown at each load level with the binding constraint and required changes.">
+  <title>Cansee — load profile at 1, 500 and 10,000 users</title>
   <desc>At 1 user the constraint is the external LLM API. At 500 the constraint is gunicorn --workers 2 and celery --concurrency 2. At 10,000 the web tier is roughly fifty times over capacity.</desc>
 
   <defs>

@@ -35,31 +35,41 @@ PROVIDERS: dict[str, type[LLMProvider]] = {
 # Adding a model here exposes it in the Model Test picker. Removing one
 # does not break historical runs (results store the model_id verbatim).
 MODEL_VARIANTS: dict[str, list[tuple[str, str, bool]]] = {
+    # Refreshed 2026-08-24 against each vendor's live /models listing
+    # (OpenAI + Anthropic verified via API; Gemini/xAI dev keys are
+    # invalid, so those entries follow the vendors' published catalogs).
+    # Defaults match each provider class's default model so a prompt with
+    # no explicit selection scans exactly as before.
     "claude": [
-        ("Sonnet 4.5", "claude-sonnet-4-5-20250929", False),
-        ("Sonnet 4",   "claude-sonnet-4-20250514",   True),
-        ("Opus 4.1",   "claude-opus-4-1-20250805",   False),
-        ("Haiku 4.5",  "claude-haiku-4-5-20251001",  False),
+        ("Haiku 4.5",       "claude-haiku-4-5", True),
+        ("Claude Sonnet 5", "claude-sonnet-5",  False),
+        ("Claude Opus 5",   "claude-opus-5",    False),
+        ("Claude Fable 5",  "claude-fable-5",   False),
     ],
     "gpt4": [
-        ("GPT-4o",      "gpt-4o",       False),
-        ("GPT-4o mini", "gpt-4o-mini",  True),
-        ("GPT-4 Turbo", "gpt-4-turbo",  False),
+        ("GPT-4o mini",       "gpt-4o-mini",   True),
+        ("GPT-5.6 Terra",     "gpt-5.6-terra", False),
+        ("GPT-5.6 Sol",       "gpt-5.6-sol",   False),
+        ("GPT-5.6 Luna",      "gpt-5.6-luna",  False),
+        ("GPT-5.5",           "gpt-5.5",       False),
+        ("GPT-4o",            "gpt-4o",        False),
     ],
     "gemini": [
-        ("Gemini 1.5 Pro",   "gemini-1.5-pro",   False),
-        ("Gemini 1.5 Flash", "gemini-1.5-flash", True),
-        ("Gemini 2.0 Flash", "gemini-2.0-flash", False),
+        ("Gemini 2.5 Flash",       "gemini-2.5-flash",       True),
+        ("Gemini 3.7 Flash",       "gemini-3.7-flash",       False),
+        ("Gemini 3.5 Flash",       "gemini-3.5-flash",       False),
+        ("Gemini 3.1 Pro Preview", "gemini-3.1-pro-preview", False),
     ],
     "perplexity": [
-        # Perplexity retired the llama-3.1-sonar-* family in early 2025;
-        # the replacements are plain "sonar" / "sonar-pro".
         ("Sonar (web)", "sonar", True),
         ("Sonar Pro (web)", "sonar-pro", False),
+        ("Sonar Reasoning Pro", "sonar-reasoning-pro", False),
     ],
     "grok": [
-        ("Grok 4", "grok-4", True),
-        ("Grok 3", "grok-3", False),
+        ("Grok 4",        "grok-4",        True),
+        ("Grok 4.6",      "grok-4.6",      False),
+        ("Grok 4.5",      "grok-4.5",      False),
+        ("Grok 4.1 Fast", "grok-4.1-fast", False),
     ],
     # DeepSeek is excluded from the main audit registry (PROVIDERS) but
     # surfaced in the Model Test picker because it's a cheap, useful

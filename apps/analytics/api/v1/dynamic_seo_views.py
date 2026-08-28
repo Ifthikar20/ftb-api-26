@@ -20,7 +20,7 @@ logger = logging.getLogger("apps")
 
 class SEOScriptView(View):
     """
-    Serve the COMBINED FetchBot script — analytics tracking + SEO optimizer.
+    Serve the COMBINED Cansee script — analytics tracking + SEO optimizer.
     Single JS file, single <script> tag. Public endpoint.
     """
 
@@ -39,11 +39,11 @@ class SEOScriptView(View):
   'use strict';
 
   /* ═══════════════════════════════════════════════
-     FetchBot v1.0 — Analytics + SEO Optimizer
+     Cansee v1.0 — Analytics + SEO Optimizer
      Single script: visitor tracking + SEO auto-fix
      ═══════════════════════════════════════════════ */
 
-  var FB = window.FetchBot = window.FetchBot || {{}};
+  var FB = window.Cansee = window.Cansee || {{}};
   FB.siteId   = '{website_id}';
   FB.pixelKey = '{pixel_key}';
   FB.api      = '{api_base}';
@@ -386,7 +386,7 @@ class SEOEmbedCodeView(APIView):
         script_url = request.build_absolute_uri(f"/api/v1/analytics/{website_id}/seo-script/")
 
         embed_code = (
-            f'<!-- FetchBot — Analytics + SEO Optimizer -->\n'
+            f'<!-- Cansee — Analytics + SEO Optimizer -->\n'
             f'<script src="{script_url}" data-site="{website_id}" defer></script>'
         )
 

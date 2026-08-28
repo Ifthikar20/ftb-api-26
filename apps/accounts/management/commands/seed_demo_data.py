@@ -29,10 +29,10 @@ class Command(BaseCommand):
         from apps.accounts.models import User
 
         admin, _ = User.objects.get_or_create(
-            email="admin@growthpilot.io",
+            email="admin@cansee.ai",
             defaults={
                 "full_name": "Admin User",
-                "company_name": "GrowthPilot",
+                "company_name": "Cansee",
                 "is_staff": True,
                 "is_superuser": True,
                 "is_email_verified": True,
@@ -53,7 +53,7 @@ class Command(BaseCommand):
         demo.save()
 
         self.stdout.write(self.style.SUCCESS(
-            "  ✓ admin@growthpilot.io / AdminPass123!"
+            "  ✓ admin@cansee.ai / AdminPass123!"
         ))
         self.stdout.write(self.style.SUCCESS(
             "  ✓ demo@example.com  / DemoPass123!"

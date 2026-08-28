@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Handles all authentication, user management, and organization/team features for FetchBot. This is the identity layer — every other app depends on it for user context and permissions.
+Handles all authentication, user management, and organization/team features for Cansee. This is the identity layer — every other app depends on it for user context and permissions.
 
 ## Architecture
 

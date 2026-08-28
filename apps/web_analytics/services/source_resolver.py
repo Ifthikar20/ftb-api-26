@@ -1,0 +1,145 @@
+"""
+Dashboard data-source resolver: "the dashboard shows whichever source
+the website actually has."
+
+Precedence per website:
+  1. Pixel — if ANY pixel event exists, the pixel pipeline serves and
+     this module stays out of the way entirely (richest data, incl. AI
+     attribution). Checked cheaply and cached for a minute.
+  2. GA4 — connected property, served via ga4_dashboard.
+  3. Cloudflare — connected zone, served via cloudflare_dashboard.
+  4. None — the pixel views return their normal zeros.
+
+The six Overview endpoints in apps/analytics call dashboard_slice() at
+the top of their handlers; a None return means "proceed with the pixel
+path". One bundle is built per (source, website, period) and cached
+read-through (snapshots.get_or_fetch), so the frontend's six parallel
+requests cost at most one upstream build.
+"""
+
+from __future__ import annotations
+
+import logging
+
+from django.conf import settings
+from django.core.cache import cache
+
+from apps.web_analytics.services import (
+    cloudflare_dashboard,
+    ga4_dashboard,
+    snapshots,
+)
+
+logger = logging.getLogger("apps")
+
+PIXEL_CHECK_TTL_SECONDS = 60
+
+SLICES = ("overview", "chart", "pages", "sources", "devices", "countries")
+
+
+def _feature_enabled() -> bool:
+    return bool(getattr(settings, "WEB_ANALYTICS_ENABLED", True))
+
+
+def _pixel_has_data(website_id) -> bool:
+    """True when the website has ever ingested a pixel event (cached)."""
+    key = f"wa:haspixel:{website_id}"
+    try:
+        cached = cache.get(key)
+    except Exception:
+        cached = None
+    if cached is not None:
+        return bool(cached)
+
+    from apps.analytics.models import PageEvent
+
+    has_data = PageEvent.objects.filter(website_id=website_id).exists()
+    try:
+        # Once the pixel starts sending, that answer is stable — cache
+        # the positive longer than the negative.
+        cache.set(key, has_data, 3600 if has_data else PIXEL_CHECK_TTL_SECONDS)
+    except Exception:
+        pass
+    return has_data
+
+
+def _active_source(website):
+    """('ga4'|'cloudflare', Integration) for the best connected source,
+    or (None, None)."""
+    from apps.websites.models import Integration
+
+    integrations = {
+        i.type: i
+        for i in Integration.objects.filter(
+            website=website, type__in=("ga", "cloudflare"), is_active=True
+        )
+    }
+
+    ga = integrations.get("ga")
+    if ga is not None and (ga.metadata or {}).get("property_id") and (
+        ga.access_token or ga.refresh_token
+    ):
+        return "ga4", ga
+
+    cf = integrations.get("cloudflare")
+    if cf is not None and cf.access_token and (cf.metadata or {}).get("zone_id"):
+        return "cloudflare", cf
+
+    return None, None
+
+
+def _fetch_ga4(website, integration, period):
+    if integration.needs_token_refresh():
+        from apps.web_analytics.services import ga4_oauth
+
+        try:
+            ga4_oauth.refresh_access_token(integration)
+        except Exception as exc:
+            logger.warning("GA4 inline token refresh failed: %s", exc)
+    if not integration.is_active or not integration.access_token:
+        return None
+    return ga4_dashboard.build_bundle(
+        integration.access_token,
+        (integration.metadata or {})["property_id"],
+        period=period,
+        website_id=str(website.id),
+    )
+
+
+def _fetch_cloudflare(website, integration, period):
+    metadata = integration.metadata or {}
+    return cloudflare_dashboard.build_bundle(
+        integration.access_token,
+        metadata["zone_id"],
+        period=period,
+        zone_name=metadata.get("zone_name") or "",
+    )
+
+
+def dashboard_slice(website, slice_name: str, period: str):
+    """External-source payload for one Overview endpoint, or None when
+    the pixel path should serve (pixel has data, nothing connected,
+    feature off, unknown slice, or the external build failed with no
+    stale copy)."""
+    if slice_name not in SLICES or not _feature_enabled():
+        return None
+    if _pixel_has_data(website.id):
+        return None
+
+    source, integration = _active_source(website)
+    if source is None:
+        return None
+
+    if source == "ga4":
+        ttl = 30 if period in ga4_dashboard.REALTIME_PERIODS else 300
+        fetch = lambda: _fetch_ga4(website, integration, period)  # noqa: E731
+    else:
+        ttl = int(getattr(settings, "CLOUDFLARE_SNAPSHOT_TTL_SECONDS", 120))
+        fetch = lambda: _fetch_cloudflare(website, integration, period)  # noqa: E731
+
+    bundle = snapshots.get_or_fetch(
+        f"dash:{source}:{period}", website.id, fetch, ttl=ttl
+    )
+    if not isinstance(bundle, dict) or bundle.get("pending"):
+        return None
+    return bundle.get(slice_name)

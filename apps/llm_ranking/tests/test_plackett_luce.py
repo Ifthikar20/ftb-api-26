@@ -58,12 +58,12 @@ class TestRankingsFromResults:
                 {"name": "Heap", "position": 3},
             ],
         )]
-        rankings = rankings_from_results(results, target_name="FetchBot")
-        assert rankings == [["Mixpanel", "FetchBot", "Heap"]]
+        rankings = rankings_from_results(results, target_name="Cansee")
+        assert rankings == [["Mixpanel", "Cansee", "Heap"]]
 
     def test_skips_failed_queries(self):
         results = [_Result(query_succeeded=False)]
-        assert rankings_from_results(results, target_name="FetchBot") == []
+        assert rankings_from_results(results, target_name="Cansee") == []
 
     def test_skips_rankings_with_one_entry(self):
         # Only target mentioned with no competitors → no ranking signal.
@@ -71,7 +71,7 @@ class TestRankingsFromResults:
             query_succeeded=True, is_mentioned=True, mention_rank=1,
             competitors_mentioned=[],
         )]
-        assert rankings_from_results(results, target_name="FetchBot") == []
+        assert rankings_from_results(results, target_name="Cansee") == []
 
     def test_handles_missing_positions(self):
         results = [_Result(
@@ -82,5 +82,5 @@ class TestRankingsFromResults:
                 {"name": "Amplitude", "position": 1},
             ],
         )]
-        rankings = rankings_from_results(results, target_name="FetchBot")
+        rankings = rankings_from_results(results, target_name="Cansee")
         assert rankings == [["Amplitude", "Heap"]]

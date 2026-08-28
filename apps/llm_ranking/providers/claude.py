@@ -63,15 +63,55 @@ class ClaudeProvider(LLMProvider):
             else:
                 raise
 
-        # With web search the response holds several blocks (text + tool_use +
-        # search results); concatenate the text blocks.
-        text = " ".join(
+        # With web search the response holds several blocks: text blocks
+        # (each carrying a `citations` list for the passages it grounds),
+        # server_tool_use blocks, and web_search_tool_result blocks listing
+        # every page the search retrieved. Concatenate text verbatim — the
+        # old " ".join injected stray gaps at citation boundaries, because
+        # cited answers arrive split into many mid-sentence text blocks
+        # ("budget allows ." in the UI).
+        text = "".join(
             b.text for b in resp.content
             if getattr(b, "type", "") == "text" and getattr(b, "text", "")
         ).strip()
+
+        # Sources, Perplexity-style: URLs Claude itself cited (in first-cited
+        # order), then the retrieved-but-uncited pages, capped so a 5-search
+        # answer cannot flood the citations pipeline (which has no cap of its
+        # own). On a failed search the tool_result `content` is an error
+        # OBJECT rather than a list — server-tool errors arrive in-band with
+        # HTTP 200, never as exceptions — so the isinstance guard skips it.
+        citations: list[str] = []
+        seen: set[str] = set()
+
+        def _url_of(item):
+            # On the pinned SDK, citation entries and search results arrive
+            # as plain dicts (unknown-to-the-SDK fields land in model_extra
+            # unparsed); newer SDK versions type them. Accept both.
+            if isinstance(item, dict):
+                return item.get("url")
+            return getattr(item, "url", None)
+
+        def _add(url) -> None:
+            if isinstance(url, str) and url and url not in seen and len(citations) < 20:
+                seen.add(url)
+                citations.append(url)
+
+        for b in resp.content:
+            if getattr(b, "type", "") == "text":
+                for c in getattr(b, "citations", None) or []:
+                    _add(_url_of(c))
+        for b in resp.content:
+            if getattr(b, "type", "") == "web_search_tool_result":
+                content = getattr(b, "content", None)
+                if isinstance(content, list):
+                    for r in content:
+                        _add(_url_of(r))
+
         return ProviderResult(
             succeeded=True,
             text=text,
             input_tokens=resp.usage.input_tokens,
             output_tokens=resp.usage.output_tokens,
+            citations=citations,
         )

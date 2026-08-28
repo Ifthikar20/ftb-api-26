@@ -201,6 +201,10 @@ class LLMRankingResult(TimestampMixin):
         default=uuid.uuid4, editable=False, unique=True, db_index=True,
     )
     provider = models.CharField(max_length=30, choices=PROVIDER_CHOICES, db_index=True)
+    # The exact model that answered (e.g. "gpt-5.6-terra"). Empty on rows
+    # that predate per-prompt model selection; those ran the provider's
+    # default model of their day.
+    model_id = models.CharField(max_length=64, blank=True, default="")
     # Index of the prompt within the audit's prompts list. Together with
     # (audit, provider) this is the natural idempotency key, so a retried
     # cell task cannot create a duplicate row.
@@ -312,8 +316,12 @@ class LLMRankingResult(TimestampMixin):
         # duplicate rows. run_id distinguishes replicate runs of the same cell
         # so the unique key is the full triple plus run_id.
         constraints = [
+            # model_id joined the key when per-prompt model selection
+            # landed: one crawl may query several variants of the same
+            # provider. Audit-pipeline rows all carry model_id="" so their
+            # retry idempotency is unchanged.
             models.UniqueConstraint(
-                fields=["audit", "prompt_index", "provider", "run_id"],
+                fields=["audit", "prompt_index", "provider", "model_id", "run_id"],
                 name="uq_llm_result_audit_prompt_provider_run",
             ),
         ]
@@ -386,121 +394,3 @@ class LLMRankingSchedule(TimestampMixin):
     def __str__(self):
         status = "enabled" if self.is_enabled else "disabled"
         return f"LLMSchedule({self.website.name}, {self.frequency}, {status})"
-
-
-class ModelTestRun(TimestampMixin):
-    """
-    Persisted record of a Model Test probe.
-
-    Model Test runs are kicked off ad-hoc and stream their state through
-    Redis for the duration of the run. This row is the durable archive:
-    it captures the final shape of the run (prompts, models, every cell,
-    summary, synthesis report, web grounding) so a user can re-open a
-    historical probe long after the 1h Redis TTL has elapsed.
-
-    Writes happen once at the end of the worker (success or failure).
-    The Redis state is the source of truth while the run is in flight.
-    """
-
-    STATUS_QUEUED    = "queued"
-    STATUS_RUNNING   = "running"
-    STATUS_ANALYZING = "analyzing"
-    STATUS_COMPLETE  = "complete"
-    STATUS_FAILED    = "failed"
-    STATUS_CHOICES = [
-        (STATUS_QUEUED,    "Queued"),
-        (STATUS_RUNNING,   "Running"),
-        (STATUS_ANALYZING, "Analyzing"),
-        (STATUS_COMPLETE,  "Complete"),
-        (STATUS_FAILED,    "Failed"),
-    ]
-
-    # ``id`` doubles as the user-visible run_id so the URL the FE polls
-    # against can also be used to re-open the run from history.
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    website = models.ForeignKey(
-        "websites.Website",
-        on_delete=models.CASCADE,
-        related_name="model_test_runs",
-    )
-    created_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        null=True, blank=True,
-        on_delete=models.SET_NULL,
-        related_name="model_test_runs",
-    )
-
-    status = models.CharField(
-        max_length=20, choices=STATUS_CHOICES,
-        default=STATUS_COMPLETE, db_index=True,
-    )
-
-    # Inputs (snapshot at time of run so historical replays render the
-    # same column set even if MODEL_VARIANTS shifts later).
-    prompts     = models.JSONField(default=list)
-    providers   = models.JSONField(default=list)   # variant ids
-    brand_terms = models.JSONField(default=list)
-
-    # Per-(prompt, model) cells. Schema mirrors the Redis state exactly.
-    prompt_rows = models.JSONField(default=list, blank=True)
-    summary     = models.JSONField(default=dict, blank=True)
-
-    # Post-processing artefacts. Either may be null when skipped.
-    analysis           = models.JSONField(null=True, blank=True)
-    analysis_status    = models.CharField(max_length=20, blank=True)
-    analysis_error     = models.TextField(blank=True)
-    google_grounding   = models.JSONField(null=True, blank=True)
-    grounding_status   = models.CharField(max_length=20, blank=True)
-    grounding_error    = models.TextField(blank=True)
-
-    # Run-level metadata
-    total_calls        = models.IntegerField(default=0)
-    completed_calls    = models.IntegerField(default=0)
-    error_message      = models.TextField(blank=True)
-    started_at         = models.DateTimeField(null=True, blank=True)
-    completed_at       = models.DateTimeField(null=True, blank=True)
-    duration_seconds   = models.FloatField(null=True, blank=True)
-
-    class Meta:
-        db_table = "llm_ranking_model_test_run"
-        ordering = ["-created_at"]
-        indexes = [
-            models.Index(fields=["website", "-created_at"]),
-            models.Index(fields=["status"]),
-        ]
-
-    def __str__(self):
-        return f"ModelTestRun({self.id}, {self.status}, {len(self.prompts or [])} prompts)"
-
-    def to_state_dict(self) -> dict:
-        """Reconstruct a polling-shape payload from this row.
-
-        Used by ModelTestStatusView when the Redis state has expired but
-        the historical row is still on disk. The returned dict matches
-        the shape the FE expects from a live poll, minus the streaming
-        cursor fields (current_prompt_index / current_provider) which
-        are meaningless for a finished run.
-        """
-        return {
-            "status": self.status,
-            "website_id": str(self.website_id),
-            "prompts": self.prompts or [],
-            "providers": self.providers or [],
-            "brand_terms": self.brand_terms or [],
-            "total": self.total_calls,
-            "completed": self.completed_calls,
-            "current_prompt_index": 0,
-            "current_provider": "",
-            "prompt_rows": self.prompt_rows or [],
-            "summary": self.summary or None,
-            "analysis": self.analysis,
-            "analysis_status": self.analysis_status or None,
-            "analysis_error": self.analysis_error or None,
-            "google_grounding": self.google_grounding,
-            "grounding_status": self.grounding_status or None,
-            "grounding_error": self.grounding_error or None,
-            "error": self.error_message or None,
-            "started_at": self.started_at.isoformat() if self.started_at else None,
-            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
-            "duration_seconds": self.duration_seconds,
-        }

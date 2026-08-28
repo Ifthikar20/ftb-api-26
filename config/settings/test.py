@@ -3,10 +3,19 @@ from .base import *  # noqa
 DEBUG = False
 SECURE_SSL_REDIRECT = False
 
+# The suite asserts the secure posture, so it must not inherit a developer's
+# exported PUBLIC_SCHEME=http -- that would silently change what a dozen
+# unrelated tests are checking. Tests that need plaintext behaviour use
+# override_settings on the derived values instead. Mirrors the pinning of
+# POLAR_ACCESS_TOKEN / RAG_VECTOR_BACKEND further down this file.
+PUBLIC_SCHEME = "https"
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SECURE = True
+
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
-        "NAME": "growthpilot_test",
+        "NAME": "cansee_test",
         "USER": "postgres",
         "PASSWORD": "postgres",
         "HOST": "localhost",
@@ -48,6 +57,17 @@ CLAIM_VERIFICATION_ENABLED = False
 # shell variables can never flip the suite into HTTP mode.
 INTELLIGENCE_SERVICE_URL = ""
 SOURCES_SERVICE_URL = ""
+
+# Brand Research discovery must never leave the process. SERPAPI_KEY comes
+# from .env on a developer machine, and the Reddit community lane has no key
+# to blank -- without both of these the scan pipeline tests make real
+# outbound calls. Tests covering these lanes mock the clients directly.
+SERPAPI_KEY = ""
+BRAND_RESEARCH_COMMUNITY_ENABLED = False
+# The engine lane calls every configured LLM provider. Provider keys come
+# from .env on a developer machine, so without this the scan pipeline tests
+# would make real, billable calls to Claude/GPT/Perplexity.
+BRAND_RESEARCH_ENGINES_ENABLED = False
 
 # Polar metering must never leave the process in tests: no outbox rows
 # unless a test opts in via override_settings, never a real token, and

@@ -1,4 +1,4 @@
-"""Head-to-head benchmark: where should FetchBot's RAG vectors live?
+"""Head-to-head benchmark: where should Cansee's RAG vectors live?
 
 Four contenders, identical data and queries:
 
@@ -23,7 +23,7 @@ Usage:
   ./venv/Scripts/python.exe scripts/vector_bench.py
 
 Requires the throwaway pgvector container (never the dev database):
-  docker run -d --name fetchbot-pgvector-bench -p 5433:5432 \
+  docker run -d --name cansee-pgvector-bench -p 5433:5432 \
     -e POSTGRES_PASSWORD=bench -e POSTGRES_DB=bench pgvector/pgvector:pg16
 """
 import json

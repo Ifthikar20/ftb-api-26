@@ -75,6 +75,7 @@ def safe_get(
     max_redirects: int = DEFAULT_MAX_REDIRECTS,
     headers: dict | None = None,
     allowed_content_types: tuple[str, ...] = ALLOWED_CONTENT_TYPES,
+    truncate: bool = False,
 ) -> SafeResponse:
     """
     Hardened replacement for ``requests.get``.
@@ -82,6 +83,13 @@ def safe_get(
     Returns a ``SafeResponse``. Raises ``FetchError`` for any failure
     (network, SSRF rejection, body too large, disallowed content type).
     Treat any exception as "do not use this URL".
+
+    ``truncate=True`` returns the first ``max_bytes`` instead of raising
+    when a page is larger than the cap. Memory is bounded identically —
+    reading still stops at the cap — so this is no less safe; it is the
+    right mode for callers that only need the head of a document (meta
+    tags, hero copy) and would otherwise reject perfectly ordinary pages.
+    Modern JS-heavy sites routinely ship >1MB of inline HTML.
     """
     try:
         url = assert_url_safe(url)
@@ -96,7 +104,7 @@ def safe_get(
         try:
             response = _do_request(
                 final_url, timeout=timeout, headers=headers,
-                max_bytes=max_bytes,
+                max_bytes=max_bytes, truncate=truncate,
             )
         except FetchError:
             raise
@@ -142,8 +150,13 @@ def safe_get(
 
 def _do_request(
     url: str, *, timeout: float, headers: dict | None, max_bytes: int,
+    truncate: bool = False,
 ) -> requests.Response:
-    """One hop. Streams the body and aborts past ``max_bytes``."""
+    """One hop. Streams the body, stopping at ``max_bytes``.
+
+    Past the cap we either abort (default) or keep the bytes read so far
+    (``truncate``). Either way reading stops, so memory stays bounded.
+    """
     resp = requests.get(
         url,
         timeout=timeout,
@@ -159,6 +172,9 @@ def _do_request(
             body += chunk
             if len(body) > max_bytes:
                 resp.close()
+                if truncate:
+                    body = body[:max_bytes]
+                    break
                 raise FetchError(f"response body exceeds {max_bytes} bytes")
         # Replace the streamed content so .text decodes it normally.
         resp._content = body  # noqa: SLF001

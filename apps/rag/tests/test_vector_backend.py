@@ -22,7 +22,7 @@ from apps.rag.services.embedder import embed_texts  # noqa: E402
 from apps.rag.services.retriever import retrieve  # noqa: E402
 
 TEXTS = [
-    "FetchBot tracks AI visibility for e-commerce brands.",
+    "Cansee tracks AI visibility for e-commerce brands.",
     "Our returns policy allows refunds within thirty days of delivery.",
     "The engineering blog covers Django performance tuning.",
     "Pricing starts at forty-nine dollars per month on the Pro plan.",

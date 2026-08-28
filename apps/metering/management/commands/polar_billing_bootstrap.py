@@ -18,7 +18,7 @@ from apps.metering import polar_client
 
 
 class Command(BaseCommand):
-    help = "Create the FetchBot Pro products (monthly/annual) in Polar."
+    help = "Create the Cansee Pro products (monthly/annual) in Polar."
 
     def handle(self, *args, **options):
         if not polar_client.is_configured():

@@ -33,17 +33,6 @@ def ingest_audit_knowledge(audit_id: str) -> int:
         return 0
 
 
-@shared_task(name="apps.assistant.tasks.ingest_agent_insight")
-def ingest_agent_insight(insight_id: str) -> int:
-    from apps.assistant.services import producers
-
-    try:
-        return producers.ingest_agent_insight(insight_id)
-    except Exception as exc:
-        logger.warning("assistant insight ingest failed for %s: %s", insight_id, exc)
-        return 0
-
-
 @shared_task(name="apps.assistant.tasks.sweep_security_alerts")
 def sweep_security_alerts() -> int:
     """Periodic sweep: mirror open security findings for active websites."""

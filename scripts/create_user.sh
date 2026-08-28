@@ -29,8 +29,8 @@ C=$'\033[0;36m'; D=$'\033[2m'; N=$'\033[0m'
 # ── Prod SSH config (mirrors deploy.sh defaults) ─────────────────────
 EC2_HOST="${EC2_HOST:-100.31.135.211}"
 EC2_USER="${EC2_USER:-ubuntu}"
-PEM_KEY="${PEM_KEY:-$HOME/.ssh/fynda-deploy.pem}"
-REMOTE_DIR="${REMOTE_DIR:-/opt/fetchbot/ftb-api-26}"
+PEM_KEY="${PEM_KEY:-$HOME/.ssh/cansee-deploy.pem}"
+REMOTE_DIR="${REMOTE_DIR:-/opt/cansee/ftb-api-26}"
 COMPOSE_FILE="docker/docker-compose.prod.yml"
 
 # ── Args (all optional) ──────────────────────────────────────────────
@@ -102,7 +102,7 @@ fi
 # ── Prod path ────────────────────────────────────────────────────────
 if [[ ! -f "$PEM_KEY" ]]; then
   printf "${R}PEM key not found at %s${N}\n" "$PEM_KEY" >&2
-  printf "Set PEM_KEY=/path/to/fynda-deploy.pem or place it in the repo root.\n" >&2
+  printf "Set PEM_KEY=/path/to/cansee-deploy.pem or place it in the repo root.\n" >&2
   exit 1
 fi
 

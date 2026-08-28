@@ -81,16 +81,16 @@ class TestSourceAppsFilter:
     def test_filters_to_requested_apps(self, no_openai, tenant):
         user, website = tenant
         brand = _make_source(user, website, "https://example.com/about")
-        _add_chunk(brand, "FetchBot visibility platform overview")
+        _add_chunk(brand, "Cansee visibility platform overview")
         llm = _make_source(
             user, website, "llmres://audit-1",
             source_app=KnowledgeSource.SOURCE_APP_LLM_RESPONSE,
         )
-        _add_chunk(llm, "FetchBot visibility platform answer from Claude",
+        _add_chunk(llm, "Cansee visibility platform answer from Claude",
                    recorded_at=timezone.now())
 
         hits = retrieve(
-            user=user, website=website, query="FetchBot visibility platform",
+            user=user, website=website, query="Cansee visibility platform",
             source_apps=[KnowledgeSource.SOURCE_APP_LLM_RESPONSE],
         )
         assert hits
@@ -101,7 +101,7 @@ class TestSourceAppsFilter:
 
         # No filter still sees both corpora.
         all_hits = retrieve(
-            user=user, website=website, query="FetchBot visibility platform",
+            user=user, website=website, query="Cansee visibility platform",
         )
         assert {h.source_app for h in all_hits} == {
             KnowledgeSource.SOURCE_APP_BRAND_INPUT,
@@ -118,13 +118,13 @@ class TestSinceFilter:
             user, website, "llmres://audit-2",
             source_app=KnowledgeSource.SOURCE_APP_LLM_RESPONSE,
         )
-        _add_chunk(source, "FetchBot answer from last quarter",
+        _add_chunk(source, "Cansee answer from last quarter",
                    recorded_at=now - timedelta(days=100), chunk_index=0)
-        fresh = _add_chunk(source, "FetchBot answer from this week",
+        fresh = _add_chunk(source, "Cansee answer from this week",
                            recorded_at=now, chunk_index=1)
 
         hits = retrieve(
-            user=user, website=website, query="FetchBot answer",
+            user=user, website=website, query="Cansee answer",
             since=now - timedelta(days=7),
         )
         assert [h.chunk_id for h in hits] == [str(fresh.id)]
@@ -134,16 +134,16 @@ class TestSinceFilter:
     ):
         user, website = tenant
         source = _make_source(user, website, "https://example.com/page")
-        legacy = _add_chunk(source, "FetchBot legacy brand copy")  # recorded_at None
+        legacy = _add_chunk(source, "Cansee legacy brand copy")  # recorded_at None
 
         included = retrieve(
-            user=user, website=website, query="FetchBot legacy brand copy",
+            user=user, website=website, query="Cansee legacy brand copy",
             since=timezone.now() - timedelta(days=1),
         )
         assert [h.chunk_id for h in included] == [str(legacy.id)]
 
         excluded = retrieve(
-            user=user, website=website, query="FetchBot legacy brand copy",
+            user=user, website=website, query="Cansee legacy brand copy",
             since=timezone.now() + timedelta(days=1),
         )
         assert excluded == []
@@ -151,7 +151,7 @@ class TestSinceFilter:
 
 @pytest.mark.django_db
 class TestRecencyWeighting:
-    QUERY = "FetchBot mentioned as the best analytics platform"
+    QUERY = "Cansee mentioned as the best analytics platform"
 
     def test_older_identical_chunk_scores_lower(self, no_openai, tenant):
         user, website = tenant
@@ -218,10 +218,10 @@ class TestContextBlockLabels:
         source = _make_source(
             user, website, f"syn://{source_app}/1", source_app=source_app,
         )
-        _add_chunk(source, "FetchBot weekly visibility insight",
+        _add_chunk(source, "Cansee weekly visibility insight",
                    recorded_at=timezone.now())
         block = retrieve_context_block(
-            user=user, website=website, query="FetchBot weekly visibility insight",
+            user=user, website=website, query="Cansee weekly visibility insight",
         )
         assert f"({label})" in block
         assert "syn://" not in block
@@ -229,9 +229,9 @@ class TestContextBlockLabels:
     def test_real_url_still_shown(self, no_openai, tenant):
         user, website = tenant
         source = _make_source(user, website, "https://example.com/product")
-        _add_chunk(source, "FetchBot product page copy")
+        _add_chunk(source, "Cansee product page copy")
         block = retrieve_context_block(
-            user=user, website=website, query="FetchBot product page copy",
+            user=user, website=website, query="Cansee product page copy",
         )
         assert "https://example.com/product" in block
 
@@ -244,9 +244,9 @@ class TestContextBlockLabels:
             user, website, "audit://abc-123",
             kind=KnowledgeSource.KIND_AUDIT_CONTEXT,
         )
-        _add_chunk(source, "FetchBot audit context intel")
+        _add_chunk(source, "Cansee audit context intel")
         block = retrieve_context_block(
-            user=user, website=website, query="FetchBot audit context intel",
+            user=user, website=website, query="Cansee audit context intel",
         )
         assert "(Brand input)" in block
         assert "audit://" not in block
@@ -261,7 +261,7 @@ class TestIngestPassthrough:
         result = ingest_service.ingest_url(
             user=user, website=website, url="llmres://audit-9",
             title="Audit 9 responses",
-            text="Claude called FetchBot the leading analytics platform. " * 40,
+            text="Claude called Cansee the leading analytics platform. " * 40,
             source_app=KnowledgeSource.SOURCE_APP_LLM_RESPONSE,
             source_ref="audit-9",
             metadata=meta,
@@ -295,7 +295,7 @@ class TestIngestPassthrough:
         first_stamp = timezone.now() - timedelta(days=30)
         ingest_service.ingest_url(
             user=user, website=website, url="secalert://w1/key",
-            text="High severity hallucination finding about FetchBot. " * 40,
+            text="High severity hallucination finding about Cansee. " * 40,
             source_app=KnowledgeSource.SOURCE_APP_SECURITY_ALERT,
             source_ref="dedupe-v1",
             recorded_at=first_stamp,
@@ -303,7 +303,7 @@ class TestIngestPassthrough:
         second_stamp = timezone.now()
         ingest_service.ingest_url(
             user=user, website=website, url="secalert://w1/key",
-            text="Updated severity finding about FetchBot resolved. " * 40,
+            text="Updated severity finding about Cansee resolved. " * 40,
             source_app=KnowledgeSource.SOURCE_APP_SECURITY_ALERT,
             source_ref="dedupe-v2",
             recorded_at=second_stamp,

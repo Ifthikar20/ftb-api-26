@@ -99,11 +99,11 @@ def deliver_webhook(self, *, endpoint_id: int, event: str, payload: dict) -> Non
 
     headers = {
         "Content-Type": "application/json",
-        "User-Agent": "FetchBot-Webhook/1.0",
-        "X-FetchBot-Event": event,
+        "User-Agent": "Cansee-Webhook/1.0",
+        "X-Cansee-Event": event,
     }
     if endpoint.secret:
-        headers["X-FetchBot-Signature"] = WebhookService.sign_payload(
+        headers["X-Cansee-Signature"] = WebhookService.sign_payload(
             secret=endpoint.secret, body=body
         )
 

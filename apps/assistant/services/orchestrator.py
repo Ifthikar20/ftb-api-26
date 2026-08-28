@@ -1,4 +1,4 @@
-"""Single-turn orchestration for the Ask FetchBot assistant.
+"""Single-turn orchestration for the Ask Cansee assistant.
 
 Grounds every answer in (1) the deterministic per-tenant fact block and
 (2) RAG retrieval over the tenant's unified knowledge corpus, then makes
@@ -18,7 +18,7 @@ _MAX_HISTORY_TURNS = 8
 _MAX_HISTORY_CHARS = 6000
 
 _SYSTEM_PROMPT = (
-    "You are FetchBot, the user's AI growth and visibility assistant. You "
+    "You are Cansee, the user's AI growth and visibility assistant. You "
     "can see their real account data across the whole product: traffic and "
     "analytics, AI-search visibility across ChatGPT/Claude/Gemini/"
     "Perplexity, per-prompt performance, the saved prompt library, Google "
@@ -29,7 +29,7 @@ _SYSTEM_PROMPT = (
     "- Answer from the LIVE ACCOUNT FACTS and the retrieved KNOWLEDGE BASE "
     "context in the prompt. These are the user's real data.\n"
     "- Never fabricate numbers. If the data needed to answer is not present, "
-    "say plainly what is not tracked and point to the FetchBot page that has "
+    "say plainly what is not tracked and point to the Cansee page that has "
     "it (Analytics, AI Visibility, Brand Security, Prompt Library, Billing).\n"
     "- Be concise and helpful. Format your reply in clean GitHub-flavored "
     "Markdown: short paragraphs, **bold** for key figures, bullet lists, and "
@@ -49,7 +49,7 @@ def _format_history(history) -> str:
         content = (turn.get("content") or "").strip()
         if not content or role not in ("user", "assistant"):
             continue
-        speaker = "User" if role == "user" else "FetchBot"
+        speaker = "User" if role == "user" else "Cansee"
         turns.append(f"{speaker}: {content}")
     if not turns:
         return ""

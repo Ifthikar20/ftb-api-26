@@ -1,4 +1,4 @@
-"""Tenant isolation for the Ask FetchBot assistant.
+"""Tenant isolation for the Ask Cansee assistant.
 
 The endpoint must (1) refuse a website the caller does not own, and
 (2) always run under request.user + the URL website — never an

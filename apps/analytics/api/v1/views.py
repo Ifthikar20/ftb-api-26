@@ -138,26 +138,45 @@ class BatchEventIngestView(APIView):
         return Response({"ingested": len(results)}, status=status.HTTP_202_ACCEPTED)
 
 
+def _external_slice(website, slice_name, period):
+    """Dashboard payload from a connected external source (GA4/Cloudflare)
+    when the pixel has no data yet; None means "serve the pixel path".
+    Lazy import: web_analytics is a leaf app and must not be a load-time
+    dependency of the pixel pipeline."""
+    from apps.web_analytics.services import source_resolver
+
+    return source_resolver.dashboard_slice(website, slice_name, period)
+
+
 class AnalyticsOverviewView(TenantScopedAPIView):
     def get(self, request, website_id):
-        self.get_website(website_id)
+        website = self.get_website(website_id)
         period = request.query_params.get("period", "30d")
+        external = _external_slice(website, "overview", period)
+        if external is not None:
+            return Response(external)
         data = AnalyticsService.get_overview(website_id=website_id, period=period)
         return Response(data)
 
 
 class TopPagesView(TenantScopedAPIView):
     def get(self, request, website_id):
-        self.get_website(website_id)
+        website = self.get_website(website_id)
         period = request.query_params.get("period", "30d")
+        external = _external_slice(website, "pages", period)
+        if external is not None:
+            return Response(external)
         data = AnalyticsService.get_top_pages(website_id=website_id, period=period)
         return Response(data)
 
 
 class TrafficSourcesView(TenantScopedAPIView):
     def get(self, request, website_id):
-        self.get_website(website_id)
+        website = self.get_website(website_id)
         period = request.query_params.get("period", "30d")
+        external = _external_slice(website, "sources", period)
+        if external is not None:
+            return Response(external)
         data = AnalyticsService.get_traffic_sources(website_id=website_id, period=period)
         return Response(data)
 

@@ -594,6 +594,16 @@ def build_url_detail(website, *, normalized_url: str, start: date, end: date,
 _LIST_ITEM = re.compile(r"^\s*\d+[.)]\s+(.*\S)\s*$")
 _BOLD = re.compile(r"\*\*([^*\n]{1,60}?)\*\*")
 _LEAD_SPLIT = re.compile(r"\s+[—:\-–]\s+|[:(]| - ")
+# Markdown links hide the name from every pattern here ("[Rosalind
+# Coffee](https://…)" never matched, so an answer full of linked names
+# read as brand-free). Unwrapped to their label before matching.
+_MD_LINK = re.compile(r"\[([^\]\n]+)\]\([^)\s]*\)")
+# Card-style answers (typical of web-search output) lead each entry with
+# a bold name ALONE on its own line, without list numbering.
+_BOLD_ONLY_LINE = re.compile(r"^\*\*([^*\n]{2,60}?)\*\*$")
+# A line that is exactly one markdown link (optionally bolded) is also an
+# entry-name line ("[Rosalind Coffee](https://…)").
+_PURE_LINK_LINE = re.compile(r"^\*{0,2}\[[^\]\n]+\]\([^)\s]*\)\*{0,2}$")
 
 # Generic section labels that show up in bold but are never brand names.
 _NON_BRAND = {
@@ -620,10 +630,26 @@ def extract_response_brands(text: str, limit: int = 25) -> list[dict]:
     out: list[dict] = []
     seen: set[str] = set()
     for raw in text.splitlines():
-        m = _LIST_ITEM.match(raw)
-        if not m:
-            continue
-        item = m.group(1).strip()
+        line = _MD_LINK.sub(r"\1", raw)
+        m = _LIST_ITEM.match(line)
+        if m:
+            item = m.group(1).strip()
+        else:
+            # Card-style entry: the whole line is one bold name and/or one
+            # markdown link naming the entry.
+            stripped = line.strip()
+            solo = _BOLD_ONLY_LINE.match(stripped)
+            if solo:
+                candidate = solo.group(1).strip()
+            elif _PURE_LINK_LINE.match(raw.strip()):
+                candidate = stripped.strip("*").strip()
+            else:
+                continue
+            # Headings ("Best places to start:") also appear as bold-only
+            # lines; real brand names are short and never end with ':'.
+            if candidate.endswith(":") or len(candidate.split()) > 6:
+                continue
+            item = f"**{candidate}**"
         bold = _BOLD.search(item)
         name = bold.group(1) if bold else _LEAD_SPLIT.split(item, 1)[0]
         name = name.strip().strip("*\"'.,:").strip()
@@ -754,6 +780,9 @@ def build_chat_detail(website, *, result_id: str) -> dict | None:
         "result_id": str(result.public_id),
         "provider": result.provider,
         "model": model_key(result.provider),
+        # Exact model that answered (e.g. "gpt-5.6-terra"); "" on rows
+        # predating per-prompt model selection.
+        "model_id": getattr(result, "model_id", "") or "",
         "country": country,
         "prompt": result.prompt,
         "response_text": result.response_text or "",

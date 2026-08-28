@@ -9,7 +9,7 @@ The core data collection and analysis engine. Ingests behavioral data from the t
 ```
 Website (with pixel installed)
   │
-  ├── pixel/growthpilot.min.js  → Collects pageviews, clicks, scroll, forms
+  ├── pixel/cansee.min.js  → Collects pageviews, clicks, scroll, forms
   │     │
   │     ▼
   │   POST /api/v1/track/      → High-throughput pixel ingestion endpoint

@@ -1,4 +1,4 @@
-"""Per-tenant context for the Ask FetchBot assistant.
+"""Per-tenant context for the Ask Cansee assistant.
 
 Two layers, both scoped to the (user, website) the view already resolved:
 
@@ -69,9 +69,9 @@ def build_fact_block(user, website=None, question: str = "") -> str:
         return ""
 
     block = (
-        "Live FetchBot account data for the selected website. Answer from "
+        "Live Cansee account data for the selected website. Answer from "
         "these figures; never invent numbers. If something the user asked "
-        "for is not here, say so and name the FetchBot page that has it.\n\n"
+        "for is not here, say so and name the Cansee page that has it.\n\n"
         + "\n\n".join(parts)
     )
     return block[:MAX_CONTEXT_CHARS]

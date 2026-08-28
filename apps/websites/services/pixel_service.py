@@ -8,7 +8,7 @@ logger = logging.getLogger("apps")
 # Single source of truth for the user-facing install snippet. Customers paste
 # this verbatim into their site's <head>. Versioned via the URL — bump to
 # /p2.js etc. if a future pixel needs an incompatible schema.
-PIXEL_SCRIPT_URL = "https://fetchbot.ai/p.js"
+PIXEL_SCRIPT_URL = "https://cansee.ai/p.js"
 PIXEL_SNIPPET_TEMPLATE = '<script src="{src}" data-key="{pixel_key}"></script>'
 
 

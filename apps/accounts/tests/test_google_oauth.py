@@ -1,7 +1,7 @@
 """Tests for the Google login endpoint (POST /api/v1/auth/google/).
 
 Public sign-up is closed: Google sign-in only works for emails that
-already have a FetchBot account. Unknown emails are rejected with 403
+already have a Cansee account. Unknown emails are rejected with 403
 and no account is created.
 """
 
@@ -82,7 +82,7 @@ class TestGoogleOAuthView:
         assert response.status_code == 403
         body = response.json()
         assert body["error"]["code"] == "permission_denied"
-        assert "No FetchBot account" in body["error"]["message"]
+        assert "No Cansee account" in body["error"]["message"]
         # Sign-up stays closed: no account was created.
         assert not User.objects.filter(email__iexact="stranger@test.com").exists()
 

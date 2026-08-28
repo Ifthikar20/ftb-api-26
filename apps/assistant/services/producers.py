@@ -225,47 +225,6 @@ def ingest_saved_prompts(website_id) -> int:
     return 1 if ok else 0
 
 
-# ── agent_insight: what the hired agents concluded ───────────────────
-
-def ingest_agent_insight(insight_id) -> int:
-    if not _enabled():
-        return 0
-    from apps.agents.models import AgentInsight
-
-    ins = (
-        AgentInsight.objects
-        .select_related("hired_agent", "hired_agent__user", "hired_agent__website")
-        .filter(id=insight_id)
-        .first()
-    )
-    if ins is None:
-        return 0
-    hired = ins.hired_agent
-    user = getattr(hired, "user", None)
-    website = getattr(hired, "website", None)
-    if user is None or website is None:
-        return 0
-
-    title = (getattr(ins, "title", "") or "").strip()
-    summary = (getattr(ins, "summary_markdown", "") or "").strip()
-    lines = [
-        f"Insight from the {getattr(hired, 'agent_key', 'agent')} agent.",
-        title,
-        summary,
-    ]
-    ok = _ingest(
-        user=user, website=website,
-        url=f"agentins://{hired.id}/{ins.id}",
-        title=title[:120] or "Agent insight",
-        text="\n".join(x for x in lines if x),
-        source_app="agent_insight",
-        source_ref=str(ins.id),
-        recorded_at=getattr(ins, "created_at", None),
-        metadata={"agent_key": getattr(hired, "agent_key", "")},
-    )
-    return 1 if ok else 0
-
-
 # ── citations: which domains the models cite ─────────────────────────
 
 def ingest_citation_domains(website_id) -> int:

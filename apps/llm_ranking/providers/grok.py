@@ -59,6 +59,10 @@ class GrokProvider(LLMProvider):
 
     def _web_search_call(self, client, prompt, sys_prompt):
         """Responses API with the web_search tool. None -> fall back to chat."""
+        from apps.llm_ranking.providers.openai_compat import (
+            extract_responses_citations,
+        )
+
         try:
             resp = client.responses.create(
                 model=self.model,
@@ -73,6 +77,7 @@ class GrokProvider(LLMProvider):
                 text=(getattr(resp, "output_text", "") or "").strip(),
                 input_tokens=getattr(usage, "input_tokens", 0) if usage else 0,
                 output_tokens=getattr(usage, "output_tokens", 0) if usage else 0,
+                citations=extract_responses_citations(resp),
             )
         except Exception:
             return None

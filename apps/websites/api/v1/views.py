@@ -133,7 +133,7 @@ def _setup_state(user, website) -> dict:
         return {
             "step": "add_website",
             "title": "Add your website to get started",
-            "body": "FetchBot measures how often AI assistants recommend your "
+            "body": "Cansee measures how often AI assistants recommend your "
                     "brand. Add the site you want tracked and we'll scan it.",
             "cta_label": "Add a website",
             "cta_to": "/websites",
@@ -355,7 +355,7 @@ class OnboardingAssistView(TenantScopedAPIView):
                         website.url,
                         timeout=8,
                         max_bytes=20_000,
-                        headers={"User-Agent": "FetchBot/1.0 (+https://fetchbot.ai/bot)"},
+                        headers={"User-Agent": "Cansee/1.0 (+https://cansee.ai/bot)"},
                     )
                     html = resp.text[:20000]
                     # Extract meta description

@@ -186,6 +186,11 @@ class BrandPrompt(TimestampMixin):
     # ISO-2 country the prompt is scanned from; routes web-search geo when
     # the prompt is run in an audit. Empty == global/default.
     location = models.CharField(max_length=8, blank=True, default="")
+    # Which models scans of this prompt query, as "<provider>:<model_id>"
+    # variant ids from apps.llm_ranking.providers.MODEL_VARIANTS (several
+    # variants of one provider are allowed). Empty == the default: every
+    # configured provider's default model.
+    model_variants = models.JSONField(default=list, blank=True)
     # Per-website archive state. Archived prompts stay in the saved list
     # (under the Archived tab) but are excluded from audits. This is a
     # TENANT-OWNED flag: it replaced an earlier design that toggled the

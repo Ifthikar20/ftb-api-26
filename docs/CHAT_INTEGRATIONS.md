@@ -2,16 +2,16 @@
 
 Date: 2026-08-18
 
-FetchBot's chat integrations do two things:
+Cansee's chat integrations do two things:
 
 1. **Outbound**: deliver the daily report digest, brand-security alerts, and agent
    insights into a Slack or Discord channel via that channel's incoming webhook.
-2. **Inbound**: an in-channel bot. In Discord, `/fetchbot` slash commands
+2. **Inbound**: an in-channel bot. In Discord, `/cansee` slash commands
    (`report`, `security`, `ask`, `scan`, `help`). In Slack, the same command set via
-   `/fetchbot` plus `@FetchBot` mentions.
+   `/cansee` plus `@Cansee` mentions.
 
 Both directions are tenant-bound: a connection row (Integrations page) links your
-FetchBot account to a Slack workspace (Team ID) or Discord server (Server ID), and every
+Cansee account to a Slack workspace (Team ID) or Discord server (Server ID), and every
 inbound command resolves through that link. Unlinked workspaces get a private reply
 explaining how to link, and nothing else.
 
@@ -62,11 +62,11 @@ connection and are validated against platform hosts (`hooks.slack.com`,
 
 ## Discord setup (one time, developer portal)
 
-1. https://discord.com/developers/applications -> New Application -> name it FetchBot.
+1. https://discord.com/developers/applications -> New Application -> name it Cansee.
 2. General Information: copy **Application ID** and **Public Key** into the env vars.
 3. Bot tab: copy the **Token** into `DISCORD_BOT_TOKEN`. No privileged intents needed.
 4. General Information -> **Interactions Endpoint URL**: set to
-   `https://fetchbot.ai/api/v1/notifications/discord/interactions/` and save. Discord
+   `https://cansee.ai/api/v1/notifications/discord/interactions/` and save. Discord
    sends a signed PING; the save only succeeds if the endpoint verifies it (deploy the
    backend with `DISCORD_PUBLIC_KEY` set first).
 5. Register the slash commands (from the repo, once per deploy of command changes):
@@ -82,26 +82,26 @@ python manage.py register_discord_commands
    open the generated URL, pick the server.
 7. In Discord, enable Developer Mode (Settings -> Advanced), right-click the server ->
    **Copy Server ID**.
-8. In FetchBot -> Integrations -> Discord -> connect: paste a channel **webhook URL**
+8. In Cansee -> Integrations -> Discord -> connect: paste a channel **webhook URL**
    (Server Settings -> Integrations -> Webhooks -> New Webhook) for outbound digests,
-   and the **Server ID** to link `/fetchbot` commands to your account.
+   and the **Server ID** to link `/cansee` commands to your account.
 
 ## Slack setup (one time, api.slack.com/apps)
 
-1. Create New App -> From scratch -> name FetchBot, pick the workspace.
+1. Create New App -> From scratch -> name Cansee, pick the workspace.
 2. Basic Information: copy the **Signing Secret** into `SLACK_SIGNING_SECRET`.
 3. OAuth & Permissions: add bot scopes `chat:write`, `commands`, `app_mentions:read`.
    Install to workspace; copy the **Bot User OAuth Token** into `SLACK_BOT_TOKEN`.
 4. Event Subscriptions: enable, set Request URL to
-   `https://fetchbot.ai/api/v1/notifications/slack/events/` (Slack sends a
+   `https://cansee.ai/api/v1/notifications/slack/events/` (Slack sends a
    `url_verification` challenge; the endpoint echoes it once the backend is deployed
    with the signing secret). Subscribe to the bot event `app_mention`.
-5. Slash Commands: create `/fetchbot`, Request URL
-   `https://fetchbot.ai/api/v1/notifications/slack/commands/`, usage hint
+5. Slash Commands: create `/cansee`, Request URL
+   `https://cansee.ai/api/v1/notifications/slack/commands/`, usage hint
    `report | security | ask <question> | scan`.
 6. Find the workspace **Team ID** (starts with T): visible in the Slack app's URL or
    under the workspace's About page.
-7. In FetchBot -> Integrations -> Slack -> connect: paste an **Incoming Webhook URL**
+7. In Cansee -> Integrations -> Slack -> connect: paste an **Incoming Webhook URL**
    (the app's Incoming Webhooks feature) for outbound digests, and the **Team ID** to
    link commands and mentions.
 
@@ -109,13 +109,13 @@ python manage.py register_discord_commands
 
 | Command | What it does |
 |---|---|
-| `/fetchbot report` | The daily digest, on demand: traffic summary, GEO visibility deltas, open brand-security counts. |
-| `/fetchbot security` | Open brand-security findings, severity-ordered, each with its recommended mitigation. |
-| `/fetchbot ask <question>` | Free-form question answered by the agent pipeline: RAG over your brand data + latest audit results, synthesized by Claude. Subject to your plan's AI allowance. |
-| `/fetchbot scan` | Queues an LLM visibility audit of your saved prompts. Refuses with a pointer when no prompts are saved. |
-| `/fetchbot help` | Lists the commands. |
+| `/cansee report` | The daily digest, on demand: traffic summary, GEO visibility deltas, open brand-security counts. |
+| `/cansee security` | Open brand-security findings, severity-ordered, each with its recommended mitigation. |
+| `/cansee ask <question>` | Free-form question answered by the agent pipeline: RAG over your brand data + latest audit results, synthesized by Claude. Subject to your plan's AI allowance. |
+| `/cansee scan` | Queues an LLM visibility audit of your saved prompts. Refuses with a pointer when no prompts are saved. |
+| `/cansee help` | Lists the commands. |
 
-In Slack, `@FetchBot <question>` behaves like `ask`.
+In Slack, `@Cansee <question>` behaves like `ask`.
 
 ## Local testing without a public domain
 
