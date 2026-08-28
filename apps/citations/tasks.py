@@ -125,4 +125,8 @@ def run_source_scan(scan_id: str) -> str:
             scan.status = "failed"
             scan.error = str(exc)[:1000]
             scan.save(update_fields=["status", "error", "updated_at"])
+        # A crash inside run_scan can leave lanes mid-flight; without this
+        # the UI keeps spinning on them even though the scan is dead.
+        from apps.citations.services.source_scan import _finalize_stages
+        _finalize_stages(scan, reason=str(exc))
         return "failed"

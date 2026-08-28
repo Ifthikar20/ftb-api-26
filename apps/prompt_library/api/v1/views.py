@@ -1805,6 +1805,63 @@ class BrandLogoView(APIView):
         return Response({"domain": domain, "logo": fetch_site_logo(domain)})
 
 
+# Caps for the per-prompt rollups on the saved-prompts table. The UI shows
+# a couple of chips per cell and a "+N" overflow, so sending the long tail
+# would only inflate the payload.
+TOP_COMPETITORS = 6
+TOP_DOMAINS = 5
+
+
+def _competitor_names(raw) -> list[str]:
+    """Names out of LLMRankingResult.competitors_mentioned.
+
+    The column is JSON written by several extractor generations, so entries
+    are sometimes plain strings and sometimes {name, position, linked}
+    dicts. Anything else is skipped rather than raising -- a malformed row
+    must not take down the whole table.
+    """
+    out: list[str] = []
+    if not isinstance(raw, list):
+        return out
+    for entry in raw:
+        name = ""
+        if isinstance(entry, str):
+            name = entry
+        elif isinstance(entry, dict):
+            name = entry.get("name") or entry.get("brand") or ""
+        name = str(name).strip()
+        if name:
+            out.append(name[:80])
+    return out
+
+
+def _citation_domains(raw) -> list[str]:
+    """Display domains out of LLMRankingResult.citations.
+
+    Same tolerance as above: entries may be bare URL strings or dicts.
+    Routing through normalize_url also drops non-http(s) schemes, which
+    matters because these become clickable links downstream.
+    """
+    from apps.citations.services.url_normalizer import normalize_url
+
+    out: list[str] = []
+    if not isinstance(raw, list):
+        return out
+    for entry in raw:
+        url = ""
+        if isinstance(entry, str):
+            url = entry
+        elif isinstance(entry, dict):
+            url = entry.get("url") or entry.get("link") or entry.get("href") or ""
+        if not url:
+            continue
+        _, host, _ = normalize_url(str(url))
+        if not host:
+            continue
+        out.append((host[4:] if host.startswith("www.") else host)[:120])
+    return out
+
+
 class WebsiteSavedPromptsAggView(TenantScopedAPIView):
     """
     Saved-prompts dashboard payload — every saved prompt for the
@@ -1869,6 +1926,20 @@ class WebsiteSavedPromptsAggView(TenantScopedAPIView):
                 "models_mentioned": [],
                 "total_mentions": 0,
                 "responses_seen": 0,
+                # Cached 0-1 effectiveness, already on the select_related
+                # Prompt -- free to expose.
+                "effectiveness_score": p.effectiveness_score,
+                # Who else the models name on this prompt, most-cited first.
+                "top_competitors": [],
+                "competitors_count": 0,
+                # What the models cite when answering it.
+                "citations_count": 0,
+                "top_domains": [],
+                # Per-provider visibility, so a prompt that only lands on one
+                # engine is distinguishable from one that lands everywhere.
+                "by_engine": [],
+                # Raw counts behind sentiment_score, which is only a mean.
+                "sentiment_dist": {"positive": 0, "neutral": 0, "negative": 0},
                 # Scheduling: last_run_at = newest result timestamp (any
                 # audit/crawl that ran this prompt); next_run_at/frequency
                 # come from an enabled PromptSchedule, else null → the UI
@@ -1887,6 +1958,10 @@ class WebsiteSavedPromptsAggView(TenantScopedAPIView):
             .only(
                 "provider", "prompt", "is_mentioned", "mention_rank",
                 "sentiment", "created_at",
+                # Both are JSON columns already on the row; loading them
+                # here is what lets the loop below build the competitor and
+                # citation rollups without a second query.
+                "competitors_mentioned", "citations",
             ),
         )
 
@@ -1903,12 +1978,32 @@ class WebsiteSavedPromptsAggView(TenantScopedAPIView):
                 "sentiments": [],
                 "providers_mentioned": set(),
                 "last_run": None,
+                "competitors": Counter(),
+                "domains": Counter(),
+                "citations": 0,
+                # provider -> [responses, mentioned]
+                "by_provider": defaultdict(lambda: [0, 0]),
             })
             entry["responses"] += 1
+            if r.provider:
+                entry["by_provider"][r.provider][0] += 1
             if r.created_at and (entry["last_run"] is None or r.created_at > entry["last_run"]):
                 entry["last_run"] = r.created_at
+
+            # Competitors and citations are recorded for every response, not
+            # only the ones that mention us: a prompt we are absent from
+            # still tells us who owns it and what it cites, which is exactly
+            # the gap worth acting on.
+            for name in _competitor_names(r.competitors_mentioned):
+                entry["competitors"][name] += 1
+            for domain in _citation_domains(r.citations):
+                entry["domains"][domain] += 1
+                entry["citations"] += 1
+
             if r.is_mentioned:
                 entry["mentioned"] += 1
+                if r.provider:
+                    entry["by_provider"][r.provider][1] += 1
                 if r.mention_rank is not None:
                     entry["positions"].append(r.mention_rank)
                 if r.sentiment and r.sentiment != "not_mentioned":
@@ -1930,7 +2025,33 @@ class WebsiteSavedPromptsAggView(TenantScopedAPIView):
             if stats["sentiments"]:
                 scores = [smap.get(s, 50) for s in stats["sentiments"]]
                 row["sentiment_score"] = round(sum(scores) / len(scores), 0)
+            if stats["sentiments"]:
+                dist = Counter(stats["sentiments"])
+                row["sentiment_dist"] = {
+                    "positive": dist.get("positive", 0),
+                    "neutral": dist.get("neutral", 0),
+                    "negative": dist.get("negative", 0),
+                }
             row["models_mentioned"] = sorted(stats["providers_mentioned"])
+            row["competitors_count"] = len(stats["competitors"])
+            row["top_competitors"] = [
+                {"name": name, "count": count}
+                for name, count in stats["competitors"].most_common(TOP_COMPETITORS)
+            ]
+            row["citations_count"] = stats["citations"]
+            row["top_domains"] = [
+                {"domain": domain, "count": count}
+                for domain, count in stats["domains"].most_common(TOP_DOMAINS)
+            ]
+            row["by_engine"] = [
+                {
+                    "provider": provider,
+                    "responses": seen,
+                    "mentioned": hit,
+                    "visibility_pct": round(100 * hit / seen, 0) if seen else 0,
+                }
+                for provider, (seen, hit) in sorted(stats["by_provider"].items())
+            ]
             if stats.get("last_run"):
                 row["last_run_at"] = stats["last_run"].isoformat()
 

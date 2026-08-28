@@ -507,6 +507,17 @@ TWITTER_BEARER_TOKEN = env("TWITTER_BEARER_TOKEN", default=X_BEARER_TOKEN)
 FEATURE_X_SCANNER = env.bool("FEATURE_X_SCANNER", default=False)
 SERPAPI_KEY = env("SERPAPI_KEY", default="")
 
+# Brand Research community lane (Reddit search). Unauthenticated public
+# endpoint, so it has no key to gate on and can be rate-limited or blocked
+# without warning. This is the operator switch for turning it off without a
+# deploy; the lane then reports as skipped rather than failing the scan.
+BRAND_RESEARCH_COMMUNITY_ENABLED = env.bool("BRAND_RESEARCH_COMMUNITY_ENABLED", default=True)
+
+# Brand Research AI-engine lane. One LLM call per configured provider per
+# scan, so this is the most expensive part of a scan and the first thing to
+# turn off under cost pressure. Off means the lane reports as skipped.
+BRAND_RESEARCH_ENGINES_ENABLED = env.bool("BRAND_RESEARCH_ENGINES_ENABLED", default=True)
+
 # ── OpenClaw AI Agent ──
 OPENCLAW_GATEWAY_URL = env("OPENCLAW_GATEWAY_URL", default="")
 OPENCLAW_AUTH_TOKEN = env("OPENCLAW_AUTH_TOKEN", default="")
@@ -635,6 +646,20 @@ TIKTOK_APP_SECRET = env("TIKTOK_APP_SECRET", default="")
 
 # Beta gate — set SIGNUPS_ENABLED=true in env to re-enable public registration.
 SIGNUPS_ENABLED = env.bool("SIGNUPS_ENABLED", default=False)
+
+# ── ADMIN PATH ──
+# Where Django admin is mounted. Defaults to "admin/" so development and the
+# test suite are unchanged; production sets ADMIN_URL to an unguessable path.
+#
+# This is noise reduction, not access control. /admin/ is among the most
+# scanned paths on the internet, and with django-axes locking an account
+# after 5 failures, a bot spraying `admin` at the default path can lock out
+# a real user. Moving it means the failed logins left in the log are worth
+# investigating. It does NOT protect against anyone who learns the path.
+#
+# Normalised so ADMIN_URL=secret, /secret and secret/ all behave the same --
+# Django's path() requires no leading slash and a trailing one.
+ADMIN_URL = env("ADMIN_URL", default="admin/").strip().strip("/") + "/"
 
 DEFAULT_FROM_EMAIL = env("SERVER_EMAIL", default="noreply@cansee.ai")
 

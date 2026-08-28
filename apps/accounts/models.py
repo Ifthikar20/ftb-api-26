@@ -205,6 +205,7 @@ class AITokenUsage(TimestampMixin):
         ("notifications", "Notifications / Chat"),
         ("source_sentiment", "Source Sentiment"),
         ("source_relevance", "Source Relevance"),
+        ("brand_research", "Brand Research"),
     ]
 
     PROVIDER_CHOICES = [

@@ -9,4 +9,14 @@ urlpatterns = [
         views.AssistantAskView.as_view(),
         name="assistant-ask",
     ),
+    path(
+        "<uuid:website_id>/conversations/",
+        views.AssistantConversationListView.as_view(),
+        name="assistant-conversations",
+    ),
+    path(
+        "<uuid:website_id>/conversations/<uuid:conversation_id>/",
+        views.AssistantConversationDetailView.as_view(),
+        name="assistant-conversation-detail",
+    ),
 ]

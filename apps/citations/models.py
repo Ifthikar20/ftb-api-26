@@ -176,6 +176,16 @@ class SourceScan(TimestampMixin):
     error = models.TextField(blank=True)
     results_count = models.IntegerField(default=0)
     analyzed_count = models.IntegerField(default=0)
+    # Per-lane progress so the UI can show a load sign for the parts still
+    # working instead of one global spinner. Each lane is
+    # {"status": pending|running|complete|skipped|failed, "count": int,
+    #  "detail": str}. Lanes: web, community, engines, serp_features,
+    # analysis. Written by _set_stage() as each lane enters and leaves.
+    stages = models.JSONField(default=dict, blank=True)
+    # Google SERP blocks the pipeline used to discard: People Also Ask,
+    # related searches, the AI Overview and the knowledge panel. Shape is
+    # documented on apps/citations/services/serp_google.py::search.
+    serp_features = models.JSONField(default=dict, blank=True)
     # Aggregate: [{"name", "mentions", "weighted_score", "sentiment",
     #              "results_present_in", "top_quote"}] sorted by weight.
     brands = models.JSONField(default=list, blank=True)
@@ -218,6 +228,13 @@ class SourceScanResult(TimestampMixin):
     # "bagels" query) are excluded from fetching, analysis, and rollups.
     relevant = models.BooleanField(default=True)
     relevance_note = models.CharField(max_length=200, blank=True)
+    # Which lane found this row: perplexity | google | google_discussions |
+    # reddit_search | seed. Comma-joined when more than one index surfaced
+    # it, which is itself a relevance signal.
+    discovery = models.CharField(max_length=64, blank=True)
+    # Platform-native metadata that has no column of its own: subreddit,
+    # upvote score, comment count, thread age.
+    platform_meta = models.JSONField(default=dict, blank=True)
     # ok | blocked | error | skipped
     fetch_status = models.CharField(max_length=16, default="skipped")
     # reddit | page
@@ -235,3 +252,52 @@ class SourceScanResult(TimestampMixin):
 
     def __str__(self):
         return f"SourceScanResult(#{self.rank} {self.domain})"
+
+
+class EngineAnswerStatus(models.TextChoices):
+    OK = "ok", "OK"
+    NOT_CONFIGURED = "not_configured", "Not configured"
+    FAILED = "failed", "Failed"
+
+
+class SourceScanEngineAnswer(TimestampMixin):
+    """What one AI engine answered for a Brand Research scan's query.
+
+    The web lane records what ranks; this records what the engines
+    themselves recommend, which is increasingly where buying decisions get
+    made. One row per provider per scan, including providers with no API key
+    -- those are stored as NOT_CONFIGURED so the UI can grey the engine out
+    rather than silently omit it, which would read as "this engine had
+    nothing to say".
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    scan = models.ForeignKey(
+        SourceScan, related_name="engine_answers", on_delete=models.CASCADE
+    )
+    # PROVIDERS registry key (claude, gpt4, gemini, perplexity, grok), plus
+    # the synthetic "google_ai_overview" which arrives with the SERP call.
+    provider = models.CharField(max_length=32)
+    model = models.CharField(max_length=80, blank=True)
+    status = models.CharField(
+        max_length=16, choices=EngineAnswerStatus.choices,
+        default=EngineAnswerStatus.FAILED,
+    )
+    answer_text = models.TextField(blank=True)
+    # Same shape as SourceScanResult.brands, produced by the same extractor,
+    # so engine mentions and page mentions aggregate together.
+    brands = models.JSONField(default=list, blank=True)
+    # [{"url", "domain", "title"}] the engine cited.
+    citations = models.JSONField(default=list, blank=True)
+    # Ranks of this scan's own source rows that the engine cited -- the
+    # cross-link the graph draws as an engine -> source edge.
+    cited_ranks = models.JSONField(default=list, blank=True)
+    error = models.CharField(max_length=300, blank=True)
+
+    class Meta:
+        db_table = "citations_sourcescanengineanswer"
+        ordering = ["provider"]
+        unique_together = [("scan", "provider")]
+
+    def __str__(self):
+        return f"SourceScanEngineAnswer({self.provider}, {self.status})"
