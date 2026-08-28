@@ -11,8 +11,8 @@
 # Env overrides (same defaults as scripts/deploy.sh):
 #   EC2_HOST=100.31.135.211
 #   EC2_USER=ubuntu
-#   PEM_KEY=./fynda-deploy.pem
-#   REMOTE_DIR=/opt/fetchbot/ftb-api-26
+#   PEM_KEY=./cansee-deploy.pem
+#   REMOTE_DIR=/opt/cansee/ftb-api-26
 #   SERVICE=web
 
 set -euo pipefail
@@ -22,8 +22,8 @@ REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 EC2_HOST="${EC2_HOST:-100.31.135.211}"
 EC2_USER="${EC2_USER:-ubuntu}"
-PEM_KEY="${PEM_KEY:-$HOME/.ssh/fynda-deploy.pem}"
-REMOTE_DIR="${REMOTE_DIR:-/opt/fetchbot/ftb-api-26}"
+PEM_KEY="${PEM_KEY:-$HOME/.ssh/cansee-deploy.pem}"
+REMOTE_DIR="${REMOTE_DIR:-/opt/cansee/ftb-api-26}"
 COMPOSE_FILE="docker/docker-compose.prod.yml"
 
 SERVICE="${SERVICE:-web}"
@@ -48,7 +48,7 @@ done
 
 if [[ ! -f "$PEM_KEY" ]]; then
   echo "PEM key not found at $PEM_KEY" >&2
-  echo "Set PEM_KEY=/path/to/key.pem or place fynda-deploy.pem in repo root." >&2
+  echo "Set PEM_KEY=/path/to/key.pem or place cansee-deploy.pem in repo root." >&2
   exit 1
 fi
 

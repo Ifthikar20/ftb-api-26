@@ -1,6 +1,6 @@
 """
 Create a real user directly in the production database so they can log in
-at https://fetchbot.ai/login immediately (no email verification step).
+at https://cansee.ai/login immediately (no email verification step).
 
 Run from the prod host (same place ``python manage.py shell`` would work)
 where DATABASE_URL and the rest of the prod env are already exported:
@@ -174,7 +174,7 @@ def main() -> int:
         print("No users were created.", file=sys.stderr)
         return 1
 
-    print(f"Created {len(created)} user(s). They can log in now at https://fetchbot.ai/login")
+    print(f"Created {len(created)} user(s). They can log in now at https://cansee.ai/login")
     print("-" * 72)
     for uid, email, password, full_name in created:
         print(f"ID:       {uid}")

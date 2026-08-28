@@ -20,8 +20,8 @@ One-time Google setup:
 
 Usage:
   python scripts/gsc_service_account_test.py --key /path/to/key.json
-  python scripts/gsc_service_account_test.py --key key.json --site sc-domain:fetchbot.ai
-  python scripts/gsc_service_account_test.py --key key.json --site sc-domain:fetchbot.ai --days 28
+  python scripts/gsc_service_account_test.py --key key.json --site sc-domain:cansee.ai
+  python scripts/gsc_service_account_test.py --key key.json --site sc-domain:cansee.ai --days 28
 
 Requires: google-auth, requests (both already in this project's
 requirements via google-generativeai).
@@ -83,7 +83,7 @@ def classify(resp) -> str:
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--key", required=True, help="Path to the service account JSON key file.")
-    parser.add_argument("--site", default="", help="Property to query, e.g. sc-domain:fetchbot.ai or https://fetchbot.ai/")
+    parser.add_argument("--site", default="", help="Property to query, e.g. sc-domain:cansee.ai or https://cansee.ai/")
     parser.add_argument("--days", type=int, default=7, help="Days of Search Analytics to query (default 7).")
     args = parser.parse_args()
 

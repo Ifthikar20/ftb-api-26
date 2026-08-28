@@ -1,5 +1,5 @@
 """
-Register the /fetchbot slash command with Discord.
+Register the /cansee slash command with Discord.
 
 Global registration (default) can take up to an hour to propagate;
 pass --guild <id> during development for instant guild-scoped commands.
@@ -20,10 +20,10 @@ DISCORD_API_BASE = "https://discord.com/api/v10"
 SUB_COMMAND = 1
 OPTION_STRING = 3
 
-FETCHBOT_COMMAND = {
-    "name": "fetchbot",
+CANSEE_COMMAND = {
+    "name": "cansee",
     "type": 1,  # CHAT_INPUT
-    "description": "FetchBot growth and AI-visibility assistant",
+    "description": "Cansee growth and AI-visibility assistant",
     # Guild-only: commands are tenant-bound through the server link, so a
     # DM invocation has no account to resolve against. The endpoint also
     # refuses DMs; this hides the command there in the first place.
@@ -53,7 +53,7 @@ FETCHBOT_COMMAND = {
         {
             "type": SUB_COMMAND,
             "name": "ask",
-            "description": "Ask FetchBot about your growth or visibility data",
+            "description": "Ask Cansee about your growth or visibility data",
             "options": [
                 {
                     "type": OPTION_STRING,
@@ -71,14 +71,14 @@ FETCHBOT_COMMAND = {
         {
             "type": SUB_COMMAND,
             "name": "help",
-            "description": "List available FetchBot commands",
+            "description": "List available Cansee commands",
         },
     ],
 }
 
 
 class Command(BaseCommand):
-    help = "Register the /fetchbot slash command with Discord (global or per-guild)."
+    help = "Register the /cansee slash command with Discord (global or per-guild)."
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -109,7 +109,7 @@ class Command(BaseCommand):
         # commands disappear instead of lingering.
         response = requests.put(
             url,
-            json=[FETCHBOT_COMMAND],
+            json=[CANSEE_COMMAND],
             headers={"Authorization": f"Bot {bot_token}"},
             timeout=15,
         )

@@ -1,4 +1,4 @@
-"""Ask FetchBot assistant API.
+"""Ask Cansee assistant API.
 
 Endpoints:
     GET  /api/v1/assistant/status/            - is the feature available?
@@ -30,7 +30,7 @@ _MAX_HISTORY = 12
 def _maintenance_message() -> str:
     return getattr(
         settings, "ASSISTANT_MAINTENANCE_MESSAGE",
-        "Ask FetchBot is temporarily unavailable.",
+        "Ask Cansee is temporarily unavailable.",
     )
 
 

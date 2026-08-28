@@ -32,7 +32,7 @@ from services.sources.safe_http import FetchError, safe_get
 
 logger = logging.getLogger(__name__)
 
-USER_AGENT = "FetchBot/1.0 (source intelligence; +https://fetchbot.ai)"
+USER_AGENT = "Cansee/1.0 (source intelligence; +https://cansee.ai)"
 MAX_TEXT_CHARS = 20000
 MAX_REDDIT_COMMENTS = 40
 PAGE_TIMEOUT = 12.0

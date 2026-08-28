@@ -1,5 +1,5 @@
 """
-Comprehensive test suite for FetchBot Analytics.
+Comprehensive test suite for Cansee Analytics.
 Tests: event ingestion, daily stats, funnels, retention, flows, AI insights,
 keyword intelligence, and API endpoints.
 """
@@ -27,7 +27,7 @@ def create_test_user():
     """Create a test user for API tests."""
     from apps.accounts.models import User
     return User.objects.create_user(
-        email="test@fetchbot.io",
+        email="test@cansee.ai",
         password="TestPass123!",
         full_name="Test User",
     )

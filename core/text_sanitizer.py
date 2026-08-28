@@ -1,6 +1,6 @@
 """Sanitization for untrusted text before it enters an LLM prompt.
 
-FetchBot crawls third-party web pages and search results and feeds the text
+Cansee crawls third-party web pages and search results and feeds the text
 to LLMs. That text is attacker-influenceable, so it is an indirect
 prompt-injection vector (OWASP LLM01). This module strips the classes of
 characters used to hide or smuggle instructions, and provides a cheap

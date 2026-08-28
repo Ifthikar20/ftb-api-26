@@ -62,7 +62,7 @@ class NotificationPreferencesView(TenantScopedAPIView):
 
 
 # Platform host allowlist for incoming-webhook URLs. Anything else is
-# rejected so a connection can never post FetchBot data to an arbitrary host.
+# rejected so a connection can never post Cansee data to an arbitrary host.
 WEBHOOK_URL_PREFIXES = {
     "slack": ("https://hooks.slack.com/",),
     "discord": (
@@ -152,7 +152,7 @@ class IntegrationConnectionListView(TenantScopedAPIView):
                 SlackService.send_message(
                     webhook_url=connection.webhook_url,
                     text=(
-                        "FetchBot connected. You'll receive daily growth "
+                        "Cansee connected. You'll receive daily growth "
                         "reports, brand-security alerts, and hot lead "
                         "alerts here."
                     ),
@@ -161,7 +161,7 @@ class IntegrationConnectionListView(TenantScopedAPIView):
                 from apps.notifications.services.discord_service import DiscordService
                 DiscordService.send_message(
                     webhook_url=connection.webhook_url,
-                    title="FetchBot Connected",
+                    title="Cansee Connected",
                     # Name only what actually sends today; trend digests and
                     # milestones are stored preferences with no sender yet.
                     description=(

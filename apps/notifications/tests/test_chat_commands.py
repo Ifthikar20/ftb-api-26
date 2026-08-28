@@ -69,7 +69,7 @@ class TestCommandRouter:
                 connection_id=str(connection.id), command="bogus",
                 text="", respond_to=SLACK_RESPONSE_URL,
             )
-        assert "FetchBot commands" in _slack_reply_text(mock_post)
+        assert "Cansee commands" in _slack_reply_text(mock_post)
 
     def test_unknown_connection_is_a_noop(self):
         with patch("apps.notifications.tasks.requests.post") as mock_post:
@@ -241,7 +241,7 @@ class TestReportNarration:
         text = _slack_reply_text(mock_post)
         assert "Growth held steady today; run a scan next." in text
         assert "https://app.example.test" in text
-        assert "fetchbot.ai" not in text
+        assert "cansee.ai" not in text
         # Narrator wiring: cheap model, bounded tokens, attributed call.
         assert utility.call_args.kwargs == {"model": "claude-haiku-4-5", "max_tokens": 500}
         kwargs = instance.query.call_args.kwargs
@@ -266,7 +266,7 @@ class TestReportNarration:
         assert "Traffic:" in text
         assert "No AI visibility data yet" in text
         assert "View the full dashboard at https://app.example.test" in text
-        assert "fetchbot.ai" not in text
+        assert "cansee.ai" not in text
 
     def test_report_survives_narration_exception(self):
         connection = _slack_connection()
@@ -333,7 +333,7 @@ class TestDailyDigestNarration:
             send_daily_growth_reports()
         kwargs = mock_send.call_args.kwargs
         assert kwargs["footer"] == "View the full dashboard at https://app.example.test"
-        assert "fetchbot.ai" not in str(kwargs)
+        assert "cansee.ai" not in str(kwargs)
 
 
 @pytest.mark.django_db

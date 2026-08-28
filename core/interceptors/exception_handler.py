@@ -5,7 +5,7 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import exception_handler
 
-from core.exceptions import GrowthPilotException
+from core.exceptions import CanseeException
 
 logger = logging.getLogger("apps")
 
@@ -51,7 +51,7 @@ def custom_exception_handler(exc, context):
     request_id = getattr(request, "request_id", "unknown") if request else "unknown"
 
     # ── Our domain exceptions (already have safe messages) ──
-    if isinstance(exc, GrowthPilotException):
+    if isinstance(exc, CanseeException):
         return Response(
             {
                 "success": False,

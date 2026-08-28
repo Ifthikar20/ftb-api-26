@@ -1,8 +1,8 @@
-# GrowthPilot Integration Plan: Business-Justified Roadmap
+# Cansee Integration Plan: Business-Justified Roadmap
 
 ## Context
 
-GrowthPilot is an AI-powered growth intelligence SaaS (Django/DRF) that tracks website visitors via a pixel, scores leads, monitors competitors, runs website audits, and generates AI growth strategies. It monetizes via three tiers: Starter ($29/mo), Growth ($79/mo), Scale ($199/mo).
+Cansee is an AI-powered growth intelligence SaaS (Django/DRF) that tracks website visitors via a pixel, scores leads, monitors competitors, runs website audits, and generates AI growth strategies. It monetizes via three tiers: Starter ($29/mo), Growth ($79/mo), Scale ($199/mo).
 
 **The problem:** Codebase exploration reveals that nearly all external-facing data pipes are either stubs or dead-ends. The competitor module shows fake data. Hot lead alerts are coded but never called. The Integration model is a shell with no service logic. Users who pay for competitor tracking see empty dashboards. Users who configure Slack notifications never receive them. Leads are trapped inside the platform with no CRM handoff. This plan addresses the six most commercially damaging gaps.
 
@@ -12,21 +12,21 @@ GrowthPilot is an AI-powered growth intelligence SaaS (Django/DRF) that tracks w
 
 ### Business Case
 
-**Codebase gap:** The lead lifecycle dead-ends inside GrowthPilot. `ScoringService.rescore_website()` (`apps/leads/services/scoring_service.py:59-63`) creates Lead objects when score >= 10, but when a lead goes hot (>= 70), absolutely nothing happens. `EmailService.send_hot_lead_alert()` and `SlackService.send_hot_lead_alert()` exist but are **never called anywhere**. `LeadService.update_status()` (`apps/leads/services/lead_service.py:30-34`) writes a status change and an audit log — zero side effects. The only export path is a manual CSV download via `LeadService.export_csv()`.
+**Codebase gap:** The lead lifecycle dead-ends inside Cansee. `ScoringService.rescore_website()` (`apps/leads/services/scoring_service.py:59-63`) creates Lead objects when score >= 10, but when a lead goes hot (>= 70), absolutely nothing happens. `EmailService.send_hot_lead_alert()` and `SlackService.send_hot_lead_alert()` exist but are **never called anywhere**. `LeadService.update_status()` (`apps/leads/services/lead_service.py:30-34`) writes a status change and an audit log — zero side effects. The only export path is a manual CSV download via `LeadService.export_csv()`.
 
 **Revenue impact:** HubSpot integration is the strongest driver for Starter-to-Growth upgrades. Users discover leads but can't act on them at scale. "Your leads are scored and waiting — connect HubSpot to close them" is a natural upsell prompt. CRM integration is the #1 feature cited in churn exit surveys for marketing analytics tools. Expected: 15-25% reduction in Growth-tier churn, 10-15% increase in Starter-to-Growth conversion.
 
 **User pain:** Users generate leads via the pixel but must manually export CSV files, import into their CRM, and lose all behavioral context. By the time a sales rep contacts the lead, the data is stale.
 
-**Competitive advantage:** Competing analytics tools (Hotjar, FullStory, Mouseflow) do NOT push leads to CRM. They are observation-only. GrowthPilot becomes the first pixel-to-pipeline platform for SMBs.
+**Competitive advantage:** Competing analytics tools (Hotjar, FullStory, Mouseflow) do NOT push leads to CRM. They are observation-only. Cansee becomes the first pixel-to-pipeline platform for SMBs.
 
 ### Use Cases
 
 1. **Auto-push hot leads:** When rescoring promotes a lead above threshold, automatically create a HubSpot contact with behavioral data (pages visited, time on site, source, company) and set lifecycle stage to "Marketing Qualified Lead."
-2. **Bi-directional status sync:** Sales rep marks "Customer Won" in HubSpot → webhook updates `Lead.status` to `CUSTOMER` in GrowthPilot. And vice versa.
+2. **Bi-directional status sync:** Sales rep marks "Customer Won" in HubSpot → webhook updates `Lead.status` to `CUSTOMER` in Cansee. And vice versa.
 3. **Behavioral timeline in HubSpot:** Push `PageEvent` records as HubSpot timeline events so sales reps see "Visited pricing page 3 times" without leaving their CRM.
 4. **Lead segment sync:** `LeadSegment` filter rules map to HubSpot active lists for consistent segmentation.
-5. **Closed-loop attribution:** Lead converts in HubSpot → GrowthPilot attributes back to `Session.source`/`Session.campaign` for channel ROI.
+5. **Closed-loop attribution:** Lead converts in HubSpot → Cansee attributes back to `Session.source`/`Session.campaign` for channel ROI.
 
 ### Architecture
 
@@ -71,11 +71,11 @@ HubSpot webhook POST /api/v1/integrations/hubspot/webhook/
 
 **Codebase gap:** The `Integration` model (`apps/websites/models.py:71-92`) supports `ga`, `gsc`, `facebook` types with encrypted token storage but **no service code exists** to use any of them. The analytics `Session` model tracks `source`, `medium`, `campaign` UTM parameters (`apps/analytics/models.py:49-51`) but there is zero way to correlate with ad spend. Users see "google / cpc" traffic but have no idea what it cost.
 
-**Revenue impact:** Average SMB spends $1,000-$10,000/mo on Google Ads. A tool showing "this lead cost you $47 to acquire" directly justifies GrowthPilot's $79-$199/mo as a rounding error on ad spend. Projected: 8-12% new Growth signups from performance marketers.
+**Revenue impact:** Average SMB spends $1,000-$10,000/mo on Google Ads. A tool showing "this lead cost you $47 to acquire" directly justifies Cansee's $79-$199/mo as a rounding error on ad spend. Projected: 8-12% new Growth signups from performance marketers.
 
-**User pain:** Users run Google Ads campaigns driving traffic to their site. GrowthPilot tracks visitors and scores leads. But users cannot see "Campaign X generated 15 leads at $32 each." They must manually cross-reference Google Ads with GrowthPilot — most SMBs never do this, flying blind on spend.
+**User pain:** Users run Google Ads campaigns driving traffic to their site. Cansee tracks visitors and scores leads. But users cannot see "Campaign X generated 15 leads at $32 each." They must manually cross-reference Google Ads with Cansee — most SMBs never do this, flying blind on spend.
 
-**Competitive advantage:** GA provides aggregate conversion tracking but doesn't tie individual identified leads to specific ad spend. This capability typically requires HubSpot Marketing Hub ($800/mo) or Marketo. GrowthPilot delivers it at $79/mo.
+**Competitive advantage:** GA provides aggregate conversion tracking but doesn't tie individual identified leads to specific ad spend. This capability typically requires HubSpot Marketing Hub ($800/mo) or Marketo. Cansee delivers it at $79/mo.
 
 ### Use Cases
 
@@ -127,7 +127,7 @@ Daily Celery: sync_google_ads_data
 
 **User pain:** A user on Pipedrive instead of HubSpot has zero automated lead handoff. A user on Microsoft Teams instead of Slack has zero notification path. Every user whose tool isn't specifically integrated is stuck with CSV export.
 
-**Competitive advantage:** Transforms GrowthPilot from a standalone tool into a platform. The webhook infrastructure serves as foundation for all future integrations without building each one.
+**Competitive advantage:** Transforms Cansee from a standalone tool into a platform. The webhook infrastructure serves as foundation for all future integrations without building each one.
 
 ### Use Cases
 
@@ -144,7 +144,7 @@ Service event (e.g., LeadService.update_status())
   → webhook_dispatch_service.dispatch(event_type, payload)
     → WebhookEndpoint.objects.filter(events__contains=[event_type], is_active=True)
     → For each: enqueue dispatch_webhook.delay(endpoint_id, payload, HMAC signature)
-      → POST to url with X-GrowthPilot-Signature header
+      → POST to url with X-Cansee-Signature header
       → Retry: 3 attempts, exponential backoff (1s, 10s, 60s)
       → After 10 consecutive failures: disable endpoint, notify user
 ```
@@ -231,18 +231,18 @@ Weekly Celery: crawl_all_competitors (Mon 1 AM, already scheduled)
 
 **Codebase gap:** The current `SlackService` (`apps/notifications/services/slack_service.py`) is 37 lines sending plain text to a user-pasted webhook URL. `send_hot_lead_alert()` (line 26) **exists but is never called from anywhere**. `NotificationPreference.hot_lead_slack` and `slack_webhook_url` (`apps/notifications/models.py:39,43`) are never read by the scoring pipeline. Users who explicitly configure Slack notifications never receive them. This is a broken promise.
 
-**Revenue impact:** Slack is a retention feature. Apps with interactive Slack integrations see 2x daily active usage vs dashboard-only products (Slack's data). Morning briefs, hot lead alerts, and competitor notifications surface in Slack, keeping GrowthPilot top-of-mind. Expected: 10-15% churn reduction for Growth/Scale users.
+**Revenue impact:** Slack is a retention feature. Apps with interactive Slack integrations see 2x daily active usage vs dashboard-only products (Slack's data). Morning briefs, hot lead alerts, and competitor notifications surface in Slack, keeping Cansee top-of-mind. Expected: 10-15% churn reduction for Growth/Scale users.
 
 **User pain:** Users toggle `hot_lead_slack = True`, paste their webhook URL, and never receive a single message.
 
-**Competitive advantage:** Command-driven workflows — `/growthpilot leads` to see hot leads, `/growthpilot audit` to trigger an audit, interactive buttons to change lead status from Slack. Moves from "dashboard you visit" to "assistant in your workspace."
+**Competitive advantage:** Command-driven workflows — `/cansee leads` to see hot leads, `/cansee audit` to trigger an audit, interactive buttons to change lead status from Slack. Moves from "dashboard you visit" to "assistant in your workspace."
 
 ### Use Cases
 
 1. **Actually deliver hot lead alerts:** Wire existing dead code. Call `SlackService.send_hot_lead_alert()` from `ScoringService.rescore_website()`. Read `WebsiteSettings.notify_hot_leads`/`hot_lead_threshold`. This is a 1-2 day fix.
 2. **Interactive lead management:** Block Kit buttons on alerts: "View Lead", "Mark Contacted", "Assign to Me." Clicks update `Lead.status` via callback.
 3. **Morning brief in Slack:** Deliver the 6 AM brief (`morning_brief_service.py`) as a formatted Slack message.
-4. **Slash commands:** `/growthpilot leads` → top 5 hot leads. `/growthpilot audit` → trigger audit. `/growthpilot competitors` → recent changes.
+4. **Slash commands:** `/cansee leads` → top 5 hot leads. `/cansee audit` → trigger audit. `/cansee competitors` → recent changes.
 5. **Team channel routing:** Post to shared channels, not individual webhooks. Team sees assignments.
 
 ### Architecture
@@ -291,19 +291,19 @@ Button click → /api/v1/integrations/slack/interactions/ → LeadService.update
 
 **User pain:** Non-technical SMB owner sees "paste this JavaScript in your `<head>` tag," doesn't know what that means, and abandons setup.
 
-**Competitive advantage:** GA, Hotjar, Clarity all have WordPress plugins. GrowthPilot's lack of one is a competitive gap that's easy to close.
+**Competitive advantage:** GA, Hotjar, Clarity all have WordPress plugins. Cansee's lack of one is a competitive gap that's easy to close.
 
 ### Use Cases
 
 1. **One-click pixel install:** Install plugin → enter API key → pixel auto-injected via `wp_head` hook.
-2. **Auto-verification:** Plugin calls GrowthPilot verification endpoint after activation.
+2. **Auto-verification:** Plugin calls Cansee verification endpoint after activation.
 3. **Form enrichment:** Hook into Contact Form 7, Gravity Forms, WPForms → capture `form_submit` events with email/name.
 4. **WooCommerce tracking:** Purchase events and product page views for e-commerce attribution.
 5. **Admin dashboard widget:** Key metrics (active leads, audit score) visible in WordPress admin.
 
 ### Architecture
 
-- WordPress plugin (PHP, separate repo): `growthpilot.php`, settings page, pixel injector, form tracker
+- WordPress plugin (PHP, separate repo): `cansee.php`, settings page, pixel injector, form tracker
 - Django side: `PluginVerifyView` endpoint for API key validation + pixel verification trigger
 - Data flow: Plugin injects `<script>` with `pixel_key` → events flow through existing `EventIngestionService`
 

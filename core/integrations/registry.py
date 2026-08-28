@@ -212,10 +212,10 @@ GOOGLE_ANALYTICS = IntegrationConfig(
 
 GA_HOSTED = IntegrationConfig(
     name="ga_hosted",
-    display_name="FetchBot Google tag",
+    display_name="Cansee Google tag",
     auth_type="api_key",
     # Credentials are app-level (service account with Editor on the
-    # FetchBot-owned GA4 pool property), not per-tenant tokens; the
+    # Cansee-owned GA4 pool property), not per-tenant tokens; the
     # tenant only pastes the generated gtag snippet on their site.
     api_key=ApiKeyConfig(api_key_setting="GA4_SA_CREDENTIALS_JSON"),
     starter=TierEntitlement(enabled=True, feature_key="basic_analytics"),

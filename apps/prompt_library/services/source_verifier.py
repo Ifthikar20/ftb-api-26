@@ -55,7 +55,7 @@ _CACHE_TTL = 60 * 60 * 24 * 30   # 30 days
 # NB: do NOT claim "respects robots.txt" here until it is actually enforced
 # (planned separately) — an untrue claim in the UA is itself a problem.
 _USER_AGENT = (
-    "FetchBot/1.0 (+https://fetchbot.ai/bot; verifies prompt sources)"
+    "Cansee/1.0 (+https://cansee.ai/bot; verifies prompt sources)"
 )
 
 # Skip these — they're known to be JS-rendered or block bots, and a

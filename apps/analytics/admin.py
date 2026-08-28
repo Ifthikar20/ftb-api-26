@@ -11,9 +11,10 @@ from apps.analytics.models import (
 
 @admin.register(AnalyticsAccessLog)
 class AnalyticsAccessLogAdmin(admin.ModelAdmin):
-    list_display = ("accessed_at", "user_email", "website_id_raw", "path", "status_code", "ip_address")
+    list_display = ("accessed_at", "user", "website_id_raw", "path", "status_code")
     list_filter = ("status_code", "method")
-    search_fields = ("user_email", "website_id_raw", "ip_address", "path")
+    search_fields = ("user__email", "website_id_raw", "path")
+    list_select_related = ("user",)
     readonly_fields = tuple(f.name for f in AnalyticsAccessLog._meta.fields)
     date_hierarchy = "accessed_at"
 

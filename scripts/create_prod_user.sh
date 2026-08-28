@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ════════════════════════════════════════════════════════════════════
-#  Create a real user in the fetchbot.ai production database.
+#  Create a real user in the cansee.ai production database.
 #
 #  Run from your local machine. SSHes to the EC2 box, execs into the
 #  running web container, and invokes scripts/create_prod_user.py with
@@ -15,8 +15,8 @@
 #  Defaults:
 #    EC2_HOST    100.31.135.211
 #    EC2_USER    ubuntu
-#    PEM_KEY     ~/Desktop/FTB_APP/fynda-deploy.pem
-#    REMOTE_DIR  /opt/fetchbot/ftb-api-26
+#    PEM_KEY     ~/Desktop/FTB_APP/cansee-deploy.pem
+#    REMOTE_DIR  /opt/cansee/ftb-api-26
 #
 #  Override any of those by exporting before invoking, e.g.
 #    PEM_KEY=~/.ssh/other-key.pem bash scripts/create_prod_user.sh ...
@@ -26,8 +26,8 @@ set -euo pipefail
 
 EC2_HOST="${EC2_HOST:-100.31.135.211}"
 EC2_USER="${EC2_USER:-ubuntu}"
-PEM_KEY="${PEM_KEY:-$HOME/.ssh/fynda-deploy.pem}"
-REMOTE_DIR="${REMOTE_DIR:-/opt/fetchbot/ftb-api-26}"
+PEM_KEY="${PEM_KEY:-$HOME/.ssh/cansee-deploy.pem}"
+REMOTE_DIR="${REMOTE_DIR:-/opt/cansee/ftb-api-26}"
 COMPOSE_FILE="${COMPOSE_FILE:-docker/docker-compose.prod.yml}"
 WEB_SERVICE="${WEB_SERVICE:-web}"
 

@@ -1,13 +1,13 @@
 /*
- * FetchBot tracking pixel — readable source.
+ * Cansee tracking pixel — readable source.
  *
- * The minified deploy artifact (p.min.js) is served at https://fetchbot.ai/p.js.
+ * The minified deploy artifact (p.min.js) is served at https://cansee.ai/p.js.
  * This file is the maintenance reference: keep them in lock-step on every edit.
  *
  * Design notes:
  *   - Reads the per-site pixel_key from `data-key` on its own <script> tag.
  *   - Exposes only `window._fb` (intentionally non-branded so it doesn't
- *     advertise FetchBot on every customer site).
+ *     advertise Cansee on every customer site).
  *   - Honors browser-level Do-Not-Track and Global Privacy Control before
  *     doing anything else — silent no-op in either case.
  *   - All events POST to /api/v1/track/event/ via sendBeacon, falling back
@@ -26,7 +26,7 @@
 
   var w = window._fb = window._fb || {};
   w.k = key;
-  w.e = 'https://fetchbot.ai/api/v1/track/';
+  w.e = 'https://cansee.ai/api/v1/track/';
   w.t0 = Date.now();
   w.ms = 0;                       // max scroll depth seen this pageview
   w.u = location.href;             // last URL we sent a pageview for

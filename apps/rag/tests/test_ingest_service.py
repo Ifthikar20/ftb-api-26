@@ -44,7 +44,7 @@ class TestIngestURL:
         user, website = user_and_website
         with patch.object(
             ingest_service, "scan_domain",
-            return_value=_fake_scan("FetchBot is an analytics platform " * 80),
+            return_value=_fake_scan("Cansee is an analytics platform " * 80),
         ):
             result = ingest_service.ingest_url(
                 user=user, website=website,
@@ -67,7 +67,7 @@ class TestIngestURL:
         self, no_openai, user_and_website,
     ):
         user, website = user_and_website
-        text = "FetchBot is an analytics platform " * 80
+        text = "Cansee is an analytics platform " * 80
         with patch.object(
             ingest_service, "scan_domain", return_value=_fake_scan(text),
         ):

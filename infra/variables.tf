@@ -18,7 +18,7 @@ variable "environment" {
 variable "project" {
   description = "Short name prefixed onto every resource."
   type        = string
-  default     = "fetchbot"
+  default     = "cansee"
 }
 
 # ── Network ─────────────────────────────────────────────────────────
@@ -131,7 +131,7 @@ variable "db_backup_retention_days" {
 variable "db_name" {
   description = "Database name. Matches DB_NAME in .env.prod."
   type        = string
-  default     = "growthpilot"
+  default     = "cansee"
 }
 
 variable "db_username" {
@@ -184,5 +184,5 @@ variable "ec2_key_name" {
 variable "domain_name" {
   description = "Public hostname. Used for the ACM certificate in Phase 5."
   type        = string
-  default     = "fetchbot.ai"
+  default     = "cansee.ai"
 }

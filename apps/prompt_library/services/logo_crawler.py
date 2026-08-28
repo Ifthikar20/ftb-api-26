@@ -105,7 +105,7 @@ def _crawl(domain: str) -> str:
         try:
             resp = safe_get(
                 url, timeout=FETCH_TIMEOUT,
-                headers={"User-Agent": "FetchBot/1.0 (+https://fetchbot.ai/bot)"},
+                headers={"User-Agent": "Cansee/1.0 (+https://cansee.ai/bot)"},
             )
             if resp.status_code >= 400:
                 continue

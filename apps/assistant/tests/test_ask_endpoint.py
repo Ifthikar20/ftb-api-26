@@ -1,4 +1,4 @@
-"""Ask FetchBot endpoint contract + tenant gate.
+"""Ask Cansee endpoint contract + tenant gate.
 
 Hermetic: the provider and RAG retrieval are patched so no LLM/embedding
 network call happens.

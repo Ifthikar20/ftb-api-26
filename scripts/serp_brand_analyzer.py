@@ -37,7 +37,7 @@ CSE_ENDPOINT = "https://www.googleapis.com/customsearch/v1"
 SERPAPI_ENDPOINT = "https://serpapi.com/search.json"
 PERPLEXITY_SEARCH_ENDPOINT = "https://api.perplexity.ai/search"
 PAGE_TIMEOUT = 10.0
-USER_AGENT = "Mozilla/5.0 (compatible; FetchBot-SEO-Analyzer/1.0)"
+USER_AGENT = "Mozilla/5.0 (compatible; Cansee-SEO-Analyzer/1.0)"
 
 # Reasonable on-page targets used for the PASS/WARN annotations.
 TITLE_MAX = 60

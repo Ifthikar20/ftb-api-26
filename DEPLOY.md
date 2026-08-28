@@ -1,6 +1,6 @@
 # Deployment Guide
 
-FetchBot (fetchbot.ai) is deployed to a single EC2 host running Docker
+Cansee (cansee.ai) is deployed to a single EC2 host running Docker
 Compose. **Pushing or merging to `main` auto-deploys to production**
 via `.github/workflows/deploy.yml`, which waits for the CI lint job to
 pass and then runs `scripts/deploy.sh` against the EC2 box.
@@ -14,7 +14,7 @@ see "Manual deploy" below.
 - **Host:** Ubuntu 22.04 EC2 instance (sized around t3.small; a 2 GB swapfile
   is recommended -- `deploy.sh` checks and warns if none is active but does
   not create one).
-- **App directory on host:** `/opt/fetchbot/ftb-api-26`
+- **App directory on host:** `/opt/cansee/ftb-api-26`
 - **Orchestration:** `docker/docker-compose.prod.yml`
 - **Services:** `db` (Postgres 16), `redis`, `web` (Django/Gunicorn),
   `celery` (worker + beat in one container), `frontend` (Vue build artifact),
@@ -22,8 +22,8 @@ see "Manual deploy" below.
   `intelligence` and `sources` (internal FastAPI sidecars, rebuilt by the
   deploy build step; see docs/ARCHITECTURE.md "Internal services").
 - **Edge:** Cloudflare (SSL: Full Strict) → nginx container on ports 80/443.
-  TLS certs are mounted from `/opt/fetchbot/ssl` on the host.
-- **Env file:** `/opt/fetchbot/ftb-api-26/.env.prod` (never committed; created
+  TLS certs are mounted from `/opt/cansee/ssl` on the host.
+- **Env file:** `/opt/cansee/ftb-api-26/.env.prod` (never committed; created
   from `.env.prod.example` on first deploy).
 
 ## Release flow (automatic)
@@ -34,13 +34,13 @@ see "Manual deploy" below.
    - Waits for the `Lint` check on the same SHA to pass.
    - SSHes to the EC2 host using the `EC2_SSH_KEY` repository secret.
    - Runs `bash scripts/deploy.sh` against prod, which performs:
-     - `git pull origin main` in `/opt/fetchbot/ftb-api-26`
+     - `git pull origin main` in `/opt/cansee/ftb-api-26`
      - Verifies `.env.prod` exists
      - `docker compose ... up -d --build`
      - `python manage.py migrate --noinput`
      - `python manage.py collectstatic --noinput`
      - Hits `http://localhost/health/` as a smoke check.
-   - Hits `https://fetchbot.ai/health/` from the GitHub runner as a
+   - Hits `https://cansee.ai/health/` from the GitHub runner as a
      final external smoke test.
 
 Watch the deploy in the Actions tab of the GitHub repo. A failed
@@ -53,12 +53,12 @@ Set under **Settings → Secrets and variables → Actions**:
 
 | Secret | Value |
 |---|---|
-| `EC2_SSH_KEY` | The contents of `fynda-deploy.pem` (the full PEM body, including `-----BEGIN` / `-----END` lines). |
+| `EC2_SSH_KEY` | The contents of `cansee-deploy.pem` (the full PEM body, including `-----BEGIN` / `-----END` lines). |
 | `EC2_HOST` (optional) | EC2 IP or DNS. Defaults to `100.31.135.211`. |
 | `EC2_USER` (optional) | SSH user. Defaults to `ubuntu`. |
-| `REMOTE_DIR` (optional) | Repo path on host. Defaults to `/opt/fetchbot/ftb-api-26`. |
+| `REMOTE_DIR` (optional) | Repo path on host. Defaults to `/opt/cansee/ftb-api-26`. |
 
-Test the SSH key once with `ssh -i fynda-deploy.pem ubuntu@<host> echo ok`
+Test the SSH key once with `ssh -i cansee-deploy.pem ubuntu@<host> echo ok`
 before pasting it into the secret.
 
 ## Manual deploy (fallback)
@@ -68,7 +68,7 @@ Triggers the workflow on demand from the GitHub UI:
 > Actions → "Deploy to prod" → Run workflow → branch: `main`
 
 Or run the script locally from your laptop (works from any machine
-that has `fynda-deploy.pem` placed at the repo root):
+that has `cansee-deploy.pem` placed at the repo root):
 
 ```bash
 bash scripts/deploy.sh
@@ -80,10 +80,10 @@ SSH in first.
 ## Verify after deploy
 
 ```bash
-ssh -i ./fynda-deploy.pem ubuntu@100.31.135.211 \
-  'cd /opt/fetchbot/ftb-api-26 && \
+ssh -i ./cansee-deploy.pem ubuntu@100.31.135.211 \
+  'cd /opt/cansee/ftb-api-26 && \
    docker compose -f docker/docker-compose.prod.yml ps'
-curl -I https://fetchbot.ai/health/
+curl -I https://cansee.ai/health/
 ```
 
 ## First-time server bootstrap
@@ -91,20 +91,20 @@ curl -I https://fetchbot.ai/health/
 On a fresh EC2 box:
 
 ```bash
-sudo mkdir -p /opt/fetchbot && sudo chown $USER:$USER /opt/fetchbot
-git clone <repo-url> /opt/fetchbot
-cd /opt/fetchbot/ftb-api-26
+sudo mkdir -p /opt/cansee && sudo chown $USER:$USER /opt/cansee
+git clone <repo-url> /opt/cansee
+cd /opt/cansee/ftb-api-26
 cp .env.prod.example .env.prod
 nano .env.prod   # fill in secrets, DB creds, API keys
 REPO_URL=<repo-url> bash scripts/deploy.sh
 ```
 
-Then point the `fetchbot.ai` A record at the EC2 public IP and set Cloudflare
+Then point the `cansee.ai` A record at the EC2 public IP and set Cloudflare
 SSL mode to **Full (Strict)**.
 
 ## Common operations
 
-All commands run from `/opt/fetchbot/ftb-api-26` on the host.
+All commands run from `/opt/cansee/ftb-api-26` on the host.
 
 | Task | Command |
 |------|---------|
@@ -113,7 +113,7 @@ All commands run from `/opt/fetchbot/ftb-api-26` on the host.
 | Restart web only | `docker compose -f docker/docker-compose.prod.yml restart web` |
 | Run a migration manually | `docker compose -f docker/docker-compose.prod.yml exec web python manage.py migrate` |
 | Django shell | `docker compose -f docker/docker-compose.prod.yml exec web python manage.py shell_plus` |
-| Postgres shell | `docker compose -f docker/docker-compose.prod.yml exec db psql -U postgres growthpilot` |
+| Postgres shell | `docker compose -f docker/docker-compose.prod.yml exec db psql -U postgres cansee` |
 | Container status | `docker compose -f docker/docker-compose.prod.yml ps` |
 
 ## Rolling back
@@ -121,7 +121,7 @@ All commands run from `/opt/fetchbot/ftb-api-26` on the host.
 There is no built-in rollback. To revert:
 
 ```bash
-cd /opt/fetchbot/ftb-api-26
+cd /opt/cansee/ftb-api-26
 git log --oneline -10
 git checkout <previous-good-sha>
 docker compose -f docker/docker-compose.prod.yml up -d --build
@@ -141,7 +141,7 @@ back.
 - Secrets rotation is manual: edit `.env.prod` on the host, then
   `docker compose -f docker/docker-compose.prod.yml up -d` to recreate
   affected containers.
-- TLS certs in `/opt/fetchbot/ssl` are managed outside this repo.
+- TLS certs in `/opt/cansee/ssl` are managed outside this repo.
 
 ## Paywall entitlement switch
 

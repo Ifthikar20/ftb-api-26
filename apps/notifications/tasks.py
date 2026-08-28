@@ -31,7 +31,7 @@ def send_weekly_reports():
         try:
             EmailService.send_email(
                 to=user.email,
-                subject="Your FetchBot Weekly Report",
+                subject="Your Cansee Weekly Report",
                 html_content=f"<p>Hi {user.first_name}, here is your weekly growth summary.</p>",
             )
         except Exception as e:
@@ -239,7 +239,7 @@ def _report_section_lines(data: dict) -> dict:
 
 
 def _dashboard_url() -> str:
-    """Base URL of the FetchBot dashboard, from settings (no trailing slash)."""
+    """Base URL of the Cansee dashboard, from settings (no trailing slash)."""
     from django.conf import settings
 
     url = getattr(settings, "FRONTEND_URL", "") or "http://localhost:5173"
@@ -260,7 +260,7 @@ def _format_report_text(data: dict) -> str:
 # System prompt for the Claude narration of report digests. The narrator only
 # rephrases facts computed by _build_report_data; it must never add numbers.
 REPORT_NARRATION_SYSTEM_PROMPT = (
-    "You are FetchBot, reporting to the team's channel. Write a short, "
+    "You are Cansee, reporting to the team's channel. Write a short, "
     "conversational growth summary (5 to 9 sentences maximum) STRICTLY from "
     "the facts provided in the user message. Never invent, estimate, or "
     "extrapolate numbers, names, or trends that are not in those facts. Lead "
@@ -519,12 +519,12 @@ def _run_chat_command(connection, command: str, text: str,
 
 def _help_text() -> str:
     return (
-        "FetchBot commands:\n"
+        "Cansee commands:\n"
         "report - Send your latest growth, AI visibility, and security digest.\n"
         "growth - Show which websites and prompts grew or slipped, and where to focus.\n"
         "security - List open brand-security alerts with recommended fixes.\n"
         "usage - Show this month's AI token usage and allowance status.\n"
-        "ask <question> - Ask FetchBot about your growth or visibility data.\n"
+        "ask <question> - Ask Cansee about your growth or visibility data.\n"
         "scan - Queue a fresh AI visibility scan of your saved prompts."
     )
 
@@ -1014,10 +1014,10 @@ def _live_fact_block(user, website=None) -> str:
         return ""
     stamp = timezone.now().strftime("%Y-%m-%d %H:%M UTC")
     header = (
-        f"Live account facts as of {stamp} (deterministic FetchBot platform "
+        f"Live account facts as of {stamp} (deterministic Cansee platform "
         "data - answer metric and account-content questions from these "
         "facts and any other provided context; if the question needs data "
-        "not tracked here, say so plainly and point at the FetchBot command "
+        "not tracked here, say so plainly and point at the Cansee command "
         "or dashboard page that has it; never fabricate numbers):"
     )
     base = [header, *lines]
@@ -1046,7 +1046,7 @@ def _answer_question(connection, question: str, thread_ref: str = "") -> str:
 
     website = _resolve_website(user)
     if website is None:
-        return "No active website found on your account. Add a website in FetchBot first."
+        return "No active website found on your account. Add a website in Cansee first."
 
     # The answer is grounded in a deterministic fact pack so questions
     # about live metrics and account content reflect real rows.
@@ -1058,7 +1058,7 @@ def _answer_question(connection, question: str, thread_ref: str = "") -> str:
     if provider is None:
         return (
             "No AI provider is configured, so I can't answer questions yet. "
-            "Add an AI provider key in FetchBot settings."
+            "Add an AI provider key in Cansee settings."
         )
 
     context = ""
@@ -1073,7 +1073,7 @@ def _answer_question(connection, question: str, thread_ref: str = "") -> str:
         context = ""
 
     system_prompt = (
-        "You are FetchBot, a growth and AI-visibility assistant. Answer "
+        "You are Cansee, a growth and AI-visibility assistant. Answer "
         "questions about the user's website traffic, AI search visibility, "
         "leads, and brand security. Be concise, factual, and plain-text. "
         "Answer metric questions from the live account facts and retrieved "
@@ -1082,7 +1082,7 @@ def _answer_question(connection, question: str, thread_ref: str = "") -> str:
         "the first entry of that list) and content from the latest "
         "completed visibility audit. If the question needs data that is not "
         "present there, say plainly what is not tracked here and which "
-        "FetchBot command or dashboard page has it. Never fabricate numbers; "
+        "Cansee command or dashboard page has it. Never fabricate numbers; "
         "if you don't have the data to answer, say so instead of guessing."
     )
     prompt = (
@@ -1105,7 +1105,7 @@ def _queue_scan_command(user) -> str:
     """Queue an AI visibility audit over the user's saved prompts."""
     website = _resolve_website(user)
     if website is None:
-        return "No active website found on your account. Add a website in FetchBot first."
+        return "No active website found on your account. Add a website in Cansee first."
 
     from apps.llm_ranking.services.audit_factory import create_audit
     from apps.llm_ranking.services.audit_runner import (

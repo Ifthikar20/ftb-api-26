@@ -15,8 +15,8 @@ cd "$REPO_DIR"
 # ── Prod SSH config (mirrors deploy.sh defaults) ─────────────────────
 EC2_HOST="${EC2_HOST:-100.31.135.211}"
 EC2_USER="${EC2_USER:-ubuntu}"
-PEM_KEY="${PEM_KEY:-$HOME/.ssh/fynda-deploy.pem}"
-REMOTE_DIR="${REMOTE_DIR:-/opt/fetchbot/ftb-api-26}"
+PEM_KEY="${PEM_KEY:-$HOME/.ssh/cansee-deploy.pem}"
+REMOTE_DIR="${REMOTE_DIR:-/opt/cansee/ftb-api-26}"
 COMPOSE_FILE="docker/docker-compose.prod.yml"
 
 # ── Style ────────────────────────────────────────────────────────────
@@ -24,7 +24,7 @@ B=$'\033[1m'; G=$'\033[0;32m'; Y=$'\033[1;33m'; C=$'\033[0;36m'; N=$'\033[0m'
 
 usage() {
   cat <<EOF
-${C}${B}FetchBot — task runner${N}
+${C}${B}Cansee — task runner${N}
 
 Usage: ${B}scripts/run.sh${N} ${G}<command>${N} [args...]
 
@@ -72,7 +72,7 @@ manage_local() {
 ssh_remote() {
   if [[ ! -f "$PEM_KEY" ]]; then
     echo "${Y}PEM key not found at $PEM_KEY${N}" >&2
-    echo "Set PEM_KEY=/path/to/key.pem or place fynda-deploy.pem in the repo root." >&2
+    echo "Set PEM_KEY=/path/to/key.pem or place cansee-deploy.pem in the repo root." >&2
     exit 1
   fi
   ssh -i "$PEM_KEY" -o StrictHostKeyChecking=accept-new -o LogLevel=ERROR \

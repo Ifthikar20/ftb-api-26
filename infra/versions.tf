@@ -28,7 +28,7 @@ provider "aws" {
 
   default_tags {
     tags = {
-      Project     = "fetchbot"
+      Project     = "cansee"
       Environment = var.environment
       ManagedBy   = "terraform"
     }

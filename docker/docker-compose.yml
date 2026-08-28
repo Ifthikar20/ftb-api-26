@@ -14,7 +14,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     environment:
-      POSTGRES_DB: growthpilot
+      POSTGRES_DB: cansee
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     healthcheck:

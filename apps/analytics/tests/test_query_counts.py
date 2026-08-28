@@ -25,7 +25,7 @@ def _make_website():
     from apps.accounts.models import User
 
     user = User.objects.create_user(
-        email=f"qc-{uuid.uuid4().hex[:8]}@fetchbot.io",
+        email=f"qc-{uuid.uuid4().hex[:8]}@cansee.ai",
         password="TestPass123!",
         full_name="Query Count",
     )

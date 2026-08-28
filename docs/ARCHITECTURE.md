@@ -1,4 +1,4 @@
-# FetchBot Architecture & Deployment Status
+# Cansee Architecture & Deployment Status
 
 Date of report: 2026-04-25
 Working copy: `/Users/ifthikaraliseyed/Desktop/FTB_APP/ftb-api-26`
@@ -26,13 +26,13 @@ Remote: `git@github.com:Ifthikar20/ftb-api-26.git`
 ### How to verify against the live host
 
 ```bash
-ssh -i fynda-deploy.pem ubuntu@<fetchbot-ec2-ip>
-cd /opt/fetchbot/ftb-api-26
+ssh -i cansee-deploy.pem ubuntu@<cansee-ec2-ip>
+cd /opt/cansee/ftb-api-26
 git rev-parse HEAD                                    # what commit is deployed
 docker compose -f docker/docker-compose.prod.yml ps   # which services are up
 docker compose -f docker/docker-compose.prod.yml logs --tail=50 web
 docker compose -f docker/docker-compose.prod.yml logs --tail=50 frontend
-curl -I https://fetchbot.ai/health/
+curl -I https://cansee.ai/health/
 ```
 
 If `git rev-parse HEAD` on the host is older than `11d0456`, the backend is behind. If you want the latest local work on prod, you must:
@@ -48,7 +48,7 @@ The branch you have locally is the one that adds live audit progress (the `audit
 
 ## 2. System overview
 
-FetchBot is a Django + Vue SaaS that measures and improves how a brand appears in answers from large language models (Claude, GPT-4o, Gemini, Perplexity). The flagship feature is the **LLM Ranking Audit**: given a business profile, the system asks several LLMs the kinds of questions a buyer would ask, parses the answers, and scores brand visibility, citation share, and competitive ranking over time.
+Cansee is a Django + Vue SaaS that measures and improves how a brand appears in answers from large language models (Claude, GPT-4o, Gemini, Perplexity). The flagship feature is the **LLM Ranking Audit**: given a business profile, the system asks several LLMs the kinds of questions a buyer would ask, parses the answers, and scores brand visibility, citation share, and competitive ranking over time.
 
 ```
 ┌────────────────────────────────────────────────────────────────────┐
@@ -156,7 +156,7 @@ UI ──poll──> GET /audits/<aid>/logs/?since=<ts>
               ▲
               │ append
    Celery task (run_llm_ranking_audit)
-     ├─ "Starting audit for FetchBot"           (info)
+     ├─ "Starting audit for Cansee"           (info)
      ├─ "Generated 8 prompts"                   (info)
      ├─ "Claude query 1/8 succeeded (842ms)"    (success)
      ├─ "OpenAI query 2/8 failed: rate limit"   (warn)
@@ -290,5 +290,5 @@ Pattern:
 4. **Verify on prod:**
    - `docker compose -f docker/docker-compose.prod.yml exec web python manage.py showmigrations llm_ranking` — confirm `0009_add_audit_logs` is applied.
    - Trigger a new audit from the UI and watch the activity feed populate.
-   - `curl -I https://fetchbot.ai/health/` returns 200.
+   - `curl -I https://cansee.ai/health/` returns 200.
 5. **Optional cleanup unrelated to this report:** Meta / Mistral / Cohere / DeepSeek / Grok / Amazon Nova are advertised in the model dropdown but not implemented in `ranking_service.py`. Either ship the integrations or hide the options until they exist.

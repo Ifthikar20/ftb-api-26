@@ -29,7 +29,7 @@ password_arg="${3:-}"
 if [[ -z "$env_choice" ]]; then
   printf "${B}Where do you want to log in?${N}\n"
   printf "  ${G}1${N} local  (http://localhost:8000)\n"
-  printf "  ${G}2${N} prod   (https://fetchbot.ai)\n"
+  printf "  ${G}2${N} prod   (https://cansee.ai)\n"
   printf "Pick [1/2, default 1]: "
   read -r pick
   case "$pick" in
@@ -44,8 +44,8 @@ case "$env_choice" in
     frontend_base="${FRONTEND_BASE:-http://localhost:5173}"
     ;;
   prod)
-    base_url="${BASE_URL:-https://fetchbot.ai}"
-    frontend_base="${FRONTEND_BASE:-https://fetchbot.ai}"
+    base_url="${BASE_URL:-https://cansee.ai}"
+    frontend_base="${FRONTEND_BASE:-https://cansee.ai}"
     ;;
   *)
     base_url="$env_choice"  # allow a full URL override

@@ -12,12 +12,12 @@ concrete fix hint on failure:
 
 Usage:
   python manage.py gsc_check                      # steps 1 only (no website)
-  python manage.py gsc_check --website fetchbot   # match by domain/name/uuid
+  python manage.py gsc_check --website cansee   # match by domain/name/uuid
   python manage.py gsc_check --website <id> --sync
 
 On the prod host:
   docker compose -f docker/docker-compose.prod.yml exec web \
-      python manage.py gsc_check --website fetchbot --sync
+      python manage.py gsc_check --website cansee --sync
 """
 
 from __future__ import annotations

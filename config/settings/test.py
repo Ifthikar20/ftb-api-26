@@ -3,10 +3,19 @@ from .base import *  # noqa
 DEBUG = False
 SECURE_SSL_REDIRECT = False
 
+# The suite asserts the secure posture, so it must not inherit a developer's
+# exported PUBLIC_SCHEME=http -- that would silently change what a dozen
+# unrelated tests are checking. Tests that need plaintext behaviour use
+# override_settings on the derived values instead. Mirrors the pinning of
+# POLAR_ACCESS_TOKEN / RAG_VECTOR_BACKEND further down this file.
+PUBLIC_SCHEME = "https"
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SECURE = True
+
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
-        "NAME": "growthpilot_test",
+        "NAME": "cansee_test",
         "USER": "postgres",
         "PASSWORD": "postgres",
         "HOST": "localhost",

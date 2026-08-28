@@ -27,8 +27,8 @@ DEFAULT_DEPTH = 1
 SITEMAP_TIMEOUT = 8
 LINK_FETCH_TIMEOUT = 6
 USER_AGENT = (
-    "Mozilla/5.0 (compatible; FetchBotRAG/1.0; "
-    "+https://fetchbot.ai/bot)"
+    "Mozilla/5.0 (compatible; CanseeRAG/1.0; "
+    "+https://cansee.ai/bot)"
 )
 
 

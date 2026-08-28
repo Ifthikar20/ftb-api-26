@@ -6,7 +6,7 @@ urlpatterns = [
     # OAuth callback (unauthenticated; trust = signed state)
     path("ga4/oauth/callback/", views.Ga4OAuthCallbackView.as_view(), name="wa-ga4-oauth-callback"),
 
-    # Hosted Google tag (FetchBot-owned pool property). Registered before
+    # Hosted Google tag (Cansee-owned pool property). Registered before
     # the <uuid:website_id> GA4 routes; "hosted" never parses as a UUID
     # anyway, but keeping the literal prefix first makes intent obvious.
     path("ga4/hosted/<uuid:website_id>/status/", views.HostedStatusView.as_view(), name="wa-hosted-status"),

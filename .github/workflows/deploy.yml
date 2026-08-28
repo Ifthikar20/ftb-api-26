@@ -47,18 +47,18 @@ jobs:
             exit 1
           fi
           mkdir -p ~/.ssh
-          printf '%s' "$EC2_SSH_KEY" > ~/.ssh/fynda-deploy.pem
-          chmod 600 ~/.ssh/fynda-deploy.pem
+          printf '%s' "$EC2_SSH_KEY" > ~/.ssh/cansee-deploy.pem
+          chmod 600 ~/.ssh/cansee-deploy.pem
           ssh-keyscan -H "$EC2_HOST" >> ~/.ssh/known_hosts 2>/dev/null
 
       - name: Run deploy.sh against prod
         env:
           EC2_HOST: ${{ secrets.EC2_HOST }}
           EC2_USER: ${{ secrets.EC2_USER || 'ubuntu' }}
-          PEM_KEY: /home/runner/.ssh/fynda-deploy.pem
-          REMOTE_DIR: ${{ secrets.REMOTE_DIR || '/opt/fetchbot/ftb-api-26' }}
+          PEM_KEY: /home/runner/.ssh/cansee-deploy.pem
+          REMOTE_DIR: ${{ secrets.REMOTE_DIR || '/opt/cansee/ftb-api-26' }}
           BRANCH: main
-          PUBLIC_HOST: https://fetchbot.ai
+          PUBLIC_HOST: https://cansee.ai
           # Entitlement switch. Managed as a repository VARIABLE (not a
           # secret): Settings > Secrets and variables > Actions >
           # Variables > PAYWALL_ENABLED. Set to True to turn the paywall
@@ -74,7 +74,7 @@ jobs:
       - name: Smoke test
         run: |
           for i in 1 2 3 4 5; do
-            code=$(curl -s -o /dev/null -w "%{http_code}" https://fetchbot.ai/health/ || echo "000")
+            code=$(curl -s -o /dev/null -w "%{http_code}" https://cansee.ai/health/ || echo "000")
             echo "attempt $i: $code"
             if [[ "$code" == "200" ]]; then exit 0; fi
             sleep 10

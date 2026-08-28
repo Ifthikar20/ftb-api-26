@@ -1,5 +1,5 @@
 """
-Hosted Google-tag source: per-website data streams in a FetchBot-owned
+Hosted Google-tag source: per-website data streams in a Cansee-owned
 GA4 property.
 
 The client pastes a standard gtag snippet (no Google account needed on

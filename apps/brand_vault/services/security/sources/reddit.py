@@ -5,7 +5,7 @@ import logging
 
 logger = logging.getLogger("apps")
 
-USER_AGENT = "growthpilot-brand-security/0.1"
+USER_AGENT = "cansee-brand-security/0.1"
 
 
 def search_mentions(query: str, *, limit: int = 25) -> list[dict]:

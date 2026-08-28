@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ════════════════════════════════════════════════════════════════════
-#  FetchBot — single-file dev + deploy entry point.
+#  Cansee — single-file dev + deploy entry point.
 #
 #  One script. Multiple subcommands. Replaces deploy.sh,
 #  deploy_and_test.sh, deploy_and_monitor.sh, dev.sh, migrate_all.sh,
@@ -30,7 +30,7 @@
 #
 #  Environment overrides (deploy):
 #    BRANCH=main  EC2_HOST=…  EC2_USER=ubuntu  PEM_KEY=…
-#    REMOTE_DIR=/opt/fetchbot/ftb-api-26  PUBLIC_HOST=https://fetchbot.ai
+#    REMOTE_DIR=/opt/cansee/ftb-api-26  PUBLIC_HOST=https://cansee.ai
 # ════════════════════════════════════════════════════════════════════
 
 set -euo pipefail
@@ -43,9 +43,9 @@ REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 BRANCH="${BRANCH:-main}"
 EC2_HOST="${EC2_HOST:-100.31.135.211}"
 EC2_USER="${EC2_USER:-ubuntu}"
-PEM_KEY="${PEM_KEY:-$HOME/.ssh/fynda-deploy.pem}"
-REMOTE_DIR="${REMOTE_DIR:-/opt/fetchbot/ftb-api-26}"
-PUBLIC_HOST="${PUBLIC_HOST:-https://fetchbot.ai}"
+PEM_KEY="${PEM_KEY:-$HOME/.ssh/cansee-deploy.pem}"
+REMOTE_DIR="${REMOTE_DIR:-/opt/cansee/ftb-api-26}"
+PUBLIC_HOST="${PUBLIC_HOST:-https://cansee.ai}"
 COMPOSE_FILE="docker/docker-compose.prod.yml"
 # Entitlement switch synced into remote .env.prod when set. GitHub
 # Actions supplies it from the PAYWALL_ENABLED repository variable;
@@ -440,7 +440,16 @@ dep_deploy() {
   remote_compose "pull frontend"
   remote_compose "rm -f frontend" >/dev/null 2>&1 || true
   remote_compose "run --rm frontend"
-  remote_compose "restart nginx"
+  # `up -d` rather than `restart`: dep_deploy only brings up web/celery/
+  # intelligence/sources, so on a freshly provisioned box no nginx container
+  # exists yet and `docker compose restart nginx` exits non-zero -- which
+  # under `set -euo pipefail` aborts the first deploy of every new host.
+  # `up -d` is idempotent: it creates the container when absent and is a
+  # no-op when it is already running and unchanged.
+  remote_compose "up -d nginx"
+  # Reload so in-flight workers re-stat the new index.html. Fall back to a
+  # restart if the container was only just created and cannot reload yet.
+  remote_compose "exec -T nginx nginx -s reload" || remote_compose "restart nginx"
   ok "Frontend bundle refreshed and nginx reloaded"
 
   step "Apply migrations & collect static"
@@ -554,7 +563,7 @@ cmd_deploy() {
       *) echo "Unknown deploy flag: $arg"; exit 1 ;;
     esac
   done
-  banner "FetchBot Deploy — branch=$BRANCH"
+  banner "Cansee Deploy — branch=$BRANCH"
   case "$sub_mode" in
     test)    dep_smoke_test; exit $? ;;
     logs)    dep_tail_logs; exit 0 ;;
@@ -707,8 +716,8 @@ from apps.accounts.models import User
 from apps.websites.models import Website, WebsiteSettings
 
 admin, c = User.objects.get_or_create(
-    email="admin@growthpilot.io",
-    defaults={"full_name": "Admin User", "company_name": "GrowthPilot",
+    email="admin@cansee.ai",
+    defaults={"full_name": "Admin User", "company_name": "Cansee",
               "plan": "scale", "is_staff": True, "is_superuser": True,
               "is_email_verified": True},
 )

@@ -33,14 +33,14 @@ from django.utils import timezone
 from apps.billing.models import Subscription
 from apps.billing.services.plan_limits import trial_ended
 from apps.metering import polar_client
-from core.exceptions import GrowthPilotException
+from core.exceptions import CanseeException
 from core.logging.audit_logger import audit_log
 from core.utils.constants import Plan, SubscriptionStatus
 
 logger = logging.getLogger("billing")
 
-PRODUCT_PRO_MONTHLY = "FetchBot Pro (Monthly)"
-PRODUCT_PRO_ANNUAL = "FetchBot Pro (Annual)"
+PRODUCT_PRO_MONTHLY = "Cansee Pro (Monthly)"
+PRODUCT_PRO_ANNUAL = "Cansee Pro (Annual)"
 
 # Polar subscription status -> local SubscriptionStatus. Anything that
 # still grants access maps to ACTIVE/TRIALING; terminal states to
@@ -71,7 +71,7 @@ def is_configured() -> bool:
 
 def _require_configured() -> None:
     if not is_configured():
-        raise GrowthPilotException(
+        raise CanseeException(
             "Billing is not configured yet. Please try again later.",
             code="billing_not_configured",
             status_code=503,
@@ -107,7 +107,7 @@ def bootstrap_products() -> dict[str, str]:
     wanted = {
         PRODUCT_PRO_MONTHLY: {
             "name": PRODUCT_PRO_MONTHLY,
-            "description": "FetchBot Pro subscription, billed monthly.",
+            "description": "Cansee Pro subscription, billed monthly.",
             "recurring_interval": "month",
             "prices": [{"amount_type": "fixed", "price_amount": 45_00}],
             "trial_interval": "day",
@@ -115,7 +115,7 @@ def bootstrap_products() -> dict[str, str]:
         },
         PRODUCT_PRO_ANNUAL: {
             "name": PRODUCT_PRO_ANNUAL,
-            "description": "FetchBot Pro subscription, billed yearly (2 months free).",
+            "description": "Cansee Pro subscription, billed yearly (2 months free).",
             "recurring_interval": "year",
             "prices": [{"amount_type": "fixed", "price_amount": 450_00}],
             "trial_interval": "day",
@@ -212,7 +212,7 @@ def create_checkout(user, *, annual: bool, origin: str, customer_ip: str = "") -
     # the user behind a stale local TRIALING row: settle it first.
     sub = reverify_ended_trial(user, sub)
     if sub and sub.status in (SubscriptionStatus.ACTIVE, SubscriptionStatus.TRIALING):
-        raise GrowthPilotException(
+        raise CanseeException(
             "You already have an active subscription. Use Manage billing "
             "to change your plan.",
             code="already_subscribed",
@@ -265,7 +265,7 @@ def confirm_checkout(user, checkout_id: str) -> dict:
     checkout = polar_client.get_checkout(checkout_id)
 
     if str(getattr(checkout, "external_customer_id", "") or "") != str(user.id):
-        raise GrowthPilotException(
+        raise CanseeException(
             "This checkout does not belong to your account.",
             code="checkout_mismatch",
             status_code=403,
@@ -421,7 +421,7 @@ def set_cancel_at_period_end(user, cancel: bool) -> Subscription:
     _require_configured()
     sub = Subscription.objects.filter(user=user).first()
     if not sub or not sub.polar_subscription_id:
-        raise GrowthPilotException(
+        raise CanseeException(
             "No active subscription to update.",
             code="no_subscription",
             status_code=400,

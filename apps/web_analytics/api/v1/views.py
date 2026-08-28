@@ -224,7 +224,7 @@ class Ga4RealtimeSnapshotView(GatedTenantView):
         return Response(payload)
 
 
-# ── Hosted Google tag (FetchBot-owned pool property) ────────────────────────
+# ── Hosted Google tag (Cansee-owned pool property) ────────────────────────
 
 
 def _hosted_status_payload(integration) -> dict:

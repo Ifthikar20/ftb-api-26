@@ -173,6 +173,14 @@ class AnalyticsAccessLog(models.Model):
     of tenant isolation: "show every access to Company X's analytics in the
     last 90 days" is a single filter, not a log grep. Append-only — rows are
     never updated, only inserted and (eventually) pruned by retention.
+
+    Deliberately holds no personal data of its own. Identity lives entirely
+    in the ``user`` foreign key, so a row carries no email, IP address or
+    user agent: the trail can still answer "who read this website's data,
+    and when" by joining, while a user deletion removes the identity from
+    every historical row instead of leaving copies behind. The columns that
+    once denormalized email/IP/user-agent were dropped in analytics
+    migration 0013 -- do not reintroduce them.
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -183,7 +191,6 @@ class AnalyticsAccessLog(models.Model):
         on_delete=models.SET_NULL,
         related_name="analytics_accesses",
     )
-    user_email = models.CharField(max_length=254, blank=True)
     # Which website's data was read. SET_NULL so deleting a website does not
     # erase the historical fact that it was accessed.
     website = models.ForeignKey(
@@ -193,12 +200,10 @@ class AnalyticsAccessLog(models.Model):
         related_name="access_logs",
     )
     website_id_raw = models.CharField(max_length=64, db_index=True)
-    # What / where from.
+    # What was read. No IP or user agent by design -- see the class docstring.
     path = models.CharField(max_length=300)
     method = models.CharField(max_length=8, default="GET")
     status_code = models.PositiveSmallIntegerField(default=200)
-    ip_address = models.CharField(max_length=64, blank=True)
-    user_agent = models.CharField(max_length=400, blank=True)
     request_id = models.CharField(max_length=64, blank=True)
     accessed_at = models.DateTimeField(auto_now_add=True, db_index=True)
 
@@ -211,4 +216,6 @@ class AnalyticsAccessLog(models.Model):
         ordering = ["-accessed_at"]
 
     def __str__(self):
-        return f"AccessLog({self.user_email} -> {self.website_id_raw} @ {self.accessed_at})"
+        # user_id, not the email: the row stores no personal data, and this
+        # runs in the admin list where a join per row would be wasteful.
+        return f"AccessLog({self.user_id} -> {self.website_id_raw} @ {self.accessed_at})"

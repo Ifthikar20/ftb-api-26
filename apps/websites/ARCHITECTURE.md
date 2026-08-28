@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The central entity in FetchBot. Every other app is scoped to a Website. This app manages website registration, pixel installation, team access (RBAC), external integrations (OAuth), and outbound webhooks.
+The central entity in Cansee. Every other app is scoped to a Website. This app manages website registration, pixel installation, team access (RBAC), external integrations (OAuth), and outbound webhooks.
 
 ## Architecture
 
@@ -11,7 +11,7 @@ User registers a website
   │
   ├── Website created with unique pixel_key
   │     └── User installs pixel on their site
-  │           <script src="/pixel/growthpilot.min.js?key=<pixel_key>">
+  │           <script src="/pixel/cansee.min.js?key=<pixel_key>">
   │
   ├── Team Management
   │     WebsiteMembership (RBAC: owner/admin/editor/viewer)

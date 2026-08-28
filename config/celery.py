@@ -1,4 +1,4 @@
-"""Celery configuration for GrowthPilot."""
+"""Celery configuration for Cansee."""
 import os
 
 from celery import Celery
@@ -6,7 +6,7 @@ from celery.schedules import crontab
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings.prod")
 
-app = Celery("growthpilot")
+app = Celery("cansee")
 app.config_from_object("django.conf:settings", namespace="CELERY")
 app.autodiscover_tasks()
 
@@ -41,6 +41,10 @@ app.conf.task_routes = {
     "apps.metering.tasks.prune_ai_usage_ledger": {"queue": "integrations"},
     "apps.metering.tasks.prune_polar_outbox": {"queue": "integrations"},
     "apps.metering.tasks.notify_cap_threshold": {"queue": "default"},
+    # Long-running batch deletes: keep them off the default queue so they
+    # cannot delay request-path work.
+    "apps.analytics.tasks.prune_analytics_events": {"queue": "integrations"},
+    "apps.analytics.tasks.prune_llm_results": {"queue": "integrations"},
 }
 
 app.conf.beat_schedule = {
@@ -147,5 +151,20 @@ app.conf.beat_schedule = {
     "prune-polar-outbox": {
         "task": "apps.metering.tasks.prune_polar_outbox",
         "schedule": crontab(minute=50, hour=2, day_of_week=0),
+    },
+    # Retention. Windows live in settings (ANALYTICS_RETENTION_DAYS et al) and
+    # are published on /what-we-track, so these two tasks are what makes that
+    # page true. Scheduled off-peak and after the metering prunes.
+    #
+    # NOTE: the first production run clears a backlog that has never been
+    # pruned. Run `manage.py prune_retention --dry-run` and check the counts
+    # before letting beat fire this.
+    "prune-analytics-events": {
+        "task": "apps.analytics.tasks.prune_analytics_events",
+        "schedule": crontab(minute=10, hour=3),
+    },
+    "prune-llm-results": {
+        "task": "apps.analytics.tasks.prune_llm_results",
+        "schedule": crontab(minute=30, hour=3, day_of_week=0),
     },
 }

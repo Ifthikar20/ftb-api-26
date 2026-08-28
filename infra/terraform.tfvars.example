@@ -3,7 +3,7 @@
 
 aws_region  = "us-east-1"
 environment = "prod"
-domain_name = "fetchbot.ai"
+domain_name = "cansee.ai"
 
 # Leave empty to use SSM Session Manager instead of SSH. Setting this
 # opens port 22 and reintroduces the .pem you are trying to retire.

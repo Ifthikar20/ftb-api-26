@@ -24,14 +24,14 @@ class TestHashEmbedFallback:
 
     def test_identical_text_gives_high_similarity(self, settings):
         settings.OPENAI_API_KEY = ""
-        a, _, _ = embed_one("FetchBot analytics for SaaS teams")
-        b, _, _ = embed_one("FetchBot analytics for SaaS teams")
+        a, _, _ = embed_one("Cansee analytics for SaaS teams")
+        b, _, _ = embed_one("Cansee analytics for SaaS teams")
         assert cosine_similarity(a, b) > 0.99
 
     def test_unrelated_text_gives_low_similarity(self, settings):
         settings.OPENAI_API_KEY = ""
         a, _, _ = embed_one("retail point-of-sale terminal")
-        b, _, _ = embed_one("FetchBot analytics for SaaS teams")
+        b, _, _ = embed_one("Cansee analytics for SaaS teams")
         assert cosine_similarity(a, b) < 0.5
 
 

@@ -90,7 +90,7 @@ class RedditMiner(BaseMiner):
     """
 
     source = PromptSource.REDDIT
-    USER_AGENT = "growthpilot-prompt-miner/0.2"
+    USER_AGENT = "cansee-prompt-miner/0.2"
 
     def fetch_questions(self, industry, limit: int) -> list[dict]:
         try:

@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 880" width="1180" height="880" role="img" aria-label="FetchBot AWS target architecture: Cloudflare fronts an Application Load Balancer in public subnets, which forwards to an EC2 instance running six containers; RDS PostgreSQL and ElastiCache Redis sit in private subnets with no internet route; S3, CloudFront, Secrets Manager, CloudWatch and ECR sit alongside in the region.">
-  <title>FetchBot — AWS target architecture</title>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 880" width="1180" height="880" role="img" aria-label="Cansee AWS target architecture: Cloudflare fronts an Application Load Balancer in public subnets, which forwards to an EC2 instance running six containers; RDS PostgreSQL and ElastiCache Redis sit in private subnets with no internet route; S3, CloudFront, Secrets Manager, CloudWatch and ECR sit alongside in the region.">
+  <title>Cansee — AWS target architecture</title>
   <desc>Managed data layer with EC2 compute retained. RDS and ElastiCache are in private subnets with no route to the internet. No NAT gateway.</desc>
 
   <defs>
@@ -20,7 +20,7 @@
 
     <!-- ── Title ─────────────────────────────────────────────── -->
     <text x="30" y="34" font-size="22" font-weight="700"
-          font-family="Archivo, 'Helvetica Neue', Arial, sans-serif">FetchBot — AWS target architecture</text>
+          font-family="Archivo, 'Helvetica Neue', Arial, sans-serif">Cansee — AWS target architecture</text>
     <text x="30" y="56" font-size="12.5" fill="#535D6D">Managed data layer, EC2 compute retained. ~$73/mo. No NAT gateway.</text>
 
     <!-- ── Third-party APIs (outside AWS) ────────────────────── -->

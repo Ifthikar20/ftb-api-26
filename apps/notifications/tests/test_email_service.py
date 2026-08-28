@@ -34,11 +34,11 @@ class TestSendEmail:
         assert html_alts == ["<p>Hello <strong>there</strong></p>"]
 
     def test_from_address_comes_from_settings_not_a_hardcode(self, settings):
-        settings.DEFAULT_FROM_EMAIL = "noreply@fetchbot.ai"
+        settings.DEFAULT_FROM_EMAIL = "noreply@cansee.ai"
         EmailService.send_email(
             to="owner@example.com", subject="s", html_content="<p>b</p>",
         )
-        assert mail.outbox[0].from_email == "noreply@fetchbot.ai"
+        assert mail.outbox[0].from_email == "noreply@cansee.ai"
 
     def test_backend_failure_returns_false_instead_of_raising(self):
         with patch.object(

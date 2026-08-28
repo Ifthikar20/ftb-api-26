@@ -47,7 +47,7 @@ except ImportError:
 
 TOKEN_URL = "https://www.reddit.com/api/v1/access_token"
 SEARCH_URL = "https://oauth.reddit.com/search"
-DEFAULT_USER_AGENT = "fetchbot.ai:com.fetchbot.crawler:v0.1 (by /u/fetchbot-dev)"
+DEFAULT_USER_AGENT = "cansee.ai:com.cansee.crawler:v0.1 (by /u/cansee-dev)"
 
 
 def get_token(

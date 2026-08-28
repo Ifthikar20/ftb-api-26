@@ -14,10 +14,7 @@ database, no cache, no HTTP client — so they run anywhere.
 import pytest
 from django.test import override_settings
 
-from apps.accounts.api.v1.views import (
-    REFRESH_COOKIE_SETTINGS,
-    _refresh_cookie_settings,
-)
+from apps.accounts.api.v1.views import _refresh_cookie_settings
 
 
 class TestRefreshCookieSameSite:
@@ -44,7 +41,7 @@ class TestRefreshCookieSameSite:
 class TestRefreshCookieHardening:
     """The flags that keep the cookie unreadable and off plaintext links."""
 
-    @override_settings(DEBUG=False)
+    @override_settings(DEBUG=False, SESSION_COOKIE_SECURE=True)
     def test_production_cookie_is_secure_and_httponly(self):
         cookie = _refresh_cookie_settings()
         # httponly keeps XSS from reading the refresh token; secure keeps
@@ -52,7 +49,7 @@ class TestRefreshCookieHardening:
         assert cookie["httponly"] is True
         assert cookie["secure"] is True
 
-    @override_settings(DEBUG=True)
+    @override_settings(DEBUG=True, SESSION_COOKIE_SECURE=True)
     def test_dev_relaxes_secure_but_not_httponly(self):
         # Vite proxies over http locally, so Secure would drop the cookie
         # and bounce developers to /login. httponly is not negotiable.
@@ -72,15 +69,50 @@ class TestRefreshCookieHardening:
         assert cookie["max_age"] == 7 * 24 * 60 * 60
 
 
-class TestModuleLevelConstant:
-    """REFRESH_COOKIE_SETTINGS is bound at import, not per request."""
+class TestSettingsAreReadAtCallTime:
+    """The regression this class now exists for.
 
-    def test_constant_is_evaluated_once_at_import(self):
-        # Every set_cookie call site passes **REFRESH_COOKIE_SETTINGS
-        # rather than calling the function, so the value is frozen at
-        # import time under whatever DEBUG was then. override_settings
-        # cannot reach it - a fact worth pinning, because it means the
-        # deployed behaviour is decided by the settings module in use.
-        assert REFRESH_COOKIE_SETTINGS["key"] == "refresh_token"
-        assert REFRESH_COOKIE_SETTINGS["samesite"] == "Lax"
-        assert REFRESH_COOKIE_SETTINGS["httponly"] is True
+    These attributes used to be frozen into a module-level
+    REFRESH_COOKIE_SETTINGS at import, keyed only on DEBUG, so no setting
+    could reach them. That made a plaintext deployment impossible to
+    configure: the cookie stayed Secure, the browser silently discarded it
+    over http://, and login returned 200 with the session gone on the next
+    request -- nothing raised, nothing logged.
+    """
+
+    def test_the_frozen_constant_is_gone(self):
+        from apps.accounts.api.v1 import views
+
+        assert not hasattr(views, "REFRESH_COOKIE_SETTINGS")
+
+    @override_settings(DEBUG=False, SESSION_COOKIE_SECURE=True)
+    def test_tls_deployment_sets_secure(self):
+        assert _refresh_cookie_settings()["secure"] is True
+
+    @override_settings(DEBUG=False, SESSION_COOKIE_SECURE=False)
+    def test_plaintext_deployment_does_not(self):
+        assert _refresh_cookie_settings()["secure"] is False
+
+    def test_two_calls_under_different_settings_differ(self):
+        # Proves the value is not memoised anywhere. A lazily-recomputed
+        # mapping would pass the two tests above and still fail this one.
+        with override_settings(DEBUG=False, SESSION_COOKIE_SECURE=True):
+            secure = _refresh_cookie_settings()["secure"]
+        with override_settings(DEBUG=False, SESSION_COOKIE_SECURE=False):
+            plain = _refresh_cookie_settings()["secure"]
+        assert (secure, plain) == (True, False)
+
+
+class TestInvariantsAcrossEveryMode:
+    """What the scheme switch must never be able to reach."""
+
+    @pytest.mark.parametrize("debug", [True, False])
+    @pytest.mark.parametrize("cookie_secure", [True, False])
+    def test_samesite_and_httponly_never_move(self, debug, cookie_secure):
+        # SameSite=Lax is the only CSRF control on the cookie-reading
+        # endpoints, and httponly is what keeps XSS off the refresh token.
+        # Neither may follow PUBLIC_SCHEME.
+        with override_settings(DEBUG=debug, SESSION_COOKIE_SECURE=cookie_secure):
+            cookie = _refresh_cookie_settings()
+        assert cookie["samesite"] == "Lax"
+        assert cookie["httponly"] is True

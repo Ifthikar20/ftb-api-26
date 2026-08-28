@@ -10,7 +10,7 @@ from core.utils.constants import UserRole
 
 
 class Website(SoftDeleteMixin, TimestampMixin):
-    """A website tracked by FetchBot."""
+    """A website tracked by Cansee."""
 
     PLATFORM_TYPES = [
         ("shopify", "Shopify"),
@@ -117,7 +117,7 @@ class Integration(TimestampMixin):
 
     INTEGRATION_TYPES = [
         ("ga", "Google Analytics"),
-        ("ga_hosted", "FetchBot Google tag"),
+        ("ga_hosted", "Cansee Google tag"),
         ("cloudflare", "Cloudflare"),
         ("gsc", "Google Search Console"),
         ("facebook", "Facebook Ads"),

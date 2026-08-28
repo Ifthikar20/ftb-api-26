@@ -6,7 +6,7 @@ SETTINGS_DEV = config.settings.dev
 SETTINGS_TEST = config.settings.test
 
 help:
-	@echo "GrowthPilot — Development Commands"
+	@echo "Cansee — Development Commands"
 	@echo ""
 	@echo "  make install       Install dev dependencies"
 	@echo "  make migrate       Run pending migrations"

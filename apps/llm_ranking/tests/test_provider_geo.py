@@ -21,7 +21,7 @@ def _mock_perplexity_response():
     resp = MagicMock()
     resp.status_code = 200
     resp.json.return_value = {
-        "choices": [{"message": {"content": "Top 1: FetchBot. Top 2: Mixpanel."}}],
+        "choices": [{"message": {"content": "Top 1: Cansee. Top 2: Mixpanel."}}],
         "usage": {"prompt_tokens": 12, "completion_tokens": 30},
     }
     resp.raise_for_status = MagicMock()

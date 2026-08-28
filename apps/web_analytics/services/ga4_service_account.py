@@ -1,5 +1,5 @@
 """
-Service-account auth for the FetchBot-owned GA4 pool property.
+Service-account auth for the Cansee-owned GA4 pool property.
 
 The hosted Google-tag source (see ga4_hosted.py) provisions data
 streams in a property we control and reads them back — both with a

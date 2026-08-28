@@ -16,7 +16,7 @@ services:
     environment:
       DB_HOST: db
       DB_PORT: "5432"
-      DB_NAME: growthpilot
+      DB_NAME: cansee
       DB_USER: postgres
       DB_PASSWORD: postgres
       REDIS_URL: redis://redis:6379/0
@@ -26,7 +26,7 @@ services:
     environment:
       DB_HOST: db
       DB_PORT: "5432"
-      DB_NAME: growthpilot
+      DB_NAME: cansee
       DB_USER: postgres
       DB_PASSWORD: postgres
       REDIS_URL: redis://redis:6379/0
@@ -36,7 +36,7 @@ services:
     environment:
       DB_HOST: db
       DB_PORT: "5432"
-      DB_NAME: growthpilot
+      DB_NAME: cansee
       DB_USER: postgres
       DB_PASSWORD: postgres
       REDIS_URL: redis://redis:6379/0

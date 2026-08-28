@@ -19,6 +19,25 @@ import requests
 
 logger = logging.getLogger("apps")
 
+
+def _friendly_fetch_error(detail: str) -> str:
+    """Turn an internal FetchError string into something a person can act on."""
+    d = (detail or "").lower()
+    if "unsafe url" in d or "private" in d or "blocked" in d:
+        return "That address isn't a public website we can reach."
+    if "timed out" in d or "timeout" in d:
+        return "That site took too long to respond. Try again in a moment."
+    if "content-type" in d:
+        return "That address didn't return a web page."
+    if "exceeds" in d:
+        # Should no longer happen for scans (they truncate), kept as a net.
+        return "That page was too large to read fully. Try again."
+    if "name or service not known" in d or "nodename" in d or "resolve" in d:
+        return "We couldn't find that domain. Check the spelling."
+    if "connection" in d or "ssl" in d or "certificate" in d:
+        return "We couldn't connect to that site. Check the address and try again."
+    return "We couldn't read that site. Check the address and try again."
+
 SCAN_TIMEOUT = 12  # seconds
 MAX_BODY_SIZE = 800_000  # 800KB limit
 
@@ -477,6 +496,11 @@ def scan_domain(url: str) -> dict:
                 url,
                 timeout=SCAN_TIMEOUT,
                 max_bytes=MAX_BODY_SIZE,
+                # Everything this scanner needs (title, meta/og tags, hero
+                # copy) is at the top of the document, so a large page is
+                # truncated rather than rejected. Big storefronts routinely
+                # ship more than the cap in inline HTML/JSON.
+                truncate=True,
                 headers={
                     "User-Agent": (
                         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -488,7 +512,12 @@ def scan_domain(url: str) -> dict:
                 },
             )
         except FetchError as exc:
-            result["error"] = str(exc)[:200]
+            # This message is shown to a person mid-onboarding, so it must
+            # say what to do next — never the raw internal reason (a user
+            # once saw "response body exceeds 800000 bytes"). The detail
+            # stays in the logs for us.
+            logger.warning("domain scan fetch failed for %s: %s", url, exc)
+            result["error"] = _friendly_fetch_error(str(exc))
             return result
         url = resp.final_url
         if resp.status_code >= 400:

@@ -44,13 +44,13 @@ class TestAuditOutputSerializers:
             region="in",
             citation_countries={"IN": 5, "US": 2},
             mention_rate_smoothed=42.7,
-            brand_strengths={"FetchBot": 1.0, "Mixpanel": 0.6},
+            brand_strengths={"Cansee": 1.0, "Mixpanel": 0.6},
         )
         data = LLMRankingAuditSerializer(audit).data
         assert data["region"] == "in"
         assert data["citation_countries"] == {"IN": 5, "US": 2}
         assert data["mention_rate_smoothed"] == 42.7
-        assert data["brand_strengths"]["FetchBot"] == 1.0
+        assert data["brand_strengths"]["Cansee"] == 1.0
 
     def test_list_serializer_exposes_region_and_citations(self):
         audit = LLMRankingAuditFactory(

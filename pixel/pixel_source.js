@@ -1,9 +1,9 @@
 /**
- * GrowthPilot Tracking Pixel — Source
+ * Cansee Tracking Pixel — Source
  * Version: 1.0.0
  *
  * This file is the unminified source. Build with:
- *   npx terser pixel_source.js -o growthpilot.min.js --compress --mangle
+ *   npx terser pixel_source.js -o cansee.min.js --compress --mangle
  *
  * Embeds on tracked websites to collect:
  *   - Page URL and referrer
@@ -18,11 +18,11 @@
 (function (window, document) {
   "use strict";
 
-  var GP = (window.GrowthPilot = window.GrowthPilot || {});
+  var GP = (window.Cansee = window.Cansee || {});
 
   // ── Configuration ──────────────────────────────────────────────────────────
   GP.pixelKey = GP.pixelKey || "";
-  GP.endpoint = GP.endpoint || "https://api.growthpilot.io/api/v1/track/";
+  GP.endpoint = GP.endpoint || "https://api.cansee.ai/api/v1/track/";
   GP.consentRequired = GP.consentRequired !== false;
 
   // ── State ──────────────────────────────────────────────────────────────────
@@ -43,7 +43,7 @@
     if (navigator.doNotTrack === "1") return false;
     // Check for custom consent cookie or localStorage flag
     try {
-      return localStorage.getItem("gp_consent") === "true";
+      return localStorage.getItem("cs_consent") === "true";
     } catch (e) {
       return true;
     }
@@ -128,7 +128,7 @@
 
   GP.consent = function (granted) {
     try {
-      localStorage.setItem("gp_consent", granted ? "true" : "false");
+      localStorage.setItem("cs_consent", granted ? "true" : "false");
     } catch (e) {}
     if (granted) {
       send("pageview");
