@@ -114,6 +114,11 @@ class NotificationService:
                                     f"Company: {lead.company or 'unknown'}."
                                 ),
                             )
+                    elif conn.platform == "teams":
+                        from apps.notifications.services.teams_service import TeamsService
+                        TeamsService.send_hot_lead_alert(
+                            webhook_url=conn.webhook_url, lead=lead
+                        )
                 except Exception as e:
                     logger.warning(f"Hot lead alert failed for {conn.platform}: {e}")
         except Exception as e:

@@ -83,9 +83,16 @@ def build_overview_for_user(
     providers: list[str] | None = None,
     tags: list[str] | None = None,
     topics: list[str] | None = None,
+    website=None,
 ) -> dict:
-    """Aggregate the Overview cards for ``user`` within an optional window."""
-    audits = _audits_in(user, start, end)
+    """Aggregate the Overview cards for ``user`` within an optional window.
+
+    When ``website`` is given, audits (and therefore the target brand,
+    competitors, matrix and prompts) are scoped to that project only —
+    without it, a second project's own brand would show up here as a
+    "competitor" of whichever project audited most recently.
+    """
+    audits = _audits_in(user, start, end, website=website)
     audit_ids = list(audits.values_list("id", flat=True))
     if not audit_ids:
         return empty_overview()
@@ -105,7 +112,7 @@ def build_overview_for_user(
     # there is no "preceding period" to speak of, so deltas stay None.
     previous = _previous_brand_visibility(
         user, start, end, prompts, brand_name,
-        providers=providers, tags=tags, topics=topics,
+        providers=providers, tags=tags, topics=topics, website=website,
     )
     for row in brands:
         prior = previous.get(row["name"].lower())
@@ -141,10 +148,12 @@ def build_overview_for_user(
 
 # ── queryset helpers (mirrors geo_stats so filters behave identically) ──
 
-def _audits_in(user, start, end):
+def _audits_in(user, start, end, website=None):
     qs = LLMRankingAudit.objects.filter(
         created_by=user, status=LLMRankingAudit.STATUS_COMPLETED,
     )
+    if website is not None:
+        qs = qs.filter(website=website)
     if start is not None:
         qs = qs.filter(completed_at__gte=start)
     if end is not None:
@@ -199,6 +208,10 @@ def _build_brands(results, brand_name: str) -> list[dict]:
 
         for entry in r.competitors_mentioned or []:
             if not isinstance(entry, dict):
+                continue
+            # v4 extraction tags generic terms (equipment, categories) —
+            # they are information, not competitor brands.
+            if entry.get("kind") == "generic":
                 continue
             name = (entry.get("name") or "").strip()
             if not name:
@@ -256,7 +269,7 @@ def _build_brands(results, brand_name: str) -> list[dict]:
 
 def _previous_brand_visibility(
     user, start, end, prompts, brand_name,
-    *, providers=None, tags=None, topics=None,
+    *, providers=None, tags=None, topics=None, website=None,
 ) -> dict:
     """Visibility per brand over the window immediately before this one.
 
@@ -270,7 +283,8 @@ def _previous_brand_visibility(
     prev_results = list(
         _filtered_results(
             list(
-                _audits_in(user, start - span, start).values_list("id", flat=True),
+                _audits_in(user, start - span, start, website=website)
+                .values_list("id", flat=True),
             ),
             prompts,
             providers=providers, tags=tags, topics=topics,
@@ -316,6 +330,10 @@ def _build_matrix(results, brand_name: str, brands: list[dict]) -> dict:
             target_hits[r.provider] += 1
         for entry in r.competitors_mentioned or []:
             if not isinstance(entry, dict):
+                continue
+            # v4 extraction tags generic terms (equipment, categories) —
+            # they are information, not competitor brands.
+            if entry.get("kind") == "generic":
                 continue
             name = (entry.get("name") or "").strip().lower()
             if name:
@@ -394,6 +412,10 @@ def _build_brand_prompts(results, brand_name: str) -> dict[str, list[dict]]:
 
         for entry in r.competitors_mentioned or []:
             if not isinstance(entry, dict):
+                continue
+            # v4 extraction tags generic terms (equipment, categories) —
+            # they are information, not competitor brands.
+            if entry.get("kind") == "generic":
                 continue
             name = (entry.get("name") or "").strip()
             if not name:
@@ -586,6 +608,7 @@ def build_filter_options(
     *,
     start: datetime | None = None,
     end: datetime | None = None,
+    website=None,
 ) -> dict:
     """Option lists for the dashboard filter pills.
 
@@ -597,7 +620,9 @@ def build_filter_options(
     """
     from collections import Counter
 
-    audit_ids = list(_audits_in(user, start, end).values_list("id", flat=True))
+    audit_ids = list(
+        _audits_in(user, start, end, website=website).values_list("id", flat=True)
+    )
     if not audit_ids:
         return {"models": [], "tags": [], "topics": [], "unlinked_results": 0}
 
@@ -638,9 +663,12 @@ def build_filter_options(
     }
     tag_counts: Counter = Counter()
     if prompt_ids:
-        rows = BrandPrompt.objects.filter(
+        brand_prompts = BrandPrompt.objects.filter(
             website__user=user, prompt_id__in=prompt_ids,
-        ).values_list("tags", flat=True)
+        )
+        if website is not None:
+            brand_prompts = brand_prompts.filter(website=website)
+        rows = brand_prompts.values_list("tags", flat=True)
         for tags in rows:
             for tag in tags or []:
                 if isinstance(tag, str) and tag.strip():

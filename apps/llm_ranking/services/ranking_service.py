@@ -661,7 +661,7 @@ class LLMRankingService:
         provider_keys = [p for p in (audit.providers_queried or []) if p in PROVIDERS]
         if not provider_keys:
             audit.status = LLMRankingAudit.STATUS_FAILED
-            audit.error_message = "No implemented providers selected for this audit."
+            audit.error_message = "No implemented providers selected for this prompt run."
             audit.save(update_fields=["status", "error_message", "updated_at"])
             return None
 
@@ -675,7 +675,7 @@ class LLMRankingService:
         prompt_items = [p for p in prompt_items if p["text"].strip()]
         if not prompt_items:
             audit.status = LLMRankingAudit.STATUS_FAILED
-            audit.error_message = "Audit has no prompts."
+            audit.error_message = "This prompt run has no prompts."
             audit.save(update_fields=["status", "error_message", "updated_at"])
             return None
 
@@ -685,7 +685,7 @@ class LLMRankingService:
             logs.append(entry)
             audit.audit_logs = _capped_logs(logs)
 
-        _audit_log(f"Starting audit for {audit.business_name} ({audit.industry})")
+        _audit_log(f"Starting prompt run for {audit.business_name} ({audit.industry})")
         _audit_log(f"Selected LLM providers: {', '.join(provider_keys)}")
 
         # Enrichment — same as the legacy path.
@@ -1120,7 +1120,7 @@ class LLMRankingService:
         logs.append({
             "ts": timezone.now().isoformat(), "level": "success",
             "msg": (
-                f"🏁 AUDIT COMPLETE — Score {scores['overall_score']}/100, "
+                f"🏁 PROMPT RUN COMPLETE — Score {scores['overall_score']}/100, "
                 f"mention rate {scores['mention_rate']:.1f}%, "
                 f"cost ${float(audit.total_cost_usd):.4f}"
             ),
@@ -1221,7 +1221,7 @@ class LLMRankingService:
         # Filter to only providers that have a query function
         selected_providers = [p for p in selected_providers if p in provider_map]
 
-        _audit_log(audit, f"Starting audit for {audit.business_name} ({audit.industry})")
+        _audit_log(audit, f"Starting prompt run for {audit.business_name} ({audit.industry})")
         _audit_log(audit, f"Selected LLM providers: {', '.join(selected_providers)}")
 
         # ── Content enrichment: scan URLs + Google ────────────────────────
@@ -1298,7 +1298,7 @@ class LLMRankingService:
                     user=audit.created_by, website=audit.website,
                     audit_id=str(audit.id), llm_context=enriched_context,
                 )
-                _audit_log(audit, "📚 Audit context added to knowledge base", "success")
+                _audit_log(audit, "📚 Run context added to knowledge base", "success")
             except Exception as exc:
                 logger.debug("Audit-context RAG ingest skipped: %s", exc)
 
@@ -1427,7 +1427,10 @@ class LLMRankingService:
                         _audit_log(audit, f"👻 {audit.business_name} NOT mentioned in response", "warn")
                     competitors = analysis.get("competitors_mentioned", [])
                     if competitors:
-                        _audit_log(audit, f"   ↳ Competitors found: {', '.join(competitors[:5])}")
+                        _audit_log(audit, "   ↳ Competitors found: " + ", ".join(
+                            c.get("name", "") if isinstance(c, dict) else str(c)
+                            for c in competitors[:5]
+                        ))
                 else:
                     _audit_log(audit, f"❌ {plabel} query failed: {error[:80]}", "error")
                     analysis = {
@@ -1585,7 +1588,7 @@ class LLMRankingService:
             audit.duration_seconds = (audit.completed_at - audit.started_at).total_seconds()
 
         _audit_log(audit, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-        _audit_log(audit, "🏁 AUDIT COMPLETE", "success")
+        _audit_log(audit, "🏁 PROMPT RUN COMPLETE", "success")
         _audit_log(audit, f"   Overall Score: {scores['overall_score']}/100")
         _audit_log(audit, f"   Mention Rate: {scores['mention_rate']:.1f}%")
         _audit_log(audit, f"   Avg Rank When Mentioned: #{scores['avg_mention_rank']:.1f}")
@@ -1643,7 +1646,7 @@ class LLMRankingService:
         results = list(audit.results.all())
         total = len(results)
         if not total:
-            return ["Run the audit to see recommendations."]
+            return ["Start a prompt run to see recommendations."]
 
         mention_rate = audit.mention_rate
         avg_rank = audit.avg_mention_rank

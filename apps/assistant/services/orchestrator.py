@@ -36,7 +36,20 @@ _SYSTEM_PROMPT = (
     "compact tables when comparing things. Do not wrap the whole reply in a "
     "code block.\n"
     "- Write in a friendly, direct voice. Lead with the answer, then the "
-    "supporting detail."
+    "supporting detail.\n"
+    "- When you compare quantities across several things (brands, prompts, "
+    "providers, pages) or show a value over time, ALSO emit one chart so "
+    "the shape is visible at a glance. Use a fenced block tagged `chart` "
+    "containing only JSON, on its own lines:\n"
+    "```chart\n"
+    '{"type": "bar", "title": "AI visibility by brand", "unit": "%", '
+    '"labels": ["You", "Brex", "PayPal"], '
+    '"datasets": [{"label": "Visibility", "data": [6.3, 15.5, 15.5]}]}\n'
+    "```\n"
+    "  type is bar, line or doughnut. At most 8 labels and 3 datasets. Use "
+    "only numbers that appear in the facts above -- never invent a series "
+    "to make a chart. Put the chart beside the prose that explains it, "
+    "never instead of it, and at most two charts per reply."
 )
 
 
@@ -67,6 +80,8 @@ def answer(*, user, website, question, history=None) -> dict:
             "answer": "Ask me anything about your traffic, AI visibility, "
                       "brand security, or saved prompts.",
             "grounded": False,
+            "provider": "",
+            "model": "",
         }
 
     from apps.assistant.services.context_builder import build_fact_block
@@ -94,6 +109,8 @@ def answer(*, user, website, question, history=None) -> dict:
             "answer": "No AI provider is configured yet, so I can't answer "
                       "questions. Add an AI provider key in Settings.",
             "grounded": False,
+            "provider": "",
+            "model": "",
         }
 
     convo = _format_history(history)
@@ -115,4 +132,16 @@ def answer(*, user, website, question, history=None) -> dict:
     if not text:
         text = ("I couldn't generate an answer just now. Please try again in "
                 "a moment.")
-    return {"answer": text, "grounded": bool(facts or context)}
+    return {
+        "answer": text,
+        # True when the model was handed this tenant's own data -- the fact
+        # block, retrieved context, or both. It says the answer was written
+        # WITH those numbers in front of it; it does not verify that the
+        # answer used them correctly. The UI wording has to match that.
+        "grounded": bool(facts or context),
+        # Which model actually answered. `get_provider("claude")` is the
+        # preference but the synthesis fallback can substitute another, so
+        # this is read off the provider that ran rather than assumed.
+        "provider": getattr(provider, "name", "") or "",
+        "model": getattr(provider, "model", "") or "",
+    }

@@ -90,6 +90,11 @@ urlpatterns = [
         name="prompt-library-website-prompts",
     ),
     path(
+        "websites/<uuid:website_id>/prompts/generate-samples/",
+        views.WebsiteSamplePromptsView.as_view(),
+        name="prompt-library-generate-samples",
+    ),
+    path(
         "websites/<uuid:website_id>/variables/",
         views.WebsiteVariablesView.as_view(),
         name="prompt-library-website-variables",

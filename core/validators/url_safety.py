@@ -32,6 +32,7 @@ as a fetch guard.
 from __future__ import annotations
 
 import ipaddress
+import re
 import socket
 from urllib.parse import urlparse
 
@@ -88,7 +89,15 @@ def assert_url_safe(url: str) -> str:
     if len(url) > 2000:
         raise UnsafeURLError("URL is too long.")
 
-    if not url.startswith(("http://", "https://")):
+    if not re.match(r"^[A-Za-z][A-Za-z0-9+.\-]*://", url):
+        # No "scheme://" authority prefix. A bare "host:port/..." is still
+        # schemeless, but "ftp:...", "javascript:...", "mailto:..." carry a
+        # real scheme — blindly prepending https:// to those would hide the
+        # scheme from the allowlist check below ("https://ftp://..." parses
+        # with hostname "ftp"). The (?!\d) lookahead keeps host:port intact.
+        m = re.match(r"^([A-Za-z][A-Za-z0-9+.\-]*):(?!\d)", url)
+        if m:
+            raise UnsafeURLError(f"URL scheme '{m.group(1).lower()}' is not allowed.")
         url = f"https://{url}"
 
     try:

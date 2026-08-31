@@ -321,7 +321,16 @@ SESSION_SAVE_EVERY_REQUEST = True
 # ── AXES ──
 AXES_FAILURE_LIMIT = 5
 AXES_COOLOFF_TIME = timedelta(minutes=30)
-AXES_LOCKOUT_PARAMETERS = ["ip_address", "username"]
+# Nested list = a SINGLE compound key (IP + username together). A flat list
+# would make each entry an INDEPENDENT lockout key, so 5 bad passwords for a
+# victim's username would lock that account out from every IP — a targeted
+# lockout DoS. Lock only the (IP, username) pair instead.
+AXES_LOCKOUT_PARAMETERS = [["ip_address", "username"]]
+# Derive the client IP the same proxy-aware way as core.utils.get_client_ip:
+# trust the last hop (our nginx) and read the entry just before it, so the
+# lockout key cannot be moved around with a spoofed left-most X-Forwarded-For.
+AXES_IPWARE_META_PRECEDENCE_ORDER = ("HTTP_X_FORWARDED_FOR", "REMOTE_ADDR")
+AXES_IPWARE_PROXY_COUNT = 1
 AXES_RESET_ON_SUCCESS = True
 
 # ── CORS ──
@@ -332,6 +341,7 @@ CORS_ALLOW_HEADERS = [
     "authorization",
     "content-type",
     "x-request-id",
+    "x-client-id",
     "x-csrftoken",
 ]
 
@@ -396,6 +406,15 @@ PAYWALL_ENABLED = env.bool("PAYWALL_ENABLED", default=False)
 # as an immutable `llm_usage` event via a transactional outbox. Billing
 # (checkout/subscriptions) stays on the existing Stripe code until the
 # Phase 2 cutover.
+# Shared secret for the ftb-min admin server's internal ops API
+# (/api/v1/internal/admin/). Empty = the surface is disabled (all 404s).
+# Only the admin server may hold this; it must never reach a browser.
+ADMIN_OPS_KEY = env("ADMIN_OPS_KEY", default="")
+# CIDRs whose SOURCE address (REMOTE_ADDR, never a forwarded header) may
+# call the internal ops surface. Empty = deny everyone, key or not.
+# Production: exactly the admin server's address, e.g. ["10.0.1.7/32"].
+ADMIN_OPS_ALLOWED_CIDRS = env.list("ADMIN_OPS_ALLOWED_CIDRS", default=[])
+
 POLAR_ACCESS_TOKEN = env("POLAR_ACCESS_TOKEN", default="")
 POLAR_ENVIRONMENT = env("POLAR_ENVIRONMENT", default="sandbox")  # sandbox | production
 POLAR_ORGANIZATION_ID = env("POLAR_ORGANIZATION_ID", default="")
@@ -506,6 +525,19 @@ X_BEARER_TOKEN = env("X_BEARER_TOKEN", default="")  # X (Twitter) API for trendi
 TWITTER_BEARER_TOKEN = env("TWITTER_BEARER_TOKEN", default=X_BEARER_TOKEN)
 FEATURE_X_SCANNER = env.bool("FEATURE_X_SCANNER", default=False)
 SERPAPI_KEY = env("SERPAPI_KEY", default="")
+
+# ── SMS (Twilio) ───────────────────────────────────────────────────────
+# The most intrusive channel in the product, so it is off by default and
+# has to be turned on deliberately per environment. Off means nothing
+# sends and the inbound webhook accepts-and-ignores.
+SMS_ENABLED = env.bool("SMS_ENABLED", default=False)
+TWILIO_ACCOUNT_SID = env("TWILIO_ACCOUNT_SID", default="")
+TWILIO_AUTH_TOKEN = env("TWILIO_AUTH_TOKEN", default="")
+TWILIO_FROM_NUMBER = env("TWILIO_FROM_NUMBER", default="")
+# Twilio signs the URL it was configured with. Behind nginx/Cloudflare the
+# scheme Django reconstructs can differ from what Twilio signed, which
+# breaks validation -- set this to the exact configured webhook URL.
+TWILIO_WEBHOOK_URL = env("TWILIO_WEBHOOK_URL", default="")
 
 # Brand Research community lane (Reddit search). Unauthenticated public
 # endpoint, so it has no key to gate on and can be rate-limited or blocked

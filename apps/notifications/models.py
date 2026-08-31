@@ -55,6 +55,7 @@ class IntegrationConnection(TimestampMixin):
     PLATFORM_CHOICES = [
         ("slack", "Slack"),
         ("discord", "Discord"),
+        ("teams", "Microsoft Teams"),
     ]
 
     FREQUENCY_CHOICES = [
@@ -107,3 +108,84 @@ class IntegrationConnection(TimestampMixin):
         status = "active" if self.is_active else "inactive"
         return f"Integration({self.user.email}, {self.platform}, {status})"
 
+
+class SmsSubscription(TimestampMixin):
+    """A verified mobile number that can receive alerts and reply with questions.
+
+    Not an IntegrationConnection: that model is a webhook URL for a team
+    chat platform. A phone number needs three things a webhook does not --
+    proof the person owns the number, a durable record of consent, and an
+    honoured opt-out. Those obligations are the model, so they live here as
+    columns rather than as convention.
+
+    A text is the most intrusive channel in the product, so the default
+    posture is narrow: high-severity security alerts and sharp visibility
+    drops. Digests deliberately have no switch -- 160 characters cannot
+    carry a report, and recurring texts carry the heaviest consent burden.
+    """
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending verification"
+        VERIFIED = "verified", "Verified"
+        OPTED_OUT = "opted_out", "Opted out"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="sms_subscriptions",
+    )
+    # E.164 ("+14155551234"). Encrypted at rest: a phone number is personal
+    # data and the column is a standing re-identification key.
+    phone_e164 = EncryptedTextField()
+    # Non-reversible lookup key. Inbound webhooks arrive with a number, not
+    # a user, and an encrypted column cannot be queried -- so matching goes
+    # through this digest instead of decrypting every row.
+    phone_hash = models.CharField(max_length=64, db_index=True)
+
+    status = models.CharField(
+        max_length=16, choices=Status.choices,
+        default=Status.PENDING, db_index=True,
+    )
+
+    # --- verification -----------------------------------------------------
+    # Hashed, never stored in the clear: possession of the database should
+    # not be possession of a live code.
+    verification_code_hash = models.CharField(max_length=64, blank=True)
+    verification_sent_at = models.DateTimeField(null=True, blank=True)
+    verification_attempts = models.PositiveSmallIntegerField(default=0)
+
+    # --- consent record (TCPA) -------------------------------------------
+    # Who agreed, when, and from where. Regulators ask for this, and a
+    # complaint is answered with it.
+    consented_at = models.DateTimeField(null=True, blank=True)
+    consent_ip = models.GenericIPAddressField(null=True, blank=True)
+    opted_out_at = models.DateTimeField(null=True, blank=True)
+
+    # --- what earns a text ------------------------------------------------
+    alert_security = models.BooleanField(default=True)
+    alert_visibility_drop = models.BooleanField(default=True)
+    # Two-way: replying to a text asks the assistant a question.
+    allow_replies = models.BooleanField(default=True)
+
+    last_message_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "notifications_smssubscription"
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["phone_hash", "status"])]
+        # One row per number per user. The same number must not be able to
+        # accumulate duplicate subscriptions and get texted twice.
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "phone_hash"], name="uniq_sms_user_phone",
+            ),
+        ]
+
+    def __str__(self):
+        return f"SmsSubscription({self.user.email}, {self.status})"
+
+    @property
+    def is_active(self) -> bool:
+        """Whether this number may be sent to at all."""
+        return self.status == self.Status.VERIFIED

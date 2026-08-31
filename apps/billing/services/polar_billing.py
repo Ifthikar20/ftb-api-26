@@ -301,6 +301,11 @@ def _apply_polar_subscription(sub, polar_sub, plan) -> None:
     sub.current_period_start = getattr(polar_sub, "current_period_start", None)
     sub.current_period_end = getattr(polar_sub, "current_period_end", None)
     sub.cancel_at_period_end = bool(getattr(polar_sub, "cancel_at_period_end", False))
+    # recurring_interval is an enum ("month"/"year") — unwrap like status.
+    raw_interval = getattr(polar_sub, "recurring_interval", None)
+    raw_interval = getattr(raw_interval, "value", raw_interval)
+    if raw_interval:
+        sub.interval = str(raw_interval)
 
 
 def _lookup_managed_subscription(user, subscription_id):
@@ -433,6 +438,98 @@ def set_cancel_at_period_end(user, cancel: bool) -> Subscription:
         "billing.cancel_at_period_end" if cancel else "billing.resumed",
         user=user,
         metadata={"subscription_id": sub.polar_subscription_id},
+    )
+    synced = sync_from_customer_state(user)
+    return synced or sub
+
+
+def upgrade_trial_now(user, *, annual: bool | None = None) -> Subscription:
+    """End a live free trial immediately: Polar charges the first invoice
+    now and the subscription converts to ACTIVE Pro.
+
+    ``annual`` optionally switches the billing cadence in the same PATCH
+    (None keeps whatever cadence the trial was started on). The follow-up
+    sync mirrors whatever the charge produced — ACTIVE on success,
+    PAST_DUE on a failed card — so entitlements never outrun payment.
+    """
+    from apps.billing.services.plan_limits import is_trialing_subscription
+
+    _require_configured()
+    sub = Subscription.objects.filter(user=user).first()
+    if not sub or not sub.polar_subscription_id:
+        raise CanseeException(
+            "No subscription to upgrade.", code="no_subscription", status_code=400,
+        )
+    if not is_trialing_subscription(sub):
+        raise CanseeException(
+            "Your subscription isn't in a free trial.",
+            code="not_trialing",
+            status_code=400,
+        )
+
+    product_id = None
+    if annual is not None:
+        want = "year" if annual else "month"
+        if sub.interval != want:
+            product_id = _product_id_for(annual)
+
+    polar_client.update_subscription_plan(
+        sub.polar_subscription_id, end_trial_now=True, product_id=product_id,
+    )
+    audit_log(
+        "billing.trial_upgraded_now",
+        user=user,
+        metadata={
+            "subscription_id": sub.polar_subscription_id,
+            "annual": annual,
+        },
+    )
+    synced = sync_from_customer_state(user)
+    return synced or sub
+
+
+def change_billing_cycle(user, *, annual: bool) -> Subscription:
+    """Switch the Pro subscription between monthly and annual billing.
+
+    On an ACTIVE subscription the price difference is settled immediately
+    (proration behavior "invoice"); during a trial the product swap costs
+    nothing and the new price simply applies when the trial converts.
+    """
+    _require_configured()
+    sub = Subscription.objects.filter(user=user).first()
+    if not sub or not sub.polar_subscription_id:
+        raise CanseeException(
+            "No subscription to update.", code="no_subscription", status_code=400,
+        )
+    if sub.status not in (SubscriptionStatus.ACTIVE, SubscriptionStatus.TRIALING):
+        raise CanseeException(
+            "Your subscription can't change plans right now.",
+            code="not_active",
+            status_code=400,
+        )
+    want = "year" if annual else "month"
+    if sub.interval == want:
+        raise CanseeException(
+            "You're already on annual billing." if annual
+            else "You're already on monthly billing.",
+            code="already_on_plan",
+            status_code=400,
+        )
+
+    polar_client.update_subscription_plan(
+        sub.polar_subscription_id,
+        product_id=_product_id_for(annual),
+        proration_behavior=(
+            "invoice" if sub.status == SubscriptionStatus.ACTIVE else None
+        ),
+    )
+    audit_log(
+        "billing.cycle_changed",
+        user=user,
+        metadata={
+            "subscription_id": sub.polar_subscription_id,
+            "annual": annual,
+        },
     )
     synced = sync_from_customer_state(user)
     return synced or sub

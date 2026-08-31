@@ -27,7 +27,7 @@ class PixelNotVerified(CanseeException):
 
 class AuditInProgress(CanseeException):
     def __init__(self):
-        super().__init__("An audit is already running.", code="audit_in_progress")
+        super().__init__("A prompt run is already in progress.", code="audit_in_progress")
 
 
 class AIGenerationFailed(CanseeException):
@@ -44,6 +44,14 @@ class CompetitorLimitReached(CanseeException):
         super().__init__(
             "Competitor tracking limit reached for your plan.",
             code="competitor_limit",
+        )
+
+
+class DuplicateWebsite(CanseeException):
+    def __init__(self):
+        super().__init__(
+            "You already have a project tracking this URL.",
+            code="duplicate_website",
         )
 
 

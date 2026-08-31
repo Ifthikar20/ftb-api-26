@@ -134,6 +134,47 @@ class KnowledgeSource(TimestampMixin):
         return f"KnowledgeSource({self.url[:60]}, {self.status})"
 
 
+class AgentCrawlConsent(TimestampMixin):
+    """Per-(user, website) permission for the Cansee agent to crawl the
+    user's site for brand knowledge.
+
+    The flag is explicit consent: automated crawls (the seed crawl on
+    enable today, scheduled re-crawls tomorrow) must check ``enabled``
+    before touching the user's site. Disabling never deletes what was
+    already ingested — sources stay manageable on the Brand Ingestion
+    page.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="agent_crawl_consents",
+    )
+    website = models.ForeignKey(
+        "websites.Website",
+        on_delete=models.CASCADE,
+        related_name="agent_crawl_consents",
+    )
+    enabled = models.BooleanField(default=False)
+    enabled_at = models.DateTimeField(null=True, blank=True)
+    # When we last queued an automated seed crawl — throttles re-seeding
+    # when the toggle is flipped off and on again.
+    last_seeded_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "rag_agent_crawl_consent"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "website"],
+                name="uq_rag_agent_crawl_user_website",
+            ),
+        ]
+
+    def __str__(self):
+        return f"AgentCrawlConsent({self.website_id}, enabled={self.enabled})"
+
+
 class KnowledgeChunk(TimestampMixin):
     """One embedded text segment from a KnowledgeSource."""
 

@@ -70,8 +70,18 @@ def _collect_competitors(audit) -> set[str]:
     for row in LLMRankingResult.objects.filter(audit=audit).values_list(
         "competitors_mentioned", flat=True
     ):
-        for name in row or []:
-            if isinstance(name, str) and name.strip():
+        for entry in row or []:
+            # Dict entries since extraction v1 ({name, ...}; v4 adds
+            # kind); the str-only check silently emptied this set for
+            # every modern audit. Generic terms don't count as new
+            # competitors.
+            if isinstance(entry, dict):
+                if entry.get("kind") == "generic":
+                    continue
+                name = entry.get("name") or ""
+            else:
+                name = str(entry)
+            if name.strip():
                 competitors.add(name.strip())
     return competitors
 
@@ -82,9 +92,9 @@ def _emit_audit_complete(audit) -> None:
     NotificationService.create(
         user=audit.created_by,
         notification_type="audit_complete",
-        title=f"Audit complete — score {audit.overall_score}/100",
+        title=f"Prompt run complete — score {audit.overall_score}/100",
         message=(
-            f"Your latest LLM ranking audit for {_website_name(audit)} finished. "
+            f"Your latest prompt run for {_website_name(audit)} finished. "
             f"Overall score {audit.overall_score}/100, "
             f"mention rate {audit.mention_rate:.1f}%."
         ),
@@ -113,7 +123,7 @@ def _emit_visibility_change(audit) -> None:
         title=f"Visibility {direction} {abs(delta):.1f} pts",
         message=(
             f"{_website_name(audit)} moved {sign}{delta:.1f} pts in LLM mention rate "
-            f"vs the previous audit ({prev.mention_rate:.1f}% to {audit.mention_rate:.1f}%)."
+            f"vs the previous prompt run ({prev.mention_rate:.1f}% to {audit.mention_rate:.1f}%)."
         ),
         data={
             "audit_id": str(audit.id),
@@ -170,7 +180,7 @@ def _emit_prompt_coverage_milestone(audit) -> None:
         notification_type="milestone",
         title=f"{crossed:,} prompts tracked",
         message=(
-            f"{_website_name(audit)} has now been audited against "
+            f"{_website_name(audit)} has now been measured against "
             f"{crossed:,} prompts across LLMs."
         ),
         data={

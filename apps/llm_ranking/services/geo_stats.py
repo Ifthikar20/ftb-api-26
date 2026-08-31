@@ -30,18 +30,22 @@ def build_kpis_for_user(
     providers: list[str] | None = None,
     tags: list[str] | None = None,
     topics: list[str] | None = None,
+    website=None,
 ) -> list[dict] | None:
     """Return Visibility / Position / Sentiment tiles for the given window.
 
     When start is None the window is unbounded on the lower side (treated
     as "overall"). When any result-level filter is provided the metrics
     are recomputed per-result — the audit-level pre-aggregates cannot be
-    narrowed by prompt, provider, tag or topic.
+    narrowed by prompt, provider, tag or topic. When ``website`` is given
+    every metric is scoped to that project's audits only.
     """
-    has_any = LLMRankingAudit.objects.filter(
+    has_any_qs = LLMRankingAudit.objects.filter(
         created_by=user, status=LLMRankingAudit.STATUS_COMPLETED,
-    ).exists()
-    if not has_any:
+    )
+    if website is not None:
+        has_any_qs = has_any_qs.filter(website=website)
+    if not has_any_qs.exists():
         return None
 
     flt = _make_flt(prompts=prompts, providers=providers, tags=tags, topics=topics)
@@ -70,8 +74,8 @@ def build_kpis_for_user(
             ),
             higher_better=True,
             value_fmt=_pct,
-            current=_visibility(user, *current, flt=flt),
-            previous=_visibility(user, *previous, flt=flt),
+            current=_visibility(user, *current, flt=flt, website=website),
+            previous=_visibility(user, *previous, flt=flt, website=website),
         ),
         _build_tile(
             label="Position",
@@ -81,8 +85,8 @@ def build_kpis_for_user(
             ),
             higher_better=False,
             value_fmt=_rank,
-            current=_position(user, *current, flt=flt),
-            previous=_position(user, *previous, flt=flt),
+            current=_position(user, *current, flt=flt, website=website),
+            previous=_position(user, *previous, flt=flt, website=website),
         ),
         _build_tile(
             label="Sentiment",
@@ -92,8 +96,8 @@ def build_kpis_for_user(
             ),
             higher_better=True,
             value_fmt=_score,
-            current=_sentiment(user, *current, flt=flt),
-            previous=_sentiment(user, *previous, flt=flt),
+            current=_sentiment(user, *current, flt=flt, website=website),
+            previous=_sentiment(user, *previous, flt=flt, website=website),
         ),
         _build_tile(
             label="Alignment",
@@ -103,8 +107,8 @@ def build_kpis_for_user(
             ),
             higher_better=True,
             value_fmt=_score,
-            current=_alignment(user, *current, flt=flt),
-            previous=_alignment(user, *previous, flt=flt),
+            current=_alignment(user, *current, flt=flt, website=website),
+            previous=_alignment(user, *previous, flt=flt, website=website),
         ),
     ]
 
@@ -120,19 +124,26 @@ def build_breakdowns_for_user(
     providers: list[str] | None = None,
     tags: list[str] | None = None,
     topics: list[str] | None = None,
+    website=None,
 ) -> dict | None:
     """Return per-metric drill-downs for the dashboard, or None if no data."""
     flt = _make_flt(prompts=prompts, providers=providers, tags=tags, topics=topics)
     end = end or timezone.now()
     if start is None:
+        first_qs = LLMRankingAudit.objects.filter(
+            created_by=user, status=LLMRankingAudit.STATUS_COMPLETED,
+        )
+        if website is not None:
+            first_qs = first_qs.filter(website=website)
         start = (
-            LLMRankingAudit.objects
-            .filter(created_by=user, status=LLMRankingAudit.STATUS_COMPLETED)
+            first_qs
             .order_by("completed_at")
             .values_list("completed_at", flat=True)
             .first()
         )
-    audit_ids = list(_audits_in(user, start, end).values_list("id", flat=True))
+    audit_ids = list(
+        _audits_in(user, start, end, website=website).values_list("id", flat=True)
+    )
     if not audit_ids:
         return None
     return {
@@ -280,10 +291,12 @@ def _alignment_breakdown(audit_ids: list, flt: dict | None) -> dict:
 
 # ── metric calculators ─────────────────────────────────────────────────────
 
-def _audits_in(user, start, end):
+def _audits_in(user, start, end, website=None):
     qs = LLMRankingAudit.objects.filter(
         created_by=user, status=LLMRankingAudit.STATUS_COMPLETED,
     )
+    if website is not None:
+        qs = qs.filter(website=website)
     if start is not None:
         qs = qs.filter(completed_at__gte=start)
     if end is not None:
@@ -311,11 +324,13 @@ def _filtered_results(audit_ids, flt):
     return apply_result_filters(qs, **(flt or {}))
 
 
-def _visibility(user, start, end, *, flt=None) -> float | None:
+def _visibility(user, start, end, *, flt=None, website=None) -> float | None:
     if start is None and end is None:
         return None
     if flt:
-        audit_ids = list(_audits_in(user, start, end).values_list("id", flat=True))
+        audit_ids = list(
+            _audits_in(user, start, end, website=website).values_list("id", flat=True)
+        )
         if not audit_ids:
             return None
         qs = _filtered_results(audit_ids, flt)
@@ -324,17 +339,22 @@ def _visibility(user, start, end, *, flt=None) -> float | None:
             return None
         return round(100.0 * qs.filter(is_mentioned=True).count() / total, 1)
     rates = [
-        r for r in _audits_in(user, start, end).values_list("mention_rate", flat=True)
+        r
+        for r in _audits_in(user, start, end, website=website).values_list(
+            "mention_rate", flat=True
+        )
         if r is not None
     ]
     return round(sum(rates) / len(rates), 1) if rates else None
 
 
-def _position(user, start, end, *, flt=None) -> float | None:
+def _position(user, start, end, *, flt=None, website=None) -> float | None:
     if start is None and end is None:
         return None
     if flt:
-        audit_ids = list(_audits_in(user, start, end).values_list("id", flat=True))
+        audit_ids = list(
+            _audits_in(user, start, end, website=website).values_list("id", flat=True)
+        )
         if not audit_ids:
             return None
         ranks = list(
@@ -344,17 +364,19 @@ def _position(user, start, end, *, flt=None) -> float | None:
         )
         return round(sum(ranks) / len(ranks), 1) if ranks else None
     ranks = list(
-        _audits_in(user, start, end)
+        _audits_in(user, start, end, website=website)
         .filter(avg_mention_rank__gt=0)
         .values_list("avg_mention_rank", flat=True)
     )
     return round(sum(ranks) / len(ranks), 1) if ranks else None
 
 
-def _sentiment(user, start, end, *, flt=None) -> float | None:
+def _sentiment(user, start, end, *, flt=None, website=None) -> float | None:
     if start is None and end is None:
         return None
-    audit_ids = list(_audits_in(user, start, end).values_list("id", flat=True))
+    audit_ids = list(
+        _audits_in(user, start, end, website=website).values_list("id", flat=True)
+    )
     if not audit_ids:
         return None
     results = _filtered_results(audit_ids, flt).filter(is_mentioned=True)
@@ -368,7 +390,7 @@ def _sentiment(user, start, end, *, flt=None) -> float | None:
     return round(max(0.0, min(100.0, net)), 1)
 
 
-def _alignment(user, start, end, *, flt=None) -> float | None:
+def _alignment(user, start, end, *, flt=None, website=None) -> float | None:
     """Mean brand-alignment score over scored results in the window.
 
     Always recomputed from result rows (the audit-level pre-aggregate is
@@ -376,7 +398,9 @@ def _alignment(user, start, end, *, flt=None) -> float | None:
     """
     if start is None and end is None:
         return None
-    audit_ids = list(_audits_in(user, start, end).values_list("id", flat=True))
+    audit_ids = list(
+        _audits_in(user, start, end, website=website).values_list("id", flat=True)
+    )
     if not audit_ids:
         return None
     scores = list(

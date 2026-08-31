@@ -700,28 +700,80 @@ def build_chat_detail(website, *, result_id: str) -> dict | None:
         for c in source_rows
     ]
 
-    # Brands named in this answer: the tracked brand (if mentioned), any
-    # tracked competitors, and every brand the model listed in its response.
+    # Entities named in this answer, split into real BRANDS and generic
+    # INFORMATION. An entry only counts as a brand with actual evidence:
+    # the extractor classified it (kind, v4+), it carries an official
+    # domain, it matches a tracked competitor / the tracked brand, or its
+    # name matches a domain this very answer cited. Everything else —
+    # equipment, categories, concepts scraped from list headings like
+    # "Golf Clubs" — renders as information, not as a competitor.
+    tracked_names = {
+        (c.get("name") or "").strip().lower()
+        for c in (website.competitors or [])
+        if isinstance(c, dict)
+    }
+    tracked_names.discard("")
+    own_name = (website.name or "").strip().lower()
+    cited_hosts = {
+        (s.get("apex_domain") or "").lower()
+        for s in sources
+        if s.get("apex_domain")
+    }
+
+    def _matches_cited_host(name_low: str) -> bool:
+        compact = name_low.replace(" ", "").replace("-", "")
+        for host in cited_hosts:
+            stem = host.split(".")[0]
+            if name_low == host or compact == host.replace(".", ""):
+                return True
+            if len(stem) >= 4 and stem in compact:
+                return True
+        return False
+
+    def _classify(name: str, domain: str, explicit_kind) -> str:
+        if explicit_kind == "generic":
+            return "info"
+        if explicit_kind == "brand":
+            return "brand"
+        low = (name or "").strip().lower()
+        if domain:
+            return "brand"
+        if low == own_name or low in tracked_names:
+            return "brand"
+        if _matches_cited_host(low):
+            return "brand"
+        return "info"
+
     brands = []
     seen_brands: set[str] = set()
 
-    def _add_brand(name, position, domain=""):
-        name = (name or "").strip()
+    def _add_brand(name, position, domain="", explicit_kind=None):
+        # Some stored entries keep the answer's list numbering ("1. Golf
+        # Clubs") — strip it so chips read clean and dedupe works.
+        name = re.sub(r"^\d+[.)]\s*", "", (name or "").strip())
         key = name.lower()
         if not name or key in seen_brands:
             return
         seen_brands.add(key)
         # domain (LLM-supplied) is used by the UI only to crawl the logo.
-        brands.append({"name": name, "position": position, "domain": domain or ""})
+        brands.append({
+            "name": name,
+            "position": position,
+            "domain": domain or "",
+            "kind": _classify(name, domain or "", explicit_kind),
+        })
 
     if result.is_mentioned:
-        _add_brand(website.name, result.mention_rank)
+        _add_brand(website.name, result.mention_rank, explicit_kind="brand")
     for comp in (result.competitors_mentioned or []):
         if isinstance(comp, dict):
-            _add_brand(comp.get("name"), comp.get("position"), comp.get("domain"))
+            _add_brand(
+                comp.get("name"), comp.get("position"), comp.get("domain"),
+                comp.get("kind"),
+            )
         else:
             _add_brand(str(comp), None)
-    # Capture brands straight from the model's recommendation list.
+    # Capture entities straight from the model's recommendation list.
     for entry in extract_response_brands(result.response_text or ""):
         _add_brand(entry["name"], entry["position"])
 

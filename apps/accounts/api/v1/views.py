@@ -304,7 +304,10 @@ class SessionView(APIView):
         from django.conf import settings
 
         from apps.billing.services import polar_billing
-        from apps.billing.services.plan_limits import subscription_state
+        from apps.billing.services.plan_limits import (
+            projects_limit_for,
+            subscription_state,
+        )
         from apps.websites.models import Website
 
         user = request.user
@@ -352,6 +355,11 @@ class SessionView(APIView):
                 "websites_count": len(websites),
             },
             "subscription": subscription,
+            # Resolved server-side (trial-aware, paywall-aware) so the UI
+            # never re-derives plan limits from the plan name. -1 = unlimited.
+            "limits": {
+                "projects": projects_limit_for(user),
+            },
             "paywall_dismissed": user.paywall_dismissed_at is not None,
             "next_route": next_route,
         })

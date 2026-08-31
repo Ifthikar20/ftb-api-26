@@ -7,7 +7,18 @@ from apps.analytics.api.v1.tracking_views import TrackedLinkRedirectView
 from core.views.version import VersionView
 
 urlpatterns = [
-    path("admin/", admin.site.urls),
+    # Admin lives at ADMIN_URL, not a hardcoded "admin/". Moving it off the
+    # default path is not a security control -- anyone who can read this
+    # repo, or watch a login redirect, knows where it went. What it does buy
+    # is silence: /admin/ is the single most-scanned path on the internet,
+    # and every one of those requests is a django-axes lockout candidate
+    # against a real username. Cutting that noise makes the failures that
+    # remain worth reading.
+    #
+    # The real controls are elsewhere and must not be relaxed because of
+    # this: axes lockout (5 attempts), a strong superuser password, and
+    # ideally an IP allowlist at nginx before this is exposed long-term.
+    path(settings.ADMIN_URL, admin.site.urls),
 
     # Health checks
     path("health/", include("health_check.urls")),
@@ -17,6 +28,10 @@ urlpatterns = [
 
     # API v1
     path("api/v1/auth/", include("apps.accounts.api.v1.urls")),
+    # Internal ops surface for the ftb-min admin server ONLY: gated by
+    # X-Admin-Key (settings.ADMIN_OPS_KEY; empty = disabled, all 404s).
+    # In production also firewall this prefix to the admin host.
+    path("api/v1/internal/admin/", include("apps.accounts.api.v1.admin_urls")),
     path("api/v1/websites/", include("apps.websites.api.v1.urls")),
     path("api/v1/analytics/", include("apps.analytics.api.v1.urls")),
     path("api/v1/notifications/", include("apps.notifications.api.v1.urls")),

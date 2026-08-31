@@ -131,6 +131,14 @@ services:
       CELERY_BROKER_URL: redis://redis:6379/1
       OPENCLAW_GATEWAY_URL: http://openclaw:18789
       OPENCLAW_AUTH_TOKEN: ${OPENCLAW_AUTH_TOKEN:-cansee-openclaw-token}
+    volumes:
+      # collectstatic writes here, and nginx serves the same volume at
+      # /static. Without this mount the two are different filesystems:
+      # collectstatic succeeds inside the container, nginx's /static stays
+      # empty, and every Django admin and DRF stylesheet 404s while the SPA
+      # (served from frontend_dist) looks perfectly fine -- which is why
+      # this went unnoticed.
+      - static_files:/app/staticfiles
     depends_on:
       db:
         condition: service_healthy

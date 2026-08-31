@@ -53,3 +53,17 @@ CELERY_TASK_ALWAYS_EAGER = True
 CELERY_TASK_EAGER_PROPAGATES = True
 
 # Mock checkout so the paywall flow is walkable without Stripe keys.
+
+# Dev-only default so the ftb-min admin dashboard works out of the box
+# against the local container (prod must set ADMIN_OPS_KEY via env).
+if not ADMIN_OPS_KEY:  # noqa: F405
+    ADMIN_OPS_KEY = "dev-admin-ops-key"
+
+# Dev-only: the admin server runs on this same machine, so loopback and
+# the docker bridge nets may call the internal ops surface. Production
+# must set ADMIN_OPS_ALLOWED_CIDRS to the admin host's address only.
+if not ADMIN_OPS_ALLOWED_CIDRS:  # noqa: F405
+    # Loopback + the docker bridge nets only — NOT all private ranges;
+    # a dev box on an office LAN should not serve the PII directory to
+    # every 192.168.* neighbour holding the committed dev key.
+    ADMIN_OPS_ALLOWED_CIDRS = ["127.0.0.0/8", "172.16.0.0/12"]

@@ -13,9 +13,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 from rest_framework.test import APIClient
 
-from apps.accounts.models import User
+from apps.accounts.models import LoginAttempt, User
 from apps.accounts.services.user_service import UserService
 from apps.billing.models import Subscription
+from apps.metering.models import PolarEventOutbox
 from apps.rag.models import KnowledgeChunk, KnowledgeSource
 from apps.websites.models import Website
 from core.utils.constants import Plan, SubscriptionStatus
@@ -115,6 +116,31 @@ class TestDeleteAccountService:
         )
         UserService.delete_account(user=user)
         assert not AccessAttempt.objects.filter(username=email).exists()
+
+    def test_login_attempt_rows_are_erased(self):
+        """ERAS-01: accounts.LoginAttempt uses on_delete=SET_NULL and keeps
+        email/IP/user-agent, so the cascade would leave it behind."""
+        user, _ = _user_with_everything()
+        email = user.email
+        LoginAttempt.objects.create(
+            email=email, ip_address="203.0.113.9", user_agent="ua",
+            success=False, user=user,
+        )
+        UserService.delete_account(user=user)
+        assert not LoginAttempt.objects.filter(email=email).exists()
+        assert not LoginAttempt.objects.filter(user_id=None, email=email).exists()
+
+    def test_polar_outbox_rows_are_erased(self):
+        """ERAS-03: metering.PolarEventOutbox has no user FK and carries
+        external_customer_id = str(user.id) plus a usage payload."""
+        user, _ = _user_with_everything()
+        uid = str(user.id)
+        PolarEventOutbox.objects.create(
+            idempotency_key=f"idem-{uuid.uuid4().hex}",
+            external_customer_id=uid, payload={"cost": 1},
+        )
+        UserService.delete_account(user=user)
+        assert not PolarEventOutbox.objects.filter(external_customer_id=uid).exists()
 
 
 @pytest.mark.django_db

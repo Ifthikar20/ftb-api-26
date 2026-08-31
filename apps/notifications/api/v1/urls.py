@@ -1,5 +1,7 @@
 from django.urls import path
 
+from apps.notifications.api.v1 import sms_webhooks
+
 from . import chat_webhooks, views
 
 urlpatterns = [
@@ -18,4 +20,9 @@ urlpatterns = [
     path("discord/interactions/", chat_webhooks.discord_interactions, name="discord-interactions"),
     path("slack/events/", chat_webhooks.slack_events, name="slack-events"),
     path("slack/commands/", chat_webhooks.slack_commands, name="slack-commands"),
+    path(
+        "sms/inbound/",
+        sms_webhooks.twilio_inbound,
+        name="notifications-sms-inbound",
+    ),
 ]

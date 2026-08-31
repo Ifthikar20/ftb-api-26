@@ -73,6 +73,31 @@ class OnboardingSaveView(APIView):
             user=request.user, url=validated_url
         ).first()
         if website is None:
+            # Same project cap the websites endpoint enforces — without
+            # this, onboarding /save/ is a bypass around the plan limit.
+            from apps.billing.services.plan_limits import projects_limit_for
+
+            current_count = Website.objects.filter(user=request.user).count()
+            max_projects = projects_limit_for(request.user)
+            if max_projects != -1 and current_count >= max_projects:
+                return Response(
+                    {
+                        "success": False,
+                        "error": {
+                            "code": "project_limit_reached",
+                            "message": (
+                                f"Your plan allows up to {max_projects} "
+                                f"project{'s' if max_projects != 1 else ''}. "
+                                "Upgrade to add more."
+                            ),
+                            "meta": {
+                                "current": current_count,
+                                "limit": max_projects,
+                            },
+                        },
+                    },
+                    status=403,
+                )
             website = WebsiteService.create(
                 user=request.user,
                 url=data["url"],

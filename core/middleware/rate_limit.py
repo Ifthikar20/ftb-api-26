@@ -103,11 +103,16 @@ class AdaptiveRateLimitMiddleware:
         return self.get_response(request)
 
     def _get_client_ip(self, request):
-        """Extract the real client IP, respecting proxy headers."""
-        x_forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR")
-        if x_forwarded_for:
-            return x_forwarded_for.split(",")[0].strip()
-        return request.META.get("REMOTE_ADDR", "unknown")
+        """Extract the real client IP for the throttle key, proxy-aware.
+
+        The left-most X-Forwarded-For hop is client-supplied and freely
+        spoofable, so keying the throttle on it let an attacker rotate the
+        header for a fresh bucket per request. Delegate to the shared
+        proxy-aware helper, which trusts only our own proxy hops.
+        """
+        from core.utils.ua_parser import get_client_ip
+
+        return get_client_ip(request) or "unknown"
 
     def _get_tier(self, path):
         """Map a request path to its rate limit tier."""

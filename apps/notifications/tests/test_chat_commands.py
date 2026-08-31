@@ -395,7 +395,7 @@ class TestGrowthCommand:
                 text="", respond_to=SLACK_RESPONSE_URL,
             )
         text = _slack_reply_text(mock_post)
-        assert "No completed visibility audits yet" in text
+        assert "No completed prompt runs yet" in text
         assert "scan" in text
 
     def test_growth_lists_movers_and_focus(self):

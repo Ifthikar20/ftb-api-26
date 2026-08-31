@@ -1,6 +1,8 @@
+from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 
 from apps.websites.models import Website, WebsiteMembership, WebsiteSettings
+from core.validators.url_validator import validate_website_url
 
 
 class WebsiteSerializer(serializers.ModelSerializer):
@@ -23,13 +25,22 @@ class WebsiteSerializer(serializers.ModelSerializer):
 
 
 class WebsiteCreateSerializer(serializers.Serializer):
-    url = serializers.URLField()
+    # CharField, not URLField: users type "example.com" without a scheme,
+    # and validate_website_url (the same validator the service runs) both
+    # normalizes that to https:// and blocks localhost/private hosts.
+    url = serializers.CharField(max_length=500)
     name = serializers.CharField(max_length=200)
     industry = serializers.CharField(max_length=100, required=False, allow_blank=True, default="")
     platform_type = serializers.ChoiceField(
         choices=["shopify", "wordpress", "woocommerce", "custom"],
         required=False, default="custom"
     )
+
+    def validate_url(self, value):
+        try:
+            return validate_website_url(value.strip())
+        except DjangoValidationError as e:
+            raise serializers.ValidationError(e.messages[0]) from None
 
 
 class WebsiteUpdateSerializer(serializers.Serializer):

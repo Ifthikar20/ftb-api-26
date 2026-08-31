@@ -116,3 +116,35 @@ class TestSaveEndpoint:
         body = resp.json()["data"]
         assert body["name"] == "Acme"
         ws.create.assert_called_once()
+
+    def test_enforces_project_limit(self, auth_client, settings):
+        """Onboarding /save/ must not bypass the plan's project cap."""
+        from apps.websites.tests.factories import WebsiteFactory
+
+        settings.PAYWALL_ENABLED = True
+        client, user = auth_client
+        WebsiteFactory(user=user, url="https://existing.example.com")
+        with patch("core.validators.url_safety.socket.getaddrinfo",
+                   return_value=[(2, 1, 0, "", ("93.184.216.34", 0))]):
+            resp = client.post("/api/v1/onboarding/save/", {
+                "url": "https://second.example.com",
+                "business_name": "Second",
+            }, format="json")
+        assert resp.status_code == 403
+        assert resp.json()["error"]["code"] == "project_limit_reached"
+
+    def test_limit_does_not_block_updating_existing_site(self, auth_client, settings):
+        """Re-running onboarding on the SAME url is an update, not a create."""
+        from apps.websites.tests.factories import WebsiteFactory
+
+        settings.PAYWALL_ENABLED = True
+        client, user = auth_client
+        WebsiteFactory(user=user, url="https://existing.example.com")
+        with patch("core.validators.url_safety.socket.getaddrinfo",
+                   return_value=[(2, 1, 0, "", ("93.184.216.34", 0))]):
+            resp = client.post("/api/v1/onboarding/save/", {
+                "url": "https://existing.example.com",
+                "business_name": "Renamed",
+            }, format="json")
+        assert resp.status_code == 201
+        assert resp.json()["data"]["name"] == "Renamed"

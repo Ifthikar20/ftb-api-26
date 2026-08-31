@@ -163,6 +163,10 @@ def subscription_state(sub) -> dict:
         "tier": tier_for_subscription(sub),
         "is_paying": is_paying_subscription(sub),
         "is_trialing": is_trialing_subscription(sub),
+        # Billing cadence ("month" | "year"); None when unknown. Period
+        # length can't stand in for this while trialing, so surfaces that
+        # offer a monthly/annual switch must read it from here.
+        "interval": (getattr(sub, "interval", "") or None) if sub is not None else None,
         "trial_end": _iso(trial_end_for(sub)),
         "current_period_end": _iso(getattr(sub, "current_period_end", None)) if sub is not None else None,
         "cancel_at_period_end": bool(getattr(sub, "cancel_at_period_end", False)) if sub is not None else False,
@@ -226,6 +230,27 @@ def is_within_limit(user, feature_key, current_usage):
     if limit == -1:
         return True  # unlimited
     return current_usage < limit
+
+
+def projects_limit_for(user) -> int:
+    """Max projects (websites) the account may have. -1 means unlimited.
+
+    A live free trial is deliberately capped at the FREE tier's project
+    count: trialing grants the Pro feature set to explore, but the full
+    five-project allowance only unlocks once the card is charged and the
+    subscription is ACTIVE. Everything else follows the effective plan
+    (including the paywall-off and org-plan branches of get_limits).
+    """
+    limits = get_limits(user)
+    raw = limits.get("projects", 1)
+    raw = int(raw) if isinstance(raw, int | float) else 1
+    if not settings.PAYWALL_ENABLED:
+        return raw
+    sub = getattr(user, "subscription", None) if user is not None else None
+    if is_trialing_subscription(sub):
+        free_cap = int(PLAN_LIMITS[Plan.FREE].get("projects", 1) or 1)
+        return free_cap if raw == -1 else min(raw, free_cap)
+    return raw
 
 
 def get_segment(user):

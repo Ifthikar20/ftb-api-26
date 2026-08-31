@@ -50,8 +50,13 @@ def build_for_user(
     providers: list[str] | None = None,
     tags: list[str] | None = None,
     topics: list[str] | None = None,
+    website=None,
 ) -> dict | None:
-    """Return the deep-dive payload for a user, or None if no data."""
+    """Return the deep-dive payload for a user, or None if no data.
+
+    ``website`` scopes the matrix, breakdowns, themes and the prompt
+    dropdown to one project's audits.
+    """
     from apps.llm_ranking.services.geo_stats import _make_flt
 
     flt = _make_flt(prompts=prompts, providers=providers, tags=tags, topics=topics)
@@ -59,6 +64,8 @@ def build_for_user(
     base_qs = LLMRankingAudit.objects.filter(
         created_by=user, status=LLMRankingAudit.STATUS_COMPLETED,
     )
+    if website is not None:
+        base_qs = base_qs.filter(website=website)
     qs = base_qs
     if start is not None:
         qs = qs.filter(completed_at__gte=start)
@@ -72,7 +79,7 @@ def build_for_user(
         "position_by_provider": _position_by_provider(audit_ids, flt),
         "sentiment_by_provider": _sentiment_by_provider(audit_ids, flt),
         "sentiment_themes": _sentiment_themes(audit_ids, flt),
-        "available_prompts": _available_prompts(user),
+        "available_prompts": _available_prompts(user, website=website),
     }
 
 
@@ -85,11 +92,14 @@ def _filter_results(audit_ids: list, flt: dict | None):
     return apply_result_filters(qs, **(flt or {}))
 
 
-def _available_prompts(user) -> list[dict]:
+def _available_prompts(user, website=None) -> list[dict]:
     """Distinct prompts the user has audited, ranked by recent volume."""
-    user_audit_ids = LLMRankingAudit.objects.filter(
+    audits = LLMRankingAudit.objects.filter(
         created_by=user, status=LLMRankingAudit.STATUS_COMPLETED,
-    ).values_list("id", flat=True)
+    )
+    if website is not None:
+        audits = audits.filter(website=website)
+    user_audit_ids = audits.values_list("id", flat=True)
     rows = (
         LLMRankingResult.objects.filter(audit_id__in=user_audit_ids)
         .values("prompt")

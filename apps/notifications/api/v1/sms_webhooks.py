@@ -1,0 +1,140 @@
+"""Inbound SMS webhook (Twilio).
+
+Two-way texting: a subscriber can reply to an alert with a plain-English
+question and get an answer from the same assistant that backs the Slack
+and Discord bots and the Ask page.
+
+Order of business on every inbound message:
+
+  1. Verify the Twilio signature. Without it this is an open endpoint and
+     anyone can impersonate a subscriber's number.
+  2. Apply STOP / START / HELP. Carrier-mandated, and an opt-out has to
+     work even if everything after it is broken.
+  3. Otherwise answer the question, scoped to that subscriber's own data.
+
+Tenancy: the answering user comes from the SUBSCRIPTION matched on the
+sending number, never from the message body. A text cannot ask about
+someone else's account because there is no field in which to name one.
+"""
+
+from __future__ import annotations
+
+import logging
+
+from django.conf import settings
+from django.http import HttpResponse, HttpResponseForbidden
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_POST
+
+from apps.notifications.services import sms_service
+
+logger = logging.getLogger("apps")
+
+# A text answer has to fit a couple of segments, so the assistant is asked
+# for something far shorter than the web UI would render.
+SMS_ANSWER_CHARS = 280
+
+NOT_REGISTERED = (
+    "This number isn't linked to a Cansee account. Add it in Settings to "
+    "get alerts and ask questions here."
+)
+NO_WEBSITE = (
+    "No project is set up on your account yet, so there's nothing to "
+    "report on."
+)
+REPLIES_OFF = (
+    "Replies are turned off for this number. You'll still get alerts. "
+    "Reply STOP to unsubscribe."
+)
+
+
+def _xml(body: str) -> HttpResponse:
+    return HttpResponse(body, content_type="application/xml")
+
+
+def _find_subscription(from_number: str):
+    """Match the sender to a subscription by keyed digest.
+
+    The stored number is encrypted and therefore unqueryable, which is why
+    the hash column exists. Opted-out rows are included on purpose: a
+    START from a lapsed subscriber has to find its row to resurrect it.
+    """
+    from apps.notifications.models import SmsSubscription
+
+    digest = sms_service.hash_phone(from_number)
+    if not digest:
+        return None
+    return (
+        SmsSubscription.objects
+        .select_related("user")
+        .filter(phone_hash=digest)
+        .order_by("-created_at")
+        .first()
+    )
+
+
+def _answer_for(subscription, question: str) -> str:
+    """Ask the assistant, scoped to this subscriber's first website."""
+    from apps.assistant.services.orchestrator import answer
+    from apps.websites.models import Website
+
+    website = (
+        Website.objects.filter(user=subscription.user).order_by("created_at").first()
+    )
+    if website is None:
+        return NO_WEBSITE
+
+    result = answer(
+        user=subscription.user,
+        website=website,
+        question=(
+            f"{question}\n\n"
+            "Answer in under 280 characters of plain text. No Markdown, no "
+            "tables, no bullet lists — this is being read as a text message."
+        ),
+    )
+    text = (result.get("answer") or "").strip()
+    if not text:
+        return "I couldn't work that out just now. Try again in a moment."
+    return text[:SMS_ANSWER_CHARS]
+
+
+@csrf_exempt
+@require_POST
+def twilio_inbound(request):
+    """POST /api/v1/notifications/sms/inbound/ — Twilio message webhook."""
+    if not getattr(settings, "SMS_ENABLED", False):
+        # Silently accept and do nothing: Twilio retries on non-2xx, and a
+        # disabled feature should not generate a retry storm.
+        return _xml(sms_service.twiml())
+
+    if not sms_service.verify_twilio_signature(request):
+        logger.warning("sms: inbound rejected, bad or missing signature")
+        return HttpResponseForbidden("invalid signature")
+
+    from_number = request.POST.get("From", "")
+    body = (request.POST.get("Body", "") or "").strip()
+    subscription = _find_subscription(from_number)
+
+    # Keywords first, always.
+    keyword_reply = sms_service.handle_keyword(subscription, body)
+    if keyword_reply is not None:
+        return _xml(sms_service.twiml(keyword_reply))
+
+    if subscription is None:
+        return _xml(sms_service.twiml(NOT_REGISTERED))
+    if not subscription.is_active:
+        # Pending or opted out: no answers, and no nagging either. HELP and
+        # START still work above, which is the only escape hatch needed.
+        return _xml(sms_service.twiml())
+    if not subscription.allow_replies:
+        return _xml(sms_service.twiml(REPLIES_OFF))
+    if not body:
+        return _xml(sms_service.twiml(sms_service.HELP_REPLY))
+
+    try:
+        reply = _answer_for(subscription, body)
+    except Exception:
+        logger.exception("sms: answering an inbound question failed")
+        reply = "Something went wrong answering that. Please try again shortly."
+    return _xml(sms_service.twiml(reply))

@@ -1,14 +1,11 @@
 import logging
 
 from apps.websites.models import Website, WebsiteSettings
-from core.exceptions import ResourceNotFound
+from core.exceptions import DuplicateWebsite, ResourceNotFound
 from core.logging.audit_logger import audit_log
 from core.validators.url_validator import validate_website_url
 
 logger = logging.getLogger("apps")
-
-# Limits disabled for testing — re-enable for production
-# PLAN_WEBSITE_LIMITS = {"starter": 1, "growth": 5, "scale": 50}
 
 
 class WebsiteService:
@@ -16,6 +13,11 @@ class WebsiteService:
     def create(*, user, url: str, name: str, industry: str = "", platform_type: str = "custom") -> Website:
         """Add a new website for a user."""
         validated_url = validate_website_url(url)
+
+        # An active duplicate would otherwise die on the (user, url)
+        # unique constraint as a 500.
+        if Website.objects.filter(user=user, url=validated_url).exists():
+            raise DuplicateWebsite()
 
         # Check if a soft-deleted website with the same URL exists — restore it
         existing = Website.all_objects.filter(user=user, url=validated_url, is_deleted=True).first()

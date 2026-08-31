@@ -22,6 +22,10 @@ class Subscription(TimestampMixin):
     current_period_start = models.DateTimeField(null=True, blank=True)
     current_period_end = models.DateTimeField(null=True, blank=True)
     cancel_at_period_end = models.BooleanField(default=False)
+    # Billing cadence mirrored from Polar ("month" | "year"). Needed
+    # because period length can't distinguish the cadence while trialing
+    # (both products carry the same 7-day trial window).
+    interval = models.CharField(max_length=10, blank=True, default="")
 
     class Meta:
         db_table = "billing_subscription"

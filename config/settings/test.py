@@ -64,6 +64,13 @@ SOURCES_SERVICE_URL = ""
 # outbound calls. Tests covering these lanes mock the clients directly.
 SERPAPI_KEY = ""
 BRAND_RESEARCH_COMMUNITY_ENABLED = False
+# SMS must never leave the process in tests: a real send costs money and
+# texts a real handset. Tests that cover the channel enable it explicitly
+# and mock the transport.
+SMS_ENABLED = False
+TWILIO_ACCOUNT_SID = ""
+TWILIO_AUTH_TOKEN = ""
+TWILIO_FROM_NUMBER = ""
 # The engine lane calls every configured LLM provider. Provider keys come
 # from .env on a developer machine, so without this the scan pipeline tests
 # would make real, billable calls to Claude/GPT/Perplexity.

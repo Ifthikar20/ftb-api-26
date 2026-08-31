@@ -119,8 +119,8 @@ class LLMRankingAuditListView(TenantScopedListAPIView):
                 return Response(
                     {
                         "error": "This website has no saved prompts. Add "
-                                 "prompts on the Prompts page before running "
-                                 "an audit.",
+                                 "prompts on the Prompts page before starting "
+                                 "a prompt run.",
                         "code": "no_saved_prompts",
                         "cta_to": f"/llm-ranking/{website_id}/prompts",
                     },
@@ -399,12 +399,12 @@ class LLMRankingAuditRunView(TenantScopedAPIView):
         )
         if audit.status == LLMRankingAudit.STATUS_COMPLETED:
             return Response(
-                {"error": "Audit already completed."},
+                {"error": "Prompt run already completed."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         if audit.status == LLMRankingAudit.STATUS_RUNNING:
             return Response(
-                {"error": "Audit is already running."},
+                {"error": "A prompt run is already in progress."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -503,7 +503,7 @@ class LLMRankingRecommendationsView(TenantScopedAPIView):
 
         if audit.status != LLMRankingAudit.STATUS_COMPLETED:
             return Response(
-                {"error": "Audit has not completed yet."},
+                {"error": "The prompt run has not completed yet."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -1254,7 +1254,7 @@ class LLMRankingScheduleRunNowView(TenantScopedAPIView):
             LLMRankingAudit.STATUS_PENDING, LLMRankingAudit.STATUS_RUNNING,
         ):
             return Response(
-                {"error": "An audit from this schedule is still running.",
+                {"error": "A prompt run from this schedule is still in progress.",
                  "audit_id": str(prev.id)},
                 status=status.HTTP_409_CONFLICT,
             )
@@ -1275,7 +1275,7 @@ class LLMRankingScheduleRunNowView(TenantScopedAPIView):
             return Response(
                 {
                     "error": "This website has no saved prompts. Add prompts "
-                             "on the Prompts page before running an audit.",
+                             "on the Prompts page before starting a prompt run.",
                     "code": "no_saved_prompts",
                     "cta_to": f"/llm-ranking/{website.id}/prompts",
                 },
