@@ -41,9 +41,9 @@ REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # ── Deploy config (env-overridable) ──────────────────────────────────
 BRANCH="${BRANCH:-main}"
-EC2_HOST="${EC2_HOST:-100.31.135.211}"
+EC2_HOST="${EC2_HOST:-18.208.3.3}"
 EC2_USER="${EC2_USER:-ubuntu}"
-PEM_KEY="${PEM_KEY:-$HOME/.ssh/cansee-deploy.pem}"
+PEM_KEY="${PEM_KEY:-$HOME/.ssh/fynda-deploy.pem}"
 REMOTE_DIR="${REMOTE_DIR:-/opt/cansee/ftb-api-26}"
 PUBLIC_HOST="${PUBLIC_HOST:-https://cansee.ai}"
 COMPOSE_FILE="docker/docker-compose.prod.yml"

@@ -53,12 +53,12 @@ Set under **Settings → Secrets and variables → Actions**:
 
 | Secret | Value |
 |---|---|
-| `EC2_SSH_KEY` | The contents of `cansee-deploy.pem` (the full PEM body, including `-----BEGIN` / `-----END` lines). |
-| `EC2_HOST` (optional) | EC2 IP or DNS. Defaults to `100.31.135.211`. |
+| `EC2_SSH_KEY` | The contents of `fynda-deploy.pem` (the full PEM body, including `-----BEGIN` / `-----END` lines). |
+| `EC2_HOST` (optional) | EC2 IP or DNS. Defaults to `18.208.3.3`. |
 | `EC2_USER` (optional) | SSH user. Defaults to `ubuntu`. |
 | `REMOTE_DIR` (optional) | Repo path on host. Defaults to `/opt/cansee/ftb-api-26`. |
 
-Test the SSH key once with `ssh -i cansee-deploy.pem ubuntu@<host> echo ok`
+Test the SSH key once with `ssh -i fynda-deploy.pem ubuntu@<host> echo ok`
 before pasting it into the secret.
 
 ## Manual deploy (fallback)
@@ -68,7 +68,7 @@ Triggers the workflow on demand from the GitHub UI:
 > Actions → "Deploy to prod" → Run workflow → branch: `main`
 
 Or run the script locally from your laptop (works from any machine
-that has `cansee-deploy.pem` placed at the repo root):
+that has `fynda-deploy.pem` placed at the repo root):
 
 ```bash
 bash scripts/deploy.sh
@@ -80,7 +80,7 @@ SSH in first.
 ## Verify after deploy
 
 ```bash
-ssh -i ./cansee-deploy.pem ubuntu@100.31.135.211 \
+ssh -i ./fynda-deploy.pem ubuntu@18.208.3.3 \
   'cd /opt/cansee/ftb-api-26 && \
    docker compose -f docker/docker-compose.prod.yml ps'
 curl -I https://cansee.ai/health/
