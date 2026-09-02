@@ -9,7 +9,6 @@ from apps.websites.api.v1.serializers import (
     WebsiteSettingsSerializer,
     WebsiteUpdateSerializer,
 )
-from apps.websites.models import Website
 from apps.websites.services.pixel_service import PixelService
 from apps.websites.services.verification_service import VerificationService
 from apps.websites.services.website_service import WebsiteService
@@ -20,7 +19,7 @@ class WebsiteListCreateView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        websites = Website.objects.filter(user=request.user).order_by("-created_at")
+        websites = WebsiteService.accessible_qs(request.user).order_by("-created_at")
         serializer = WebsiteSerializer(websites, many=True)
         return Response(serializer.data)
 
@@ -31,7 +30,9 @@ class WebsiteListCreateView(APIView):
             projects_limit_for,
         )
 
-        current_count = Website.objects.filter(user=request.user).count()
+        # Count the whole tenant, not the individual: an org's project cap
+        # is shared, otherwise every teammate gets their own allowance.
+        current_count = WebsiteService.accessible_qs(request.user).count()
         max_projects = projects_limit_for(request.user)
         if max_projects != -1 and current_count >= max_projects:
             sub = getattr(request.user, "subscription", None)
@@ -168,7 +169,9 @@ def _setup_state(user, website) -> dict:
             "cta_to": f"/llm-ranking/{wid}/prompts",
         }
 
-    audits = LLMRankingAudit.objects.filter(created_by=user, website=website)
+    # Website-scoped, not created_by-scoped: a teammate opening a project
+    # with 200 of someone else's audits must not be told to run their first.
+    audits = LLMRankingAudit.objects.filter(website=website)
     if audits.filter(
         status__in=[LLMRankingAudit.STATUS_PENDING, LLMRankingAudit.STATUS_RUNNING],
     ).exists():
@@ -219,7 +222,7 @@ class DashboardView(APIView):
         )
         from apps.notifications.models import Notification
 
-        websites = Website.objects.filter(user=request.user)
+        websites = WebsiteService.accessible_qs(request.user)
         # The dashboard is per-project: ?website=<id> selects which one.
         # Falling back to the first website keeps old clients working.
         website_id = request.query_params.get("website")

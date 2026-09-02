@@ -16,6 +16,7 @@ from apps.accounts.services.auth_service import AuthService
 from apps.accounts.services.oauth_service import OAuthService
 from apps.accounts.services.user_service import UserService
 from core.interceptors.throttling import AuthRateThrottle, PasswordResetThrottle
+from core.permissions.org import OrgFeaturesGate
 
 
 # Cookie attributes for the JWT refresh token.
@@ -73,12 +74,17 @@ def _refresh_cookie_settings():
     if getattr(_settings, "DEBUG", False):
         secure = False
 
+    # The cookie must outlive the token, never the reverse: this used to
+    # hardcode 7 days against a 60-day REFRESH_TOKEN_LIFETIME, silently
+    # making the cookie the real session ceiling.
+    lifetime = _settings.SIMPLE_JWT["REFRESH_TOKEN_LIFETIME"]
+
     return {
         "key": "refresh_token",
         "httponly": True,
         "secure": secure,
         "samesite": "Lax",
-        "max_age": 7 * 24 * 60 * 60,
+        "max_age": int(lifetime.total_seconds()),
         "path": "/",
     }
 
@@ -242,26 +248,289 @@ class GoogleOAuthView(APIView):
     def post(self, request):
         code = request.data.get("code")
         redirect_uri = request.data.get("redirect_uri", "")
+        invite_token = request.data.get("invite_token", "") or ""
         if not code:
             return Response({"error": "Authorization code required."}, status=status.HTTP_400_BAD_REQUEST)
 
-        user = OAuthService.google_authenticate(code=code, redirect_uri=redirect_uri)
-        from rest_framework_simplejwt.tokens import RefreshToken
-        refresh = RefreshToken.for_user(user)
-
-        response = Response(
-            {
-                "access": str(refresh.access_token),
-                "user": {
-                    "id": str(user.id),
-                    "email": user.email,
-                    "full_name": user.full_name,
-                    "plan": user.plan,
-                    "onboarding_complete": user.onboarding_complete,
-                },
-            }
+        auth = OAuthService.google_authenticate(
+            code=code, redirect_uri=redirect_uri, invite_token=invite_token
         )
-        response.set_cookie(value=str(refresh), **_refresh_cookie_settings())
+        user = auth["user"]
+
+        # Google verified the mailbox (email_verified checked against the
+        # signed id_token), which satisfies our own verification gate — a
+        # provisioned-but-never-verified account must not be locked out of
+        # the Google button it has always used.
+        if not user.is_email_verified:
+            user.is_email_verified = True
+            user.save(update_fields=["is_email_verified"])
+
+        from apps.accounts.services.token_service import TokenService
+
+        result = TokenService.issue_session(
+            user,
+            method="google",
+            ip_address=request.META.get("REMOTE_ADDR", ""),
+            user_agent=request.META.get("HTTP_USER_AGENT", ""),
+        )
+
+        payload = {
+            "access": result["access"],
+            "user": result["user"],
+            "joined_org": auth["joined_org"],
+            "is_new_user": auth["is_new_user"],
+        }
+        if auth["org"] is not None:
+            payload["org"] = {
+                "id": str(auth["org"].id),
+                "name": auth["org"].name,
+                "slug": auth["org"].slug,
+                "logo_url": auth["org"].logo_url,
+            }
+        response = Response(payload)
+        response.set_cookie(value=result["refresh"], **_refresh_cookie_settings())
+        return response
+
+
+class MicrosoftOAuthView(OrgFeaturesGate, APIView):
+    permission_classes = [AllowAny]
+    throttle_classes = [AuthRateThrottle]
+
+    def post(self, request):
+        code = request.data.get("code")
+        redirect_uri = request.data.get("redirect_uri", "")
+        invite_token = request.data.get("invite_token", "") or ""
+        if not code:
+            return Response({"error": "Authorization code required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        auth = OAuthService.entra_authenticate(
+            code=code, redirect_uri=redirect_uri, invite_token=invite_token
+        )
+        user = auth["user"]
+
+        # The service only accepted this sign-in through a lane that
+        # vouches for the mailbox (stable identity, invitation token, or a
+        # tenant-registered verified domain) — same reasoning as Google: a
+        # provisioned-but-never-verified account must not be locked out of
+        # the SSO button it has always used.
+        if not user.is_email_verified:
+            user.is_email_verified = True
+            user.save(update_fields=["is_email_verified"])
+
+        from apps.accounts.services.token_service import TokenService
+
+        result = TokenService.issue_session(
+            user,
+            method="entra",
+            ip_address=request.META.get("REMOTE_ADDR", ""),
+            user_agent=request.META.get("HTTP_USER_AGENT", ""),
+        )
+
+        payload = {
+            "access": result["access"],
+            "user": result["user"],
+            "joined_org": auth["joined_org"],
+            "is_new_user": auth["is_new_user"],
+        }
+        if auth["org"] is not None:
+            payload["org"] = {
+                "id": str(auth["org"].id),
+                "name": auth["org"].name,
+                "slug": auth["org"].slug,
+                "logo_url": auth["org"].logo_url,
+            }
+        response = Response(payload)
+        response.set_cookie(value=result["refresh"], **_refresh_cookie_settings())
+        return response
+
+
+class SsoStartView(OrgFeaturesGate, APIView):
+    """Enterprise SSO discovery: work email in, identity route out.
+
+    Powers the /sso page: the user types their company email, and this
+    resolves the DOMAIN (never the account) to a claimed-and-verified
+    OrgDomain, answering which IdP buttons to show. Deliberately
+    domain-keyed so it can't be used to probe whether a specific person
+    has an account — the only fact it reveals is "this company runs SSO
+    on Cansee", which the login page's own SSO panel reveals anyway.
+    """
+
+    permission_classes = [AllowAny]
+    throttle_classes = [AuthRateThrottle]
+
+    def post(self, request):
+        from apps.accounts.models import OrgDomain
+        from core.exceptions import ResourceNotFound
+
+        email = (request.data.get("email") or "").strip().lower()
+        if "@" not in email:
+            return Response(
+                {"error": {"code": "validation_error",
+                           "message": "Enter your work email address."}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        domain = email.rsplit("@", 1)[-1]
+
+        record = (
+            OrgDomain.objects.select_related("organization")
+            .filter(domain=domain, verified_at__isnull=False)
+            .first()
+        )
+        if record is None:
+            raise ResourceNotFound(
+                "Single sign-on isn't set up for this email domain."
+            )
+
+        org = record.organization
+        return Response({
+            "org_name": org.name,
+            "domain": domain,
+            "methods": AuthService.sso_methods_for(org),
+            "login_hint": email,
+        })
+
+
+class SamlStartView(OrgFeaturesGate, APIView):
+    """Begin the WorkOS SAML flow: work email in, authorize URL out.
+
+    Domain-keyed like SsoStartView — the answer is identical whether or
+    not an account exists for the address.
+    """
+
+    permission_classes = [AllowAny]
+    throttle_classes = [AuthRateThrottle]
+
+    def post(self, request):
+        from apps.accounts.services import saml_service
+
+        email = (request.data.get("email") or "").strip().lower()
+        if "@" not in email:
+            return Response(
+                {"error": {"code": "validation_error",
+                           "message": "Enter your work email address."}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response({"redirect": saml_service.authorize_redirect(email=email)})
+
+
+class SamlCallbackView(APIView):
+    """Browser redirect target for the WorkOS hosted flow — NOT an XHR.
+
+    Success hands the browser back to the SPA with a one-time exchange
+    code (?c=...) that the SPA immediately trades at /auth/token-exchange/.
+    Tokens NEVER ride the URL: URLs leak through history, proxies, and
+    Referer headers. Failures redirect with ?err=<code> only — no message
+    text in the URL either.
+    """
+
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        import requests
+        from django.conf import settings as dj_settings
+        from django.http import HttpResponseRedirect
+
+        from apps.accounts.services import saml_service
+        from core.exceptions import CanseeException
+
+        spa = dj_settings.FRONTEND_URL.rstrip("/")
+
+        def _fail(code: str = "sso_failed"):
+            return HttpResponseRedirect(f"{spa}/auth/sso/complete?err={code}")
+
+        # Master business-features switch: a browser is waiting, so the
+        # gate answers a readable redirect, not the JSON 404 the XHR
+        # endpoints use.
+        from core.permissions.org import org_features_enabled
+
+        if not org_features_enabled():
+            return _fail()
+
+        # WorkOS answers with ?code&state; SSOReady with ?saml_access_code
+        # (our signed state rides through their API and returns on redeem).
+        code = (
+            request.query_params.get("saml_access_code")
+            or request.query_params.get("code")
+            or ""
+        )
+        state = request.query_params.get("state") or ""
+        if not code:
+            return _fail()
+
+        try:
+            auth = saml_service.complete(code=code, state=state)
+        except CanseeException as exc:
+            return _fail(exc.code)
+        except (ValueError, KeyError):
+            return _fail()
+        except requests.RequestException:
+            # The WorkOS token endpoint failed or answered garbage — a
+            # browser is waiting, so it must land somewhere readable.
+            return _fail()
+
+        user = auth["user"]
+        # The IdP asserted this mailbox through an org-restricted
+        # connection — same reasoning as the Google/Entra lanes: a
+        # provisioned-but-never-verified account must not be locked out
+        # of the SSO button it has always used.
+        if not user.is_email_verified:
+            user.is_email_verified = True
+            user.save(update_fields=["is_email_verified"])
+
+        from apps.accounts.services.token_service import TokenService
+
+        try:
+            result = TokenService.issue_session(
+                user,
+                method="saml",
+                ip_address=request.META.get("REMOTE_ADDR", ""),
+                user_agent=request.META.get("HTTP_USER_AGENT", ""),
+            )
+        except ValueError:
+            return _fail()
+
+        payload = {
+            "access": result["access"],
+            "refresh": result["refresh"],
+            "user": result["user"],
+            "joined_org": auth["joined_org"],
+            "is_new_user": auth["is_new_user"],
+        }
+        if auth["org"] is not None:
+            payload["org"] = {
+                "id": str(auth["org"].id),
+                "name": auth["org"].name,
+                "slug": auth["org"].slug,
+                "logo_url": auth["org"].logo_url,
+            }
+
+        xc = saml_service.mint_exchange_code(payload)
+        return HttpResponseRedirect(f"{spa}/auth/sso/complete?c={xc}")
+
+
+class TokenExchangeView(OrgFeaturesGate, APIView):
+    """Trade a one-time browser-handoff code for the real session."""
+
+    permission_classes = [AllowAny]
+    throttle_classes = [AuthRateThrottle]
+
+    def post(self, request):
+        from apps.accounts.services import saml_service
+        from core.exceptions import CanseeException
+
+        code = request.data.get("code") or ""
+        payload = saml_service.redeem_exchange_code(code) if code else None
+        if payload is None:
+            raise CanseeException(
+                "This sign-in expired — try again.",
+                code="invalid_exchange_code",
+                status_code=400,
+            )
+
+        refresh = payload.pop("refresh", "")
+        response = Response(payload)
+        if refresh:
+            response.set_cookie(value=refresh, **_refresh_cookie_settings())
         return response
 
 
@@ -303,19 +572,44 @@ class SessionView(APIView):
     def get(self, request):
         from django.conf import settings
 
+        from apps.accounts.services.org_service import OrgService
         from apps.billing.services import polar_billing
         from apps.billing.services.plan_limits import (
             projects_limit_for,
             subscription_state,
         )
-        from apps.websites.models import Website
+        from apps.websites.services.website_service import WebsiteService
 
         user = request.user
 
-        websites = list(Website.objects.filter(user=user, is_active=True).only(
-            "id", "name", "url"
-        ))
+        # Accessible = owned OR reachable through org membership. Counting
+        # only OWNED websites here used to dump every org invitee into the
+        # create-a-project wizard on their first login.
+        websites = list(
+            WebsiteService.accessible_qs(user).filter(is_active=True).only(
+                "id", "name", "url"
+            )
+        )
         needs_onboarding = not websites
+
+        # Master switch: while business flows are off, every account is
+        # plain B2C — no org lookup (saves a query per session call too).
+        from core.permissions.org import org_features_enabled
+
+        membership = (
+            OrgService.membership_for(user) if org_features_enabled() else None
+        )
+        org_block = None
+        if membership:
+            org = membership.organization
+            org_block = {
+                "id": str(org.id),
+                "name": org.name,
+                "slug": org.slug,
+                "logo_url": org.logo_url,
+                "role": membership.role,
+                "sso_enforced": org.require_sso,
+            }
 
         sub = getattr(user, "subscription", None)
         # A trial whose end date passed without a conversion webhook
@@ -325,6 +619,24 @@ class SessionView(APIView):
         # One builder for the whole subscription block so every surface
         # labels a trial, a paid plan and a lapsed row the same way.
         subscription = subscription_state(sub)
+        if membership:
+            # The org's provisioned plan is the member's entitlement; their
+            # personal subscription state (usually none) must not label the
+            # UI or gate the paywall.
+            from apps.billing.services.plan_limits import _LEGACY_MAP
+
+            org_plan = _LEGACY_MAP.get(
+                membership.organization.plan, membership.organization.plan
+            )
+            subscription = {
+                **subscription,
+                "plan": str(org_plan),
+                "tier": str(org_plan),
+                "is_paying": True,
+                "source": "organization",
+            }
+        else:
+            subscription["source"] = "user"
         is_paying = subscription["is_paying"]
 
         # Onboarding first, then paywall. We want users to see the
@@ -348,18 +660,25 @@ class SessionView(APIView):
         else:
             next_route = "app"
 
+        limits_block = {"projects": projects_limit_for(user)}
+        if membership:
+            from apps.billing.services.org_entitlements import seats_block
+
+            seats = seats_block(membership.organization)
+            if seats:
+                limits_block["seats"] = seats
+
         return Response({
             "user": UserProfileSerializer(user).data,
             "onboarding": {
                 "needs_onboarding": needs_onboarding,
                 "websites_count": len(websites),
             },
+            "org": org_block,
             "subscription": subscription,
             # Resolved server-side (trial-aware, paywall-aware) so the UI
             # never re-derives plan limits from the plan name. -1 = unlimited.
-            "limits": {
-                "projects": projects_limit_for(user),
-            },
+            "limits": limits_block,
             "paywall_dismissed": user.paywall_dismissed_at is not None,
             "next_route": next_route,
         })

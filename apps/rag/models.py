@@ -116,10 +116,16 @@ class KnowledgeSource(TimestampMixin):
     class Meta:
         db_table = "rag_knowledge_source"
         ordering = ["-created_at"]
+        # Uniqueness is per-WEBSITE: the knowledge base belongs to the
+        # project, not the person who happened to add a page. The old
+        # (user, website, url) key meant two teammates ingesting the same
+        # URL created two rows and paid for two embedding runs, each
+        # invisible to the other's retrieval. ``user`` remains as
+        # attribution (who added it).
         constraints = [
             models.UniqueConstraint(
-                fields=["user", "website", "url"],
-                name="uq_rag_source_user_website_url",
+                fields=["website", "url"],
+                name="uq_rag_source_website_url",
             ),
         ]
         # Explicit index names match the hand-written 0001_initial
@@ -135,8 +141,8 @@ class KnowledgeSource(TimestampMixin):
 
 
 class AgentCrawlConsent(TimestampMixin):
-    """Per-(user, website) permission for the Cansee agent to crawl the
-    user's site for brand knowledge.
+    """Per-website permission for the Cansee agent to crawl the site for
+    brand knowledge (``user`` records who granted it).
 
     The flag is explicit consent: automated crawls (the seed crawl on
     enable today, scheduled re-crawls tomorrow) must check ``enabled``
@@ -164,10 +170,13 @@ class AgentCrawlConsent(TimestampMixin):
 
     class Meta:
         db_table = "rag_agent_crawl_consent"
+        # Consent is per-WEBSITE: one teammate granting the crawl covers
+        # the project (``user`` records who granted it). Was per-(user,
+        # website), which made each teammate re-consent and re-seed.
         constraints = [
             models.UniqueConstraint(
-                fields=["user", "website"],
-                name="uq_rag_agent_crawl_user_website",
+                fields=["website"],
+                name="uq_rag_agent_crawl_website",
             ),
         ]
 

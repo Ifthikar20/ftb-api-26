@@ -40,12 +40,7 @@ def build_kpis_for_user(
     narrowed by prompt, provider, tag or topic. When ``website`` is given
     every metric is scoped to that project's audits only.
     """
-    has_any_qs = LLMRankingAudit.objects.filter(
-        created_by=user, status=LLMRankingAudit.STATUS_COMPLETED,
-    )
-    if website is not None:
-        has_any_qs = has_any_qs.filter(website=website)
-    if not has_any_qs.exists():
+    if not _audits_in(user, None, None, website=website).exists():
         return None
 
     flt = _make_flt(prompts=prompts, providers=providers, tags=tags, topics=topics)
@@ -130,13 +125,8 @@ def build_breakdowns_for_user(
     flt = _make_flt(prompts=prompts, providers=providers, tags=tags, topics=topics)
     end = end or timezone.now()
     if start is None:
-        first_qs = LLMRankingAudit.objects.filter(
-            created_by=user, status=LLMRankingAudit.STATUS_COMPLETED,
-        )
-        if website is not None:
-            first_qs = first_qs.filter(website=website)
         start = (
-            first_qs
+            _audits_in(user, None, None, website=website)
             .order_by("completed_at")
             .values_list("completed_at", flat=True)
             .first()
@@ -292,11 +282,18 @@ def _alignment_breakdown(audit_ids: list, flt: dict | None) -> dict:
 # ── metric calculators ─────────────────────────────────────────────────────
 
 def _audits_in(user, start, end, website=None):
-    qs = LLMRankingAudit.objects.filter(
-        created_by=user, status=LLMRankingAudit.STATUS_COMPLETED,
-    )
+    # Audits are scoped by project, not creator — teammates share dashboards.
     if website is not None:
-        qs = qs.filter(website=website)
+        qs = LLMRankingAudit.objects.filter(
+            website=website, status=LLMRankingAudit.STATUS_COMPLETED,
+        )
+    else:
+        from apps.websites.services.website_service import WebsiteService
+
+        qs = LLMRankingAudit.objects.filter(
+            website__in=WebsiteService.accessible_qs(user),
+            status=LLMRankingAudit.STATUS_COMPLETED,
+        )
     if start is not None:
         qs = qs.filter(completed_at__gte=start)
     if end is not None:

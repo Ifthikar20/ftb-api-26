@@ -7,6 +7,7 @@ from core.validators.url_validator import validate_website_url
 
 class WebsiteSerializer(serializers.ModelSerializer):
     pixel_snippet = serializers.SerializerMethodField()
+    created_by = serializers.SerializerMethodField()
 
     class Meta:
         model = Website
@@ -14,7 +15,7 @@ class WebsiteSerializer(serializers.ModelSerializer):
             "id", "url", "name", "industry", "description", "topics",
             "platform_type",
             "pixel_key", "pixel_verified", "pixel_verified_at", "crawl_status",
-            "is_active", "pixel_snippet", "created_at", "updated_at",
+            "is_active", "pixel_snippet", "created_by", "created_at", "updated_at",
         ]
         read_only_fields = ["id", "pixel_key", "pixel_verified", "pixel_verified_at", "crawl_status"]
 
@@ -22,6 +23,12 @@ class WebsiteSerializer(serializers.ModelSerializer):
         from apps.websites.services.pixel_service import PixelService
 
         return PixelService.get_snippet(website=obj)
+
+    def get_created_by(self, obj) -> dict | None:
+        # Attribution for shared org projects ("Added by Sarah").
+        if not obj.user_id:
+            return None
+        return {"id": str(obj.user_id), "full_name": obj.user.full_name}
 
 
 class WebsiteCreateSerializer(serializers.Serializer):

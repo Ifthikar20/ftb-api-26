@@ -114,6 +114,29 @@ class BillingOverviewView(APIView):
         # the denormalized user.plan, which defaults to a paid tier and
         # used to leak paid allowances to unsubscribed accounts.
         active_plan = str(plan_for_subscription(subscription))
+
+        # Org members are entitled through the org's provisioned plan, not
+        # their (usually absent) personal subscription. `source` tells the
+        # billing page to hide personal checkout/portal UI entirely.
+        source = "user"
+        from core.permissions.org import org_features_enabled
+
+        membership = None
+        if org_features_enabled():
+            membership = (
+                request.user.org_memberships.select_related("organization")
+                .order_by("created_at")
+                .first()
+            )
+        org_block = None
+        if membership:
+            from apps.billing.services.plan_limits import _LEGACY_MAP
+
+            org = membership.organization
+            active_plan = str(_LEGACY_MAP.get(org.plan, org.plan))
+            source = "organization"
+            org_block = {"id": str(org.id), "name": org.name, "role": membership.role}
+
         plan_data = PlanService.get_plan(active_plan)
 
         # Determine segment
@@ -121,6 +144,8 @@ class BillingOverviewView(APIView):
 
         return Response({
             "plan": active_plan,
+            "source": source,
+            "org": org_block,
             "segment": segment,
             "plan_details": plan_data,
             # Resolved allowances (trial-aware: a live trial keeps the Free

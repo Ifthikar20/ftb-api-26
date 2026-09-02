@@ -378,9 +378,17 @@ class SEOEmbedCodeView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, website_id):
+        # Through the shared tenancy gate, NOT an inline user= lookup — an
+        # org member fetching the embed code must resolve like every other
+        # website endpoint.
+        from apps.websites.services.website_service import WebsiteService
+        from core.exceptions import ResourceNotFound
+
         try:
-            website = Website.objects.get(id=website_id, user=request.user)
-        except Website.DoesNotExist:
+            website = WebsiteService.get_for_user(
+                user=request.user, website_id=website_id
+            )
+        except ResourceNotFound:
             return Response({"error": "Website not found"}, status=404)
 
         script_url = request.build_absolute_uri(f"/api/v1/analytics/{website_id}/seo-script/")

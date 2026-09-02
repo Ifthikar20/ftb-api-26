@@ -24,8 +24,14 @@ EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")  # noqa: F405
 EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=True)  # noqa: F405
 DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="Cansee <noreply@cansee.ai>")  # noqa: F405
 
-# If no EMAIL_HOST configured, fall back to console to avoid errors
-if not EMAIL_HOST:
+# No EMAIL_HOST used to silently downgrade to the console backend, which
+# made every "sent" email a lie in any misconfigured prod deploy —
+# verification codes, password resets and org invitations would report
+# success and go nowhere. Now: core.checks.check_email_transport errors at
+# `manage.py check --deploy`, and a send on a host-less SMTP backend fails
+# loudly instead of silently. EMAIL_ALLOW_CONSOLE=true is the explicit
+# escape hatch for environments that genuinely have no mail (staging).
+if not EMAIL_HOST and env.bool("EMAIL_ALLOW_CONSOLE", default=False):  # noqa: F405
     EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 
 # ── Trusted Origins (Cloudflare → Nginx → Django) ──

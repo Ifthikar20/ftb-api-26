@@ -191,7 +191,13 @@ def _resolve_plan_key(user):
     if hasattr(user, "org_memberships"):
         org = getattr(user, "_org_cache", None)
         if org is None:
-            membership = user.org_memberships.select_related("organization").first()
+            # order_by matters: .first() on an unordered queryset gives an
+            # arbitrary row, so a user in two orgs would flap between plans.
+            membership = (
+                user.org_memberships.select_related("organization")
+                .order_by("created_at")
+                .first()
+            )
             if membership:
                 org = membership.organization
                 user._org_cache = org

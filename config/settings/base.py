@@ -150,8 +150,17 @@ REST_FRAMEWORK = {
 }
 
 # ── JWT CONFIG ──
+#
+# Access tokens are short-lived on purpose: they carry org/role claims and
+# are not individually revocable, so their lifetime is the maximum staleness
+# window after a role change, a member removal, or an SSO-enforcement flip.
+# The SPA refreshes transparently on 401 (single-flight, api/client.js), so
+# shortening this is invisible to users. Custom claims (org_id/org_role/amr)
+# are set by apps.accounts.services.token_service — the single token
+# factory — NOT via TOKEN_OBTAIN_SERIALIZER, which SimpleJWT only consumes
+# from its own (unrouted) TokenObtainPairView.
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(days=7),
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=env.int("JWT_ACCESS_MINUTES", default=30)),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=60),
     "ROTATE_REFRESH_TOKENS": True,
     "BLACKLIST_AFTER_ROTATION": True,
@@ -162,7 +171,6 @@ SIMPLE_JWT = {
     "AUTH_HEADER_NAME": "HTTP_AUTHORIZATION",
     "USER_ID_FIELD": "id",
     "USER_ID_CLAIM": "user_id",
-    "TOKEN_OBTAIN_SERIALIZER": "apps.accounts.api.v1.serializers.CustomTokenObtainPairSerializer",
 }
 
 # ── MIDDLEWARE (ORDER MATTERS) ──
@@ -515,6 +523,35 @@ SOURCES_AUTH_TOKEN = env("SOURCES_AUTH_TOKEN", default="")
 SENDGRID_API_KEY = env("SENDGRID_API_KEY", default="")
 GOOGLE_OAUTH_CLIENT_ID = env("GOOGLE_OAUTH_CLIENT_ID", default="")
 GOOGLE_OAUTH_CLIENT_SECRET = env("GOOGLE_OAUTH_CLIENT_SECRET", default="")
+MICROSOFT_OAUTH_CLIENT_ID = env("MICROSOFT_OAUTH_CLIENT_ID", default="")
+MICROSOFT_OAUTH_CLIENT_SECRET = env("MICROSOFT_OAUTH_CLIENT_SECRET", default="")
+# ── BUSINESS / ORGANIZATION FEATURES MASTER SWITCH ──
+# One flag gates every B2B surface: the /api/v1/orgs/ API (members,
+# invitations, domains, usage, enforcement), invitation accept/register,
+# SSO discovery (/auth/sso/start/), the Microsoft and SAML sign-in lanes,
+# Google JIT/invite provisioning, and the org block in the session
+# payload. FAIL-CLOSED: default False, so production stays pure B2C with
+# zero config until launch day — flipping it on is one env var + restart.
+# Dev (.env) and tests set it True. Google/password B2C login is never
+# affected. The ops command `manage.py create_org` still works while off,
+# so a customer can be staged before the flip.
+ORG_FEATURES_ENABLED = env.bool("ORG_FEATURES_ENABLED", default=False)
+
+# SAML bridge (the Okta/enterprise-IdP lane). The bridge terminates the
+# customer's SAML and hands us a verified profile; we keep minting our own
+# tokens. Two interchangeable providers behind one seam:
+#   ssoready — MIT open source, free unlimited cloud (the default)
+#   workos   — $125/connection/month, hosted admin portal for customer IT
+# Dormant until the active provider's keys are set; an org additionally
+# needs Organization.sso_connection_id before the "saml" button is offered.
+SSO_BRIDGE_PROVIDER = env("SSO_BRIDGE_PROVIDER", default="ssoready")
+SSOREADY_API_KEY = env("SSOREADY_API_KEY", default="")
+WORKOS_API_KEY = env("WORKOS_API_KEY", default="")
+WORKOS_CLIENT_ID = env("WORKOS_CLIENT_ID", default="")
+# Public origin of THIS API service. The WorkOS callback is an API route
+# (a browser redirect target), so it cannot be derived from FRONTEND_URL,
+# which is the SPA's origin.
+BACKEND_PUBLIC_URL = env("BACKEND_PUBLIC_URL", default="http://localhost:8000")
 SENTRY_DSN = env("SENTRY_DSN", default="")
 DATAFORSEO_LOGIN = env("DATAFORSEO_LOGIN", default="")
 DATAFORSEO_PASSWORD = env("DATAFORSEO_PASSWORD", default="")

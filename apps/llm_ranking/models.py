@@ -352,8 +352,15 @@ class LLMRankingSchedule(TimestampMixin):
     website = models.OneToOneField(
         "websites.Website", on_delete=models.CASCADE, related_name="llm_ranking_schedule"
     )
+    # SET_NULL, not CASCADE: the schedule is the WEBSITE's recurring audit.
+    # A teammate deleting their account must not silently kill the org's
+    # scheduled runs; execution falls back to the website owner when null.
     created_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="+"
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
     )
     is_enabled = models.BooleanField(default=True, db_index=True)
     frequency = models.CharField(

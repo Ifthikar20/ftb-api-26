@@ -28,6 +28,7 @@ urlpatterns = [
 
     # API v1
     path("api/v1/auth/", include("apps.accounts.api.v1.urls")),
+    path("api/v1/orgs/", include("apps.accounts.api.v1.org_urls")),
     # Internal ops surface for the ftb-min admin server ONLY: gated by
     # X-Admin-Key (settings.ADMIN_OPS_KEY; empty = disabled, all 404s).
     # In production also firewall this prefix to the admin host.

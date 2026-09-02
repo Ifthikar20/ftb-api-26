@@ -1176,9 +1176,16 @@ def _queue_scan_command(user) -> str:
             "the Prompts page first, then run scan again."
         )
 
-    audit = create_audit(
-        website=website, user=user, prompts=prompts, prompt_source="library",
-    )
+    from core.exceptions import CanseeException
+
+    try:
+        audit = create_audit(
+            website=website, user=user, prompts=prompts, prompt_source="library",
+        )
+    except CanseeException as exc:
+        # Chat surfaces render text, not HTTP errors — relay the message
+        # (e.g. the monthly prompt allowance being used up) as a reply.
+        return exc.message
     dispatch_scan(str(audit.id))
     return (
         f"Visibility scan queued for {website.name} across {len(prompts)} "

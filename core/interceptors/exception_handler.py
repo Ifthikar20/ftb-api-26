@@ -71,10 +71,16 @@ def custom_exception_handler(exc, context):
 
     # ── Our domain exceptions (already have safe messages) ──
     if isinstance(exc, CanseeException):
+        error = {"code": exc.code, "message": exc.message}
+        # details is client-facing by contract (see CanseeException) — it
+        # exists so structured errors like sso_required can tell the SPA
+        # which org/method to route to. Never populated from raw internals.
+        if getattr(exc, "details", None):
+            error["details"] = exc.details
         return Response(
             {
                 "success": False,
-                "error": {"code": exc.code, "message": exc.message},
+                "error": error,
                 "request_id": request_id,
             },
             status=exc.status_code,

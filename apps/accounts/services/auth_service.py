@@ -64,6 +64,11 @@ class AuthService:
         *, email: str, password: str, ip_address: str, user_agent: str, request=None
     ) -> dict:
         """Authenticate user and return JWT token pair."""
+        # SSO enforcement runs BEFORE the password is checked: an enforced
+        # account must get the same answer whether or not the password is
+        # right, and a correct password must never mint a session.
+        AuthService._require_sso_gate(email=email)
+
         user = authenticate(request=request, email=email, password=password)
 
         if user is None:
@@ -79,40 +84,67 @@ class AuthService:
             )
             raise ValueError("Invalid email or password.")
 
-        if not user.is_email_verified:
-            raise ValueError("Please verify your email before logging in.")
+        # Verified/active checks, the success LoginAttempt row, claims and
+        # audit all live in the shared factory so every login method behaves
+        # identically.
+        from apps.accounts.services.token_service import TokenService
 
-        if not user.is_active:
-            security_logger.warning(
-                "Login attempt on deactivated account",
-                extra={"user_id": str(user.id), "ip": ip_address},
-            )
-            raise ValueError("This account has been deactivated.")
-
-        LoginAttempt.objects.create(
-            email=email,
-            ip_address=ip_address,
-            user_agent=user_agent,
-            success=True,
-            user=user,
+        return TokenService.issue_session(
+            user, method="pwd", ip_address=ip_address, user_agent=user_agent
         )
-        user.last_login = timezone.now()
-        user.save(update_fields=["last_login"])
 
-        refresh = RefreshToken.for_user(user)
-        audit_log("user.login", user=user, action="login", resource_type="user", resource_id=str(user.id), metadata={"ip": ip_address})
+    @staticmethod
+    def _require_sso_gate(*, email: str) -> None:
+        """Raise SsoRequired when ``email`` belongs to an SSO-enforced org.
 
-        return {
-            "access": str(refresh.access_token),
-            "refresh": str(refresh),
-            "user": {
-                "id": str(user.id),
-                "email": user.email,
-                "full_name": user.full_name,
-                "plan": user.plan,
-                "onboarding_complete": user.onboarding_complete,
-            },
-        }
+        Applies to every password-credential surface: login, password
+        reset (request and redemption), and password change. Membership is
+        what matters, not the email's domain — a member invited under a
+        different domain is enforced too.
+        """
+        from core.exceptions import SsoRequired
+        from core.permissions.org import org_features_enabled
+
+        # Master switch: no business flows, no SSO enforcement.
+        if not org_features_enabled():
+            return
+
+        user = User.objects.filter(email__iexact=email).first()
+        if user is None:
+            return
+        membership = (
+            user.org_memberships.select_related("organization")
+            .order_by("created_at")
+            .first()
+        )
+        if membership and membership.organization.require_sso:
+            org = membership.organization
+            raise SsoRequired(
+                details={
+                    "org_name": org.name,
+                    "domain": email.rsplit("@", 1)[-1].lower(),
+                    "methods": AuthService.sso_methods_for(org),
+                }
+            )
+
+    @staticmethod
+    def sso_methods_for(org) -> list[str]:
+        """The IdP buttons the SPA should offer for this org's SSO gate.
+
+        Google is always available; Microsoft appears once the org has
+        registered an Entra tenant id on any of its domains; SAML appears
+        once ops record the org's bridge connection id (SSOReady/WorkOS).
+        """
+        methods = ["google"]
+        if org.domains.exclude(entra_tenant_id="").exists():
+            methods.append("microsoft")
+        # Gated on sso_connection_id alone — deliberately NOT also on the
+        # bridge API keys, so a key misconfig surfaces as a visible button
+        # answering 503 from /auth/saml/start/, never as a silently
+        # missing option.
+        if org.sso_connection_id:
+            methods.append("saml")
+        return methods
 
     @staticmethod
     def logout(*, refresh_token: str, user: User) -> None:
@@ -126,15 +158,10 @@ class AuthService:
 
     @staticmethod
     def refresh_token(*, refresh_token: str) -> dict:
-        """Issue new access token from valid refresh token."""
-        try:
-            refresh = RefreshToken(refresh_token)
-            return {
-                "access": str(refresh.access_token),
-                "refresh": str(refresh),
-            }
-        except Exception:
-            raise ValueError("Refresh token is invalid or expired.") from None
+        """Rotate the refresh token and issue a new access token."""
+        from apps.accounts.services.token_service import TokenService
+
+        return TokenService.rotate_session(refresh_token=refresh_token)
 
     @staticmethod
     def generate_email_otp(*, user: User) -> str:
@@ -186,6 +213,22 @@ class AuthService:
             # Don't reveal whether the email exists
             return ""
 
+        # SSO-enforced members can't hold a usable password, so a reset
+        # link must never be minted for them — otherwise "reset password"
+        # is a one-click bypass of enforcement. Silent no-op (not an
+        # error) to preserve the endpoint's non-enumeration contract.
+        try:
+            AuthService._require_sso_gate(email=email)
+        except Exception:
+            audit_log(
+                "user.password_reset_blocked_sso",
+                user=user,
+                action="update",
+                resource_type="user",
+                resource_id=str(user.id),
+            )
+            return ""
+
         token = secrets.token_urlsafe(48)
         expires_at = timezone.now() + timedelta(hours=1)
         PasswordResetToken.objects.create(user=user, token=token, expires_at=expires_at)
@@ -202,6 +245,9 @@ class AuthService:
             raise ValueError("Invalid or expired reset token.") from None
 
         user = reset_token.user
+        # A token minted before the org flipped enforcement on must not
+        # redeem after it.
+        AuthService._require_sso_gate(email=user.email)
         AuthService._enforce_password_policy(new_password, user)
         user.set_password(new_password)
         user.save(update_fields=["password"])
@@ -215,6 +261,7 @@ class AuthService:
     @staticmethod
     def change_password(*, user: User, old_password: str, new_password: str) -> None:
         """Change password for an authenticated user."""
+        AuthService._require_sso_gate(email=user.email)
         if not user.check_password(old_password):
             raise ValueError("Current password is incorrect.")
         AuthService._enforce_password_policy(new_password, user)

@@ -76,6 +76,18 @@ TWILIO_FROM_NUMBER = ""
 # would make real, billable calls to Claude/GPT/Perplexity.
 BRAND_RESEARCH_ENGINES_ENABLED = False
 
+# Business flows are ON for the suite (the org/SSO tests exercise them);
+# individual tests assert the OFF behavior via override_settings.
+ORG_FEATURES_ENABLED = True
+
+# The SAML bridge stays dormant in the suite regardless of the
+# developer's .env — tests that cover the lane set the keys via the
+# settings fixture and mock the HTTP calls. Mirrors the POLAR pin below.
+SSO_BRIDGE_PROVIDER = "ssoready"
+SSOREADY_API_KEY = ""
+WORKOS_API_KEY = ""
+WORKOS_CLIENT_ID = ""
+
 # Polar metering must never leave the process in tests: no outbox rows
 # unless a test opts in via override_settings, never a real token, and
 # reads always come from the local ledger. Mirrors the facade pattern

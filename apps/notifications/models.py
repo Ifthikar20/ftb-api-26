@@ -120,8 +120,9 @@ class SmsSubscription(TimestampMixin):
 
     A text is the most intrusive channel in the product, so the default
     posture is narrow: high-severity security alerts and sharp visibility
-    drops. Digests deliberately have no switch -- 160 characters cannot
-    carry a report, and recurring texts carry the heaviest consent burden.
+    drops. The Brand Pulse digest is the one recurring text, gated behind
+    its own explicit opt-in (``pulse_digest``, default off) and rendered
+    to fit two SMS segments rather than pretending to be a report.
     """
 
     class Status(models.TextChoices):
@@ -167,6 +168,11 @@ class SmsSubscription(TimestampMixin):
     alert_visibility_drop = models.BooleanField(default=True)
     # Two-way: replying to a text asks the assistant a question.
     allow_replies = models.BooleanField(default=True)
+    # Recurring Brand Pulse digest summaries. Default OFF on purpose: a
+    # recurring text carries the heaviest consent burden, so it is an
+    # explicit opt-in on top of the number's alert consent — never
+    # inferred from it.
+    pulse_digest = models.BooleanField(default=False)
 
     last_message_at = models.DateTimeField(null=True, blank=True)
 

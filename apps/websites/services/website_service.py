@@ -1,26 +1,68 @@
 import logging
 
+from django.core.exceptions import ValidationError
+from django.db.models import Q
+
 from apps.websites.models import Website, WebsiteSettings
 from core.exceptions import DuplicateWebsite, ResourceNotFound
 from core.logging.audit_logger import audit_log
+from core.permissions.rbac import role_at_least
 from core.validators.url_validator import validate_website_url
 
 logger = logging.getLogger("apps")
 
 
+def _org_id_for(user):
+    """The user's single org id, cached on the user object. None = org-less."""
+    if not hasattr(user, "_org_id_cache"):
+        membership = (
+            user.org_memberships.order_by("created_at")
+            .values_list("organization_id", flat=True)
+            .first()
+        )
+        user._org_id_cache = membership
+    return user._org_id_cache
+
+
 class WebsiteService:
     @staticmethod
-    def create(*, user, url: str, name: str, industry: str = "", platform_type: str = "custom") -> Website:
-        """Add a new website for a user."""
-        validated_url = validate_website_url(url)
+    def accessible_qs(user):
+        """Every website this user may act on: their own + their org's.
 
-        # An active duplicate would otherwise die on the (user, url)
-        # unique constraint as a 500.
-        if Website.objects.filter(user=user, url=validated_url).exists():
+        THE tenancy queryset — list endpoints, project caps, and
+        needs_onboarding must all derive from this, never from
+        ``filter(user=...)``, or org members see a different world than
+        get_for_user grants them.
+        """
+        org_id = _org_id_for(user)
+        if org_id is None:
+            return Website.objects.filter(user=user)
+        return Website.objects.filter(Q(user=user) | Q(organization_id=org_id))
+
+    @staticmethod
+    def create(*, user, url: str, name: str, industry: str = "", platform_type: str = "custom") -> Website:
+        """Add a new website for a user (org-owned when the user has an org)."""
+        validated_url = validate_website_url(url)
+        org_id = _org_id_for(user)
+
+        # An active duplicate would otherwise die on the tenant-scoped
+        # unique constraint as a 500. Scope matches the constraint: the
+        # org's projects for org users, the user's own otherwise.
+        duplicate_scope = (
+            Website.objects.filter(organization_id=org_id, url=validated_url)
+            if org_id
+            else Website.objects.filter(user=user, organization__isnull=True, url=validated_url)
+        )
+        if duplicate_scope.exists():
             raise DuplicateWebsite()
 
         # Check if a soft-deleted website with the same URL exists — restore it
-        existing = Website.all_objects.filter(user=user, url=validated_url, is_deleted=True).first()
+        deleted_scope = (
+            Website.all_objects.filter(organization_id=org_id, url=validated_url, is_deleted=True)
+            if org_id
+            else Website.all_objects.filter(user=user, organization__isnull=True, url=validated_url, is_deleted=True)
+        )
+        existing = deleted_scope.first()
         if existing:
             existing.is_deleted = False
             existing.deleted_at = None
@@ -33,20 +75,41 @@ class WebsiteService:
             return existing
 
         website = Website.objects.create(
-            user=user, url=validated_url, name=name, industry=industry,
-            platform_type=platform_type,
+            user=user, organization_id=org_id, url=validated_url, name=name,
+            industry=industry, platform_type=platform_type,
         )
         WebsiteSettings.objects.create(website=website)
         audit_log("website.created", user=user, action="create", resource_type="website", resource_id=str(website.id), metadata={"url": validated_url})
         return website
 
     @staticmethod
-    def get_for_user(*, user, website_id: str) -> Website:
-        """Fetch a website ensuring it belongs to the user."""
+    def get_for_user(*, user, website_id: str, min_role: str = "member") -> Website:
+        """Fetch a website the user owns or can reach through org membership.
+
+        The single tenancy gate: ~160 call sites across every app resolve
+        website access through here. Non-members get the same 404 as a
+        nonexistent id — existence must not leak. ``min_role`` checks the
+        member's org role on the ladder in core.permissions.rbac (owner >
+        admin > member > viewer); the website's direct owner always passes.
+        """
         try:
-            return Website.objects.get(id=website_id, user=user)
-        except Website.DoesNotExist:
+            website = Website.objects.select_related("organization").get(id=website_id)
+        except (Website.DoesNotExist, ValidationError, ValueError):
             raise ResourceNotFound("Website not found.") from None
+
+        if website.user_id == user.id:
+            return website
+
+        if website.organization_id:
+            role = (
+                user.org_memberships.filter(organization_id=website.organization_id)
+                .values_list("role", flat=True)
+                .first()
+            )
+            if role and role_at_least(role, min_role):
+                return website
+
+        raise ResourceNotFound("Website not found.") from None
 
     @staticmethod
     def update(*, website: Website, user, **kwargs) -> Website:

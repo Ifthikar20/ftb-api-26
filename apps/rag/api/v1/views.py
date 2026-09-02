@@ -1,10 +1,11 @@
 """
-API for the per-user RAG knowledge base.
+API for the website's shared RAG knowledge base.
 
-All endpoints are website-scoped via TenantScopedAPIView. The user's
-identity comes from request.user — chunks are insulated from one user
-to another even within the same website (rare in practice, but the
-unique constraint on KnowledgeSource enforces it).
+All endpoints are website-scoped via TenantScopedAPIView, and website
+access is the whole access check: the knowledge base belongs to the
+project, not the person who added it, so every user the tenancy gate
+admits to a website sees the same corpus. request.user is still stamped
+on writes (attribution) and still keys the rate-limit buckets.
 """
 import hashlib
 import logging
@@ -76,7 +77,7 @@ def _source_stats(qs) -> dict:
 
 
 class KnowledgeSourceListView(TenantScopedAPIView):
-    """GET = list sources for (user, website). POST = enqueue ingest.
+    """GET = list the website's sources. POST = enqueue ingest.
 
     GET supports filter + pagination query params:
       status   — pending | ingesting | ready | failed
@@ -91,9 +92,7 @@ class KnowledgeSourceListView(TenantScopedAPIView):
 
     def get(self, request, website_id):
         website = self.get_website(website_id)
-        base_qs = KnowledgeSource.objects.filter(
-            user=request.user, website=website,
-        )
+        base_qs = KnowledgeSource.objects.filter(website=website)
 
         # Stats reflect the whole website corpus, not the current
         # filter — badges are for navigation.
@@ -191,7 +190,7 @@ class KnowledgeSourceDetailView(TenantScopedAPIView):
     def get(self, request, website_id, source_id):
         website = self.get_website(website_id)
         source = self.get_tenant_object(
-            KnowledgeSource.objects.filter(user=request.user, website=website),
+            KnowledgeSource.objects.filter(website=website),
             id=source_id,
         )
         chunks = KnowledgeChunk.objects.filter(source=source).order_by("chunk_index")
@@ -203,7 +202,7 @@ class KnowledgeSourceDetailView(TenantScopedAPIView):
     def delete(self, request, website_id, source_id):
         website = self.get_website(website_id)
         source = self.get_tenant_object(
-            KnowledgeSource.objects.filter(user=request.user, website=website),
+            KnowledgeSource.objects.filter(website=website),
             id=source_id,
         )
         source_pk = source.id
@@ -234,7 +233,7 @@ class ReingestSourceView(TenantScopedAPIView):
     def post(self, request, website_id, source_id):
         website = self.get_website(website_id)
         source = self.get_tenant_object(
-            KnowledgeSource.objects.filter(user=request.user, website=website),
+            KnowledgeSource.objects.filter(website=website),
             id=source_id,
         )
 
@@ -283,8 +282,8 @@ class UploadTextView(TenantScopedAPIView):
 
     Reuses the same ingest pipeline as URL ingest by handing the text
     directly to ``ingest_url(text=...)``. The pseudo-URL is derived
-    from a SHA-256 of the text so the (user, website, url) uniqueness
-    constraint deduplicates identical pastes.
+    from a SHA-256 of the text so the (website, url) uniqueness
+    constraint deduplicates identical pastes across the whole website.
     """
 
     def post(self, request, website_id):
@@ -355,16 +354,16 @@ class AgentCrawlView(TenantScopedAPIView):
 
     def get(self, request, website_id):
         website = self.get_website(website_id)
-        consent = AgentCrawlConsent.objects.filter(
-            user=request.user, website=website,
-        ).first()
+        # Consent is per-website: one teammate granting it covers the
+        # project, so reads never filter by user.
+        consent = AgentCrawlConsent.objects.filter(website=website).first()
         return Response(self._payload(consent))
 
     def post(self, request, website_id):
         website = self.get_website(website_id)
         enabled = bool(request.data.get("enabled"))
         consent, _ = AgentCrawlConsent.objects.get_or_create(
-            user=request.user, website=website,
+            website=website, defaults={"user": request.user},
         )
 
         seeded = False
@@ -424,11 +423,11 @@ class RetrieveView(TenantScopedAPIView):
 
         source_ids = None
         if data.get("source_id"):
-            # Verify the source belongs to this (user, website) before
-            # letting it constrain retrieval — otherwise a caller could
-            # probe existence of other tenants' source_ids by timing.
+            # Verify the source belongs to this website before letting
+            # it constrain retrieval — otherwise a caller could probe
+            # existence of other tenants' source_ids by timing.
             source = self.get_tenant_object(
-                KnowledgeSource.objects.filter(user=request.user, website=website),
+                KnowledgeSource.objects.filter(website=website),
                 id=data["source_id"],
             )
             source_ids = [str(source.id)]

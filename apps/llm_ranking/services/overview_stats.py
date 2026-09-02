@@ -149,11 +149,18 @@ def build_overview_for_user(
 # ── queryset helpers (mirrors geo_stats so filters behave identically) ──
 
 def _audits_in(user, start, end, website=None):
-    qs = LLMRankingAudit.objects.filter(
-        created_by=user, status=LLMRankingAudit.STATUS_COMPLETED,
-    )
+    # Audits are scoped by project, not creator — teammates share dashboards.
     if website is not None:
-        qs = qs.filter(website=website)
+        qs = LLMRankingAudit.objects.filter(
+            website=website, status=LLMRankingAudit.STATUS_COMPLETED,
+        )
+    else:
+        from apps.websites.services.website_service import WebsiteService
+
+        qs = LLMRankingAudit.objects.filter(
+            website__in=WebsiteService.accessible_qs(user),
+            status=LLMRankingAudit.STATUS_COMPLETED,
+        )
     if start is not None:
         qs = qs.filter(completed_at__gte=start)
     if end is not None:
@@ -663,11 +670,18 @@ def build_filter_options(
     }
     tag_counts: Counter = Counter()
     if prompt_ids:
-        brand_prompts = BrandPrompt.objects.filter(
-            website__user=user, prompt_id__in=prompt_ids,
-        )
+        # Same tenancy rule as _audits_in: project-scoped, not owner-scoped.
         if website is not None:
-            brand_prompts = brand_prompts.filter(website=website)
+            brand_prompts = BrandPrompt.objects.filter(
+                website=website, prompt_id__in=prompt_ids,
+            )
+        else:
+            from apps.websites.services.website_service import WebsiteService
+
+            brand_prompts = BrandPrompt.objects.filter(
+                website__in=WebsiteService.accessible_qs(user),
+                prompt_id__in=prompt_ids,
+            )
         rows = brand_prompts.values_list("tags", flat=True)
         for tags in rows:
             for tag in tags or []:

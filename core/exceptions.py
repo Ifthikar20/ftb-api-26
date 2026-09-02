@@ -1,10 +1,23 @@
 class CanseeException(Exception):
-    """Base exception for all domain errors."""
+    """Base exception for all domain errors.
 
-    def __init__(self, message: str, code: str = "error", status_code: int = 400):
+    ``details`` is an optional, CLIENT-VISIBLE dict the exception handler
+    passes through as ``error.details`` — only ever put data in it that was
+    written for the end user (an org name, a login method list), never raw
+    internals.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        code: str = "error",
+        status_code: int = 400,
+        details: dict | None = None,
+    ):
         self.message = message
         self.code = code
         self.status_code = status_code
+        self.details = details or {}
         super().__init__(message)
 
 
@@ -93,6 +106,25 @@ class RateLimited(CanseeException):
             "You're making requests too quickly. Please wait a moment and try again.",
             code="rate_limited",
             status_code=429,
+        )
+
+
+class SsoRequired(CanseeException):
+    """The account's organization mandates single sign-on.
+
+    Raised on every password-credential surface (login, password reset
+    request/redemption, password change) for members of an org with
+    ``require_sso``. ``details`` carries what the SPA needs to route the
+    user to the right button: {org_name, domain, methods}.
+    """
+
+    def __init__(self, details: dict | None = None):
+        super().__init__(
+            "Your organization requires single sign-on. Use your company "
+            "identity provider to sign in.",
+            code="sso_required",
+            status_code=403,
+            details=details,
         )
 
 

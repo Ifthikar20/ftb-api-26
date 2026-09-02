@@ -1269,8 +1269,9 @@ class LLMRankingScheduleRunNowView(TenantScopedAPIView):
 
         # Saved prompts only — the run asks exactly what the user curated
         # on the Prompts page. Empty list means refuse and name the fix.
+        runner = schedule.created_by or website.user
         try:
-            prompts = gather_saved_prompts(website, schedule.created_by)
+            prompts = gather_saved_prompts(website, runner)
         except NoSavedPromptsError:
             return Response(
                 {
@@ -1281,6 +1282,12 @@ class LLMRankingScheduleRunNowView(TenantScopedAPIView):
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        # Manual runs spend the runner's monthly prompt allowance like any
+        # other audit; raises prompt_allowance_exceeded (403) when spent.
+        from apps.billing.services.org_entitlements import check_prompt_allowance
+
+        check_prompt_allowance(runner, len(prompts))
+
         requested = schedule.providers or list(PROV_REGISTRY.keys())
         selected = [
             k for k in requested
@@ -1290,7 +1297,7 @@ class LLMRankingScheduleRunNowView(TenantScopedAPIView):
 
         audit = LLMRankingAudit.objects.create(
             website=website,
-            created_by=schedule.created_by,
+            created_by=runner,
             business_name=schedule.business_name,
             business_description=schedule.business_description,
             industry=schedule.industry,

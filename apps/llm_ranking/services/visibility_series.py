@@ -27,18 +27,27 @@ MONTH_BUCKETS = 6
 MONTH12_BUCKETS = 12
 
 
+def _scoped_audits(user, website=None):
+    # Audits are scoped by project, not creator — teammates share dashboards.
+    if website is not None:
+        return LLMRankingAudit.objects.filter(
+            website=website, status=LLMRankingAudit.STATUS_COMPLETED,
+        )
+    from apps.websites.services.website_service import WebsiteService
+
+    return LLMRankingAudit.objects.filter(
+        website__in=WebsiteService.accessible_qs(user),
+        status=LLMRankingAudit.STATUS_COMPLETED,
+    )
+
+
 def build_for_user(user, website=None) -> dict | None:
     """Return the bundled visibility series for a user, or None if no data.
 
     ``website`` scopes every bucket to that project's audits so the chart
     never blends two brands' visibility into one line.
     """
-    has_any_qs = LLMRankingAudit.objects.filter(
-        created_by=user, status=LLMRankingAudit.STATUS_COMPLETED,
-    )
-    if website is not None:
-        has_any_qs = has_any_qs.filter(website=website)
-    if not has_any_qs.exists():
+    if not _scoped_audits(user, website).exists():
         return None
     now = timezone.now()
     return {
@@ -98,9 +107,7 @@ def build_overview_for_website(user, website) -> dict:
     breakdowns: list[dict[str, float]] = []
     measured_mask: list[bool] = []
     for start, end in ranges:
-        qs = LLMRankingAudit.objects.filter(
-            created_by=user, website=website,
-            status=LLMRankingAudit.STATUS_COMPLETED,
+        qs = _scoped_audits(user, website).filter(
             completed_at__gte=start, completed_at__lt=end,
         )
         audit_ids = list(qs.values_list("id", flat=True))
@@ -249,14 +256,10 @@ def _series_for_ranges(
     competitor: list[float | None] = []
     measured = 0
     for start, end in ranges:
-        qs = LLMRankingAudit.objects.filter(
-            created_by=user,
-            status=LLMRankingAudit.STATUS_COMPLETED,
+        qs = _scoped_audits(user, website).filter(
             completed_at__gte=start,
             completed_at__lt=end,
         )
-        if website is not None:
-            qs = qs.filter(website=website)
         audit_ids = list(qs.values_list("id", flat=True))
         if audit_ids:
             measured += 1
