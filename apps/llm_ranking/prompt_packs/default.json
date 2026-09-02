@@ -17,12 +17,12 @@
     {"text": "Which up-and-coming {industry} tools should I look at?", "intent": "alternatives", "placeholders": ["industry"]},
     {"text": "What are the best indie or newer {industry} platforms?", "intent": "alternatives", "placeholders": ["industry"]},
 
-    {"text": "I need to {use_case}. What tools should I consider?", "intent": "use_case", "placeholders": ["use_case"]},
+    {"text": "I need help with {use_case}. What tools should I consider?", "intent": "use_case", "placeholders": ["use_case"]},
     {"text": "What's the best {industry} platform for {use_case}?", "intent": "use_case", "placeholders": ["industry", "use_case"]},
     {"text": "Can you recommend a {industry} solution that helps with {use_case}?", "intent": "use_case", "placeholders": ["industry", "use_case"]},
 
     {"text": "I'm new to {industry}. What are the main tools I should know about?", "intent": "category", "placeholders": ["industry"]},
-    {"text": "What categories of {industry} software exist and which are the top vendors in each?", "intent": "category", "placeholders": ["industry"]},
+    {"text": "What categories of {industry} solutions exist and who are the top providers in each?", "intent": "category", "placeholders": ["industry"]},
 
     {"text": "What are the best {industry} tools in {location}?", "intent": "local", "placeholders": ["industry", "location"]},
     {"text": "Which {industry} platforms do businesses in {location} use most?", "intent": "local", "placeholders": ["industry", "location"]},

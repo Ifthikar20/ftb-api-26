@@ -28,6 +28,10 @@ app.conf.task_routes = {
     "apps.prompt_library.tasks.dispatch_scheduled_prompt_scans": {"queue": "ai"},
     "apps.citations.tasks.*": {"queue": "ai"},
     "apps.brand_vault.tasks.*": {"queue": "ai"},
+    # Brand Pulse delivers to third-party chat webhooks (no LLM work), so it
+    # belongs with the other digest senders. The exact-name route wins over
+    # the brand_vault glob above.
+    "apps.brand_vault.tasks.run_brand_pulse": {"queue": "integrations"},
     "apps.content_studio.tasks.*": {"queue": "ai"},
     # notifications: chat commands may call an LLM; report digests hit
     # third-party webhooks
@@ -52,6 +56,13 @@ app.conf.beat_schedule = {
     "expire-sessions": {
         "task": "apps.accounts.tasks.expire_inactive_sessions",
         "schedule": crontab(minute=0, hour=3),
+    },
+    # Re-check DNS TXT proof on verified org domains; a domain that
+    # expired or changed hands loses verified status (and with it
+    # auto-join) after 3 consecutive failures.
+    "reverify-org-domains": {
+        "task": "apps.accounts.tasks.reverify_org_domains",
+        "schedule": crontab(minute=20, hour=6),
     },
     # ── Weekly ──
     "weekly-reports": {
@@ -124,6 +135,12 @@ app.conf.beat_schedule = {
     "brand-security-response-scan": {
         "task": "apps.brand_vault.tasks.scan_unaudited_responses",
         "schedule": crontab(minute=25),
+    },
+    # Brand Pulse digest sweep. Offset to :20 to stay clear of the :00/:15
+    # dispatcher cluster; weekly pulses only fire on Mondays inside the task.
+    "brand-pulse-digest": {
+        "task": "apps.brand_vault.tasks.run_brand_pulse",
+        "schedule": crontab(minute=20, hour=9),
     },
     # ── Content Studio ──
     "generate-briefs-daily": {

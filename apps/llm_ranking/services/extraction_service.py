@@ -25,7 +25,7 @@ logger = logging.getLogger("apps")
 # Cheap, current model for structured extraction. Overridable per
 # environment with LLM_EXTRACTION_MODEL.
 EXTRACTION_MODEL = getattr(settings, "LLM_EXTRACTION_MODEL", "") or "claude-haiku-4-5"
-EXTRACTION_VERSION = "v3"  # v3 adds per-competitor website domain
+EXTRACTION_VERSION = "v4"  # v4 adds kind: brand vs generic (informational term)
 
 EXTRACTION_SYSTEM = (
     "You extract structured brand-mention data from AI assistant responses. "
@@ -47,10 +47,13 @@ Return JSON only, matching this schema exactly:
   "target_linked": bool,                  // was the target mentioned with a hyperlink or URL
   "target_sentiment": "positive" | "neutral" | "negative" | "not_mentioned",
   "target_context": str,                  // up to 300 chars around the first target mention, or ""
-  "competitors_mentioned": [              // other brands/products/companies named in the response
+  "competitors_mentioned": [              // other NAMED entities highlighted by the response
     {{"name": str, "position": int or null, "linked": bool,
-      "sentiment": "positive" | "neutral" | "negative",  // how the response portrays THIS brand
-      "domain": str or null}}             // the brand's official website domain if you know it, e.g. "nike.com", else null
+      "sentiment": "positive" | "neutral" | "negative",  // how the response portrays THIS entity
+      "domain": str or null,              // the entity's official website domain if you know it, e.g. "nike.com", else null
+      "kind": "brand" | "generic"}}       // "brand" ONLY for a real company or branded product (e.g. "Titleist", "Callaway", "golfscot.com");
+                                          // "generic" for product categories, equipment types, or informational terms
+                                          // (e.g. "golf clubs", "running shoes", "accessories", "ball marker")
   ],
   "primary_recommendation": str or null,  // name of the brand the response clearly recommends first, else null
   "citations": [str]                      // any URLs cited
@@ -134,12 +137,21 @@ def _normalise(raw: dict) -> dict:
             continue
         pos = c.get("position")
         csent = c.get("sentiment")
+        domain = _clean_domain(c.get("domain"))
+        kind = c.get("kind")
+        if kind not in ("brand", "generic"):
+            # Older extraction output (pre-v4) carries no kind. A known
+            # official domain is strong brand evidence; otherwise stay
+            # conservative and keep the historical "brand" reading —
+            # display surfaces apply their own fallback heuristics.
+            kind = "brand"
         competitors.append({
             "name": name[:200],
             "position": int(pos) if isinstance(pos, int | float) and pos is not None else None,
             "linked": bool(c.get("linked", False)),
             "sentiment": csent if csent in comp_sentiments else "neutral",
-            "domain": _clean_domain(c.get("domain")),
+            "domain": domain,
+            "kind": kind,
         })
 
     citations = []

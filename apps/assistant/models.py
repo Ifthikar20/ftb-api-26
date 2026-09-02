@@ -83,6 +83,10 @@ class AssistantMessage(TimestampMixin):
     # Whether the answer was backed by retrieved tenant facts. Persisted so
     # a reloaded thread can still show the grounding badge it showed live.
     grounded = models.BooleanField(default=False)
+    # Which model produced this answer. Stored per message, not per
+    # conversation: the configured provider can change between turns, and a
+    # thread should stay honest about which model said what.
+    model = models.CharField(max_length=80, blank=True)
 
     class Meta:
         db_table = "assistant_message"

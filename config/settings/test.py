@@ -64,10 +64,29 @@ SOURCES_SERVICE_URL = ""
 # outbound calls. Tests covering these lanes mock the clients directly.
 SERPAPI_KEY = ""
 BRAND_RESEARCH_COMMUNITY_ENABLED = False
+# SMS must never leave the process in tests: a real send costs money and
+# texts a real handset. Tests that cover the channel enable it explicitly
+# and mock the transport.
+SMS_ENABLED = False
+TWILIO_ACCOUNT_SID = ""
+TWILIO_AUTH_TOKEN = ""
+TWILIO_FROM_NUMBER = ""
 # The engine lane calls every configured LLM provider. Provider keys come
 # from .env on a developer machine, so without this the scan pipeline tests
 # would make real, billable calls to Claude/GPT/Perplexity.
 BRAND_RESEARCH_ENGINES_ENABLED = False
+
+# Business flows are ON for the suite (the org/SSO tests exercise them);
+# individual tests assert the OFF behavior via override_settings.
+ORG_FEATURES_ENABLED = True
+
+# The SAML bridge stays dormant in the suite regardless of the
+# developer's .env — tests that cover the lane set the keys via the
+# settings fixture and mock the HTTP calls. Mirrors the POLAR pin below.
+SSO_BRIDGE_PROVIDER = "ssoready"
+SSOREADY_API_KEY = ""
+WORKOS_API_KEY = ""
+WORKOS_CLIENT_ID = ""
 
 # Polar metering must never leave the process in tests: no outbox rows
 # unless a test opts in via override_settings, never a real token, and

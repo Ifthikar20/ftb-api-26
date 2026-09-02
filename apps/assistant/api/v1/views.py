@@ -140,6 +140,7 @@ class AssistantAskView(TenantScopedAPIView):
             conversation=conversation, role=AssistantMessage.Role.ASSISTANT,
             content=result.get("answer") or "",
             grounded=bool(result.get("grounded")),
+            model=(result.get("model") or "")[:80],
         )
         fields = ["last_message_at", "updated_at"]
         conversation.last_message_at = timezone.now()

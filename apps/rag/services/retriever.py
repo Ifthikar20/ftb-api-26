@@ -1,9 +1,13 @@
 """
-Retrieval over the per-user knowledge base.
+Retrieval over the website's shared knowledge base.
 
-Top-k cosine similarity, scoped to (user, website). With per-website
-corpora bounded in the low thousands of chunks, brute-force scoring
-in Python is comfortably under 100ms.
+Top-k cosine similarity, scoped to the website: the knowledge base
+belongs to the project, not the person who added it, so every teammate
+with access to the website retrieves from the same corpus. The ``user``
+argument survives for attribution and spend accounting (the embedder's
+allowance wall), never for filtering. With per-website corpora bounded
+in the low thousands of chunks, brute-force scoring in Python is
+comfortably under 100ms.
 
 When the corpus grows larger, swap the candidate selection for a
 pgvector / ANN index without changing the call sites.
@@ -66,7 +70,10 @@ def retrieve(
     source_apps: list[str] | None = None,
     since: datetime | None = None,
 ) -> list[Hit]:
-    """Return the top ``top_k`` chunks for the query, scoped to (user, website).
+    """Return the top ``top_k`` chunks for the query, scoped to the website.
+
+    ``user`` is kept for spend accounting on the query embedding, not
+    for filtering — teammates on the same website share retrieval.
 
     ``source_ids`` narrows retrieval to specific KnowledgeSource rows,
     powering the "test this source" affordance in the Brand Input drawer.
@@ -115,7 +122,7 @@ def retrieve(
 
     qs = (
         KnowledgeChunk.objects
-        .filter(user=user, website=website)
+        .filter(website=website)
         .select_related("source")
     )
     if kinds:
@@ -179,9 +186,9 @@ def _retrieve_via_backend(
 ) -> list[Hit]:
     """Candidate selection through the vector index; everything else is
     unchanged. The index returns (chunk_id, cosine) pairs; the rows are
-    then re-fetched from Postgres - which re-asserts (user, website)
-    tenant scoping no matter what the index contains, and drops ids
-    whose chunks have since been deleted (index orphans).
+    then re-fetched from Postgres - which re-asserts website tenant
+    scoping no matter what the index contains, and drops ids whose
+    chunks have since been deleted (index orphans).
 
     Over-fetches 3x top_k because recency decay can reorder past the
     cut and min_score can eliminate candidates.
@@ -203,7 +210,7 @@ def _retrieve_via_backend(
         str(c.id): c
         for c in (
             KnowledgeChunk.objects
-            .filter(user=user, website=website, id__in=[cid for cid, _ in ranked])
+            .filter(website=website, id__in=[cid for cid, _ in ranked])
             .select_related("source")
         )
     }

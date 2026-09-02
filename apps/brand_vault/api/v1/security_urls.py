@@ -40,6 +40,11 @@ urlpatterns = [
         name="brand-security-config",
     ),
     path(
+        "websites/<uuid:website_id>/pulse/",
+        v.BrandPulseView.as_view(),
+        name="brand-pulse-config",
+    ),
+    path(
         "websites/<uuid:website_id>/prompts/",
         v.BrandSecurityPromptsView.as_view(),
         name="brand-security-prompts",

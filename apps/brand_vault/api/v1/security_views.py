@@ -27,6 +27,7 @@ from apps.brand_vault.api.v1.serializers import (
     SafetyPromptSerializer,
 )
 from apps.brand_vault.models import (
+    BrandPulse,
     BrandSecurityAgent,
     BrandSecurityConfig,
     SafetyAlert,
@@ -447,6 +448,40 @@ class BrandSecurityConfigView(TenantScopedAPIView):
             cfg.llm_judge_enabled = llm_judge
         cfg.save()
         return Response(BrandSecurityConfigSerializer(cfg).data)
+
+
+class BrandPulseView(TenantScopedAPIView):
+    """Read or update the per-website Brand Pulse agent settings."""
+
+    @staticmethod
+    def _payload(pulse: BrandPulse) -> dict:
+        return {
+            "enabled": pulse.enabled,
+            "auto_scan": pulse.auto_scan,
+            "frequency": pulse.frequency,
+            "last_digest_at": pulse.last_digest_at,
+            "last_scan_queued_at": pulse.last_scan_queued_at,
+        }
+
+    def get(self, request, website_id):
+        website = self.get_website(website_id)
+        pulse, _ = BrandPulse.objects.get_or_create(website=website)
+        return Response(self._payload(pulse))
+
+    def put(self, request, website_id):
+        website = self.get_website(website_id)
+        pulse, _ = BrandPulse.objects.get_or_create(website=website)
+        enabled = request.data.get("enabled")
+        if isinstance(enabled, bool):
+            pulse.enabled = enabled
+        auto_scan = request.data.get("auto_scan")
+        if isinstance(auto_scan, bool):
+            pulse.auto_scan = auto_scan
+        frequency = request.data.get("frequency")
+        if frequency in (BrandPulse.FREQUENCY_DAILY, BrandPulse.FREQUENCY_WEEKLY):
+            pulse.frequency = frequency
+        pulse.save()
+        return Response(self._payload(pulse))
 
 
 class BrandSecurityPromptsView(TenantScopedListAPIView):

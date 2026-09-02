@@ -456,6 +456,49 @@ class BrandSecurityAgent(TimestampMixin):
         return f"BrandSecurityAgent({self.website_id}, {self.agent_id})"
 
 
+class BrandPulse(TimestampMixin):
+    """Per-website configuration for the Brand Pulse agent.
+
+    Brand Pulse gathers cross-app brand insights (traffic, AI visibility,
+    security alerts, Brand Research findings) into a periodic digest pushed
+    to the user's connected chat platforms, and can queue Brand Research
+    scans on its own when the data goes stale.
+    """
+
+    FREQUENCY_DAILY = "daily"
+    FREQUENCY_WEEKLY = "weekly"
+    FREQUENCY_CHOICES = [
+        (FREQUENCY_DAILY, "Daily"),
+        (FREQUENCY_WEEKLY, "Weekly"),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    website = models.OneToOneField(
+        "websites.Website",
+        related_name="pulse",
+        on_delete=models.CASCADE,
+    )
+    enabled = models.BooleanField(default=False)
+    # When True the agent may queue Brand Research scans itself when the
+    # latest complete scan has gone stale (guarded by the allowance check).
+    auto_scan = models.BooleanField(default=True)
+    frequency = models.CharField(
+        max_length=10, choices=FREQUENCY_CHOICES, default=FREQUENCY_DAILY,
+    )
+    # Watermarks. last_digest_at doubles as the "what counts as new"
+    # boundary for the next digest and as the idempotency gate.
+    last_digest_at = models.DateTimeField(null=True, blank=True)
+    last_alert_push_at = models.DateTimeField(null=True, blank=True)
+    last_scan_queued_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "brand_vault_brandpulse"
+
+    def __str__(self):
+        state = "enabled" if self.enabled else "disabled"
+        return f"BrandPulse({self.website_id}, {self.frequency}, {state})"
+
+
 class BrandSecurityConfig(TimestampMixin):
     """Per-website global config for Brand Security scanning."""
 

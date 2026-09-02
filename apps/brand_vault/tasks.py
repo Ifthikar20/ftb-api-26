@@ -177,6 +177,56 @@ def analyze_alignment_for_result(result_id: str) -> str:
     return outcome.status
 
 
+@shared_task(name="apps.brand_vault.tasks.run_brand_pulse")
+def run_brand_pulse() -> int:
+    """Send the Brand Pulse digest for every enabled website. Daily via beat.
+
+    Gates per pulse: weekly pulses only fire on Mondays (mirroring the
+    growth-report convention), and a pulse whose last digest is recent
+    (20h for daily, 6d for weekly) is skipped so a double-fired beat or a
+    manual re-run never double-sends. Each website is delivered inside its
+    own try/except so one failure never stops the sweep.
+    """
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from apps.brand_vault.models import BrandPulse
+    from apps.brand_vault.services import pulse_agent
+
+    now = timezone.now()
+    considered = 0
+    sent = 0
+    pulses = BrandPulse.objects.filter(enabled=True).select_related(
+        "website", "website__user",
+    )
+    for pulse in pulses:
+        try:
+            if (
+                pulse.frequency == BrandPulse.FREQUENCY_WEEKLY
+                and now.weekday() != 0
+            ):
+                continue  # weekly digests go out on Mondays only
+            window = (
+                timedelta(days=6)
+                if pulse.frequency == BrandPulse.FREQUENCY_WEEKLY
+                else timedelta(hours=20)
+            )
+            if pulse.last_digest_at and pulse.last_digest_at > now - window:
+                continue  # already sent this period
+            considered += 1
+            if pulse_agent.deliver_digest(pulse.website):
+                sent += 1
+        except Exception as exc:  # pragma: no cover — one failure never stops the sweep
+            logger.exception(
+                "run_brand_pulse failed for website %s: %s", pulse.website_id, exc,
+            )
+    logger.info(
+        "brand pulse sweep: %s considered, %s digests sent", considered, sent,
+    )
+    return sent
+
+
 @shared_task(name="apps.brand_vault.tasks.refresh_fact_embeddings")
 def refresh_fact_embeddings() -> int:
     """Re-embed BrandFacts with missing or fallback-dim embeddings. Daily cron.

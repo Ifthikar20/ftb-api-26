@@ -1,20 +1,8 @@
 from decimal import Decimal
 
 from rest_framework import serializers
-from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 from apps.accounts.models import User, UserProfile
-
-
-class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
-    """Adds custom claims to the JWT payload."""
-
-    @classmethod
-    def get_token(cls, user):
-        token = super().get_token(user)
-        token["email"] = user.email
-        token["plan"] = user.plan
-        return token
 
 
 class RegisterSerializer(serializers.Serializer):

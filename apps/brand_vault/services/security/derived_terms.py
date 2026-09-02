@@ -47,7 +47,8 @@ def derived_search_terms(
 ) -> list[str]:
     """Distinctive phrases mined from the website's knowledge base.
 
-    Reads the titles of ready KnowledgeSources for (website.user, website),
+    Reads the titles of the website's ready KnowledgeSources (the corpus
+    is shared across the website's users, so no user filter),
     splits them on CMS separators, and keeps short, non-generic segments
     that are not already in ``exclude`` (typically the brand terms).
     Ordered by source recency, deduped case-insensitively, capped at
@@ -59,7 +60,6 @@ def derived_search_terms(
     try:
         titles = list(
             KnowledgeSource.objects.filter(
-                user=website.user,
                 website=website,
                 status=KnowledgeSource.STATUS_READY,
             )

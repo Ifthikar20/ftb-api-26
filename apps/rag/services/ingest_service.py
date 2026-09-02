@@ -1,7 +1,7 @@
 """
 Ingest pipeline for the RAG knowledge base.
 
-Given a (user, website, url) triple:
+Given a (website, url) pair (plus the acting user for attribution):
 
     1. Scrape the page (or crawl if requested).
     2. Hash the canonical content; skip if unchanged since last ingest.
@@ -10,8 +10,10 @@ Given a (user, website, url) triple:
     5. Persist KnowledgeSource + KnowledgeChunk rows transactionally.
 
 The pipeline is the only entrypoint that should be writing chunks —
-keep ad-hoc creation out of views and tasks so the (user, website, url)
-uniqueness invariant is respected.
+keep ad-hoc creation out of views and tasks so the (website, url)
+uniqueness invariant is respected. The knowledge base belongs to the
+project, not the person who added it: a teammate re-ingesting a URL
+updates the shared source instead of creating a parallel copy.
 """
 from __future__ import annotations
 
@@ -95,7 +97,12 @@ def ingest_url(
     written this pass. Source adapters use these so retrieval can filter
     by producing app and weight by content time.
     """
+    # Lookup is (website, url) only: the source row is shared across the
+    # website's users, so a teammate re-adding the same URL updates the
+    # existing row instead of tripping the unique constraint. ``user``
+    # is attribution stamped on creation and never changes ownership.
     defaults = {
+        "user": user,
         "kind": kind, "title": title or "",
         "status": KnowledgeSource.STATUS_PENDING,
     }
@@ -104,7 +111,7 @@ def ingest_url(
     if source_ref:
         defaults["source_ref"] = source_ref
     source, created = KnowledgeSource.objects.get_or_create(
-        user=user, website=website, url=url, defaults=defaults,
+        website=website, url=url, defaults=defaults,
     )
     if not created and kind and source.kind != kind:
         # Allow upgrading kind when a more specific tag is supplied.

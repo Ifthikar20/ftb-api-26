@@ -9,7 +9,6 @@ from apps.websites.api.v1.serializers import (
     WebsiteSettingsSerializer,
     WebsiteUpdateSerializer,
 )
-from apps.websites.models import Website
 from apps.websites.services.pixel_service import PixelService
 from apps.websites.services.verification_service import VerificationService
 from apps.websites.services.website_service import WebsiteService
@@ -20,31 +19,50 @@ class WebsiteListCreateView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        websites = Website.objects.filter(user=request.user).order_by("-created_at")
+        websites = WebsiteService.accessible_qs(request.user).order_by("-created_at")
         serializer = WebsiteSerializer(websites, many=True)
         return Response(serializer.data)
 
     def post(self, request):
-        # Plan limit check disabled for testing — re-enable for production
-        # current_count = Website.objects.filter(user=request.user).count()
-        # plan_id = "starter"
-        # try:
-        #     plan_id = request.user.subscription.plan
-        # except Exception:
-        #     pass
-        # plan_config = next((p for p in PLANS if p["id"] == plan_id), PLANS[0])
-        # max_projects = plan_config["limits"].get("websites", 1)
-        # if max_projects != -1 and current_count >= max_projects:
-        #     return Response(
-        #         {
-        #             "error": "project_limit_reached",
-        #             "message": f"Your {plan_config['name']} plan allows up to {max_projects} project(s). Upgrade to add more.",
-        #             "current": current_count,
-        #             "limit": max_projects,
-        #             "plan": plan_id,
-        #         },
-        #         status=status.HTTP_403_FORBIDDEN,
-        #     )
+        from apps.billing.services.plan_limits import (
+            current_plan_for,
+            is_trialing_subscription,
+            projects_limit_for,
+        )
+
+        # Count the whole tenant, not the individual: an org's project cap
+        # is shared, otherwise every teammate gets their own allowance.
+        current_count = WebsiteService.accessible_qs(request.user).count()
+        max_projects = projects_limit_for(request.user)
+        if max_projects != -1 and current_count >= max_projects:
+            sub = getattr(request.user, "subscription", None)
+            if is_trialing_subscription(sub):
+                message = (
+                    f"Your free trial includes {max_projects} project"
+                    f"{'s' if max_projects != 1 else ''}. The full Pro "
+                    "allowance unlocks when your subscription starts."
+                )
+            else:
+                plan_name = str(current_plan_for(request.user)).capitalize()
+                message = (
+                    f"Your {plan_name} plan allows up to {max_projects} "
+                    f"project{'s' if max_projects != 1 else ''}. "
+                    "Upgrade to add more."
+                )
+            # Error responses bypass the EnvelopeRenderer, so this must
+            # carry the envelope shape the frontend reads
+            # (error.message drives the toast).
+            return Response(
+                {
+                    "success": False,
+                    "error": {
+                        "code": "project_limit_reached",
+                        "message": message,
+                        "meta": {"current": current_count, "limit": max_projects},
+                    },
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
         serializer = WebsiteCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         website = WebsiteService.create(user=request.user, **serializer.validated_data)
@@ -151,13 +169,15 @@ def _setup_state(user, website) -> dict:
             "cta_to": f"/llm-ranking/{wid}/prompts",
         }
 
-    audits = LLMRankingAudit.objects.filter(created_by=user)
+    # Website-scoped, not created_by-scoped: a teammate opening a project
+    # with 200 of someone else's audits must not be told to run their first.
+    audits = LLMRankingAudit.objects.filter(website=website)
     if audits.filter(
         status__in=[LLMRankingAudit.STATUS_PENDING, LLMRankingAudit.STATUS_RUNNING],
     ).exists():
         return {
             "step": "audit_running",
-            "title": "Your first audit is running",
+            "title": "Your first prompt run is in progress",
             "body": "We're querying each AI model with your prompts. Results "
                     "appear on this page as soon as the run finishes.",
             # No CTA: the audit is already in flight and scheduling now lives
@@ -169,7 +189,7 @@ def _setup_state(user, website) -> dict:
     if not audits.filter(status=LLMRankingAudit.STATUS_COMPLETED).exists():
         return {
             "step": "run_audit",
-            "title": "Run your first audit",
+            "title": "Start your first prompt run",
             "body": "Nothing has been measured yet. Use Run now above to see "
                     "which brands the AI models name — and where you place.",
             "cta_label": "",
@@ -202,8 +222,16 @@ class DashboardView(APIView):
         )
         from apps.notifications.models import Notification
 
-        websites = Website.objects.filter(user=request.user)
-        website = websites.first()
+        websites = WebsiteService.accessible_qs(request.user)
+        # The dashboard is per-project: ?website=<id> selects which one.
+        # Falling back to the first website keeps old clients working.
+        website_id = request.query_params.get("website")
+        if website_id:
+            website = WebsiteService.get_for_user(
+                user=request.user, website_id=website_id,
+            )
+        else:
+            website = websites.first()
 
         # Filters: ?range=overall|7d|30d|90d|1y|custom plus optional
         # ?start / ?end, ?prompts (newline-joined), and the pill filters
@@ -243,13 +271,16 @@ class DashboardView(APIView):
         }
 
         stats = build_kpis_for_user(
-            request.user, start=start_dt, end=end_dt, **result_filters,
+            request.user, start=start_dt, end=end_dt, website=website,
+            **result_filters,
         ) or []
         analytics_breakdowns = build_breakdowns_for_user(
-            request.user, start=start_dt, end=end_dt, **result_filters,
+            request.user, start=start_dt, end=end_dt, website=website,
+            **result_filters,
         )
         analytics_deep_dive = build_deep_dive(
-            request.user, start=start_dt, end=end_dt, **result_filters,
+            request.user, start=start_dt, end=end_dt, website=website,
+            **result_filters,
         )
 
         # Recent activity (from notifications)
@@ -295,20 +326,21 @@ class DashboardView(APIView):
         from apps.llm_ranking.services.visibility_series import (
             build_for_user as build_visibility_series,
         )
-        visibility_series = build_visibility_series(request.user)
+        visibility_series = build_visibility_series(request.user, website=website)
 
         # Overview tab: top brands, per-model matrix, cited domains. Returns
         # has_data=False with empty collections when nothing has been
         # measured yet so the frontend can render guidance rather than
         # placeholder numbers.
         overview = build_overview_for_user(
-            request.user, start=start_dt, end=end_dt, **result_filters,
+            request.user, start=start_dt, end=end_dt, website=website,
+            **result_filters,
         )
 
         # Menu contents for the filter pills, computed from the unfiltered
         # window so a selected filter never hides its own options.
         filter_options = build_filter_options(
-            request.user, start=start_dt, end=end_dt,
+            request.user, start=start_dt, end=end_dt, website=website,
         )
 
         return Response({

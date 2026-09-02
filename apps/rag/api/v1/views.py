@@ -1,13 +1,15 @@
 """
-API for the per-user RAG knowledge base.
+API for the website's shared RAG knowledge base.
 
-All endpoints are website-scoped via TenantScopedAPIView. The user's
-identity comes from request.user — chunks are insulated from one user
-to another even within the same website (rare in practice, but the
-unique constraint on KnowledgeSource enforces it).
+All endpoints are website-scoped via TenantScopedAPIView, and website
+access is the whole access check: the knowledge base belongs to the
+project, not the person who added it, so every user the tenancy gate
+admits to a website sees the same corpus. request.user is still stamped
+on writes (attribution) and still keys the rate-limit buckets.
 """
 import hashlib
 import logging
+from datetime import timedelta
 
 from django.db.models import Count, Q
 from django.utils import timezone
@@ -22,7 +24,7 @@ from apps.rag.api.v1.serializers import (
     RetrieveSerializer,
     UploadTextSerializer,
 )
-from apps.rag.models import KnowledgeChunk, KnowledgeSource
+from apps.rag.models import AgentCrawlConsent, KnowledgeChunk, KnowledgeSource
 from apps.rag.services.ingest_service import ingest_url
 from apps.rag.services.retriever import retrieve
 from core.interceptors.pagination import StandardPagination
@@ -75,7 +77,7 @@ def _source_stats(qs) -> dict:
 
 
 class KnowledgeSourceListView(TenantScopedAPIView):
-    """GET = list sources for (user, website). POST = enqueue ingest.
+    """GET = list the website's sources. POST = enqueue ingest.
 
     GET supports filter + pagination query params:
       status   — pending | ingesting | ready | failed
@@ -90,9 +92,7 @@ class KnowledgeSourceListView(TenantScopedAPIView):
 
     def get(self, request, website_id):
         website = self.get_website(website_id)
-        base_qs = KnowledgeSource.objects.filter(
-            user=request.user, website=website,
-        )
+        base_qs = KnowledgeSource.objects.filter(website=website)
 
         # Stats reflect the whole website corpus, not the current
         # filter — badges are for navigation.
@@ -190,7 +190,7 @@ class KnowledgeSourceDetailView(TenantScopedAPIView):
     def get(self, request, website_id, source_id):
         website = self.get_website(website_id)
         source = self.get_tenant_object(
-            KnowledgeSource.objects.filter(user=request.user, website=website),
+            KnowledgeSource.objects.filter(website=website),
             id=source_id,
         )
         chunks = KnowledgeChunk.objects.filter(source=source).order_by("chunk_index")
@@ -202,7 +202,7 @@ class KnowledgeSourceDetailView(TenantScopedAPIView):
     def delete(self, request, website_id, source_id):
         website = self.get_website(website_id)
         source = self.get_tenant_object(
-            KnowledgeSource.objects.filter(user=request.user, website=website),
+            KnowledgeSource.objects.filter(website=website),
             id=source_id,
         )
         source_pk = source.id
@@ -233,7 +233,7 @@ class ReingestSourceView(TenantScopedAPIView):
     def post(self, request, website_id, source_id):
         website = self.get_website(website_id)
         source = self.get_tenant_object(
-            KnowledgeSource.objects.filter(user=request.user, website=website),
+            KnowledgeSource.objects.filter(website=website),
             id=source_id,
         )
 
@@ -282,8 +282,8 @@ class UploadTextView(TenantScopedAPIView):
 
     Reuses the same ingest pipeline as URL ingest by handing the text
     directly to ``ingest_url(text=...)``. The pseudo-URL is derived
-    from a SHA-256 of the text so the (user, website, url) uniqueness
-    constraint deduplicates identical pastes.
+    from a SHA-256 of the text so the (website, url) uniqueness
+    constraint deduplicates identical pastes across the whole website.
     """
 
     def post(self, request, website_id):
@@ -329,6 +329,74 @@ class UploadTextView(TenantScopedAPIView):
         )
 
 
+class AgentCrawlView(TenantScopedAPIView):
+    """Consent switch: may the Cansee agent crawl this site for knowledge?
+
+    GET returns the current state. POST {"enabled": bool} flips it.
+    Turning it ON queues a seed crawl of the website's own domain through
+    the normal ingest pipeline (unless one was seeded recently), so the
+    button does something visible immediately: sources start appearing on
+    the Brand Ingestion page.
+    """
+
+    SEED_COOLDOWN_HOURS = 24
+    SEED_PAGE_CAP = 12
+    SEED_DEPTH = 1
+
+    @staticmethod
+    def _payload(consent, seeded=False):
+        return {
+            "enabled": bool(consent and consent.enabled),
+            "enabled_at": consent.enabled_at if consent else None,
+            "last_seeded_at": consent.last_seeded_at if consent else None,
+            "seeded": seeded,
+        }
+
+    def get(self, request, website_id):
+        website = self.get_website(website_id)
+        # Consent is per-website: one teammate granting it covers the
+        # project, so reads never filter by user.
+        consent = AgentCrawlConsent.objects.filter(website=website).first()
+        return Response(self._payload(consent))
+
+    def post(self, request, website_id):
+        website = self.get_website(website_id)
+        enabled = bool(request.data.get("enabled"))
+        consent, _ = AgentCrawlConsent.objects.get_or_create(
+            website=website, defaults={"user": request.user},
+        )
+
+        seeded = False
+        if enabled:
+            if not consent.enabled:
+                consent.enabled = True
+                consent.enabled_at = timezone.now()
+            cooled_down = (
+                consent.last_seeded_at is None
+                or timezone.now() - consent.last_seeded_at
+                > timedelta(hours=self.SEED_COOLDOWN_HOURS)
+            )
+            # Seed crawls share the ingest budget with manual adds; if
+            # the bucket is dry the consent still flips — the agent just
+            # crawls later instead of now.
+            if cooled_down and _ingest_bucket(request.user.id).try_acquire(5):
+                from apps.rag.tasks import ingest_site_task
+
+                ingest_site_task.delay(
+                    user_id=request.user.id,
+                    website_id=str(website.id),
+                    seed_url=website.url,
+                    page_cap=self.SEED_PAGE_CAP,
+                    depth=self.SEED_DEPTH,
+                )
+                consent.last_seeded_at = timezone.now()
+                seeded = True
+        else:
+            consent.enabled = False
+        consent.save()
+        return Response(self._payload(consent, seeded=seeded))
+
+
 class RetrieveView(TenantScopedAPIView):
     """POST a query, get top-k chunks back. Used by the prompt previewer + clients.
 
@@ -355,11 +423,11 @@ class RetrieveView(TenantScopedAPIView):
 
         source_ids = None
         if data.get("source_id"):
-            # Verify the source belongs to this (user, website) before
-            # letting it constrain retrieval — otherwise a caller could
-            # probe existence of other tenants' source_ids by timing.
+            # Verify the source belongs to this website before letting
+            # it constrain retrieval — otherwise a caller could probe
+            # existence of other tenants' source_ids by timing.
             source = self.get_tenant_object(
-                KnowledgeSource.objects.filter(user=request.user, website=website),
+                KnowledgeSource.objects.filter(website=website),
                 id=data["source_id"],
             )
             source_ids = [str(source.id)]

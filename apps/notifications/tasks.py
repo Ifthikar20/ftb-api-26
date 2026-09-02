@@ -86,6 +86,9 @@ def send_daily_growth_reports():
             elif conn.platform == "discord":
                 _send_discord_report(conn.webhook_url, report, today_label,
                                      narrative=narrative)
+            elif conn.platform == "teams":
+                _send_teams_report(conn.webhook_url, report, today_label,
+                                   narrative=narrative)
             else:
                 logger.warning(f"Unknown report platform skipped: {conn.platform}")
                 continue
@@ -164,8 +167,12 @@ def _build_report_data(user) -> dict:
     return data
 
 
-def _security_overview(user) -> dict:
-    """Open SafetyAlert counts by severity plus the top recommended action."""
+def _security_overview(user, website=None) -> dict:
+    """Open SafetyAlert counts by severity plus the top recommended action.
+
+    ``website`` narrows the counts to one project; without it the whole
+    account is summarized (the digest email's account-level view).
+    """
     from apps.brand_vault.models import SafetyAlert
     from apps.brand_vault.services.security.detectors import (
         DETECTOR_INDEX,
@@ -175,6 +182,8 @@ def _security_overview(user) -> dict:
     open_alerts = SafetyAlert.objects.filter(
         website__user=user, status=SafetyAlert.STATUS_OPEN,
     ).only("severity", "detector_code", "issue")
+    if website is not None:
+        open_alerts = open_alerts.filter(website=website)
 
     counts = {"high": 0, "medium": 0, "low": 0}
     rank = {"high": 0, "medium": 1, "low": 2}
@@ -429,6 +438,36 @@ def _send_discord_report(webhook_url: str, data: dict, today: str,
         title=f"Daily Growth Report - {today}",
         fields=fields,
         footer=footer,
+    )
+
+
+def _send_teams_report(webhook_url: str, data: dict, today: str,
+                       narrative: str | None = None):
+    """Format and send a Microsoft Teams report card.
+
+    Teams cards render one text body (markdown), so we assemble the same
+    sections the Slack/Discord reports use into a single block — the
+    narrative when a detailed connection has one, else the template.
+    """
+    from apps.notifications.services.teams_service import TeamsService
+
+    footer = f"View the full dashboard at {_dashboard_url()}"
+
+    if narrative:
+        body = f"{narrative}\n\n{footer}"
+    else:
+        sections = _report_section_lines(data)
+        body = (
+            f"**Traffic**\n{sections['analytics']}\n\n"
+            f"**AI visibility**\n{sections['geo']}\n\n"
+            f"**Brand security**\n{sections['security']}\n\n"
+            f"{footer}"
+        )
+
+    TeamsService.send_message(
+        webhook_url=webhook_url,
+        title=f"Daily Growth Report - {today}",
+        text=body,
     )
 
 
@@ -689,7 +728,7 @@ def _growth_command_text(user) -> str:
 
     if not site_rows and not prompts:
         return (
-            "No completed visibility audits yet, so there is no growth to "
+            "No completed prompt runs yet, so there is no growth to "
             "report. Run scan to queue an AI visibility scan of your saved "
             "prompts - movers will show up here once it completes."
         )
@@ -765,12 +804,14 @@ def _resolve_website(user):
 # its source fails, so the block can never invent data.
 
 
-def _traffic_fact_lines(user) -> list[str]:
+def _traffic_fact_lines(user, website=None) -> list[str]:
     """Today-vs-yesterday traffic per website, with the derived delta.
 
     Extends the daily report builder's AnalyticsService usage with an
     explicit previous-24h window so both absolute numbers are stated and the
-    delta is computed from them rather than guessed.
+    delta is computed from them rather than guessed. With ``website`` the
+    lines cover only that project; without it, the first three websites
+    (the account-level digest view).
     """
     from django.utils import timezone
 
@@ -779,7 +820,11 @@ def _traffic_fact_lines(user) -> list[str]:
 
     now = timezone.now()
     lines = []
-    for website in Website.objects.filter(user=user).order_by("created_at")[:3]:
+    if website is not None:
+        targets = [website]
+    else:
+        targets = Website.objects.filter(user=user).order_by("created_at")[:3]
+    for website in targets:
         try:
             today = AnalyticsService.get_overview(
                 website_id=str(website.id), period="24h",
@@ -811,12 +856,16 @@ def _traffic_fact_lines(user) -> list[str]:
     return lines
 
 
-def _visibility_fact_lines(user) -> list[str]:
+def _visibility_fact_lines(user, website=None) -> list[str]:
     from apps.llm_ranking.services.visibility_series import build_overview_for_website
     from apps.websites.models import Website
 
     lines = []
-    for website in Website.objects.filter(user=user).order_by("created_at")[:3]:
+    if website is not None:
+        targets = [website]
+    else:
+        targets = Website.objects.filter(user=user).order_by("created_at")[:3]
+    for website in targets:
         try:
             overview = build_overview_for_website(user, website)
         except Exception:
@@ -837,8 +886,8 @@ def _visibility_fact_lines(user) -> list[str]:
     return lines
 
 
-def _security_fact_lines(user) -> list[str]:
-    overview = _security_overview(user)
+def _security_fact_lines(user, website=None) -> list[str]:
+    overview = _security_overview(user, website=website)
     if not overview.get("open_total"):
         return ["- Brand security: no open alerts."]
     line = (
@@ -924,7 +973,10 @@ def _audit_content_fact_lines(user, website) -> list[str]:
     try:
         from apps.llm_ranking.services.overview_stats import build_overview_for_user
 
-        overview = build_overview_for_user(user)
+        # Scoped to this website — the strongest/weakest prompt lists and
+        # competitor table must describe THIS project, not whichever
+        # project audited most recently.
+        overview = build_overview_for_user(user, website=website)
     except Exception:
         overview = {}
     if overview.get("has_data"):
@@ -988,10 +1040,12 @@ def _live_fact_block(user, website=None) -> str:
             website = None
 
     lines: list[str] = []
+    # Traffic/visibility/security narrow to the selected project; AI usage
+    # stays account-level because the allowance itself is account-level.
     for build in (
-        _traffic_fact_lines,
-        _visibility_fact_lines,
-        _security_fact_lines,
+        lambda u: _traffic_fact_lines(u, website=website),
+        lambda u: _visibility_fact_lines(u, website=website),
+        lambda u: _security_fact_lines(u, website=website),
         _usage_fact_lines,
     ):
         try:
@@ -1122,9 +1176,16 @@ def _queue_scan_command(user) -> str:
             "the Prompts page first, then run scan again."
         )
 
-    audit = create_audit(
-        website=website, user=user, prompts=prompts, prompt_source="library",
-    )
+    from core.exceptions import CanseeException
+
+    try:
+        audit = create_audit(
+            website=website, user=user, prompts=prompts, prompt_source="library",
+        )
+    except CanseeException as exc:
+        # Chat surfaces render text, not HTTP errors — relay the message
+        # (e.g. the monthly prompt allowance being used up) as a reply.
+        return exc.message
     dispatch_scan(str(audit.id))
     return (
         f"Visibility scan queued for {website.name} across {len(prompts)} "

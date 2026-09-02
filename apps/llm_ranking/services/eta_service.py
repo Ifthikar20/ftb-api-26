@@ -141,7 +141,7 @@ def _projected_prompt_count(schedule) -> int:
     actually invoking it (which would hit Claude)."""
     try:
         from core.utils.constants import max_prompts_for_user
-        cap = max_prompts_for_user(schedule.created_by)
+        cap = max_prompts_for_user(schedule.created_by or schedule.website.user)
     except Exception:
         cap = 10
     return max(1, min(cap, 10))

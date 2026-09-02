@@ -63,6 +63,7 @@ class BillingOverviewView(APIView):
         from apps.billing.services import polar_billing
         from apps.billing.services.plan_limits import (
             plan_for_subscription,
+            projects_limit_for,
             subscription_state,
         )
         from core.utils.constants import SubscriptionStatus
@@ -113,6 +114,29 @@ class BillingOverviewView(APIView):
         # the denormalized user.plan, which defaults to a paid tier and
         # used to leak paid allowances to unsubscribed accounts.
         active_plan = str(plan_for_subscription(subscription))
+
+        # Org members are entitled through the org's provisioned plan, not
+        # their (usually absent) personal subscription. `source` tells the
+        # billing page to hide personal checkout/portal UI entirely.
+        source = "user"
+        from core.permissions.org import org_features_enabled
+
+        membership = None
+        if org_features_enabled():
+            membership = (
+                request.user.org_memberships.select_related("organization")
+                .order_by("created_at")
+                .first()
+            )
+        org_block = None
+        if membership:
+            from apps.billing.services.plan_limits import _LEGACY_MAP
+
+            org = membership.organization
+            active_plan = str(_LEGACY_MAP.get(org.plan, org.plan))
+            source = "organization"
+            org_block = {"id": str(org.id), "name": org.name, "role": membership.role}
+
         plan_data = PlanService.get_plan(active_plan)
 
         # Determine segment
@@ -120,8 +144,16 @@ class BillingOverviewView(APIView):
 
         return Response({
             "plan": active_plan,
+            "source": source,
+            "org": org_block,
             "segment": segment,
             "plan_details": plan_data,
+            # Resolved allowances (trial-aware: a live trial keeps the Free
+            # project cap until the first charge). -1 = unlimited. Same
+            # shape as the session payload's `limits` block.
+            "limits": {
+                "projects": projects_limit_for(request.user),
+            },
             # False until the Polar token + product ids are configured —
             # the frontend disables checkout and says so instead of
             # letting the button fail silently.
@@ -132,6 +164,10 @@ class BillingOverviewView(APIView):
             "tier": state["tier"],
             "is_trialing": state["is_trialing"],
             "trial_end": state["trial_end"],
+            # "month" | "year" | None — the cadence the subscription is
+            # actually on (mirrored from Polar; period length can't tell
+            # while trialing).
+            "interval": state["interval"],
             # Raw plan on the subscription row (legacy values included).
             # The frontend needs it for non-access-granting states the
             # top-level `plan` reports as free — e.g. a past_due paying
@@ -344,6 +380,89 @@ class SubscriptionCancelView(APIView):
 
 class SubscriptionResumeView(SubscriptionCancelView):
     cancel = False
+
+
+class UpgradeNowView(APIView):
+    """End the free trial immediately and start the paid Pro plan.
+
+    POST /api/v1/billing/upgrade-now/  body: {"annual": bool} (optional —
+    omitted keeps the cadence the trial was started on). Returns the
+    refreshed subscription state plus the resolved limits so the UI can
+    unlock (e.g. the 5-project allowance) without another round-trip.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        from apps.billing.services import polar_billing
+        from apps.billing.services.plan_limits import (
+            projects_limit_for,
+            subscription_state,
+        )
+        from core.exceptions import CanseeException
+
+        annual = request.data.get("annual", None)
+        if annual is not None:
+            annual = bool(annual)
+        try:
+            sub = polar_billing.upgrade_trial_now(request.user, annual=annual)
+        except CanseeException:
+            raise
+        except Exception as e:
+            logger.error("Trial upgrade failed: %s", e)
+            return Response(
+                {"success": False, "error": {"code": "billing_failed",
+                 "message": "We couldn't start your plan. Please try again."}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        # The service re-synced the row; drop this instance's cached
+        # relation so the limits below see the post-upgrade state.
+        request.user.refresh_from_db()
+        return Response({
+            "success": True,
+            "data": {
+                "subscription": subscription_state(sub),
+                "limits": {"projects": projects_limit_for(request.user)},
+            },
+        })
+
+
+class ChangePlanView(APIView):
+    """Switch between monthly and annual Pro billing.
+
+    POST /api/v1/billing/change-plan/  body: {"annual": bool} (required).
+    Active subscriptions settle the difference immediately; trialing ones
+    switch free and the new price applies when the trial converts.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        from apps.billing.services import polar_billing
+        from apps.billing.services.plan_limits import subscription_state
+        from core.exceptions import CanseeException
+
+        if "annual" not in request.data:
+            return Response(
+                {"success": False, "error": {"code": "invalid_request",
+                 "message": "Choose monthly or annual billing."}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            sub = polar_billing.change_billing_cycle(
+                request.user, annual=bool(request.data.get("annual")),
+            )
+        except CanseeException:
+            raise
+        except Exception as e:
+            logger.error("Billing cycle change failed: %s", e)
+            return Response(
+                {"success": False, "error": {"code": "billing_failed",
+                 "message": "We couldn't change your plan. Please try again."}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response({
+            "success": True,
+            "data": {"subscription": subscription_state(sub)},
+        })
 
 
 class InvoiceListView(APIView):

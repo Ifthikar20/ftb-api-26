@@ -50,6 +50,40 @@ def check_field_encryption_key(app_configs, **kwargs):
     return errors
 
 
+@register(Tags.security, deploy=True)
+def check_email_transport(app_configs, **kwargs):
+    """Error when the SMTP backend is active with no host to speak to.
+
+    prod.py used to silently swap in the console backend when EMAIL_HOST
+    was unset, so verification, password-reset and invitation emails
+    reported success and went nowhere. The downgrade is now opt-in
+    (EMAIL_ALLOW_CONSOLE=true); this check catches the remaining state —
+    SMTP configured, host empty — before the first send fails at runtime.
+
+    Deploy-only: ``manage.py check --deploy``. Dev (console) and tests
+    (locmem) are unaffected.
+    """
+    errors = []
+    backend = getattr(settings, "EMAIL_BACKEND", "") or ""
+    host = (getattr(settings, "EMAIL_HOST", "") or "").strip()
+    if backend.endswith("smtp.EmailBackend") and not host:
+        errors.append(
+            Error(
+                "EMAIL_BACKEND is SMTP but EMAIL_HOST is empty — every email "
+                "send (verification codes, password resets, org invitations) "
+                "will fail.",
+                hint=(
+                    "Set EMAIL_HOST/EMAIL_PORT/EMAIL_HOST_USER/"
+                    "EMAIL_HOST_PASSWORD/EMAIL_USE_TLS for your SMTP provider, "
+                    "or set EMAIL_ALLOW_CONSOLE=true on an environment that "
+                    "genuinely sends no mail."
+                ),
+                id="core.E007",
+            )
+        )
+    return errors
+
+
 # Hosts for which an unencrypted Postgres connection never leaves the machine.
 _LOOPBACK_DB_HOSTS = {"", "localhost", "127.0.0.1", "::1"}
 # sslmode values that permit a silent fallback to an unencrypted connection.

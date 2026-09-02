@@ -57,7 +57,6 @@ class OnboardingSaveView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        from apps.websites.models import Website
         from apps.websites.services.website_service import WebsiteService
         from core.validators.url_safety import assert_url_safe
 
@@ -65,14 +64,39 @@ class OnboardingSaveView(APIView):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
-        # Upsert: if the user already has a (live) website at this URL —
+        # Upsert: if the tenant already has a (live) website at this URL —
         # typical when they revisit onboarding — update it in place
-        # rather than tripping the (user, url) unique constraint.
+        # rather than tripping the tenant-scoped unique constraint.
         validated_url = assert_url_safe(data["url"])
-        website = Website.objects.filter(
-            user=request.user, url=validated_url
+        website = WebsiteService.accessible_qs(request.user).filter(
+            url=validated_url
         ).first()
         if website is None:
+            # Same project cap the websites endpoint enforces — without
+            # this, onboarding /save/ is a bypass around the plan limit.
+            from apps.billing.services.plan_limits import projects_limit_for
+
+            current_count = WebsiteService.accessible_qs(request.user).count()
+            max_projects = projects_limit_for(request.user)
+            if max_projects != -1 and current_count >= max_projects:
+                return Response(
+                    {
+                        "success": False,
+                        "error": {
+                            "code": "project_limit_reached",
+                            "message": (
+                                f"Your plan allows up to {max_projects} "
+                                f"project{'s' if max_projects != 1 else ''}. "
+                                "Upgrade to add more."
+                            ),
+                            "meta": {
+                                "current": current_count,
+                                "limit": max_projects,
+                            },
+                        },
+                    },
+                    status=403,
+                )
             website = WebsiteService.create(
                 user=request.user,
                 url=data["url"],

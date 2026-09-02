@@ -100,7 +100,7 @@ FUNNEL_STAGE_LABELS: dict[str, str] = {
 INTENT_RATIONALE: dict[str, str] = {
     "recommendation": (
         "Direct discovery query. If {business_name} doesn't surface here, "
-        "nothing else in the audit matters — this is the prompt your buyers "
+        "nothing else in the prompt run matters — this is the prompt your buyers "
         "actually run."
     ),
     "alternatives": (
@@ -300,8 +300,19 @@ class PromptLibrary:
         `themes` (optional) restricts sampling to a subset of intents.
         Empty / None means use the default INTENT_PRIORITY mix.
         """
-        industry_norm = (industry or "software").strip()
-        use_case_norm = (use_case or industry_norm).strip()
+        # No hardcoded "software" default: a blank industry used to turn a
+        # car / finance / agency site into a generic SaaS prompt list. A
+        # neutral noun keeps templates grammatical without mislabelling the
+        # business (the LLM sample generator is the real fix for a blank
+        # industry — this only guards direct template callers).
+        industry_norm = (industry or "this category").strip()
+        # Default use_case is a noun phrase built AROUND the industry, not
+        # the bare industry string — otherwise templates like "best
+        # {industry} platform for {use_case}?" render "best cyber platform
+        # for cyber?" (and every real industry input is a noun, so the
+        # phrase slots keep working). Callers with a real use case
+        # override this untouched.
+        use_case_norm = (use_case or f"a growing {industry_norm} business").strip()
         location_norm = (location or "").strip()
         allowed = {t for t in (themes or []) if t in VALID_INTENTS} or None
 

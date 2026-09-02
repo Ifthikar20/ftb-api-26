@@ -139,7 +139,9 @@ def dispatch_scheduled_audits() -> None:
 
     for schedule in due:
         try:
-            cap_user = schedule.created_by
+            # Creator may be gone (SET_NULL on departure) — the website
+            # owner carries the schedule from then on.
+            cap_user = schedule.created_by or schedule.website.user
 
             # ── 1. Skip if previous run still in flight ──────────────
             prev = schedule.last_audit
@@ -187,6 +189,25 @@ def dispatch_scheduled_audits() -> None:
                 )
                 _bump_next_run(schedule, now)
                 continue
+            # ── 3b. Monthly prompt allowance (per seat / per plan) ────
+            # Same skip-and-reschedule treatment as the spend cap: an
+            # exhausted allowance is account state, not a schedule failure.
+            from apps.billing.services.org_entitlements import (
+                monthly_prompt_allowance_for,
+                prompts_used_this_month,
+            )
+            allowance = monthly_prompt_allowance_for(cap_user)
+            if allowance >= 0 and (
+                prompts_used_this_month(cap_user) + len(prompts) > allowance
+            ):
+                logger.warning(
+                    "Skipping scheduled audit for %s: monthly prompt "
+                    "allowance reached (%d).",
+                    schedule.website.name, allowance,
+                )
+                _bump_next_run(schedule, now)
+                continue
+
             from django.conf import settings as _settings
 
             from apps.llm_ranking.providers import PROVIDERS
@@ -199,7 +220,7 @@ def dispatch_scheduled_audits() -> None:
 
             audit = LLMRankingAudit.objects.create(
                 website=schedule.website,
-                created_by=schedule.created_by,
+                created_by=cap_user,
                 business_name=schedule.business_name,
                 business_description=schedule.business_description,
                 industry=schedule.industry,

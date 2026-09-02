@@ -26,7 +26,7 @@ from django.core.cache import cache
 from django.db.models import Count
 from django.utils import timezone
 
-from apps.llm_ranking.models import LLMRankingAudit, LLMRankingResult
+from apps.llm_ranking.models import LLMRankingResult
 
 logger = logging.getLogger("apps")
 
@@ -50,20 +50,18 @@ def build_for_user(
     providers: list[str] | None = None,
     tags: list[str] | None = None,
     topics: list[str] | None = None,
+    website=None,
 ) -> dict | None:
-    """Return the deep-dive payload for a user, or None if no data."""
-    from apps.llm_ranking.services.geo_stats import _make_flt
+    """Return the deep-dive payload for a user, or None if no data.
+
+    ``website`` scopes the matrix, breakdowns, themes and the prompt
+    dropdown to one project's audits.
+    """
+    from apps.llm_ranking.services.geo_stats import _audits_in, _make_flt
 
     flt = _make_flt(prompts=prompts, providers=providers, tags=tags, topics=topics)
     end = end or timezone.now()
-    base_qs = LLMRankingAudit.objects.filter(
-        created_by=user, status=LLMRankingAudit.STATUS_COMPLETED,
-    )
-    qs = base_qs
-    if start is not None:
-        qs = qs.filter(completed_at__gte=start)
-    if end is not None:
-        qs = qs.filter(completed_at__lt=end)
+    qs = _audits_in(user, start, end, website=website)
     audit_ids = list(qs.order_by("-completed_at").values_list("id", flat=True))
     if not audit_ids:
         return None
@@ -72,7 +70,7 @@ def build_for_user(
         "position_by_provider": _position_by_provider(audit_ids, flt),
         "sentiment_by_provider": _sentiment_by_provider(audit_ids, flt),
         "sentiment_themes": _sentiment_themes(audit_ids, flt),
-        "available_prompts": _available_prompts(user),
+        "available_prompts": _available_prompts(user, website=website),
     }
 
 
@@ -85,11 +83,13 @@ def _filter_results(audit_ids: list, flt: dict | None):
     return apply_result_filters(qs, **(flt or {}))
 
 
-def _available_prompts(user) -> list[dict]:
-    """Distinct prompts the user has audited, ranked by recent volume."""
-    user_audit_ids = LLMRankingAudit.objects.filter(
-        created_by=user, status=LLMRankingAudit.STATUS_COMPLETED,
-    ).values_list("id", flat=True)
+def _available_prompts(user, website=None) -> list[dict]:
+    """Distinct prompts audited in the user's reachable projects."""
+    from apps.llm_ranking.services.geo_stats import _audits_in
+
+    user_audit_ids = _audits_in(user, None, None, website=website).values_list(
+        "id", flat=True,
+    )
     rows = (
         LLMRankingResult.objects.filter(audit_id__in=user_audit_ids)
         .values("prompt")

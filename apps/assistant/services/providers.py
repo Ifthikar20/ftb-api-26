@@ -322,7 +322,9 @@ def usage_lines(user, website) -> list[str]:
 def knowledge_lines(user, website) -> list[str]:
     from apps.rag.models import KnowledgeSource
 
-    qs = KnowledgeSource.objects.filter(user=user, website=website)
+    # Website-scoped: the knowledge base belongs to the project, not the
+    # person who added it, so the assistant reports the shared corpus.
+    qs = KnowledgeSource.objects.filter(website=website)
     total = qs.count()
     if not total:
         return ["The knowledge base for this website is empty."]

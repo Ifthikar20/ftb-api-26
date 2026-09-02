@@ -27,19 +27,34 @@ MONTH_BUCKETS = 6
 MONTH12_BUCKETS = 12
 
 
-def build_for_user(user) -> dict | None:
-    """Return the bundled visibility series for a user, or None if no data."""
-    has_any = LLMRankingAudit.objects.filter(
-        created_by=user, status=LLMRankingAudit.STATUS_COMPLETED,
-    ).exists()
-    if not has_any:
+def _scoped_audits(user, website=None):
+    # Audits are scoped by project, not creator — teammates share dashboards.
+    if website is not None:
+        return LLMRankingAudit.objects.filter(
+            website=website, status=LLMRankingAudit.STATUS_COMPLETED,
+        )
+    from apps.websites.services.website_service import WebsiteService
+
+    return LLMRankingAudit.objects.filter(
+        website__in=WebsiteService.accessible_qs(user),
+        status=LLMRankingAudit.STATUS_COMPLETED,
+    )
+
+
+def build_for_user(user, website=None) -> dict | None:
+    """Return the bundled visibility series for a user, or None if no data.
+
+    ``website`` scopes every bucket to that project's audits so the chart
+    never blends two brands' visibility into one line.
+    """
+    if not _scoped_audits(user, website).exists():
         return None
     now = timezone.now()
     return {
-        "day": _day_series(user, now),
-        "week": _week_series(user, now),
-        "month": _month_series(user, now),
-        "month12": _month12_series(user, now),
+        "day": _day_series(user, now, website=website),
+        "week": _week_series(user, now, website=website),
+        "month": _month_series(user, now, website=website),
+        "month12": _month12_series(user, now, website=website),
     }
 
 
@@ -92,9 +107,7 @@ def build_overview_for_website(user, website) -> dict:
     breakdowns: list[dict[str, float]] = []
     measured_mask: list[bool] = []
     for start, end in ranges:
-        qs = LLMRankingAudit.objects.filter(
-            created_by=user, website=website,
-            status=LLMRankingAudit.STATUS_COMPLETED,
+        qs = _scoped_audits(user, website).filter(
             completed_at__gte=start, completed_at__lt=end,
         )
         audit_ids = list(qs.values_list("id", flat=True))
@@ -190,31 +203,31 @@ def _trend_delta(series: list[float | None]) -> float:
 
 # ── bucket builders ─────────────────────────────────────────────────────────
 
-def _day_series(user, now: datetime) -> dict:
+def _day_series(user, now: datetime, *, website=None) -> dict:
     today = now.date()
     buckets = [today - timedelta(days=i) for i in range(DAY_BUCKETS - 1, -1, -1)]
     labels = [d.strftime("%a") for d in buckets]
     ranges = [(_start_of_day(d), _start_of_day(d) + timedelta(days=1)) for d in buckets]
-    return _series_for_ranges(user, labels, ranges)
+    return _series_for_ranges(user, labels, ranges, website=website)
 
 
-def _week_series(user, now: datetime) -> dict:
+def _week_series(user, now: datetime, *, website=None) -> dict:
     # Anchor on Monday of the current week, walk back WEEK_BUCKETS - 1 weeks.
     monday = now.date() - timedelta(days=now.weekday())
     starts = [monday - timedelta(weeks=i) for i in range(WEEK_BUCKETS - 1, -1, -1)]
     labels = [f"W{i + 1}" for i in range(WEEK_BUCKETS)]
     ranges = [(_start_of_day(s), _start_of_day(s) + timedelta(weeks=1)) for s in starts]
-    return _series_for_ranges(user, labels, ranges)
+    return _series_for_ranges(user, labels, ranges, website=website)
 
 
-def _month_series(user, now: datetime) -> dict:
+def _month_series(user, now: datetime, *, website=None) -> dict:
     months = _last_n_month_starts(now.date(), MONTH_BUCKETS)
     labels = [m.strftime("%b") for m in months]
     ranges = [
         (_start_of_day(m), _start_of_day(_first_of_next_month(m)))
         for m in months
     ]
-    return _series_for_ranges(user, labels, ranges)
+    return _series_for_ranges(user, labels, ranges, website=website)
 
 
 def _month12_series(user, now: datetime, *, website=None) -> dict:
@@ -243,14 +256,10 @@ def _series_for_ranges(
     competitor: list[float | None] = []
     measured = 0
     for start, end in ranges:
-        qs = LLMRankingAudit.objects.filter(
-            created_by=user,
-            status=LLMRankingAudit.STATUS_COMPLETED,
+        qs = _scoped_audits(user, website).filter(
             completed_at__gte=start,
             completed_at__lt=end,
         )
-        if website is not None:
-            qs = qs.filter(website=website)
         audit_ids = list(qs.values_list("id", flat=True))
         if audit_ids:
             measured += 1

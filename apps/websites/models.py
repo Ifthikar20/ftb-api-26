@@ -23,6 +23,18 @@ class Website(SoftDeleteMixin, TimestampMixin):
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="websites"
     )
+    # The owning organization. NULL = a personal (B2C) project scoped to
+    # ``user`` alone; set = every accepted org member can reach it through
+    # WebsiteService. ``user`` stays as the creator/fallback owner —
+    # SET_NULL here so deleting an org never cascades into project data.
+    organization = models.ForeignKey(
+        "accounts.Organization",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="websites",
+        db_index=True,
+    )
     url = models.URLField(max_length=500)
     name = models.CharField(max_length=200)
     industry = models.CharField(max_length=100, blank=True)
@@ -38,7 +50,22 @@ class Website(SoftDeleteMixin, TimestampMixin):
 
     class Meta:
         db_table = "websites_website"
-        unique_together = [("user", "url")]
+        # Uniqueness is scoped to the owning tenant: per-user for personal
+        # projects, per-organization for org projects — so two teammates
+        # can't fork duplicate projects for the same domain, while two
+        # unrelated personal users still can both track example.com.
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "url"],
+                condition=models.Q(organization__isnull=True),
+                name="uniq_personal_site_url",
+            ),
+            models.UniqueConstraint(
+                fields=["organization", "url"],
+                condition=models.Q(organization__isnull=False),
+                name="uniq_org_site_url",
+            ),
+        ]
 
     def __str__(self):
         return f"{self.name} ({self.url})"

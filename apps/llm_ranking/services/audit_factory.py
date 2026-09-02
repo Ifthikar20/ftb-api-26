@@ -47,7 +47,15 @@ def create_audit(
     """Create an audit, falling back to Website row fields when a value
     is omitted. ``region=None`` derives the region from ``location``;
     pass an explicit region (e.g. the client-selected one) to skip that.
+
+    Every construction path spends the creator's monthly prompt
+    allowance here — an audit that would overdraw it raises
+    ``prompt_allowance_exceeded`` (403) before anything is queued.
     """
+    from apps.billing.services.org_entitlements import check_prompt_allowance
+
+    check_prompt_allowance(user, len(list(prompts)))
+
     return LLMRankingAudit.objects.create(
         website=website,
         created_by=user,

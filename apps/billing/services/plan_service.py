@@ -20,8 +20,8 @@ def _free() -> dict:
         "features": [
             "$1 of AI usage per month",
             "1 website",
-            f"{limits['max_prompts_per_audit']} prompts per audit",
-            f"{limits['max_audits_per_month']} audits / month",
+            f"{limits['max_prompts_per_audit']} prompts per run",
+            f"{limits['max_audits_per_month']} prompt runs / month",
             "Claude + GPT-4",
             "Community support",
         ],
@@ -49,8 +49,8 @@ def _pro() -> dict:
         "features": [
             f"{limits['projects']} projects",
             f"Up to {limits['pageviews']:,} pageviews/month",
-            "Visibility audits across Claude, GPT, Gemini and Perplexity",
-            f"{limits['max_prompts_per_audit']} prompts per audit, daily scans",
+            "Prompt runs across Claude, GPT, Gemini and Perplexity",
+            f"{limits['max_prompts_per_audit']} prompts per run, daily scans",
             f"{limits['competitors']} competitors tracked",
             f"{limits['team_members']} team members",
             f"{limits['integrations']} integrations (Slack/Discord)",

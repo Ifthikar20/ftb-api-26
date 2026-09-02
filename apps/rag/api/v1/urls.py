@@ -28,4 +28,9 @@ urlpatterns = [
         views.RetrieveView.as_view(),
         name="rag-retrieve",
     ),
+    path(
+        "<uuid:website_id>/agent-crawl/",
+        views.AgentCrawlView.as_view(),
+        name="rag-agent-crawl",
+    ),
 ]

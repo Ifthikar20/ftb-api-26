@@ -71,16 +71,39 @@ WEBHOOK_URL_PREFIXES = {
     ),
 }
 
+# Teams incoming-webhook hosts use a per-tenant subdomain, so a fixed prefix
+# can't match. Validate by host suffix instead: the classic connector
+# (*.webhook.office.com) and the newer Workflows trigger (*.logic.azure.com).
+WEBHOOK_URL_HOST_SUFFIXES = {
+    "teams": (".webhook.office.com", ".logic.azure.com"),
+}
+
 
 def _validate_webhook_url(platform: str, url: str) -> str:
     """Return an error message when the URL is not allowed for the platform."""
     prefixes = WEBHOOK_URL_PREFIXES.get(platform)
-    if not prefixes:
-        return f"Unsupported platform: {platform}"
-    if not url.startswith(prefixes):
-        allowed = " or ".join(f"{p}..." for p in prefixes)
-        return f"Invalid {platform} webhook URL. Expected {allowed}"
-    return ""
+    if prefixes:
+        if not url.startswith(prefixes):
+            allowed = " or ".join(f"{p}..." for p in prefixes)
+            return f"Invalid {platform} webhook URL. Expected {allowed}"
+        return ""
+
+    suffixes = WEBHOOK_URL_HOST_SUFFIXES.get(platform)
+    if suffixes:
+        from urllib.parse import urlparse
+
+        parsed = urlparse(url)
+        host = (parsed.hostname or "").lower()
+        if parsed.scheme != "https":
+            return f"Invalid {platform} webhook URL. It must start with https://"
+        if not any(host.endswith(suffix) for suffix in suffixes):
+            return (
+                "Invalid Microsoft Teams webhook URL. Expected a "
+                "*.webhook.office.com or *.logic.azure.com address."
+            )
+        return ""
+
+    return f"Unsupported platform: {platform}"
 
 
 class IntegrationConnectionListView(TenantScopedAPIView):
@@ -165,6 +188,16 @@ class IntegrationConnectionListView(TenantScopedAPIView):
                     # Name only what actually sends today; trend digests and
                     # milestones are stored preferences with no sender yet.
                     description=(
+                        "You'll receive daily growth reports, brand-security "
+                        "alerts, and hot lead alerts here."
+                    ),
+                )
+            elif connection.platform == "teams":
+                from apps.notifications.services.teams_service import TeamsService
+                TeamsService.send_message(
+                    webhook_url=connection.webhook_url,
+                    title="Cansee connected",
+                    text=(
                         "You'll receive daily growth reports, brand-security "
                         "alerts, and hot lead alerts here."
                     ),

@@ -305,6 +305,80 @@ class RegionsListView(APIView):
         return Response({"countries": supported_countries()})
 
 
+class WebsiteSamplePromptsView(TenantScopedAPIView):
+    """Generate a starter set of diverse saved prompts for a website.
+
+    POST /api/v1/prompt-library/websites/<website_id>/prompts/generate-samples/
+    body: {"count": 1-15, default 10}
+
+    Reads the site first (if it has not been classified yet), then generates
+    prompts written for what the business ACTUALLY does — grounded in the
+    scraped description, using the right category words rather than a
+    hardcoded "software" default. Prompts are neutral by design (no brand
+    name in the text) so the first scan measures real visibility rather
+    than parroting the brand back. Re-running is safe: the registrar dedupes
+    on text hash.
+    """
+
+    def post(self, request, website_id):
+        from apps.llm_ranking.services.prompt_registrar import (
+            register_generated_prompts,
+        )
+        from apps.prompt_library.services.sample_prompts import build_sample_prompts
+        from core.exceptions import RateLimited
+        from core.resilience import TokenBucket
+
+        website = self.get_website(website_id)
+        bucket = TokenBucket(
+            name=f"sample-prompts:{request.user.id}", capacity=4,
+            refill_per_second=0.05,
+        )
+        if not bucket.try_acquire():
+            raise RateLimited()
+
+        try:
+            count = int(request.data.get("count", 10))
+        except (TypeError, ValueError):
+            count = 10
+        count = max(1, min(count, 15))
+
+        result = build_sample_prompts(website, count=count, user=request.user)
+        items = result["items"]
+
+        # We could not learn enough about the site to build anything
+        # relevant. Ask for a description rather than emit a generic list.
+        if result["source"] == "none" or not items:
+            return Response(
+                {
+                    "success": False,
+                    "error": {
+                        "code": "site_not_classified",
+                        "message": (
+                            "We couldn't read enough from this site to build "
+                            "relevant prompts. Add a short description of what "
+                            "the business does, then try again."
+                        ),
+                    },
+                },
+                status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            )
+
+        created = register_generated_prompts(items, website)
+
+        return Response(
+            {
+                "generated": [
+                    {"text": i["text"], "intent": i.get("type", "custom")}
+                    for i in items
+                ],
+                "created_count": created,
+                "total": len(items),
+                "source": result["source"],
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+
 class WebsitePromptCreateView(TenantScopedAPIView):
     """Create a manual templated prompt for a website."""
 

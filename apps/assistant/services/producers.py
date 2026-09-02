@@ -98,7 +98,15 @@ def ingest_audit_responses(audit_id) -> int:
         if not answer:
             continue
         provider = r.provider or "an AI model"
-        competitors = ", ".join(r.competitors_mentioned or [])
+        # Entries are dicts since extraction v1 ({name, ...}; v4 adds
+        # kind) with bare strings only on legacy rows — a raw join
+        # crashed on every modern row. Generic terms are excluded: the
+        # assistant should name real competitor brands only.
+        competitors = ", ".join(
+            c.get("name", "").strip() if isinstance(c, dict) else str(c).strip()
+            for c in (r.competitors_mentioned or [])
+            if not (isinstance(c, dict) and c.get("kind") == "generic")
+        ).strip(", ")
         lines = [
             f"AI answer from {provider}.",
             f"Prompt asked: {prompt_text}" if prompt_text else "",

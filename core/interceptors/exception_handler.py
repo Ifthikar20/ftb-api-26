@@ -2,6 +2,7 @@ import logging
 
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import status
+from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.response import Response
 from rest_framework.views import exception_handler
 
@@ -32,6 +33,24 @@ def _friendly_message(status_code: int, fallback: str = "") -> str:
     return FRIENDLY_MESSAGES.get(status_code, fallback or FRIENDLY_MESSAGES[500])
 
 
+def _first_validation_message(detail) -> str:
+    """Depth-first first message out of a DRF error detail structure
+    (dict of field -> list, nested serializers, or a bare list)."""
+    if isinstance(detail, dict):
+        for value in detail.values():
+            found = _first_validation_message(value)
+            if found:
+                return found
+    elif isinstance(detail, list):
+        for value in detail:
+            found = _first_validation_message(value)
+            if found:
+                return found
+    elif detail:
+        return str(detail)
+    return ""
+
+
 def custom_exception_handler(exc, context):
     """
     Wraps ALL API errors in a consistent envelope with user-friendly messages.
@@ -52,14 +71,41 @@ def custom_exception_handler(exc, context):
 
     # ── Our domain exceptions (already have safe messages) ──
     if isinstance(exc, CanseeException):
+        error = {"code": exc.code, "message": exc.message}
+        # details is client-facing by contract (see CanseeException) — it
+        # exists so structured errors like sso_required can tell the SPA
+        # which org/method to route to. Never populated from raw internals.
+        if getattr(exc, "details", None):
+            error["details"] = exc.details
         return Response(
             {
                 "success": False,
-                "error": {"code": exc.code, "message": exc.message},
+                "error": error,
                 "request_id": request_id,
             },
             status=exc.status_code,
         )
+
+    # ── DRF serializer validation — keep field-level detail ──
+    # serializer.is_valid(raise_exception=True) errors previously fell
+    # through to the generic branch below, which threw away the field
+    # messages ("Enter a valid URL.") and left every form with the same
+    # unusable toast. DRF validation messages are written for end users,
+    # so surfacing them is safe.
+    if isinstance(exc, DRFValidationError):
+        response = exception_handler(exc, context)
+        detail = response.data if response is not None else exc.detail
+        response.data = {
+            "success": False,
+            "error": {
+                "code": "validation_error",
+                "message": _first_validation_message(detail)
+                or "Please check your input and try again.",
+                "fields": detail,
+            },
+            "request_id": request_id,
+        }
+        return response
 
     # ── Django validation errors — show field-level feedback, not raw text ──
     if isinstance(exc, DjangoValidationError):

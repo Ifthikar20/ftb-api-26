@@ -23,7 +23,7 @@ class AssistantAskSerializer(serializers.Serializer):
 class AssistantMessageSerializer(serializers.ModelSerializer):
     class Meta:
         model = AssistantMessage
-        fields = ["id", "role", "content", "grounded", "created_at"]
+        fields = ["id", "role", "content", "grounded", "model", "created_at"]
 
 
 class ConversationSummarySerializer(serializers.ModelSerializer):

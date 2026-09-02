@@ -274,6 +274,69 @@ def update_subscription(subscription_id: str, updates: dict):
     )
 
 
+def update_subscription_plan(
+    subscription_id: str,
+    *,
+    end_trial_now: bool = False,
+    product_id: str | None = None,
+    proration_behavior: str | None = None,
+):
+    """PATCH plan-level subscription fields (end trial / switch product).
+
+    Raw HTTP on purpose. Ending a trial immediately requires the REST
+    literal ``"trial_end": "now"`` — a client-side timestamp is already in
+    the past when Polar validates it ("Input should be in the future"),
+    so "now" is the only race-free form. polar-sdk 0.32.0 cannot send it:
+    it types trial_end as a datetime, and its update() re-validates dict
+    input through the SubscriptionUpdate union, where ``{"trial_end":
+    ...}`` mis-resolves to SubscriptionResume (``resume`` defaults True)
+    and would silently send a resume request. Breaker + error translation
+    mirror _guarded.
+    """
+    body: dict = {}
+    if end_trial_now:
+        body["trial_end"] = "now"
+    if product_id:
+        body["product_id"] = product_id
+    if proration_behavior:
+        body["proration_behavior"] = proration_behavior
+    if not body:
+        raise ValueError("update_subscription_plan called with nothing to update")
+
+    if not is_configured():
+        raise PolarUnavailable("polar not configured")
+    brk = breaker()
+    if not brk.allow():
+        raise PolarUnavailable("polar circuit open")
+
+    import httpx
+
+    base = (
+        "https://sandbox-api.polar.sh"
+        if settings.POLAR_ENVIRONMENT == "sandbox"
+        else "https://api.polar.sh"
+    )
+    try:
+        resp = httpx.patch(
+            f"{base}/v1/subscriptions/{subscription_id}",
+            json=body,
+            headers={"Authorization": f"Bearer {settings.POLAR_ACCESS_TOKEN}"},
+            timeout=20.0,
+        )
+    except Exception as exc:
+        brk.record_failure()
+        raise PolarUnavailable(str(exc)[:300]) from exc
+    if 400 <= resp.status_code < 500 and resp.status_code not in (408, 429):
+        # Polar is reachable; the request itself was rejected. Like
+        # _translate, a reject says nothing about availability.
+        raise PolarRejected(f"HTTP {resp.status_code}: {resp.text[:300]}")
+    if resp.status_code >= 500 or resp.status_code in (408, 429):
+        brk.record_failure()
+        raise PolarUnavailable(f"HTTP {resp.status_code}: {resp.text[:300]}")
+    brk.record_success()
+    return resp.json()
+
+
 def get_subscription(subscription_id: str):
     """One subscription by id.
 

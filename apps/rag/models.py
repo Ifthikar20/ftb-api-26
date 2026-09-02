@@ -116,10 +116,16 @@ class KnowledgeSource(TimestampMixin):
     class Meta:
         db_table = "rag_knowledge_source"
         ordering = ["-created_at"]
+        # Uniqueness is per-WEBSITE: the knowledge base belongs to the
+        # project, not the person who happened to add a page. The old
+        # (user, website, url) key meant two teammates ingesting the same
+        # URL created two rows and paid for two embedding runs, each
+        # invisible to the other's retrieval. ``user`` remains as
+        # attribution (who added it).
         constraints = [
             models.UniqueConstraint(
-                fields=["user", "website", "url"],
-                name="uq_rag_source_user_website_url",
+                fields=["website", "url"],
+                name="uq_rag_source_website_url",
             ),
         ]
         # Explicit index names match the hand-written 0001_initial
@@ -132,6 +138,50 @@ class KnowledgeSource(TimestampMixin):
 
     def __str__(self):
         return f"KnowledgeSource({self.url[:60]}, {self.status})"
+
+
+class AgentCrawlConsent(TimestampMixin):
+    """Per-website permission for the Cansee agent to crawl the site for
+    brand knowledge (``user`` records who granted it).
+
+    The flag is explicit consent: automated crawls (the seed crawl on
+    enable today, scheduled re-crawls tomorrow) must check ``enabled``
+    before touching the user's site. Disabling never deletes what was
+    already ingested — sources stay manageable on the Brand Ingestion
+    page.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="agent_crawl_consents",
+    )
+    website = models.ForeignKey(
+        "websites.Website",
+        on_delete=models.CASCADE,
+        related_name="agent_crawl_consents",
+    )
+    enabled = models.BooleanField(default=False)
+    enabled_at = models.DateTimeField(null=True, blank=True)
+    # When we last queued an automated seed crawl — throttles re-seeding
+    # when the toggle is flipped off and on again.
+    last_seeded_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "rag_agent_crawl_consent"
+        # Consent is per-WEBSITE: one teammate granting the crawl covers
+        # the project (``user`` records who granted it). Was per-(user,
+        # website), which made each teammate re-consent and re-seed.
+        constraints = [
+            models.UniqueConstraint(
+                fields=["website"],
+                name="uq_rag_agent_crawl_website",
+            ),
+        ]
+
+    def __str__(self):
+        return f"AgentCrawlConsent({self.website_id}, enabled={self.enabled})"
 
 
 class KnowledgeChunk(TimestampMixin):

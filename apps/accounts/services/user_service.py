@@ -38,16 +38,22 @@ class UserService:
         subscription is cancelled so billing stops.
 
         Provider cancel and index cleanup are best-effort: an outage
-        there must never block the user's right to erasure. Every user
-        FK in the codebase is on_delete=CASCADE (verified — none are
-        PROTECT/SET_NULL), so user.delete() is authoritative for the
-        database.
+        there must never block the user's right to erasure.
 
-        What survives, stated honestly: the payment provider retains
-        invoices it is legally required to keep, rotating server logs
-        age out on their own schedule, and one audit line records that
-        an account with this opaque id was deleted — containing no
-        name, email, or content.
+        The user.delete() cascade is NOT authoritative on its own: several
+        PII-bearing rows either use on_delete=SET_NULL (they survive with the
+        FK nulled) or carry no user FK at all (the cascade cannot reach them).
+        Those stores are erased explicitly below, before the cascade:
+          - accounts.LoginAttempt  (SET_NULL; keeps email/IP/UA)  -> by email
+          - metering.PolarEventOutbox (no user FK; keeps str(user.id)) -> by id
+        A regression test (test_account_deletion) asserts that no row carrying
+        the deleted user's email or UUID remains anywhere.
+
+        What survives by design, stated honestly: the payment provider retains
+        invoices it is legally required to keep, rotating server logs age out
+        on their own schedule, encrypted backups roll off on their cycle, and
+        one audit line records that an account with this opaque id was deleted
+        — containing no name, email, or content.
         """
         user_id = str(user.id)
         email = user.email
@@ -81,8 +87,8 @@ class UserService:
                 exc_info=True,
             )
 
-        # 3. Login-attempt rows are keyed by the email STRING (django-axes
-        #    has no user FK), so the cascade cannot reach them.
+        # 3. Login-attempt rows the cascade cannot reach.
+        #    (a) django-axes tables are keyed by the email STRING (no user FK).
         try:
             from axes.models import AccessAttempt, AccessLog
 
@@ -90,6 +96,29 @@ class UserService:
             AccessLog.objects.filter(username=email).delete()
         except Exception:
             logger.warning("axes purge during account deletion failed",
+                           exc_info=True)
+
+        #    (b) our own accounts.LoginAttempt uses on_delete=SET_NULL, so the
+        #        cascade would leave the row with the deleted user's email, IP
+        #        and user-agent in the clear. Erase by email AND user.
+        try:
+            from apps.accounts.models import LoginAttempt
+
+            LoginAttempt.objects.filter(email=email).delete()
+            LoginAttempt.objects.filter(user=user).delete()
+        except Exception:
+            logger.warning("login-attempt purge during account deletion failed",
+                           exc_info=True)
+
+        #    (c) metering.PolarEventOutbox has no user FK; every row carries
+        #        external_customer_id = str(user.id) plus a usage payload, so
+        #        the cascade cannot reach it. Erase by the user id.
+        try:
+            from apps.metering.models import PolarEventOutbox
+
+            PolarEventOutbox.objects.filter(external_customer_id=user_id).delete()
+        except Exception:
+            logger.warning("polar-outbox purge during account deletion failed",
                            exc_info=True)
 
         # 4. The cascade. After this the user and all owned rows are gone.

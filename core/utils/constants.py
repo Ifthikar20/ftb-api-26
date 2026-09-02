@@ -45,6 +45,9 @@ PLAN_LIMITS = {
         "competitors": 3,
         "max_prompts_per_audit": 5,
         "max_audits_per_month": 2,
+        # Dedicated prompt allowance per account per calendar month —
+        # every prompt queued into an audit draws it down. -1 = unlimited.
+        "monthly_prompts": 10,
         "providers_allowed": ["claude", "gpt4"],
         "pipeline_builder": False,
         "trend_intelligence": False,
@@ -75,6 +78,7 @@ PLAN_LIMITS = {
         "competitors": 25,
         "max_prompts_per_audit": 15,
         "max_audits_per_month": 30,           # daily cadence cap
+        "monthly_prompts": 100,
         "providers_allowed": ["claude", "gpt4", "gemini", "perplexity"],
         "pipeline_builder": True,
         "trend_intelligence": True,
@@ -102,6 +106,9 @@ PLAN_LIMITS = {
         "competitors": -1,
         "max_prompts_per_audit": 50,
         "max_audits_per_month": -1,
+        # Per-SEAT default for enterprise orgs; each org can carry a
+        # negotiated override (Organization.monthly_prompt_allowance).
+        "monthly_prompts": 200,
         "providers_allowed": ["claude", "gpt4", "gemini", "perplexity"],
         "pipeline_builder": True,
         "trend_intelligence": True,
@@ -154,15 +161,25 @@ def max_prompts_for_user(user) -> int:
     """
     Return the prompts-per-audit cap for ``user``'s current plan.
 
-    Resolves the plan through ``current_plan_for`` (the single source of
-    truth): an active/trialing subscription grants its tier, everything
-    else — no row, canceled, past due, lapsed trial — is the Free cap.
-    Never returns 0: even a Free user can run a tiny 5-prompt audit so
-    the "first run" experience isn't gated.
+    Org members resolve through their organization: an explicit
+    ``max_prompts_per_audit`` on the org (a negotiated enterprise
+    package) always wins, otherwise the org plan's number applies.
+    Everyone else resolves through ``current_plan_for`` (the single
+    source of truth): an active/trialing subscription grants its tier,
+    everything else — no row, canceled, past due, lapsed trial — is the
+    Free cap. Never returns 0: even a Free user can run a tiny 5-prompt
+    audit so the "first run" experience isn't gated.
     """
     from django.conf import settings
 
-    if not settings.PAYWALL_ENABLED:
+    org = _org_for(user)
+    if org is not None and org.max_prompts_per_audit:
+        # Custom contract: binds regardless of the paywall dev switch.
+        return int(org.max_prompts_per_audit)
+
+    if org is not None:
+        limits = PLAN_LIMITS.get(legacy_plan_key(org.plan)) or PLAN_LIMITS[Plan.BUSINESS]
+    elif not settings.PAYWALL_ENABLED:
         limits = PLAN_LIMITS[Plan.BUSINESS]
     else:
         from apps.billing.services.plan_limits import current_plan_for
@@ -173,11 +190,69 @@ def max_prompts_for_user(user) -> int:
     return cap if cap > 0 else 50  # treat -1 as "effectively unlimited"
 
 
+def legacy_plan_key(plan: str) -> str:
+    """Map any plan value (incl. legacy aliases) to a live PLAN_LIMITS key."""
+    return plan if plan in PLAN_LIMITS else LEGACY_TIER_KEY.get(plan, "pro")
+
+
+def _org_for(user):
+    """The user's organization, or None. Cached on the user instance.
+
+    Deliberately NOT the ``_org_cache`` attribute: User.effective_plan
+    assumes that one is only ever set to a real Organization, so caching
+    a miss there would crash it.
+    """
+    if user is None or not getattr(user, "pk", None):
+        return None
+    if hasattr(user, "_org_or_none_cache"):
+        return user._org_or_none_cache
+    if not hasattr(user, "org_memberships"):
+        return None
+    membership = (
+        user.org_memberships.select_related("organization")
+        .order_by("created_at")
+        .first()
+    )
+    user._org_or_none_cache = membership.organization if membership else None
+    return user._org_or_none_cache
+
+
 class UserRole(models.TextChoices):
     OWNER = "owner", "Owner"
     ADMIN = "admin", "Admin"
     EDITOR = "editor", "Editor"
     VIEWER = "viewer", "Viewer"
+
+
+class OrgRole(models.TextChoices):
+    """Canonical organization role vocabulary.
+
+    ``member`` is the org-level read-write role (what WebsiteMembership's
+    legacy vocabulary called "editor" — ROLE_HIERARCHY ranks them equal).
+    ``viewer`` is read-only. Owner is unique per org and only transferable,
+    never grantable through the API.
+    """
+
+    OWNER = "owner", "Owner"
+    ADMIN = "admin", "Admin"
+    MEMBER = "member", "Member"
+    VIEWER = "viewer", "Viewer"
+
+
+# Public mailbox providers that can never be claimed as an organization
+# domain: possession of an @gmail.com address proves nothing about a
+# company, and letting one through would hand domain auto-join to the
+# entire provider's user base. Enforced in OrgDomain.clean().
+FREEMAIL_DOMAINS = frozenset({
+    "gmail.com", "googlemail.com",
+    "outlook.com", "hotmail.com", "live.com", "msn.com",
+    "yahoo.com", "ymail.com",
+    "icloud.com", "me.com", "mac.com",
+    "proton.me", "protonmail.com", "pm.me",
+    "aol.com", "mail.com", "gmx.com", "gmx.net",
+    "zoho.com", "fastmail.com", "hey.com",
+    "mail.ru", "yandex.com", "yandex.ru", "qq.com", "naver.com", "163.com",
+})
 
 
 class AuditStatus(models.TextChoices):

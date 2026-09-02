@@ -373,5 +373,11 @@ def audit_results_for_website(website, *, audit=None, limit: int = 400, since=No
             record_security_alerts(website, new_alerts)
         except Exception as exc:  # pragma: no cover — notify must never fail a scan
             logger.warning("brand security notification failed for %s: %s", website.id, exc)
+        try:
+            from apps.brand_vault.services import pulse_agent
+
+            pulse_agent.push_new_high_alerts(website, new_alerts)
+        except Exception as exc:  # pragma: no cover — notify must never fail a scan
+            logger.warning("brand pulse alert push failed for %s: %s", website.id, exc)
 
     return created

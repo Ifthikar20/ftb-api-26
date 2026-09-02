@@ -1,4 +1,8 @@
-"""Celery tasks for the per-user RAG knowledge base."""
+"""Celery tasks for the website's shared RAG knowledge base.
+
+``user_id`` on both tasks is attribution (who queued the ingest) and
+spend accounting — never a retrieval scope.
+"""
 import logging
 
 from celery import shared_task
@@ -12,7 +16,7 @@ logger = logging.getLogger("apps")
 )
 def ingest_url_task(self, *, user_id: int, website_id: str, url: str,
                     kind: str = "other", title: str = "") -> dict:
-    """Background ingest of a single URL into a user's knowledge base."""
+    """Background ingest of a single URL into the website's knowledge base."""
     from django.contrib.auth import get_user_model
 
     from apps.rag.services.ingest_service import ingest_url
